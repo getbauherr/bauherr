@@ -1,6 +1,6 @@
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -95,8 +95,41 @@ it('claim_next cancels a Build Run whose MR merged, releases the Ticket and hand
   const merged = await seed({ rank: 'a' })
   const next = await seed({ rank: 'b' })
   const sha = fake.merge(repo, merged.pr.number)
-  const claimed = await call('claim_next', {})
+  const claimed = await call('claim_next', { product: 'web' })
   expect(claimed.run.id).toBe(next.runId)
   expect(await runOf(merged.runId)).toMatchObject({ status: 'cancelled', error: 'the MR merged during Build' })
   expect(await reload(merged.id)).toMatchObject({ stage: 'release', mergeSha: sha, needsYou: null })
+})
+
+it('claim_run on a Build Run whose MR merged is a skip and releases the Ticket', async () => {
+  const { id, runId, pr } = await seed()
+  const sha = fake.merge(repo, pr.number)
+  await expect(call('claim_run', { runId })).rejects.toThrow(/merged during Build/)
+  expect(await reload(id)).toMatchObject({ stage: 'release', mergeSha: sha })
+  expect((await runOf(runId)).status).toBe('cancelled')
+})
+
+it('claim_run does not hand out a Build Run of a Ticket the watcher already released', async () => {
+  const { id, runId, pr } = await seed()
+  const sha = fake.merge(repo, pr.number)
+  await payload.update({ collection: 'tickets', id, data: { stage: 'release', mergeSha: sha, releaseState: 'waiting' }, ...o })
+  await expect(call('claim_run', { runId })).rejects.toThrow(/merged during Build/)
+  expect((await runOf(runId)).status).toBe('awaiting_session')
+})
+
+it('a forge failure in the claim path still hands out the Run', async () => {
+  const { runId } = await seed()
+  const spy = vi.spyOn(fake.forge, 'getPullRequest').mockRejectedValueOnce(new Error('forge down'))
+  expect(await call('claim_run', { runId })).toMatchObject({ run: { id: runId } })
+  spy.mockRestore()
+})
+
+it('finish_run after the watcher released the Ticket ends the Run succeeded', async () => {
+  const { id, runId, pr } = await seed()
+  const a = await claim(runId)
+  const sha = fake.merge(repo, pr.number)
+  await payload.update({ collection: 'tickets', id, data: { stage: 'release', mergeSha: sha, releaseState: 'waiting' }, ...o })
+  expect(await call('finish_run', { ...a, status: 'succeeded', prUrl: pr.url })).toMatchObject({ status: 'succeeded' })
+  expect(await runOf(runId)).toMatchObject({ status: 'succeeded' })
+  expect(await reload(id)).toMatchObject({ stage: 'release', mergeSha: sha })
 })

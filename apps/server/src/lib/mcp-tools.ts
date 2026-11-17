@@ -211,8 +211,11 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   if (is(wf, ticket.stage, 'container')) throw new Error('parents are not claimable')
   if (ticket.parked) throw new ClaimLost(`ticket #${ticket.number} is parked`)
   if (kind === 'build') {
-    const merged = await mergedOwnMr(c.payload, ticket)
-    if (merged && (await releaseMerged(c.payload, merged.ts, ticket, merged.pr))) throw new ClaimLost(`ticket #${ticket.number}: the MR merged during Build`)
+    const merged = await mergedOwnMr(c.payload, ticket).catch((err) => (c.payload.logger.warn({ err, ticket: ticket.id }, 'merged-MR check failed on claim'), null))
+    if (merged) {
+      if (!merged.released) await releaseMerged(c.payload, merged.ts, ticket, merged.pr)
+      throw new ClaimLost(`ticket #${ticket.number}: the MR merged during Build`)
+    }
   }
   const { ts, n } = await sourceOf(c.payload, ticket)
   const body = (await ts.get(n)).body
@@ -609,8 +612,9 @@ export const tools: Tool[] = [
       await record(c.payload, id(run.ticket), { run: run.id, outcome: a.status, cause: 'run:finished' })
       if (a.prUrl) await setEpicPr(c.payload, ticket, a.prUrl)
       if (kind === 'build' && a.status === 'succeeded' && ticket.epic) await tagFixes(c.payload, ticket).catch((e) => c.payload.logger.warn({ err: e, ticket: ticket.id }, 'tagging epic fixes failed'))
-      if (merged) await releaseMerged(c.payload, ts, ticket, merged.pr)
-      else if (kind === 'build' && a.status === 'succeeded' && a.prUrl && !replan) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
+      if (merged) {
+        if (!merged.released) await releaseMerged(c.payload, ts, ticket, merged.pr)
+      } else if (kind === 'build' && a.status === 'succeeded' && a.prUrl && !replan) await startReviewIfReady(c.payload, await getTicket(c, id(run.ticket)))
       if ((kind === 'agent' && a.status === 'succeeded') || replan) {
         if (replan) await c.payload.db.drizzle.execute(sql`UPDATE "runs" SET "outcome" = 'replan' WHERE "id" = ${run.id}`)
         if (replan) await advance(c.payload, ts, ticket, 'replan', { by: 'factory', run, note: a.comment })

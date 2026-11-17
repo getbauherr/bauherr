@@ -268,13 +268,15 @@ const linkedPr = (t: Doc, runs: Doc[], repo: string, web: string) => {
   return { urls, num: urls.map((u) => prNumber(u, repo, web)).find((x) => x !== null) }
 }
 
-/** `prUrl` (else the MR linked on the Ticket) when it is a merged factory MR the Ticket was not released with (see `mergedDuringBuild`), with the Ticket's source; null otherwise. */
-export const mergedOwnMr = async (payload: Payload, t: Doc, prUrl?: unknown): Promise<{ ts: TicketSource; pr: PullRequest } | null> => {
+/** `prUrl` (else the MR linked on the Ticket) when it is a merged factory MR the Ticket was not released with (see `mergedDuringBuild`), with the Ticket's source; `released` when the Ticket already sits in release with that very merge (a claim or the watcher moved it first). Null otherwise. */
+export const mergedOwnMr = async (payload: Payload, t: Doc, prUrl?: unknown): Promise<{ ts: TicketSource; pr: PullRequest; released: boolean } | null> => {
   const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
   const runs = prUrl ? [] : ((await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[])
   const num = prUrl ? prNumber(prUrl, repo, web) : linkedPr(t, runs, repo, web).num
   const pr = num == null ? null : await backend.forge.getPullRequest(repo, num)
-  return pr && mergedDuringBuild(pr, repo, t) ? { ts, pr } : null
+  if (!pr || pr.state !== 'merged' || !isFactoryPr(pr, repo, t)) return null
+  if (mergedDuringBuild(pr, repo, t)) return { ts, pr, released: false }
+  return t.stage === byKind(workflowFor(t.workspace), 'release')!.name && t.mergeSha && pr.mergeSha === t.mergeSha ? { ts, pr, released: true } : null
 }
 
 /** Moves a Ticket whose MR merged to `release` (conditional on its stage, so two callers release it once; false when another won), clears what waited for the owner, cancels queued Build Runs of a Ticket released from Build, and records the move. */
@@ -284,7 +286,7 @@ export const releaseMerged = async (payload: Payload, ts: TicketSource, t: Doc, 
   const build = byKind(wf, 'build')?.name
   const at = new Date(now).toISOString()
   if (!(await cas(payload, t.id, sql`"stage" = ${release}, "review_state" = CASE WHEN "review_state" = 'queued' THEN 'merged'::"enum_tickets_review_state" ELSE "review_state" END, "merge_sha" = ${pr.mergeSha ?? null}, "release_at" = ${at}, "deploy_requested_at" = NULL, "release_state" = 'waiting', "production_state" = NULL, "production_approved_sha" = NULL, "production_requested_at" = NULL, "production_webhook_sent_at" = NULL, "production_label_at" = NULL, "needs_you" = NULL, "needs_by" = NULL, "parked_need" = NULL, "decision" = NULL`, sql`"stage" = ${t.stage}`))) return false
-  if (build && t.stage === build) {
+  if (build && build !== byKind(wf, 'review')?.name && t.stage === build) {
     const queued = await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: build } }, { status: { in: ['queued', 'awaiting_session'] } }] }, pagination: false, ...o })
     for (const r of queued.docs) await payload.update({ collection: 'runs', id: r.id, data: { status: 'cancelled', error: 'the MR merged during Build', finishedAt: at }, ...o })
   }
