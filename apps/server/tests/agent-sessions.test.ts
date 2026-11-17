@@ -60,6 +60,7 @@ const editRoles = async (fn: (roles: Doc) => void) => {
 beforeEach(async () => {
   await db().execute(sql`DELETE FROM "session_spans"`)
   await db().execute(sql`UPDATE "runs" SET "session_id" = NULL`)
+  await db().execute(sql`DELETE FROM "usage_cursors"`)
   await db().execute(sql`DELETE FROM "agent_sessions"`)
   await payload.delete({ collection: 'runs', where: { workspace: { equals: ws } }, ...o })
   await payload.delete({ collection: 'tickets', where: { workspace: { equals: ws } }, ...o })
@@ -100,6 +101,20 @@ describe('connect', () => {
     expect(r.pollAfterSeconds).toBeGreaterThan(0)
     expect(r.next).toBe('Call next_work with this sessionId.')
     expect(await row(r.sessionId)).toMatchObject({ role: 'engineer', model: 'm1', clientName: 'claude-code', clientVersion: '2.1' })
+  })
+
+  it('connect says the usage hook is missing when the previous session finished Runs without ever reporting usage', async () => {
+    const keys = await import('../src/lib/api-key')
+    const { callTool } = await import('../src/lib/mcp-tools')
+    const actor = { kind: 'agent' as const, keyId: (await keys.resolveAgentKey(payload, await keys.mintAgentKey(payload, user as never, 'hook')))!.keyId }
+    const asAgent = (session: string): Promise<Doc> => callTool({ payload, user, actor }, 'connect', { role: 'engineer', session }) as Promise<Doc>
+    const first = await asAgent('a')
+    expect(first.notice).toBeUndefined()
+    const t = await ticket('Done', 'build', { run: 'build', runStatus: 'succeeded' })
+    await payload.update({ collection: 'runs', id: t.run!.id, data: { session: (await row(first.sessionId)).id }, ...o })
+    expect((await asAgent('a')).notice).toContain('npx bauherr hook install')
+    await payload.create({ collection: 'usage_cursors', data: { session: (await row(first.sessionId)).id, claudeSession: 'cc', totals: {}, workspace: ws } as never, ...o })
+    expect((await asAgent('a')).notice).toBeUndefined()
   })
 
   it('a role that names a model gets a hint unless the session already runs on it', async () => {

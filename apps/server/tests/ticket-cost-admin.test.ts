@@ -16,6 +16,8 @@ const COST = 7.3142
 let payload: Payload
 let testDb: TestDb
 let ticket: number
+let workspaceId: number
+let productId: number
 let cookie: { admin: string; member: string }
 
 beforeAll(async () => {
@@ -29,8 +31,10 @@ beforeAll(async () => {
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
   const { signSession } = await import('../src/lib/oidc-session')
   const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'a', slug: 'a' }, ...o })).id as number
+  workspaceId = workspace
   const product = (await payload.create({ collection: 'products', data: { name: 'p', slug: 'p', workspace }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace }, ...o })).id as number
+  productId = product
   await payload.create({ collection: 'ticket_sources', data: { repo: 'acme/web', product, connection, workspace }, ...o })
   ticket = (await payload.create({ collection: 'tickets', data: { title: 'Priced', externalId: 'c1', number: 1, url: 'https://x/1', state: 'open', labels: [], stage: 'build', product, workspace }, ...o })).id as number
   await payload.create({ collection: 'runs', data: { ticket, workspace, product, stage: 'build', kind: 'build', status: 'succeeded', costEstimateUsd: COST } as never, ...o })
@@ -58,6 +62,27 @@ describe('Ticket page cost', () => {
   it('an Admin render carries the Cost block with the Run cost', async () => {
     const out = await html(cookie.admin)
     expect(out).toMatch(/data-testid="cost-total"[^>]*>(<!-- -->)?\$(<!-- -->)?7\.31/)
+  })
+
+  it('the total is labelled estimated unless the gateway priced it', async () => {
+    expect(await html(cookie.admin)).toContain('data-testid="cost-estimated"')
+  })
+
+  it('session Runs without reported usage are counted in a line, not priced as $0', async () => {
+    const own = ticket
+    ticket = (await payload.create({ collection: 'tickets', data: { title: 'Session', externalId: 'c2', number: 2, url: 'https://x/2', state: 'open', labels: [], stage: 'build', product: productId, workspace: workspaceId }, ...o })).id as number
+    const run = (data: object) => payload.create({ collection: 'runs', data: { ticket, workspace: workspaceId, product: productId, stage: 'build', kind: 'build', status: 'succeeded', mode: 'session', executor: 'session', ...data } as never, ...o })
+    await run({ costEstimateUsd: 0 })
+    await run({ costEstimateUsd: 0 })
+    const none = await html(cookie.admin)
+    expect(none).toContain('No priced Runs yet.')
+    expect(none).toMatch(/data-testid="cost-unreported"[^>]*>(<!-- -->)?2(<!-- -->)? session(<!-- -->)? (<!-- -->)?Runs(<!-- -->)? did not report usage/)
+    expect(none).toContain('npx bauherr hook install')
+    await run({ costEstimateUsd: 1.5, tokensIn: 100 })
+    const some = await html(cookie.admin)
+    expect(some).toMatch(/data-testid="cost-total"[^>]*>(<!-- -->)?\$(<!-- -->)?1\.50/)
+    expect(some).toContain('data-testid="cost-unreported"')
+    ticket = own
   })
 
   it('a non-Admin render carries no cost number', async () => {
