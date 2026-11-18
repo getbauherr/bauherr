@@ -3,7 +3,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 import { tools } from '../src/lib/mcp-tools'
-import { loadMap, PROOFS, render, root, STATUSES } from '../scripts/feature-map'
+import { escapeTags, loadMap, PROOFS, render, root, STATUSES } from '../scripts/feature-map'
 
 const map = loadMap()
 const features = map.features
@@ -33,6 +33,11 @@ const frontmatterSources = () => {
 }
 
 describe('feature map', () => {
+  it('escapes bare tags outside code so the page is not cut off', () => {
+    expect(escapeTags('Inbox shows "Fast lane for <title>?" and `/workflow/<stage>`')).toBe('Inbox shows "Fast lane for &lt;title>?" and `/workflow/<stage>`')
+    expect(render(map).split(/`[^`]*`/).join('')).not.toMatch(/<[a-z]/i)
+  })
+
   it('has valid statuses and unique ids', () => {
     const bad = features.filter((f) => !STATUSES.includes(f.status)).map((f) => `${f.id}: ${f.status}`)
     expect(bad, `docs/feature-map.yaml: status must be one of ${STATUSES.join(', ')}`).toEqual([])
