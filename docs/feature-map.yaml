@@ -122,6 +122,25 @@ features:
     gotchas: []
     guards: []
     debt: []
+  - id: parallel-jobs-by-role
+    area: Workflow
+    title: Parallel Jobs claimed by role
+    summary: "A stage with Jobs runs them in parallel where their `needs` allow, and each connected session claims the Jobs of its own role"
+    status: live
+    page: /workflow/[stage]
+    reach: "`/workflow/<stage>`; a session claims with `next_work`"
+    mcp: []
+    source:
+      - apps/server/src/lib/stage-jobs.ts
+      - apps/server/src/lib/sessions.ts
+    tests:
+      - apps/server/tests/stage-jobs.test.ts
+      - apps/server/tests/stage-jobs-sessions.test.ts
+    drive: null
+    proof: tests
+    gotchas: []
+    guards: []
+    debt: []
   - id: wip-limits
     area: Workflow
     title: WIP limits
@@ -163,6 +182,28 @@ features:
       - apps/server/e2e/workflow.spec.ts
     drive: pnpm verify overlap-hold
     proof: screenshot
+    gotchas: []
+    guards: []
+    debt: []
+  - id: factory-health-hold
+    area: Workflow
+    title: Factory health in the holds strip
+    summary: "The holds strip says which stage cannot run because no session or executor fits it, with the cause and the action that fixes it, and Product settings name Jobs that never run"
+    status: live
+    page: /
+    reach: "`/` holds strip; Product page, section Path sets"
+    mcp: []
+    source:
+      - apps/server/src/lib/holds.ts
+      - apps/server/src/lib/executors.ts
+      - apps/server/src/app/(app)/components/HoldsStrip.tsx
+      - apps/server/src/app/(app)/(shell)/settings/products/[id]/page.tsx
+    tests:
+      - apps/server/tests/holds.test.ts
+      - apps/server/tests/holds-strip.test.ts
+      - apps/server/tests/executors.test.ts
+    drive: null
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -330,6 +371,25 @@ features:
       - apps/server/tests/submit-plan.test.ts
     drive: pnpm verify plan-stage
     proof: screenshot
+    gotchas: []
+    guards: []
+    debt: []
+  - id: plan-ax-scan
+    area: Workflow
+    title: Plan stage AX scan
+    summary: "After the plan is written and before the owner approves it, the AX role scans the plan against the code and adds at most three bounded moves"
+    status: live
+    page: /workflow/[stage]
+    reach: "`/workflow/plan`; a Ticket's plan"
+    mcp: []
+    source:
+      - pack/factory.yaml
+      - pack/skills/harden/SKILL.md
+      - apps/server/src/lib/stage-jobs.ts
+    tests:
+      - apps/server/tests/plan-jobs.test.ts
+    drive: null
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -554,6 +614,24 @@ features:
       - apps/server/tests/agent-sessions.test.ts
       - apps/server/tests/liveness.test.ts
     drive: pnpm verify return-to-build
+    proof: tests
+    gotchas: []
+    guards: []
+    debt: []
+  - id: trust-grade-card
+    area: Tickets
+    title: Trust grade
+    summary: "A card on the Ticket page grades the build A to D from checks, proof, review and interventions, each with its lines, and shows the cost against the Product median"
+    status: live
+    page: /tickets/[id]
+    reach: "`/tickets/[id]`, sidebar above Cost"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/TrustCard.tsx
+      - apps/server/src/lib/trust.ts
+    tests:
+      - apps/server/tests/trust.test.ts
+    drive: null
     proof: tests
     gotchas: []
     guards: []
@@ -1064,7 +1142,7 @@ features:
   - id: release-notes-and-shipping
     area: Releases
     title: Release notes and shipping
-    summary: Group done Tickets per Product, write the notes, publish the release; optionally as a pre-release (rc)
+    summary: Group done Tickets per Product, write the notes grouped by feature area with one line per Ticket, publish the release; optionally as a pre-release (rc)
     status: live
     page: /releases
     reach: "`/releases`; Product page, tab Releases"
@@ -1171,7 +1249,7 @@ features:
   - id: review-stage
     area: Quality and security
     title: Review stage
-    summary: "Find, verify, conclude as stage Jobs, five find Jobs report candidate findings in parallel, a verifier re-checks each against the code, a reviewer without memory of the change ranks them into one verdict with severity and scenario"
+    summary: "Find, verify, conclude as stage Jobs, five find Jobs report candidate findings in parallel, a verifier re-checks each against the code, a reviewer without memory of the change ranks them into one verdict as Important, Nit or Pre-existing, calibrated by the Product's REVIEW.md from the base branch; Important findings are posted as inline comments on the MR lines"
     status: live
     page: /tickets/[id]
     reach: "`/tickets/[id]`"
@@ -1189,6 +1267,59 @@ features:
       - apps/server/e2e/review.spec.ts
     drive: pnpm verify review-stage
     proof: screenshot
+    gotchas: []
+    guards: []
+    debt: []
+  - id: fake-green-diff-budget-spin-guards
+    area: Quality and security
+    title: Fake-green, diff-size and spin guards
+    summary: "Pre-review blocks a build that weakens tests, checks or coverage to get green, or whose diff is too big to review, and a Run that loops without progress is stopped"
+    status: live
+    page: /settings/products/[id]
+    reach: "Product page, tab Checks & merging; a blocked review request names the reason"
+    mcp: []
+    source:
+      - apps/server/src/lib/pre-review.ts
+      - packages/runner/src/trust.ts
+      - packages/runner/src/agent.ts
+    tests:
+      - apps/server/tests/pre-review.test.ts
+      - packages/runner/test/trust.test.ts
+    drive: null
+    proof: tests
+    gotchas: []
+    guards: []
+    debt: []
+  - id: blast-radius-and-claims
+    area: Quality and security
+    title: Blast radius and claim labels
+    summary: "Every factory merge request states the one fact that makes the change safe and how well it is proven, on a four-step ladder from \"you said so\" to \"reproduced in the running app\""
+    status: live
+    reach: "The merge request body, `## Blast radius`"
+    mcp: []
+    source:
+      - pack/skills/run-contract/mr-body.md
+      - apps/server/src/lib/mcp-tools.ts
+    tests:
+      - apps/server/tests/blast-radius.test.ts
+    drive: null
+    proof: tests
+    gotchas: []
+    guards: []
+    debt: []
+  - id: comment-ban-guard
+    area: Quality and security
+    title: Comment ban
+    summary: "A guard test fails the build on any code comment outside a short allowlist, so reasons live in names, types, tests and checks"
+    status: live
+    reach: "`pnpm test`; allowlist in the Credits page under `pstack`"
+    mcp: []
+    source:
+      - apps/server/tests/helpers/comments.ts
+    tests:
+      - apps/server/tests/no-comments.test.ts
+    drive: null
+    proof: tests
     gotchas: []
     guards: []
     debt: []
@@ -1460,6 +1591,27 @@ features:
     gotchas: []
     guards: []
     debt: []
+  - id: ax-role
+    area: Agent team and sessions
+    title: AX role
+    summary: "A teammate that keeps each Product easy and safe for agents to change, with the skills harden, verify-create and verify-maintain"
+    status: live
+    page: /team
+    reach: "`/team`; `pack/roles/ax.md`"
+    mcp: []
+    source:
+      - pack/roles/ax.md
+      - pack/skills/harden/SKILL.md
+      - pack/skills/verify-create/SKILL.md
+      - pack/skills/verify-maintain/SKILL.md
+    tests:
+      - apps/server/tests/roles-table.test.ts
+      - apps/server/tests/plan-jobs.test.ts
+    drive: null
+    proof: tests
+    gotchas: []
+    guards: []
+    debt: []
   - id: connect-as-a-role
     area: Agent team and sessions
     title: Connect as a role
@@ -1612,6 +1764,40 @@ features:
       - apps/server/tests/epic-mcp.test.ts
       - apps/server/tests/mcp-worklog-staging-skill.test.ts
     drive: pnpm verify agent-run-protocol
+    proof: tests
+    gotchas: []
+    guards: []
+    debt: []
+  - id: feature-map
+    area: Knowledge
+    title: Feature map
+    summary: "One machine-checked list of every capability with its page, source, tests and proof; a guard test fails on dead paths, and the Features page is rendered from it"
+    status: live
+    reach: "`docs/feature-map.yaml`; getbauherr.dev/features"
+    mcp: []
+    source:
+      - docs/feature-map.yaml
+      - apps/server/scripts/feature-map.ts
+      - apps/server/src/lib/feature-map.ts
+    tests:
+      - apps/server/tests/feature-map.test.ts
+    drive: null
+    proof: tests
+    gotchas: []
+    guards: []
+    debt: []
+  - id: credits-page
+    area: Knowledge
+    title: Credits and references
+    summary: "The people and articles the factory learns from, each with an id that a skill or rule cites in its `sources` frontmatter, checked by a guard test"
+    status: live
+    reach: "`docs/references.md`; the Credits page of the docs site"
+    mcp: []
+    source:
+      - docs/references.md
+    tests:
+      - apps/server/tests/feature-map.test.ts
+    drive: null
     proof: tests
     gotchas: []
     guards: []
@@ -1857,6 +2043,26 @@ features:
       - apps/server/e2e/insights.spec.ts
     drive: pnpm verify insights-metrics
     proof: screenshot
+    gotchas: []
+    guards: []
+    debt: []
+  - id: insights-trust-section
+    area: Models and cost
+    title: Trust section on Insights
+    summary: "Per Product, how many Tickets landed in each trust grade and where the grades lose points"
+    status: live
+    page: /insights
+    reach: "`/insights#trust`"
+    mcp: []
+    source:
+      - apps/server/src/app/(app)/components/insights/TrustSection.tsx
+      - apps/server/src/app/(app)/lib/insights.ts
+      - apps/server/src/lib/trust.ts
+    tests:
+      - apps/server/tests/trust.test.ts
+      - apps/server/tests/insights.test.ts
+    drive: null
+    proof: tests
     gotchas: []
     guards: []
     debt: []
