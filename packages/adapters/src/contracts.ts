@@ -183,9 +183,7 @@ export interface Forge {
   closePullRequest(repo: RepoRef, number: number): Promise<void>;
   commentOnPullRequest(repo: RepoRef, number: number, body: string): Promise<Comment>;
   reviewPullRequest(repo: RepoRef, number: number, review: { body: string; comments: InlineComment[] }): Promise<Comment>;
-  /** Line-comment threads of the PR with the body of each opening comment. */
   listReviewThreads(repo: RepoRef, number: number): Promise<ReviewThread[]>;
-  /** Marks one thread from `listReviewThreads` resolved; idempotent. */
   resolveReviewThread(repo: RepoRef, number: number, threadId: string): Promise<void>;
   listPullRequestComments(repo: RepoRef, number: number): Promise<Comment[]>;
   listPullRequestFiles(repo: RepoRef, number: number): Promise<PullRequestFile[]>;
