@@ -3,7 +3,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 import { tools } from '../src/lib/mcp-tools'
-import { loadMap, outputs, PROOFS, render, root, STATUSES } from '../scripts/feature-map'
+import { loadMap, PROOFS, render, root, STATUSES } from '../scripts/feature-map'
 
 const map = loadMap()
 const features = map.features
@@ -71,11 +71,9 @@ describe('feature map', () => {
     expect([...listed].filter((n) => !names.includes(n)), 'docs/feature-map.yaml: these `mcp` names are not tools of apps/server/src/lib/mcp-tools.ts').toEqual([])
   })
 
-  it('has generated markdown that matches the map', () => {
-    const expected = render(map)
-    for (const file of outputs) {
-      expect(readFileSync(file, 'utf8') === expected, `${rel(file)} is out of date: run \`pnpm --filter server feature-map\` and commit it`).toBe(true)
-    }
+  it('renders every feature and area into the generated page', () => {
+    const page = render(map)
+    expect(features.filter((f) => !page.includes(`| ${f.title} |`)).map((f) => f.id), 'scripts/feature-map.ts render dropped these features').toEqual([])
   })
 
   it('cites only known references in skill and rule frontmatter', () => {

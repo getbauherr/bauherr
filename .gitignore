@@ -11,3 +11,4 @@ docs/site/site
 .venv
 apps/server/public/intake/widget.js
 apps/server/src/migrations/index.ts
+docs/features.md
