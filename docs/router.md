@@ -1,48 +1,65 @@
 # Router profile (vLLM Semantic Router)
 
-Optional. Adds the tier `auto`: one model name, `ws-<slug>/router/auto`, behind which the [vLLM Semantic Router](https://github.com/vllm-project/semantic-router) (vllm-sr v0.4.0, pinned) picks the Workspace's `cheap`, `standard` or `strong` model per request. Nothing changes for a Workspace without a `router` Connection or for any other tier.
+Optional. It adds the tier `auto`: one model name, `ws-<slug>/router/auto`. Behind it the [vLLM Semantic Router](https://github.com/vllm-project/semantic-router), vllm-sr v0.4.0 pinned, picks the Workspace's `cheap`, `standard` or `strong` model per request. Nothing changes for a Workspace without a `router` Connection or for any other tier.
 
 ## Enable
 
-```sh
+```bash
 docker compose --profile router up -d
 ```
 
-Then, as an Admin, add an LLM Connection with the preset `router` to the Workspace (no secret). Without the profile nothing router-related runs and no weights are downloaded.
+Then, as an Admin, add an LLM Connection with the preset `router` to the Workspace. It needs no secret. Without the profile nothing router-related runs and no weights are downloaded.
 
 | Service | Image | Role |
 |---|---|---|
-| `router-core` | `ghcr.io/vllm-project/semantic-router/vllm-sr:v0.4.0` | ExtProc: classifies the request, rewrites the model. |
-| `router` | `envoyproxy/envoy:v1.35.3` | Front on `http://router:8801`, no published port. Config: `deploy/router/envoy.yaml`. |
+| `router-core` | `ghcr.io/vllm-project/semantic-router/vllm-sr:v0.4.0` | ExtProc: classifies the request, rewrites the model |
+| `router` | `envoyproxy/envoy:v1.35.3` | Front on `http://router:8801`, no published port. Config in `deploy/router/envoy.yaml`. |
 
-First start downloads the router's classifier models into the volume `bauherr-router` (`/app/models`); later starts reuse it. Expect a few hundred MB and a few minutes; `router-core` is healthy once `/ready` answers.
+The first start downloads the classifier models into the volume `bauherr-router`, mounted at `/app/models`. Expect about 2.5 GB and a few minutes. Later starts reuse it. `router-core` is healthy once `/ready` answers.
 
 ## Key flow
 
-1. The Runner calls the gateway with the Workspace key and model `ws-<slug>/router/auto` (outer call). The gateway strips the prefix and forwards model `auto` to `http://router:8801/v1` (chat completions).
-2. The router picks a tier model and calls the gateway at `gateway:4000` (inner call) with a **router key**, never the Workspace key. vllm-sr cannot forward the inbound `Authorization`, only a static per-backend `api_key`, hence a dedicated key.
-3. The router key is created with the first `router` Connection (once per Workspace), stored encrypted on the Workspace like the gateway key, and revoked with the last `router` Connection. It is never shown or logged. Its `allowedModels` are the Workspace's tier models (`ws-<slug>/<tier model>`), never `.../auto`, so the router cannot call itself. It is re-applied when the tiers or the budget change.
-4. Bauherr writes the router config to `/gateway/router/config.yaml` (0600, holds the router key) while a `router` Connection exists and removes it with the last one. Categories: `math, physics, chemistry, engineering, law` go to `strong`, `computer science, business, economics, health, biology` to `standard`, everything else to `cheap`.
+1. The Runner calls the gateway with the Workspace key and model `ws-<slug>/router/auto`. The gateway strips the prefix and forwards model `auto` to `http://router:8801/v1`.
+2. The router picks a tier model and calls the gateway at `gateway:4000` with a **router key**, never the Workspace key. vllm-sr cannot forward the inbound `Authorization`, only a static per-backend `api_key`.
+3. The router key is created with the first `router` Connection and stored encrypted on the Workspace. The last `router` Connection revokes it. It is never shown or logged.
+4. Its `allowedModels` are the Workspace's tier models, never `.../auto`, so the router cannot call itself. They are re-applied when the tiers or the budget change.
+5. Bauherr writes the router config to `/gateway/router/config.yaml` with mode 0600, while a `router` Connection exists. It holds the router key.
 
-## Spend attribution and double counting
+Categories map to tiers:
 
-Both keys carry `user = workspace-<slug>`, so outer and inner requests appear in `request_logs` under that user. The outer `auto` request has no price (no catalog entry); the cost of the model call is on the inner request (router key). Token counts of one call show up on both rows: sum only the inner rows for spend.
+| Tier | Categories |
+|---|---|
+| `strong` | math, physics, chemistry, engineering, law |
+| `standard` | computer science, business, economics, health, biology |
+| `cheap` | everything else |
 
-**Budget split: the Workspace budget B is shared by both keys.** The Workspace key gets `100 - routerBudgetShare` percent of B and the router key gets `routerBudgetShare` percent (Settings > General, 1 to 99, default 20; the field shows while a router Connection exists). Amounts round down (tokens, USD cents), so the two limits never sum to more than B. Each key is a `Block` budget enforced by the gateway: `auto` traffic is refused (429) once the router share is spent, even when direct budget is left, and the other way round. Without a router Connection the Workspace key carries all of B; adding or removing the Connection, or changing the share, re-renders both keys. The split exists because a shared budget is not possible in agentgateway v1.7.0 (the version pinned in `compose.yaml`): a budget belongs to one API key, its counter id is `api-key:<len>:<key hash>:<len>:<budget name>` ([`budget_id`](https://github.com/agentgateway/agentgateway/blob/v1.7.0/crates/agentgateway/src/http/budget/mod.rs), [`LocalAPIKey::into_parts`](https://github.com/agentgateway/agentgateway/blob/v1.7.0/crates/agentgateway/src/http/apikey.rs)), and there is no user-level budget (`metadata.user` is only a label). Putting the router key on `Audit` would leave `auto` unbounded.
+## Spend attribution
+
+Both keys carry `user = workspace-<slug>`, so outer and inner requests appear in `request_logs` under that user. The outer `auto` request has no price. The cost is on the inner request. Token counts show on both rows, so sum only the inner rows for spend.
+
+## Budget split
+
+The Workspace budget B is shared by both keys. The Workspace key gets `100 - routerBudgetShare` percent of B. The router key gets `routerBudgetShare` percent. Set it under Settings > General, from 1 to 99, default 20, shown while a router Connection exists.
+
+- Amounts round down, so the two limits never sum to more than B.
+- Each key is a `Block` budget. `auto` traffic is refused with 429 once the router share is spent, even with direct budget left, and the other way round.
+- Without a router Connection the Workspace key carries all of B. Adding or removing the Connection, or changing the share, re-renders both keys.
+
+The split is needed because agentgateway v1.7.0 cannot share a budget. A budget belongs to one API key (see [`budget_id`](https://github.com/agentgateway/agentgateway/blob/v1.7.0/crates/agentgateway/src/http/budget/mod.rs) and [`LocalAPIKey::into_parts`](https://github.com/agentgateway/agentgateway/blob/v1.7.0/crates/agentgateway/src/http/apikey.rs)). There is no user-level budget. A router key on `Audit` would leave `auto` unbounded.
 
 ## Limits
 
-- One Workspace per instance: a second Workspace with a `router` Connection is rejected.
-- `auto` is selected per stage config only; there is no settings UI for it.
-- The category mapping is fixed in `renderRouter` (`apps/server/src/lib/gateway.ts`); no custom tuning or training.
-- The router config is read at start. After the first `router` Connection, or after changing tiers, restart `router-core` if the router does not pick the file up.
+- One Workspace per instance. A second Workspace with a `router` Connection is rejected.
+- `auto` is selected per stage config only. There is no settings UI for it.
+- The category mapping is fixed in `renderRouter` in `apps/server/src/lib/gateway.ts`. There is no custom tuning.
+- The router reads its config at start. After the first `router` Connection or a tier change, restart `router-core` if it does not pick the file up.
 
 ## Smoke result
 
-Isolated smoke on 2026-11-09 (vllm-sr v0.4.0, Envoy v1.35.3 from `deploy/router/envoy.yaml`, a config in the shape `renderRouter` writes, and a fake OpenAI-compatible service as `gateway:4000` that logs each request):
+An isolated smoke on 2026-11-09 used vllm-sr v0.4.0, Envoy v1.35.3 and a fake OpenAI-compatible service as `gateway:4000`.
 
-- `router-core` accepted the config, downloaded its classifier models (about 2.5 GB in the models volume, once) and was ready about 20 s after the download.
-- One `auto` request per prompt through Envoy on `:8801`, sent with a Workspace-style key, reached the gateway as `POST /v1/chat/completions` with `Authorization: Bearer <router key>`: the caller's key does not travel to the inner call.
-- Routing: a coding prompt went to the `standard` tier model, a math prompt to `strong`, a general prompt to `cheap`.
+- `router-core` downloaded its models once and was ready about 20 s later.
+- An `auto` request reached the gateway as `POST /v1/chat/completions` with the router key. The caller's key does not travel to the inner call.
+- A coding prompt went to `standard`, a math prompt to `strong`, a general prompt to `cheap`.
 
-Not measured yet: the real gateway's `request_logs` for one outer and one inner request, and so the double counting of decision D4. That needs a provider key and is the first check on a live `--profile router` install.
+Not measured yet: the real gateway's `request_logs` for one outer and one inner request. That needs a provider key and is the first check on a live `--profile router` install.
