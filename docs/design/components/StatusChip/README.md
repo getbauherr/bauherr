@@ -1,7 +1,7 @@
 The StatusChip shows the state of a ticket, run or step as a word in a status color.
 
 ## When to use
-On every run and step, the Runs table and the Ticket page. One chip per item. Not on Workflow rows: they show the ticket status vocabulary (In progress, Waiting for you, Blocked, ...; `docs/ui.md`, Status vocabulary).
+On every run and step, the Runs table and the Ticket page. One chip per item. Not on Workflow rows: they show the ticket status vocabulary (In progress, Waiting for you, Blocked, ...; `apps/server/src/lib/next-step.ts`).
 
 ## Consumer provides
 One status: queued, running, succeeded, failed, cancelled, needs human.
