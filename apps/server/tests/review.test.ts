@@ -571,6 +571,19 @@ it('a later round resolves the thread of a fixed finding and leaves the one stil
   expect(threads.filter((x) => !x.resolved).map((x) => x.body)).toEqual(Array(2).fill(expect.stringContaining('drops the last row')))
 })
 
+const ruleFinding = { severity: 'medium', class: 'rule', file: 'd.ts', line: 2, msg: 'breaks the naming rule', scenario: 'when the name is read, then it is not camelCase' }
+const wrongFinding = { severity: 'high', class: 'correctness', file: 'e.ts', line: 4, msg: 'skips the first row', scenario: 'when the list has rows, then the first is skipped', test: { command: 'pnpm test', failure: 'expected 3 got 2' } }
+
+it('a round-2 verdict that omits a round-1 rule finding leaves its thread open; an omitted correctness finding is resolved', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await submit(await review(id), [ruleFinding, wrongFinding], 'round one')
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review', reviewState: null, reviewRounds: 1 }, ...o })
+  await submit(await review(id), [], 'round two')
+  const threads = await fake.forge.listReviewThreads(repo, pr.number)
+  expect(threads.filter((x) => x.resolved).map((x) => x.body)).toEqual([expect.stringContaining('skips the first row')])
+  expect(threads.filter((x) => !x.resolved).map((x) => x.body)).toEqual([expect.stringContaining('breaks the naming rule')])
+})
+
 it('a failing forge while resolving does not fail the review', async () => {
   const { id, pr } = await seed({ checks: green })
   await submit(await review(id), [medium], 'round one')

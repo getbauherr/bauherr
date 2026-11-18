@@ -1218,7 +1218,9 @@ export type OpenItem = { text: string; reason: (typeof OPEN_REASONS)[number] }
 export type Review = { verdict: 'clean' | 'changes'; findings: Finding[]; markdown: string; open: OpenItem[]; problem?: string }
 export type ReviewOutcome = 'merged' | 'queued' | 'waiting_checks' | 'ready_for_human' | 'build' | 'needs_human' | 'review_restarted' | 'slice_passed' | 'noop'
 
-const inlineBody = (f: Finding): string => `${severityLabel(f)}: ${f.msg}\n\nScenario: ${f.scenario}`
+const threadHead = (f: Pick<Finding, 'class' | 'msg'>): string => `${severityLabel(f)}: ${f.msg}\n\nScenario: `
+const inlineBody = (f: Finding): string => `${threadHead(f)}${f.scenario}`
+export const inRoundScope = (round: number, cls: FindingClass): boolean => round < 2 || SEVERE.includes(cls)
 const counts = (f: Finding) => f.class !== 'low' && f.class !== 'pre-existing'
 
 export const severityLabel = (f: Pick<Finding, 'class'>): string => (f.class === 'low' ? '🟡 Nit' : f.class === 'pre-existing' ? '🟣 Pre-existing' : '🔴 Important')
@@ -1275,7 +1277,7 @@ export const normalizeReview = (raw: any, o: { round?: number; demote?: boolean 
       ? { reason: 'no-failing-test' as const, text: `finding ${i} (${f.class}, ${loc(f)}) has no failing test: add test {command, failure} (the test that fails on the MR head and what it prints) or move it to open with reason no-failing-test` }
       : counts(finding) && !f.scenario.trim()
         ? { reason: 'no-evidence' as const, text: `finding ${i} (${f.class}, ${loc(f)}) has no scenario: state "when X, then Y instead of Z" or move it to open with reason no-evidence` }
-        : round > 1 && counts(finding) && !SEVERE.includes(f.class)
+        : counts(finding) && !inRoundScope(round, f.class)
           ? { reason: 'out-of-round-scope' as const, text: `finding ${i} (${f.class}, ${loc(f)}) is outside round ${round}: after the first round only security, correctness, wrong-results and data-loss findings on the fix count; move it to open with reason out-of-round-scope` }
           : null
     if (!refusal) return void findings.push(finding)
@@ -1653,13 +1655,20 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
   return 'merged'
 }
 
-const resolveFixedThreads = async (payload: Payload, ticket: TicketId, mr: Mr, review: Review): Promise<void> => {
+const resolveFixedThreads = async (payload: Payload, t: Doc & { id: number | string }, mr: Mr, review: Review): Promise<void> => {
   try {
-    const reported = review.findings.filter(counts).map((f) => `${inlineBody(f).split('\n')[0]}\n`)
-    const fixed = (await mr.backend.forge.listReviewThreads(mr.repo, mr.pr.number)).filter((th) => !th.resolved && th.body.startsWith(`${severityLabel({ class: 'security' })}: `) && !reported.some((r) => th.body.startsWith(r)))
+    const round = reviewRoundOf(t)
+    const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, limit: 100, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
+    const earlier = runs.flatMap((r) => (r.findings ?? []) as Finding[]).filter(counts)
+    const reported = review.findings.filter(counts).map(threadHead)
+    const fixed = (await mr.backend.forge.listReviewThreads(mr.repo, mr.pr.number)).filter((th) => {
+      if (th.resolved || reported.some((h) => th.body.startsWith(h))) return false
+      const classes = earlier.filter((f) => th.body.startsWith(threadHead(f))).map((f) => f.class)
+      return classes.length > 0 && classes.every((c) => inRoundScope(round, c))
+    })
     for (const th of fixed) await mr.backend.forge.resolveReviewThread(mr.repo, mr.pr.number, th.id)
   } catch (e) {
-    payload.logger.warn({ err: e, ticket }, 'resolving the threads of fixed findings failed')
+    payload.logger.warn({ err: e, ticket: t.id }, 'resolving the threads of fixed findings failed')
   }
 }
 
@@ -1675,7 +1684,7 @@ export const concludeReview = async (payload: Payload, ticket: TicketId, review:
       const inline = comments.length ? await mr.backend.forge.reviewPullRequest(mr.repo, mr.pr.number, { body, comments }).catch((e) => (payload.logger.warn({ err: e, ticket: t.id }, 'posting the review inline failed; posting one comment'), null)) : null
       if (!inline) await mr.backend.forge.commentOnPullRequest(mr.repo, mr.pr.number, body)
     }
-    if (!review.problem) await resolveFixedThreads(payload, t.id, mr, review)
+    if (!review.problem) await resolveFixedThreads(payload, t, mr, review)
     await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "conflict_return_base" = NULL WHERE "id" = ${t.id}`)
     const pre = review.findings.filter((f) => f.class === 'pre-existing').map(({ file, line, msg, scenario }) => ({ file, line, msg, scenario }))
     if (pre.length) {

@@ -65,6 +65,7 @@ Review prompts exclude the MR title and body. Ticket, plan, worklog and diff tex
 - Round is `reviewRounds` plus 1. From round 2 only `security`, `correctness`, `wrong-results` and `data-loss` count. `rule` and `plan` findings go to Open. The reviewer gets the diff since the previous `changes` review, `reviewedSha` to head.
 - A session's `submit_review` is refused for a correctness-type finding without `test` and for an out-of-round finding. The autonomous path moves such a finding to `open` and derives the verdict from the rest.
 - `rule` and `plan` send the Ticket back in round 1 only.
+- Each Important finding is also an inline thread on the MR. A later round resolves the thread when it re-checks the finding's class and no longer reports the finding. Identity is label plus message. The class comes from the findings stored on earlier review Runs. A thread whose class the round does not re-check stays open.
 - The output must include `checked`: correctness, over-engineering, spec-vs-plan and evidence, each with a justification. Otherwise the Ticket goes to `ready_for_human` and is never merged.
 - A failure while concluding sets `needs_human` with a comment. A verdict held while the Ticket is still in `review` with no `reviewState` is concluded again by `watch-release` after 2 minutes, without a second comment.
 - `changes` appends blocking findings to the worklog's Unfinished work and low findings to Open, moves the stage to `build` and starts a Build Run on the same MR branch.
