@@ -81,7 +81,7 @@ test('the five steps end to end: forge, repository, Careful team, agent key, an 
   await shoot(page, 'wizard/2-product')
   await page.getByRole('button', { name: 'Create product' }).click()
 
-  // 3 Pick your team: three presets, the roster of the chosen one, Careful puts a security stage on the Workflow
+  // 3 Pick your team: three presets, the roster of the chosen one, Careful adds the specialist roles
   await step(page, 'Pick your team')
   await expect(rail(page, 'Pick a product')).toContainText('Done')
   await expect(chip(page)).toContainText('Setup 2/5')
@@ -148,6 +148,6 @@ test('the five steps end to end: forge, repository, Careful team, agent key, an 
 
   await page.goto('/')
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByTestId('workflow')).toContainText('Security review')
+  await expect(page.getByTestId('workflow')).toContainText('Review')
   await expect(page.getByTestId('workflow')).toContainText('The invoice total is wrong')
 })

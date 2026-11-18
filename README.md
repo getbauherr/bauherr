@@ -78,15 +78,15 @@ flowchart LR
 | Triage | An agent checks the Ticket and asks what is unclear. You answer in a short chat with recommended defaults. |
 | Plan | An agent writes the plan and a decision sheet. |
 | Build | An agent implements the plan on a branch and opens a merge request with evidence: commands, exit codes, test results. |
-| Review | A reviewer agent without memory of the change reads the diff. The factory merges when it is clean. |
-| Staging | The Product's own CI deploys. The factory merges directly, through a queue or in a train. |
+| Review | Specialist agents look for problems in parallel, a verifier agent re-checks every finding against the code, and a reviewer agent ranks them into one verdict. The factory merges when it is clean. |
+| Staging | The Product's own CI deploys. The factory merges directly, through a queue or in a train. An agent walks the Product's verify skill on staging before you accept. |
 | Done | The Ticket is closed on merge. Release notes group done Tickets per release. |
 
 By default the Product owner answers **Answer questions** and accepts on staging (**Accept on staging**, for a Product that has a Product owner who tests on staging), and you are asked at **Approve plan** and **Approve production**; where a Product has no Product owner, you are asked everything. Each checkpoint can be addressed to either of you in the workflow editor. Failed runs, failed releases and reviews at their round cap also land in the Inbox.
 
 Each Workspace has one factory file (`factory.yaml`) for its team and workflow. You can add custom `agent` stages (a role works the Ticket and reports an outcome) and `human` stages (a person picks an outcome), and rename, remove or reorder stages. The outcomes route Tickets, and the custom stages show in the graph, the Inbox, Path and Steps and Insights. There is exactly one build, review and release chain. Stages, labels, triggers, retries and budgets: [docs/spec/workflow.md](docs/spec/workflow.md).
 
-The team also has an **AX** role (Agent experience engineer) that keeps a Product easy and safe for agents to change: it moves rules into code, checks and proof (the trust pyramid) and keeps the feature map and the Product's verify skill current. No stage uses it yet.
+The team also has an **AX** role (Agent experience engineer) that keeps a Product easy and safe for agents to change: it moves rules into code, checks and proof (the trust pyramid) and keeps the feature map and the Product's verify skill current. It works the `ax` find Job of Review and the staging walk before Accept. A **verifier** role (strong tier) re-checks the findings of Review.
 
 ## ✨ Features
 

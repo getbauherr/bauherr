@@ -101,7 +101,8 @@ An urgent bug does not wait in the queue. In the request card the type Bug offer
 
 | Feature | What it does | Where | Status |
 |---|---|---|---|
-| Review stage | A reviewer agent without memory of the change; findings with severity and scenario | `/tickets/[id]` | Live |
+| Review stage | Find, verify, conclude as stage Jobs, five find Jobs report candidate findings in parallel, a verifier re-checks each against the code, a reviewer without memory of the change ranks them into one verdict with severity and scenario | `/tickets/[id]` | Live |
+| Staging walk | Once a Ticket is on staging, an agent walks the Product's verify skill against the staging URL before Accept; findings send the Ticket back to Build | `/tickets/[id]` | Live |
 | Pre-review checks | Commands that must pass before a review | Product page, tab Checks & merging | Live |
 | Flaky-check tracking | Retries a failing check once and records flakes | Product page; Settings › Admin › Health | Live |
 | Security scan | An hourly tick starts a scan Run per Product that has one enabled; the last scan links its Run and the finding Tickets | Product page, tab Security scan | Live |

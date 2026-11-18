@@ -67,14 +67,9 @@ afterAll(async () => {
 
 const done = async (ws: number) => Object.fromEntries((await setupLib.loadSetup(ws)).steps.map((s) => [s.id, s.done]))
 
-it('every preset lints clean, and Standard is the shipped default file plus a conditional security review', () => {
+it('every preset lints clean, and Standard is the shipped default file', () => {
   for (const id of presets.PRESETS) expect(wf.lint(parse(presets.presetSource(id))), id).toEqual([])
-  const standard = presets.presetWorkflow('standard')
-  const shipped = wf.compile(parse(factory.packSource()))
-  expect(wf.stage(standard, 'security-review')).toMatchObject({ kind: 'agent', role: 'security', when: { touches: 'security' } })
-  expect(wf.target(standard, 'build', 'done')).toBe('security-review')
-  const withoutSecurity = { ...standard, stages: standard.stages.filter((s) => s.name !== 'security-review').map((s) => (s.name === 'build' ? { ...s, outcomes: { ...s.outcomes, done: 'review' } } : s)) }
-  expect(withoutSecurity).toEqual(shipped)
+  expect(presets.presetWorkflow('standard')).toEqual(wf.compile(parse(factory.packSource())))
 })
 
 it('Solo: one engineer works every stage, plans pass, production is asked', async () => {
@@ -87,28 +82,30 @@ it('Solo: one engineer works every stage, plans pass, production is asked', asyn
   expect(wf.gates(w)).toEqual({ plan: false, staging: false, production: true })
 })
 
-it('Standard is the pack default workflow plus the security review, with the approve-plan gate', async () => {
+it('Standard is the pack default workflow: review Jobs, staging walk, the approve-plan gate', async () => {
   const { ws } = await workspace('standard')
   expect(await apply(ws, 'standard')).toMatchObject({ saved: true })
-  expect(wf.order(factory.workflowFor(ws))).toEqual(['triage', 'plan', 'parent', 'build', 'security-review', 'review', 'release', 'done'])
-  expect(wf.gates(factory.workflowFor(ws))).toEqual({ plan: true, staging: true, production: true })
-  expect(factory.workflowFor(ws).roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs', 'ax'])
+  const w = factory.workflowFor(ws)
+  expect(wf.order(w)).toEqual(['triage', 'plan', 'parent', 'build', 'review', 'release', 'done'])
+  expect(wf.gates(w)).toEqual({ plan: true, staging: true, production: true })
+  expect(w.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs', 'ax', 'verifier'])
+  expect(wf.stage(w, 'review')!.jobs?.map((j) => j.id)).toEqual(['correctness', 'security', 'ux', 'test', 'ax', 'verify', 'review'])
+  expect(wf.stage(w, 'release')!.jobs?.map((j) => j.id)).toEqual(['staging-walk'])
 })
 
-it('Careful adds the three conditional specialist stages between Build and Review, staging acceptance, and the specialist roles', async () => {
+it('Careful adds staging acceptance to the shipped review Jobs and the specialist roles', async () => {
   const { ws } = await workspace('careful')
   expect(await apply(ws, 'careful')).toMatchObject({ saved: true })
   const w = factory.workflowFor(ws)
-  expect(wf.order(w)).toEqual(['triage', 'plan', 'parent', 'build', 'security-review', 'ux-review', 'test-review', 'review', 'release', 'done'])
-  expect(wf.stage(w, 'security-review')).toMatchObject({ kind: 'agent', role: 'security', skill: 'mr-security-review', when: { touches: 'security' } })
-  expect(wf.stage(w, 'ux-review')).toMatchObject({ kind: 'agent', role: 'ux', skill: 'ux-review', when: { touches: 'ui' } })
-  expect(wf.stage(w, 'test-review')).toMatchObject({ kind: 'agent', role: 'test', skill: 'test-review', when: { types: ['bug'] } })
-  expect(wf.target(w, 'build', 'done')).toBe('security-review')
-  expect(wf.target(w, 'security-review', 'pass')).toBe('ux-review')
-  expect(wf.target(w, 'test-review', 'pass')).toBe('review')
-  expect(wf.target(w, 'test-review', 'findings')).toBe('build')
+  expect(wf.order(w)).toEqual(['triage', 'plan', 'parent', 'build', 'review', 'release', 'done'])
+  const jobs = wf.stage(w, 'review')!.jobs!
+  expect(jobs.find((j) => j.id === 'security')).toMatchObject({ role: 'security', skill: 'mr-security-review', when: { touches: 'security' } })
+  expect(jobs.find((j) => j.id === 'ux')).toMatchObject({ role: 'ux', skill: 'ux-review', when: { touches: 'ui' } })
+  expect(jobs.find((j) => j.id === 'test')).toMatchObject({ role: 'test', skill: 'test-review', when: { types: ['bug'] } })
+  expect(jobs.find((j) => j.id === 'verify')).toMatchObject({ role: 'verifier', skill: 'verify-findings', needs: ['correctness', 'security', 'ux', 'test', 'ax'] })
+  expect(wf.target(w, 'build', 'done')).toBe('review')
   expect(wf.gates(w)).toEqual({ plan: true, staging: true, production: true })
-  expect(w.roles.map((r) => r.id)).toEqual(expect.arrayContaining(['security', 'ux', 'test', 'docs']))
+  expect(w.roles.map((r) => r.id)).toEqual(expect.arrayContaining(['security', 'ux', 'test', 'docs', 'verifier']))
   const row = (await payload.db.drizzle.execute(sql`SELECT "note", "applied_via" AS via, "applied_by" AS by FROM "workflow_versions" WHERE "workspace_id" = ${ws}`)).rows[0]
   expect(row).toMatchObject({ note: 'Setup: Careful team', via: 'ui', by: 'admin@x.io' })
 })
@@ -212,8 +209,18 @@ const drive = async (slug: string, preset: string, edit?: (d: Record<string, any
   return { id, m, call, claim, stage, runs, labels, planAndApprove, build, poll }
 }
 
-/** Careful with the security review unconditional: these tests drive the outcomes, not the condition (tests/conditional-stages.test.ts covers that). */
-const always = (doc: Record<string, any>) => delete (doc.workflow.stages as Record<string, any>[]).find((s) => s.name === 'security-review')!.when
+/** Careful with its specialists as separate stages again (the shipped files fold them into review Jobs), the security review unconditional: these tests drive the outcomes, not the condition (tests/conditional-stages.test.ts covers that). */
+const always = (doc: Record<string, any>) => {
+  const st = doc.workflow.stages as Record<string, any>[]
+  const review = st.find((s) => s.name === 'review')!
+  delete review.jobs
+  review.skill = 'review'
+  st.find((s) => s.name === 'build')!.outcomes.done = 'security-review'
+  st.splice(st.indexOf(review), 0,
+    { name: 'security-review', title: 'Security review', kind: 'agent', role: 'security', skill: 'mr-security-review', wip: 2, outcomes: { pass: 'ux-review', findings: 'build' } },
+    { name: 'ux-review', title: 'UX review', kind: 'agent', role: 'ux', skill: 'ux-review', when: { touches: 'ui' }, wip: 2, outcomes: { pass: 'test-review', findings: 'build' } },
+    { name: 'test-review', title: 'Test review', kind: 'agent', role: 'test', skill: 'test-review', when: { types: ['bug'] }, wip: 2, outcomes: { pass: 'review', findings: 'build' } })
+}
 
 it('Careful routes a Ticket by the security outcomes: findings back to Build, pass on to Review (UX and test steps skip: no ui paths, no bug)', async () => {
   const d = await drive('route', 'careful', always)

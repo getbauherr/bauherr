@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { PARKING_NEEDS, parkingNeed } from '../src/lib/needs-you'
 import { wipLimit, wipLimitsError } from '../src/lib/wip-limits'
 import { DEFAULT } from '../src/lib/workflow'
-import { scanned } from './helpers/plan-scan'
+import { scanned, walked } from './helpers/plan-scan'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -152,6 +152,7 @@ describe('the pull rule', () => {
     await ticket('a', 'build')
     const full = await ticket('r1', 'release', { mergeSha: 'sha-1', releaseAt: new Date().toISOString(), releaseState: 'on_staging' })
     const second = await ticket('r2', 'release', { mergeSha: 'sha-2', releaseAt: new Date().toISOString(), releaseState: 'on_staging' })
+    await walked(payload, second.id, ws)
     await actions.acceptStaging(payload, user, { ticket: second.id })
     expect(await reload(second.id)).toMatchObject({ stage: 'release', productionState: 'awaiting_approval' })
     await actions.requestChanges(payload, user, { ticket: full.id, note: 'again' })

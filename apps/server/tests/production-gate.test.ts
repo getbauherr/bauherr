@@ -1,3 +1,4 @@
+import { walked } from './helpers/plan-scan'
 import type { FakeBackend } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
@@ -46,6 +47,7 @@ const accepted = async (title: string) => {
   const issue = await ts.create({ title, labels: ['bauherr:stage:release'] })
   const mergeSha = `sha-${issue.number}`
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'release', releaseState: 'on_staging', mergeSha, product, workspace: ws }, ...o })
+  await walked(payload, t.id as number, ws)
   await actions.acceptStaging(payload, user, { ticket: t.id as number })
   return { id: t.id as number, n: String(issue.number), sha: mergeSha }
 }
@@ -173,6 +175,7 @@ it('a failed deploy spends the approval: re-accepting needs a new approval', asy
   await release.watchProduction(payload, Date.now() + 1000)
   expect(await reload(id)).toMatchObject({ productionState: 'failed', productionApprovedSha: null })
   expect(await labels(n)).not.toContain('bauherr:approved:production')
+  await walked(payload, id, ws)
   await actions.acceptStaging(payload, user, { ticket: id })
   fake.setChecks(repo, sha, ok())
   await release.watchProduction(payload, Date.now() + 10 * 60_000)
@@ -186,6 +189,7 @@ it('request_changes and a new merge reset the approval; accepting again needs a 
   expect(await reload(id)).toMatchObject({ stage: 'build', productionState: null, productionApprovedSha: null })
   expect(await labels(n)).not.toContain('bauherr:approved:production')
   await payload.update({ collection: 'tickets', id, data: { stage: 'release', releaseState: 'on_staging', mergeSha: 'sha-new' }, ...o })
+  await walked(payload, id, ws)
   await actions.acceptStaging(payload, user, { ticket: id })
   fake.setChecks(repo, 'sha-new', ok())
   await release.watchProduction(payload, Date.now() + 10 * 60_000)
@@ -195,9 +199,11 @@ it('request_changes and a new merge reset the approval; accepting again needs a 
 
 it('accepting again never overwrites a deploying or deployed production state', async () => {
   const { id } = await accepted('twice')
+  await walked(payload, id, ws)
   await actions.acceptStaging(payload, user, { ticket: id })
   expect(await payload.count({ collection: 'human_touches', where: { and: [{ ticket: { equals: id } }, { kind: { equals: 'accept:staging' } }] }, ...o })).toMatchObject({ totalDocs: 2 })
   await actions.approveProduction(payload, user, { ticket: id })
+  await walked(payload, id, ws)
   await actions.acceptStaging(payload, user, { ticket: id })
   expect(await reload(id)).toMatchObject({ productionState: 'deploying' })
 })
@@ -401,6 +407,7 @@ it('accepting again repairs a staging label whose first add failed', async () =>
   const t = await payload.create({ collection: 'tickets', data: { title: 'accept flaky', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'release', releaseState: 'on_staging', mergeSha: 'sha-af', product, workspace: ws }, ...o })
   const spy = failOnce(ts)
   try {
+    await walked(payload, t.id as number, ws)
     await expect(actions.acceptStaging(payload, user, { ticket: t.id as number })).rejects.toThrow('forge down')
   } finally {
     spy.mockRestore()

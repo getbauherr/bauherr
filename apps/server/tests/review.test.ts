@@ -51,6 +51,7 @@ const realHead = (branch: string) => git(bare, 'rev-parse', `refs/heads/${branch
 beforeAll(async () => {
   testDb = await createTestDb('review')
   process.env.DATABASE_URL = testDb.url
+  process.env.BAUHERR_PACK_DIR = new URL('./fixtures/bare-pack', import.meta.url).pathname
   process.env.PAYLOAD_SECRET ??= 'test-secret'
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'

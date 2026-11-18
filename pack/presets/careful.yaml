@@ -1,6 +1,5 @@
-# Setup preset "Careful": the Standard factory plus Accept on staging (`gate: human` on `release`) and three specialist reviews between Build and Review,
-# each only when the change needs it (`when`): security when it touches the Product's `security` paths, UX when it touches its `ui` paths, the test specialist for bugs.
-# A step that does not match is skipped; `pass` goes on, `findings` back to build. Applied by /setup. Spec: docs/spec/workflow.md
+# Setup preset "Careful": the Standard factory plus Accept on staging (`gate: human` on `release`). Applied by /setup. Spec: docs/spec/workflow.md
+# Specialist Jobs of `review` run only when needed (`when`): security on the Product's `security` paths, UX on its `ui` paths, test for bugs.
 version: 1
 team:
   roles:
@@ -12,6 +11,7 @@ team:
     test:         {title: Test specialist, skills: [Failure modes, Regression, Flake hunting], tier: standard, profile_file: roles/test.md}
     docs:         {title: Technical writer, skills: [Doc freshness, Claim checking, Gap finding], tier: standard, profile_file: roles/docs.md}
     ax:           {title: Agent experience engineer, skills: [Trust pyramid, Guard checks, Verification, Feature map], tier: strong, profile_file: roles/ax.md}
+    verifier:     {title: Finding verifier, skills: [Evidence, Reproduction], tier: strong, profile_file: roles/verifier.md}
 workflow:
   stages:
     # Tickets with any `exclude_labels` label (or an assignee) are not triaged.
@@ -24,10 +24,7 @@ workflow:
       outcomes: {plan: plan, refine: triage, skip: backlog}
     - {name: plan, kind: plan, role: engineer, skill: run-contract, wip: 4, jobs: [{id: plan}, {id: ax-scan, role: ax, skill: harden, needs: [plan], blocking: false, outcomes: {pass: done, findings: done}}, {id: approve, kind: human, by: bauherr, needs: [plan, ax-scan]}], outcomes: {done: build, split: parent, decisions: triage}}
     - {name: parent, kind: container, title: Split, outcomes: {children_done: done}}
-    - {name: build, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: security-review, stuck: escalate, replan: plan}}
-    - {name: security-review, title: Security review, kind: agent, role: security, skill: mr-security-review, when: {touches: security}, wip: 2, outcomes: {pass: ux-review, findings: build}}
-    - {name: ux-review, title: UX review, kind: agent, role: ux, skill: ux-review, when: {touches: ui}, wip: 2, outcomes: {pass: test-review, findings: build}}
-    - {name: test-review, title: Test review, kind: agent, role: test, skill: test-review, when: {types: [bug]}, wip: 2, outcomes: {pass: review, findings: build}}
-    - {name: review, kind: review, role: reviewer, skill: review, wip: 3, outcomes: {clean: release, changes: build, stop: triage}}
-    - {name: release, kind: release, title: Staging, gate: human, wip: 5, production_gate: human, outcomes: {accepted: done, changes: build}}
+    - {name: build, kind: build, role: engineer, skill: run-contract, wip: 2, outcomes: {done: review, stuck: escalate, replan: plan}}
+    - {name: review, kind: review, role: reviewer, skill: review-rank, wip: 3, jobs: [{id: correctness, role: reviewer, skill: review}, {id: security, role: security, skill: mr-security-review, when: {touches: security}}, {id: ux, role: ux, skill: ux-review, when: {touches: ui}}, {id: test, role: test, skill: test-review, when: {types: [bug]}}, {id: ax, role: ax, skill: harden}, {id: verify, role: verifier, skill: verify-findings, needs: [correctness, security, ux, test, ax]}, {id: review, needs: [verify]}], outcomes: {clean: release, changes: build, stop: triage}}
+    - {name: release, kind: release, title: Staging, gate: human, wip: 5, production_gate: human, jobs: [{id: staging-walk, role: ax, skill: verify-maintain, outcomes: {pass: done, findings: changes}}], outcomes: {accepted: done, changes: build}}
     - {name: done, kind: done}

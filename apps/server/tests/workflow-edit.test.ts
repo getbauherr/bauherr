@@ -8,7 +8,7 @@ import { lint } from '../src/lib/workflow-rules'
 
 const pack = (f: string) => readFileSync(fileURLToPath(new URL(`../../../pack/${f}`, import.meta.url)), 'utf8')
 const base = pack('factory.yaml')
-const careful = pack('presets/careful.yaml')
+const careful = readFileSync(fileURLToPath(new URL('./fixtures/routing-pack/factory.yaml', import.meta.url)), 'utf8')
 const doc = (y: string) => {
   const d = e.readDraft(y)
   if (!d.ok) throw new Error(d.error)
