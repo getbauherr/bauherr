@@ -46,7 +46,6 @@ function Confirm({ ticket, option, variant = 'outline', danger }: { ticket: numb
   )
 }
 
-/** Park / Resume / Discard of an epic parent (Bauherr or Admin; the Ticket page is theirs). Discard is offered only on a parked epic. */
 export function EpicControls({ ticket, parked }: { ticket: number; parked: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="epic-controls">

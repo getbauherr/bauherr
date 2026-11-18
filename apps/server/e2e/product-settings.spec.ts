@@ -18,7 +18,6 @@ const signIn = async (page: Page) => {
 const tab = (page: Page, name: string) => page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name, exact: true }).click()
 const saved = (page: Page) => expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 
-/** The production section needs the production gate: with the default pack it is on for every Product, with the gated pack it is switched on (and saved) on the Approvals tab first. Ends on the Deploy tab. */
 const productionOn = async (page: Page) => {
   if (!forced) {
     await tab(page, 'Approvals')
@@ -29,11 +28,9 @@ const productionOn = async (page: Page) => {
   await tab(page, 'Deploy')
 }
 
-/** The check picker renders at once and is replaced when the forge's recent checks arrive (3 s cap): what is typed or ticked before that is lost, so wait for the read before touching it. */
 const checksLoaded = (page: Page, section: string) => expect(page.locator(section).getByText('Loading recent checks from the forge…')).toHaveCount(0)
 
 const confirmRemove = async (scope: Locator, label: string, done: (timeout: number) => Promise<void>) => {
-  // matching several buttons is a strict-mode violation that Playwright crashes on while describing them ("text.replace is not a function": the forms carry an `id` input), so take the first visible one; hydration can close the <details> again, so it is opened on every attempt
   const confirm = scope.locator('button:visible', { hasText: 'Confirm remove' }).first()
   const holds = (timeout: number) => done(timeout).then(() => true, () => false)
   await expect(async () => {
@@ -45,7 +42,6 @@ const confirmRemove = async (scope: Locator, label: string, done: (timeout: numb
   }).toPass({ timeout: 40_000 })
 }
 
-/** Detaches ticket source and repository (a Product with either cannot be deleted), then deletes the Product from its page. */
 const deleteProduct = async (page: Page) => {
   await tab(page, 'Repository')
   const repository = page.locator('#repository')
@@ -107,7 +103,6 @@ test('list, Product page, save, validation and the single Delete section', async
   await saved(page)
   await page.reload()
   await expect(page.getByRole('textbox', { name: 'Staging site' })).toHaveValue('https://staging.e2e.example.com')
-  // The forge read streams in (3 s cap): with the fake forge it answers "Almost ready" (the new repository has no check runs yet), when it is slow or fails the callout says "Ready" with a note. Wait until the read has settled, then require the saved check in the callout (an unsaved one reads "Not ready").
   const production = page.locator('#production')
   await expect(production.getByText('Loading recent checks from the forge…')).toHaveCount(0)
   await expect(production.getByRole('status').first()).toContainText(/^(Almost ready|Ready).*deploy-production/)
@@ -233,7 +228,6 @@ test('Members: an unknown GitHub login is refused, a known one is saved', async 
   test.skip(!process.env.E2E_FAKE_FORGE, 'needs the fake forge (knows the logins fake and e2e-admin; e2e-admin is the seeded Admin\'s, so the member links `fake`)')
   await signIn(page)
   await page.goto('/settings/bauherren')
-  // members-edit is the account of this test alone: a sign-in of an edited account writes back the user it read.
   const row = page.getByRole('row', { name: new RegExp('^members-edit@example\\.com') })
   await row.getByText('Edit', { exact: true }).click()
   await row.getByLabel('GitHub login').fill('nobody-here')

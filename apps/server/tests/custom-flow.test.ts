@@ -5,7 +5,6 @@ import { afterAll, beforeAll, expect, it } from 'vitest'
 import { claimOnly } from './helpers/claim'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/** The default flow with a custom `agent` stage (security) and a `human` stage (signoff) between build and review (fixtures/custom-pack). The shipped skill security-scan does not fit (it works on scan Runs), so the fixture has its own minimal security-review skill. */
 let payload: Payload
 let fake: FakeBackend
 let ws: number
@@ -89,7 +88,6 @@ it('a Ticket goes through an agent stage and a human stage on its way to review'
   await poll()
   expect(await reload(id)).toMatchObject({ stage: 'build' })
 
-  // build asks for review: the Ticket lands in `security`, with an agent Run
   const build1 = await claim(id, 'build')
   const pr = await mrFor(issue.number)
   await call(member, 'finish_run', { runId: build1.runId, leaseToken: build1.leaseToken, status: 'succeeded', prUrl: pr.url })
@@ -97,7 +95,6 @@ it('a Ticket goes through an agent stage and a human stage on its way to review'
   expect(await labelsOf(n)).toContain('bauherr:stage:security')
   expect((await runsOf(id)).at(-1)).toMatchObject({ stage: 'security', kind: 'agent', status: 'awaiting_session' })
 
-  // the session gets the stage's skill, the role profile and the outcome keys; it has no way to review or approve
   const sec1 = await claim(id, 'security')
   expect(sec1.claimed.agent).toMatchObject({ stage: 'security', title: 'Security review', skill: 'security-review', outcomes: ['pass', 'findings', 'unclear'], role: { id: 'security', profile: expect.stringContaining('security problems') } })
   await expect(call(member, 'submit_review', { runId: sec1.runId, leaseToken: sec1.leaseToken, verdict: 'clean', findings: [], checked, markdown: 'x' })).rejects.toThrow(/not a review Run/)
@@ -106,14 +103,12 @@ it('a Ticket goes through an agent stage and a human stage on its way to review'
   await expect(call(member, 'finish_run', { runId: sec1.runId, leaseToken: sec1.leaseToken, status: 'succeeded', outcome: 'maybe' })).rejects.toThrow(/outcome must be one of/)
   await expect(call(member, 'finish_run', { runId: sec1.runId, leaseToken: sec1.leaseToken, status: 'succeeded', outcome: 'pass', prUrl: pr.url })).rejects.toThrow(/cannot link an MR/)
 
-  // findings: back to Build on the same MR, with the comment, no review round
   await call(member, 'finish_run', { runId: sec1.runId, leaseToken: sec1.leaseToken, status: 'succeeded', outcome: 'findings', comment: 'SQL injection in a.ts line 3' })
   expect(await reload(id)).toMatchObject({ stage: 'build', reviewRounds: 0 })
   expect(await labelsOf(n)).toContain('bauherr:stage:build')
   expect((await fake.tickets(repo).listComments(n)).some((c) => c.body === '<!-- bauherr:stage:security -->\nSQL injection in a.ts line 3')).toBe(true)
   expect(await runShape(id)).toEqual([['triage', 'triage', null], ['plan', 'plan', null], ['build', 'build', null], ['security', 'agent', 'findings'], ['build', 'build', null]])
 
-  // build again, security passes: the Ticket waits in `signoff` for a person
   const build2 = await claim(id, 'build')
   await mrFor(issue.number)
   await call(member, 'finish_run', { runId: build2.runId, leaseToken: build2.leaseToken, status: 'succeeded', prUrl: pr.url })
@@ -129,7 +124,6 @@ it('a Ticket goes through an agent stage and a human stage on its way to review'
   await expect(call({ ...member, actor: agent }, 'decide', { ticket: id, outcome: 'approve' })).rejects.toThrow('forbidden: decide needs a human')
   await expect(call(member, 'decide', { ticket: id, outcome: 'maybe' })).rejects.toThrow(/outcome must be one of approve, reject/)
 
-  // the person approves: review, clean verdict, merge, staging, done
   await call(member, 'decide', { ticket: id, outcome: 'approve' })
   expect(await reload(id)).toMatchObject({ stage: 'review' })
   expect(await labelsOf(n)).toContain('bauherr:stage:review')

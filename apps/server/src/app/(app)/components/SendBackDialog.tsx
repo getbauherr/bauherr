@@ -8,7 +8,6 @@ import { Label } from './ui/label'
 import { NativeSelect } from './ui/native-select'
 import { Textarea } from './ui/textarea'
 
-/** One dialog over the owner's existing send-back actions: pick the outcome, add a note, confirm. */
 export function SendBackDialog({ ticket, options }: { ticket: number; options: SendBackOption[] }) {
   const [open, setOpen] = useState(false)
   const [value, setValue] = useState(options[0]!.value)

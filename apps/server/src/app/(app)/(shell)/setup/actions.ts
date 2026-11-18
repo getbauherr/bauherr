@@ -15,7 +15,6 @@ type Form = (prev: FormState, fd: FormData) => Promise<FormState>
 
 const revalidateSetup = () => ['/setup', '/team', '/'].forEach((p) => revalidatePath(p))
 
-/** An Admin's write on the selected Workspace; `/setup` and the pages that show the result are revalidated on success. */
 const act = (fn: (c: { user: Awaited<ReturnType<typeof currentWorkspace>>['user']; workspace: number; payload: Awaited<ReturnType<typeof payloadClient>> }, fd: FormData) => Promise<void>): Form =>
   async (_prev, fd) => {
     const { user, workspace } = await currentWorkspace()
@@ -28,7 +27,6 @@ const act = (fn: (c: { user: Awaited<ReturnType<typeof currentWorkspace>>['user'
     return result
   }
 
-/** "Use this team" and "Skip" (Standard): applies the preset's factory file as a UI apply, so a Workspace without an applied version has one afterwards. */
 export const applyPreset = act(async ({ user, workspace, payload }, fd) => {
   const id = String(fd.get('preset'))
   if (!isPreset(id)) throw new Error('Choose a team.')
@@ -37,12 +35,10 @@ export const applyPreset = act(async ({ user, workspace, payload }, fd) => {
   revalidatePath('/settings', 'layout')
 })
 
-/** "Skip": the session step counts as seen; the audit trail row is the record. */
 export const skipSession = act(async ({ user, workspace, payload }) => {
   await payload.create({ collection: 'human_touches', data: { kind: SKIP_SESSION, workspace, actor: personOf(user), at: new Date().toISOString() }, overrideAccess: true })
 })
 
-/** An open issue of the Product's ticket source becomes a Ticket in Triage right away (what the next poll would do for it); then the wizard shows its finish screen. The Product is the Workspace's setup Product, never a form value. */
 export const importIssue = act(async ({ workspace, payload }, fd) => {
   const number = String(fd.get('manual') || fd.get('number') || '').replace(/^#/, '').trim()
   if (!/^\d+$/.test(number)) throw new Error('Enter the issue number, for example 12.')

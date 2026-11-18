@@ -4,7 +4,6 @@ import { CopyButton } from './CopyButton'
 import { HarnessSetup } from '../gateway/HarnessSetup'
 import type { GatewaySetup } from '../../lib/harnesses'
 
-/** "Connect a session" steps: the `claude mcp add` line, the role prompt and what to expect. `keyStep` replaces the link to the key page (the setup wizard creates the key right above). */
 export function ConnectBlock({ mcpLine, prompt, docsHref, keyStep, gateway, role }: { mcpLine: string; prompt: string; docsHref: string; keyStep?: ReactNode; gateway?: GatewaySetup; role?: string }) {
   return (
     <div className="flex flex-col gap-3 border-t border-border pt-4" data-testid="connect">

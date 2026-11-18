@@ -50,7 +50,6 @@ const row = async (n: string) => (await payload.find({ collection: 'tickets', wh
 const touches = async (n: string) => (await payload.find({ collection: 'human_touches', where: { ticket: { equals: (await row(n)).id } }, pagination: false, ...o })).docs
 const runs = async (n: string, stage: string) => (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: (await row(n)).id } }, { stage: { equals: stage } }] }, ...o })).docs
 const rejections = async (n: string) => (await ts().listComments(n)).filter((c) => c.body.includes('bauherr:label-rejected'))
-/** A plan-stage Ticket the poller already knows. */
 const planTicket = async () => {
   fake.actingAs = 'factory'
   const t = await ts().create({ title: 'x', labels: ['bauherr:stage:plan'] })

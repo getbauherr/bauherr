@@ -2,7 +2,6 @@ import type { ModelCall } from './engine'
 import { partialReply } from '../chat/stream'
 import { assertFakeAllowed } from '../fake-guard'
 
-/** E2E only (`INTAKE_FAKE=1`, never in production): deterministic interview, one step per user message. */
 assertFakeAllowed('INTAKE_FAKE')
 
 const STEPS = [
@@ -39,7 +38,6 @@ const answer = ({ messages }: Parameters<ModelCall>[0]): unknown => {
   }
 }
 
-/** The fake model as `model` (the Workspace's tier model, shown in the conversation): it streams like the real call (the answer's JSON in chunks through `onPartial`) and reports fixed usage. */
 export const fakeModelAs = (model: string): ModelCall => async (a) => {
   const out = answer(a)
   a.signal?.throwIfAborted()
@@ -50,7 +48,6 @@ export const fakeModelAs = (model: string): ModelCall => async (a) => {
 }
 export const fakeModel: ModelCall = fakeModelAs('fake')
 
-/** E2E and tests (`BAUHERR_E2E_FAKE_FORGE=1`): owner chat classifier; a message ending in `?` asks, anything else answers. */
 export const fakeOwnerModel: ModelCall = async ({ messages }) => {
   const last = messages.at(-1)!.content
   const text = typeof last === 'string' ? last : last.map((b) => (b.type === 'text' ? b.text : '')).join('')

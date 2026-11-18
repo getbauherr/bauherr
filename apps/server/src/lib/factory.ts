@@ -13,10 +13,8 @@ const o = { overrideAccess: true, depth: 0 } as const
 
 const TTL_MS = 5000
 type Cache = { map: Map<number, Workflow>; at: number }
-/** On globalThis: Next bundles pages and server actions as separate module instances of one process, and an apply in one must reach the others. */
 const shared = globalThis as { __bauherrWorkflows?: Cache; __bauherrWorkflowsGen?: number }
 
-/** Loads the active workflow of every Workspace that has an applied factory file; at most once per 5 s per process (the app, worker and poller each keep their own copy, so a change reaches them within that time). */
 export const loadWorkflows = async (payload: Payload): Promise<void> => {
   if (shared.__bauherrWorkflows && Date.now() - shared.__bauherrWorkflows.at < TTL_MS) return
   const gen = shared.__bauherrWorkflowsGen ?? 0
@@ -26,13 +24,11 @@ export const loadWorkflows = async (payload: Payload): Promise<void> => {
   shared.__bauherrWorkflows = { map: new Map(rows.map((r) => [Number(r.id), r.compiled])), at: stale ? 0 : Date.now() }
 }
 
-/** Makes the next `loadWorkflows` read the database. */
 export const invalidateWorkflows = (): void => {
   shared.__bauherrWorkflowsGen = (shared.__bauherrWorkflowsGen ?? 0) + 1
   if (shared.__bauherrWorkflows) shared.__bauherrWorkflows.at = 0
 }
 
-/** The workflow of a Workspace: its applied factory file, else the pack default. Sync; throws when this process never ran `loadWorkflows` (a missing call at an entry point). `null`/`undefined` is code that is not Workspace-scoped and gets the pack default. */
 export const workflowFor = (workspace: number | string | { id: number | string } | null | undefined): Workflow => {
   const cache = shared.__bauherrWorkflows
   if (!cache) throw new Error('workflowFor called before loadWorkflows: await loadWorkflows(payload) at the entry point')
@@ -43,7 +39,6 @@ export const workflowFor = (workspace: number | string | { id: number | string }
 const canonical = (v: unknown): unknown => (Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical((v as Doc)[k])])) : v)
 const hashOf = (wf: Workflow) => createHash('sha256').update(JSON.stringify(canonical(wf))).digest('hex')
 
-/** Inlines `profile_file` of every role as `profile`, reading relative to `dir`; a path that leaves `dir` is a finding. */
 export const inlineProfiles = (doc: Doc, dir: string, findings: string[]): void => {
   for (const [id, r] of Object.entries((doc?.team?.roles ?? {}) as Record<string, Doc>)) {
     if (!r || typeof r !== 'object' || !r.profile_file) continue
@@ -63,7 +58,6 @@ const packFile = (): string => {
   return path
 }
 
-/** The pack's factory file with the role profiles inlined. */
 export const packSource = (): string => {
   const path = packFile()
   const doc = parseDocument(readFileSync(path, 'utf8')).toJS() as Doc
@@ -96,11 +90,6 @@ const contextFindings = async (payload: Payload, workspaceId: number, wf: Workfl
 
 type Row = { migrated: ApplyResult['migrated'] }
 
-/**
- * Applies a factory file to a Workspace: parse, inline profiles, lint, context checks, compile; an unchanged file (same hash) is a no-op.
- * One transaction under a per-Workspace advisory lock writes the version, rewrites Tickets and Runs of renamed stages (`workflow.migrate`), accumulates `aliases`, drops the Workspace WIP overrides and moves the pointer (refused when `baseVersion` is stale).
- * `dryRun` returns the findings and what would migrate.
- */
 export const applyFactory = async (payload: Payload, workspaceId: number, yaml: string, opts: FactoryOpts): Promise<ApplyResult> => {
   const fail = (findings: string[]): ApplyResult => ({ ok: false, findings, changed: false, migrated: [] })
   let doc: Doc
@@ -204,22 +193,18 @@ export const applyFactory = async (payload: Payload, workspaceId: number, yaml: 
   return result
 }
 
-/** The active factory file of the Workspace, or the pack's with the role profiles inlined. */
 export const exportFactory = async (payload: Payload, workspaceId: number): Promise<string> => {
   const row = (await payload.db.drizzle.execute(sql`SELECT v."source" FROM "workspaces" w JOIN "workflow_versions" v ON v."id" = w."workflow_version_id" WHERE w."id" = ${workspaceId}`)).rows[0] as { source: string | null } | undefined
   return row?.source ?? packSource()
 }
 
-/** What the Workspace runs now: its active version number and who applied it, or null for the pack default. */
 export const activeVersion = async (payload: Payload, workspaceId: number): Promise<{ version: number; at: string; by: string | null; via: string | null; hash: string } | null> => {
   const r = (await payload.db.drizzle.execute(sql`SELECT v."version", v."created_at" AS at, v."applied_by" AS by, v."applied_via" AS via, v."hash" FROM "workspaces" w JOIN "workflow_versions" v ON v."id" = w."workflow_version_id" WHERE w."id" = ${workspaceId}`)).rows[0] as Doc | undefined
   return r ? { version: Number(r.version), at: new Date(r.at).toISOString(), by: r.by, via: r.via, hash: r.hash } : null
 }
 
-/** Hash of the shipped factory file as `applyFactory` computes it (profiles inlined), to tell "Shipped default" from "Custom workflow". */
 export const defaultHash = (): string => hashOf(compile(parseDocument(packSource()).toJS()))
 
-/** Boot: applies `BAUHERR_FACTORY_FILE` to `BAUHERR_FACTORY_WORKSPACE` (slug) or every Workspace. Idempotent by hash; an unreadable or invalid file is logged and the active version stays. */
 export const applyBootFile = async (payload: Payload): Promise<void> => {
   const file = process.env.BAUHERR_FACTORY_FILE
   if (!file) return
@@ -242,7 +227,6 @@ export const applyBootFile = async (payload: Payload): Promise<void> => {
   }
 }
 
-/** Init of every process that boots Payload: loads the workflows (a failure, e.g. an unmigrated schema, is logged and the pack default serves until the next load) and applies the boot file. */
 export const bootFactory = async (payload: Payload): Promise<void> => {
   await loadWorkflows(payload).catch((e) => {
     shared.__bauherrWorkflows = { map: new Map(), at: 0 }

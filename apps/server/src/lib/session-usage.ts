@@ -4,17 +4,11 @@ import type { Payload } from 'payload'
 import { modelName, priceOf } from './cost'
 import { repriceUnpriced, setState } from './prices'
 
-/** One logged gateway call of the session key, reduced to what attribution needs. `session` is the `x-bauherr-session` header (null: the key alone). */
 export type Call = { at: number; workspace: number; session: string | null; role: string | null; model: string; provider: string; tin: number; tout: number; cr: number; cw: number; cost: number | null }
 export type Sess = { id: number; workspace: number; clientKey: string; role: string; connectedAt: number; disconnectedAt: number | null }
 export type Span = { sessionId: number; runId: number; ticketId: number | null; stage: string | null; role: string | null; startedAt: number; lastAt: number }
 export type Hit = { call: Call; session: Sess | null; span: Span | null }
 
-/**
- * Who a call belongs to. The key decides the Workspace (`call.workspace`); the header only picks a session inside it, so no header value reaches another Workspace.
- * Several sessions of the Workspace can use the same name (two people): the one holding a Run at that time wins, else the one connected then, else the latest connected.
- * The Run is the span of that session covering the call; a call between Runs belongs to the session without a Run.
- */
 export const attribute = (calls: Call[], sessions: Sess[], spans: Span[]): Hit[] =>
   calls.map((call) => {
     const named = call.session ? sessions.filter((s) => s.workspace === call.workspace && s.clientKey === call.session) : []
@@ -27,7 +21,6 @@ export const attribute = (calls: Call[], sessions: Sess[], spans: Span[]): Hit[]
 
 type Group = { workspace: number; session: Sess | null; span: Span | null; day: string | null; model: string; provider: string; role: string | null; at: number; tin: number; tout: number; cr: number; cw: number; costs: (number | null)[] }
 
-/** Sums hits per (Workspace, Run or session-without-Run, model); Run-less groups are cut per UTC day so a recompute of the last days never rewrites older ones. */
 export const group = (hits: Hit[]): Group[] => {
   const m = new Map<string, Group>()
   for (const { call: c, session, span } of hits) {
@@ -45,26 +38,17 @@ export const group = (hits: Hit[]): Group[] => {
   return [...m.values()]
 }
 
-/** The gateway's own cost, else the catalog's list price for the call (null: the model is unknown to both). A group with any unpriced call stays unpriced and is priced later, whole, by `repriceUnpriced`. */
 const costOf = (g: Group): number | null => (g.costs.some((c) => c == null) ? null : g.costs.reduce<number>((a, c) => a + (c ?? 0), 0))
 
-/** The Connection slug of `ws-<slug>/<connection>/<model>`; the owner's own login (no prefix or `sub/`) is `subscription`. */
 export const providerOf = (original: string | null | undefined): string => {
   const parts = (original ?? '').split('/')
   return parts[0]?.startsWith('ws-') && parts.length > 2 ? parts[1]! : 'subscription'
 }
 
 const LOOKBACK_DAYS = 2
-/** A Run stuck in `running` must not make the job scan the whole request log every minute. */
 export const MAX_SCAN_DAYS = 14
 const dayStart = (ms: number) => Date.UTC(new Date(ms).getUTCFullYear(), new Date(ms).getUTCMonth(), new Date(ms).getUTCDate())
 
-/**
- * Attributes the session key's calls of the last two UTC days (and of any Run that was open then) to sessions and Runs and rewrites their gateway `usage_entries`.
- * Idempotent: Run rows are upserted by (Run, model), Run-less rows of the window are replaced in one transaction, so a rerun, a late log row or a restart never double counts.
- * A Run that is still running holds its span open until now (the model call that decides the next heartbeat starts after the last one).
- * Calls of failed requests (no tokens) are ignored. A call without `x-bauherr-run` that arrived through a Workspace's session key or carries a session header is session traffic; Runner calls carry `x-bauherr-run` and stay with `reconcile-costs`.
- */
 export const reconcileSessions = async (payload: Payload, now = Date.now()): Promise<{ calls: number; runs: number }> => {
   const cutoff = dayStart(now - (LOOKBACK_DAYS - 1) * 864e5)
   const db = payload.db.drizzle
@@ -109,7 +93,6 @@ export const reconcileSessions = async (payload: Payload, now = Date.now()): Pro
   await db.transaction(async (tx) => {
     await tx.execute(sql`DELETE FROM "usage_entries" WHERE "source" = 'gateway' AND "run_id" IS NULL AND "at" >= ${new Date(cutoff).toISOString()}::timestamptz`)
     if (spanRuns.length) {
-      // Session Runs only: Runner Runs have `source = 'gateway'` rows from reconcile-costs. A (Run, model) no longer in any group was attributed elsewhere on this pass.
       const kept = keep.length ? sql`AND (e."run_id", e."model") NOT IN (${sql.join(keep.map(([r, m]) => sql`(${Number(r)}::int, ${m}::text)`), sql`, `)})` : sql``
       await tx.execute(sql`DELETE FROM "usage_entries" e USING "runs" r WHERE e."run_id" = r."id" AND r."mode" = 'session' AND e."source" = 'gateway' AND e."run_id" IN (${sql.join(spanRuns.map((r) => sql`${r}::int`), sql`, `)}) ${kept}`)
     }
@@ -134,7 +117,6 @@ export const reconcileSessions = async (payload: Payload, now = Date.now()): Pro
   return { calls: calls.length, runs: runIds.size }
 }
 
-/** A session Run priced from the gateway: its own money fields follow the gateway rows (the session-reported rows are then ignored by Insights). */
 const syncRunFromGateway = (payload: Payload, run: number) =>
   payload.db.drizzle.execute(sql`
     UPDATE "runs" r SET "gateway_tokens_in" = s."tin", "gateway_tokens_out" = s."tout", "gateway_tokens_total" = s."tin" + s."tout", "gateway_cost_usd" = s."cost",
@@ -143,10 +125,8 @@ const syncRunFromGateway = (payload: Payload, run: number) =>
     WHERE r."id" = ${run} AND r."mode" = 'session'`)
 
 export type GatewayHealth = { checkedAt: string; up: boolean; message: string | null; migration: number | null }
-/** Newest request-log migration the pinned image (v1.7.0) knows; a database ahead of it means the image was downgraded, which makes the gateway crash-loop. */
 export const KNOWN_REQUEST_LOG_MIGRATION = 3
 
-/** Probes the gateway and its request-log database and stores the answer (instance_state `gateway`) for pages to read. Any HTTP answer on the LLM port, even 401, means it is running. */
 export const checkGateway = async (payload: Payload, now = Date.now()): Promise<GatewayHealth> => {
   let migration: number | null = null
   try {
@@ -158,7 +138,6 @@ export const checkGateway = async (payload: Payload, now = Date.now()): Promise<
       await client.end()
     }
   } catch {
-    // the database is checked below through the probe result
   }
   const up = await fetch(`${process.env.GATEWAY_URL}/v1/models`, { signal: AbortSignal.timeout(3000) }).then(() => true, () => false)
   const ahead = migration != null && migration > KNOWN_REQUEST_LOG_MIGRATION

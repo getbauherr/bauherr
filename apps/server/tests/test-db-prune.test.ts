@@ -21,7 +21,6 @@ const ownPid = ownTag ? Number(ownTag.split('_')[0]) : -1
 const deadPid = process.pid + 1_000_000
 const dead = `bauherr_test_zz_${deadPid}_dead`
 const live = `bauherr_test_zz_${process.pid}_beef`
-// Names carry this process's pid or a random part: concurrent runs in one worktree must not share fixtures.
 const untagged = `bauherr_test_zz_untagged_${randomBytes(2).toString('hex')}`
 const other = `bauherr_e2e_zz_${process.pid}`
 const own = ownTag ? `bauherr_test_zz_${ownTag}` : null
@@ -36,7 +35,6 @@ it('prunes runs whose pid is gone and idle untagged databases; keeps live runs, 
     await dropIfExists(name)
     await admin(`CREATE DATABASE "${name}"`)
   }
-  // Only the fake dead pid is gone, and this run's own pid counts as dead: the own-run rule must still keep its database.
   const isAlive = (pid: number) => pid !== deadPid && pid !== ownPid
   await pruneStaleTestDbs(isAlive)
   expect(await exists(dead)).toBe(false)

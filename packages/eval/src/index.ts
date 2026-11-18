@@ -8,13 +8,10 @@ export type Criterion = { id: string; text: string; weight?: number };
 export type EvalCase = { id: string; input: string; checks?: { must_match?: string[]; must_not_match?: string[] }; rubric?: Criterion[] };
 export type ModelSpec = { model: string; /** USD per million tokens, [input, output]. */ usdPerMTok?: [number, number] };
 export type Verdict = { id: string; pass: boolean; reason: string };
-/** One line of `eval-results.json`. */
 export type EvalRow = { id: string; pass: boolean; score: number; failedChecks: string[]; criteria: Verdict[]; retried: boolean; costUsd: number; output: string };
 export type EvalResult = { rows: EvalRow[]; passRate: number; ok: boolean; regressions: string[]; costUsd: number; aborted: boolean; calls: number };
 export type EvalOptions = {
-  /** SKILL.md text; null runs the baseline without the skill. */
   skill: string | null;
-  /** Pack directory whose rules join the system prompt, as at Run start. */
   packDir?: string;
   cases: EvalCase[];
   subject: ModelSpec;
@@ -23,17 +20,11 @@ export type EvalOptions = {
   suiteThreshold?: number;
   maxUsd?: number;
   maxCases?: number;
-  /** Gateway calls (subject + judge, retries included) before the run aborts. Default: no limit. */
   maxCalls?: number;
-  /** Retry a failing case once. Default true. */
   retry?: boolean;
-  /** Rows by `evalKey(skill, case)`: a cached case costs no call; new rows are added. */
   cache?: Map<string, EvalRow>;
-  /** Rows of the last `main` run: a case that passed there must still pass. */
   baseline?: EvalRow[];
-  /** Defaults to BAUHERR_GATEWAY_URL / BAUHERR_GATEWAY_KEY. */
   gateway?: { url: string; key: string };
-  /** `X-Bauherr-Run` attribution, e.g. `ci-123`. */
   runLabel?: string;
 };
 
@@ -43,7 +34,6 @@ const JUDGE_MAX_TOKENS = 512;
 
 class Abort extends Error {}
 
-/** Replay-cache key: sha256 of the skill text and the case. */
 export const evalKey = (skill: string | null, c: EvalCase): string => createHash('sha256').update(`${skill ?? ''}\0${JSON.stringify(c)}`).digest('hex');
 
 const regex = (src: string) => (src.startsWith('(?i)') ? new RegExp(src.slice(4), 'i') : new RegExp(src));
@@ -55,7 +45,6 @@ export function runChecks(output: string, checks: EvalCase['checks'] = {}): stri
   ];
 }
 
-/** Reads `<dir>/*.yaml` eval cases; a file holds one case or a list of cases. */
 export function loadCases(dir: string): EvalCase[] {
   return readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).sort().flatMap((f) => {
     const doc = parse(readFileSync(join(dir, f), 'utf8')) as EvalCase | EvalCase[];
@@ -78,7 +67,6 @@ export async function runEval(o: EvalOptions): Promise<EvalResult> {
 
   const call = async (m: ModelSpec, maxTokens: number, sys: string, user: string, tool?: object) => {
     const [pin, pout] = m.usdPerMTok ?? DEFAULT_PRICE;
-    // Worst case: the whole prompt (~4 chars per token) plus the full output budget.
     const worst = (((sys.length + user.length) / 4) * pin + maxTokens * pout) / 1e6;
     if (spent + worst > maxUsd) throw new Abort(`estimated spend $${(spent + worst).toFixed(4)} exceeds max-usd ${maxUsd}`);
     if (o.maxCalls !== undefined && calls >= o.maxCalls) throw new Abort(`call cap ${o.maxCalls} reached`);

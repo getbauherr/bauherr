@@ -24,7 +24,6 @@ const settingsPage: Record<string, string> = { profile: 'Profile', workspace: 'G
 
 type Crumb = { label: string; href?: string }
 
-/** Section › page from the pathname; a page replaces the last label with `<PageTitle>`. A Product owner's Tickets sit under Requests (they have no Workflow page). */
 export function Breadcrumbs({ owner }: { owner?: boolean }) {
   const path = usePathname()
   const title = usePageTitle()

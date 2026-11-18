@@ -15,7 +15,6 @@ const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 const RULE = { name: 'UI screenshots', globs: ['src/ui/**'], kind: 'image', command: 'pnpm shots', before: true }
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
-/** EBML header with DocType "webm". */
 const WEBM = Buffer.concat([Buffer.from('1a45dfa3a3', 'hex'), Buffer.from('4286810142f7810142f2810442f38108', 'hex'), Buffer.from('428284', 'hex'), Buffer.from('webm'), Buffer.from('4287810442858102', 'hex')]).toString('base64')
 
 let testDb: TestDb
@@ -50,7 +49,6 @@ beforeEach(async () => {
   await payload.update({ collection: 'products', id: product, data: { reviewChecks: { artifacts: [RULE] } }, ...o })
 })
 
-/** A claimed session build Run and an open factory MR holding `files`. */
 const seed = async (files: Record<string, string>) => {
   const number = ++n
   const ticket = await payload.create({ collection: 'tickets', data: { title: 't', externalId: `a-${number}`, number, state: 'open', labels: [], stage: 'build', product, workspace: ws }, ...o })

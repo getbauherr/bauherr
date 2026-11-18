@@ -4,7 +4,6 @@ import { currentWorkspace, payloadClient } from '../../../../lib/session'
 
 export const dynamic = 'force-dynamic'
 
-/** `#123` in a chat answer: the Ticket with that number in the Workspace; when several Products share the number, the person picks. */
 export default async function TicketByNumber({ params }: { params: Promise<{ number: string }> }) {
   const { workspace } = await currentWorkspace()
   const number = Number((await params).number)

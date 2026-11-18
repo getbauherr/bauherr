@@ -5,7 +5,6 @@ import { currentWorkspace, getBauherr, payloadClient } from './session'
 
 export type Milestone = { kind: 'step' | 'event'; at: string; text: string; run?: number }
 
-/** The Ticket of a per-ticket live route: 401 without a Bauherr, 404 unless it is in the current Workspace and its Product is visible to the person. */
 export const liveTicket = async (rawId: string): Promise<{ payload: Payload; id: number } | Response> => {
   const user = await getBauherr()
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 })
@@ -16,7 +15,6 @@ export const liveTicket = async (rawId: string): Promise<{ payload: Payload; id:
   return { payload, id: t.id }
 }
 
-/** Epoch ms of the newest `updated_at` of the Ticket and what its page shows of it: Runs, their Steps and sessions, history events, human touches. */
 export const ticketVersion = async (payload: Payload, id: number): Promise<number> => {
   const { rows } = await payload.db.drizzle.execute(
     sql`SELECT (extract(epoch FROM greatest((SELECT "updated_at" FROM "tickets" WHERE "id" = ${id}), (SELECT max("updated_at") FROM "runs" WHERE "ticket_id" = ${id}), (SELECT max(s."updated_at") FROM "steps" s JOIN "runs" r ON r."id" = s."run_id" WHERE r."ticket_id" = ${id}), (SELECT max("updated_at") FROM "agent_sessions" WHERE "id" IN (SELECT "session_id" FROM "runs" WHERE "ticket_id" = ${id})), (SELECT max("updated_at") FROM "ticket_events" WHERE "ticket_id" = ${id}), (SELECT max("updated_at") FROM "human_touches" WHERE "ticket_id" = ${id}))) * 1000)::bigint AS v`,
@@ -24,10 +22,8 @@ export const ticketVersion = async (payload: Payload, id: number): Promise<numbe
   return Number((rows[0] as { v: string | null }).v ?? 0)
 }
 
-/** Cursor of a milestone: `<epoch ms>:<kind>:<id>`; rows order by it. */
 export const cursorOf = (m: { at: number; kind: string; id: number }): string => `${m.at}:${m.kind}:${m.id}`
 
-/** Steps of the Ticket's Runs and its history events after `cursor`, oldest first (one query). */
 export const milestonesAfter = async (payload: Payload, id: number, cursor: string): Promise<{ cursor: string; milestone: Milestone }[]> => {
   const [ms, kind, n] = cursor.split(':')
   const { rows } = await payload.db.drizzle.execute(sql`

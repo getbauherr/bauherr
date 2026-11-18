@@ -118,7 +118,6 @@ it('a Run ended while the Runner works (sendBack) keeps its status and its resul
   expect(await comments(t.n)).toEqual([])
 })
 
-/** Runs the latest triage Run while observing the Run's status each time the Ticket is untriaged; `fail` makes the untriage throw. */
 const untriageObserved = async (ticket: number, fail = false) => {
   const orig = payload.update.bind(payload) as (a: any) => Promise<unknown>
   const statuses: string[] = []

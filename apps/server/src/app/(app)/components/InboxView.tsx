@@ -12,7 +12,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 const Say = createContext<(text: string) => void>(() => {})
 
-/** The page's live region: mounted for as long as the page is, so the result of the last decision is read even when the list below it is empty. */
 export function InboxAnnouncer({ children }: { children: ReactNode }) {
   const [said, setSaid] = useState('')
   return (
@@ -23,13 +22,6 @@ export function InboxAnnouncer({ children }: { children: ReactNode }) {
   )
 }
 
-/**
- * The Inbox page body: the list left and the selected decision right from 960px container width, below that the list or, with `?t=`, the detail.
- * A row open for a second is marked seen. Keys (`keyAction`) move the selection, take the pane's primary, open the Ticket, send back, toggle unread, focus the filters, show the key help and go back.
- * A live refresh keeps the selection (it is the URL) and counts the rows it brought in as "N new".
- * Deciding a row removes it at once and moves the selection (the URL) to the next row; the result is announced when the action has succeeded,
- * a failure puts the row back with its error.
- */
 export function InboxView({ groups, selected, detail, admin, filters, workflowHref, products }: { groups: InboxGroup[]; selected: number | null; detail: boolean; admin: boolean; filters: InboxFilters; workflowHref: Record<string, string>; products: boolean }) {
   const router = useRouter()
   const say = useContext(Say)

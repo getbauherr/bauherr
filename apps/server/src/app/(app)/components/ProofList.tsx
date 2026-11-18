@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dial
 const src = (p: ProofData, i: ProofItem) => `/api/tickets/${p.ticket}/artifacts/${i.id}`
 const safeLink = 'min-h-6 py-[3px] text-primary underline-offset-2 hover:underline'
 
-/** Text of a transcript, sample or report: collapsed, always plain text (no HTML, no markdown). */
 const Text = ({ item }: { item: ProofItem }) => (
   <details className="small group" data-testid="proof-text">
     <summary className="cursor-pointer text-primary">{item.title}<span className="text-muted-foreground"> · {item.kind}</span></summary>
@@ -46,10 +45,6 @@ function Cell({ data, items, open }: { data: ProofData; items: ProofItem[]; open
   )
 }
 
-/**
- * What was asked and what proves it: one row per acceptance criterion with its proof (thumbnails, before/after side by side, recordings, collapsed text) and a way to try it (preview links, the Product's staging address).
- * Criteria without proof say so. Used on the Ticket page, the Inbox decision cards and the chat confirm card; it stacks by its own width (container query), not the screen's.
- */
 export function ProofList({ data }: { data: ProofData }) {
   const [shown, setShown] = useState<ProofItem | null>(null)
   const opener = useRef<Element | null>(null)

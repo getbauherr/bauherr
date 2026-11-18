@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import type { Hold } from '../../../lib/holds'
 
-/** "Holding up work": every shared hold of the Workspace, each linked to its cause. Nothing renders when nothing holds. */
 export function HoldsStrip({ holds }: { holds: Pick<Hold, 'text' | 'href' | 'waiting'>[] }) {
   if (!holds.length) return null
   return (

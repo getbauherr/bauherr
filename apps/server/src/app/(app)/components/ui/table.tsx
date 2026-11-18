@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState, type ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
-/** Scrolls horizontally on narrow screens; callers give the header row className="label". Only while it scrolls is the wrapper a named, focusable region (WCAG 2.1.1: a keyboard reaches scrolled content), so a table that fits adds no tab stop. */
 export function Table({ className, ...props }: ComponentProps<'table'>) {
   const box = useRef<HTMLDivElement>(null)
   const [scrolls, setScrolls] = useState(false)

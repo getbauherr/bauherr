@@ -42,7 +42,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** A Ticket (the fake forge only knows #1) with an awaiting_session build Run. */
 const seed = async () => {
   const ticket = await payload.create({ collection: 'tickets', data: { title: 't', externalId: `l-${++n}`, number: 1, state: 'open', labels: [], stage: 'build', product, workspace: ws }, ...o })
   const run = await payload.create({ collection: 'runs', data: { ticket: ticket.id, stage: 'build', mode: 'session', status: 'awaiting_session', workspace: ws }, ...o })

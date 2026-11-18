@@ -15,10 +15,8 @@ const signIn = async (page: Page, who: string) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 
-/** The Run page seed lives in a Workspace of its own, so it never shows on the Workflow, Overview or Team pages. */
 const inRunLab = (page: Page) => page.context().addCookies([{ name: 'bauherr-ws', value: 'runpage', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
 
-/** Opens the Run of the Ticket whose title the row of /runs shows. */
 const openRun = async (page: Page, title: string | RegExp) => {
   await page.goto('/runs')
   await page.locator('table tbody tr').filter({ hasText: title }).getByRole('link').first().click()
@@ -26,14 +24,12 @@ const openRun = async (page: Page, title: string | RegExp) => {
   return page.url()
 }
 
-/** One primary button at most in every state (a link made a button counts). */
 const primaries = (page: Page) => page.locator('[data-slot=button][data-variant=default]')
 const noPrimary = async (page: Page) => expect(await primaries(page).count()).toBe(0)
 
 const bar = (page: Page) => page.getByRole('region', { name: 'Next step' })
 const chip = (page: Page, text: string | RegExp) => page.locator('header [data-slot=badge]').filter({ hasText: text })
 
-/** The seed's working Run was fresh at seeding time; keep it so however long the suite has run. */
 const touch = (page: Page) => page.evaluate(async () => (await fetch(`/api/runs/${location.pathname.split('/').pop()}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ heartbeatAt: new Date().toISOString() }) })).ok)
 
 test('working: chip Working, the not-reported-yet text, no button, never "No steps recorded."', async ({ page }) => {

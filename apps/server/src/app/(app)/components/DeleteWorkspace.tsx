@@ -8,7 +8,6 @@ import { Label } from './ui/label'
 
 type Impact = { products: number; tickets: number; runs: number; sessions: number; keys: number; connections: number }
 
-/** Danger section of Settings > General (Admin): names what the deletion stops and removes, enables the button once the typed name matches. */
 export function DeleteWorkspace({ name, impact, until }: { name: string; impact: Impact; until: string }) {
   const [open, setOpen] = useState(false)
   const [typed, setTyped] = useState('')

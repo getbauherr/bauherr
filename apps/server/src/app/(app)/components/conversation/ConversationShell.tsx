@@ -19,7 +19,6 @@ const usePhone = (): boolean =>
     () => false,
   )
 
-/** The app sidebar is an icon rail while a conversation is open; the person can expand it, and it comes back as it was on leaving. */
 const useRail = (on: boolean): void => {
   const { open, setOpen, isMobile } = useSidebar()
   const was = useRef(open)
@@ -34,27 +33,17 @@ const useRail = (on: boolean): void => {
 
 export type ShellArtifact = {
   title: string
-  /** The version chip's text. */
   version: string
-  /** One line for the card that stands in for a collapsed panel. */
   summary: string
-  /** Buttons of the panel header, left of the collapse button. */
   actions?: ReactNode
   body: ReactNode
-  /** The panel's foot: status, the one primary action, what happens next. */
   foot: ReactNode
   writing?: boolean
 }
 
-/**
- * The shell of a task conversation (refinement now, request drafting next): the participant header over a stream and a composer on the left, the artifact the conversation is
- * shaping on the right with its foot (the submit bar). The panel collapses to a card in the stream; on a phone it is a bottom sheet opened from a sticky bar (`bar`).
- * It knows nothing of what is talked about: every part is a slot.
- */
 export const ConversationShell: FC<{ header: ReactNode; stream: ReactNode; composer: ReactNode; artifact: ShellArtifact; bar: ReactNode; embedded?: boolean }> = ({ header, stream, composer, artifact, bar, embedded = false }) => {
   useRail(!embedded)
   const narrow = usePhone()
-  // Embedded in the Ticket page's split, the artifact is never a side panel: it opens as a sheet from the card in the stream.
   const phone = narrow || embedded
   const [open, setOpen] = useState(true)
   const [sheet, setSheet] = useState(false)

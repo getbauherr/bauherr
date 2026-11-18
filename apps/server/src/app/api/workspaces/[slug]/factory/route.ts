@@ -10,7 +10,6 @@ export const dynamic = 'force-dynamic'
 
 const err = (status: number, error: string) => Response.json({ error }, { status })
 
-/** The Admin behind the request: a session cookie or the personal API key (`Authorization: Bearer`). An agent key (`bha_...`) is refused (403): it must never change the workflow. */
 const admin = async (req: Request, slug: string) => {
   const payload = await getPayload({ config })
   await loadWorkflows(payload)
@@ -30,7 +29,6 @@ export const GET = async (req: Request, { params }: { params: Promise<{ slug: st
   return new Response(await exportFactory(a.payload, a.workspace), { headers: { 'content-type': 'text/yaml; charset=utf-8' } })
 }
 
-/** Body = the factory file; `?dryRun=1` checks only; `If-Match: <version>` refuses when the active version moved. Answers `applyFactory`'s result (422 on findings, 409 when stale). */
 export const PUT = async (req: Request, { params }: { params: Promise<{ slug: string }> }): Promise<Response> => {
   const a = await admin(req, (await params).slug)
   if (a instanceof Response) return a

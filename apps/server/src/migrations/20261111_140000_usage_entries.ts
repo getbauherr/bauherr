@@ -59,7 +59,6 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   CREATE UNIQUE INDEX "run_source_model_idx" ON "usage_entries" USING btree ("run_id", "source", "model");
   CREATE INDEX "workspace_source_at_idx" ON "usage_entries" USING btree ("workspace_id", "source", "at");
   CREATE INDEX "payload_locked_documents_rels_usage_entries_id_idx" ON "payload_locked_documents_rels" USING btree ("usage_entries_id");`)
-  // Backfill: one gateway row per reconciled Run, one session-reported row per Run a session reported through the SDK estimate.
   await db.execute(sql`
   INSERT INTO "usage_entries" ("workspace_id", "run_id", "session_id", "ticket_id", "stage", "role", "model", "provider", "tokens_in", "tokens_out", "cost_usd", "source", "at")
   SELECT "workspace_id", "id", "session_id", "ticket_id", "stage", "role", COALESCE("model", 'unknown'), "provider", "gateway_tokens_in", "gateway_tokens_out", "gateway_cost_usd", 'gateway', COALESCE("finished_at", "created_at")

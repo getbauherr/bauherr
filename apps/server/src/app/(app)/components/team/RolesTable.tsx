@@ -8,7 +8,6 @@ import { RoleBody, RoleSettingsForm, type SettingsProps } from './RoleSettings'
 import { agentsLabel, modelName } from './helpers'
 import type { TeamRole } from './types'
 
-/** Compact Roles table. With `settings` (Model, Agents and Skills hidden below 768 px; the drawer shows them), each row opens a drawer with the model and agents form (read-only for non-Admins); without it (the setup wizard) the table is read-only. */
 export function RolesTable({ roles, settings }: { roles: TeamRole[]; settings?: SettingsProps }) {
   const phoneHidden = settings ? 'max-md:hidden' : undefined // the drawer shows these on a phone; the wizard has no drawer, so it keeps them
   return (

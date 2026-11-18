@@ -4,7 +4,6 @@ import { currentWorkspace, getBauherr, payloadClient } from '../../(app)/lib/ses
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** `{ v }`: the newest `updated_at` (epoch ms) of the selected Workspace's Tickets, Runs, agent sessions, reported Steps and what the Ticket page shows of them (proof artifacts, human touches); the Board refreshes only when it moves. One query, signed-in Bauherrs only. */
 export const GET = async (): Promise<Response> => {
   if (!(await getBauherr())) return Response.json({ error: 'unauthorized' }, { status: 401 })
   const { workspace } = await currentWorkspace()

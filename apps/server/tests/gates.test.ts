@@ -25,7 +25,6 @@ beforeAll(async () => {
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
   process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/gated-pack', import.meta.url))
   delete process.env.GATEWAY_ADMIN_URL
-  // A session Bauherr without a linked login works under the factory's bot login, so they are not themselves a gate owner.
   process.env.BAUHERR_BOT_LOGIN = 'fake'
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
@@ -46,10 +45,8 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** The gate owners are the Bauherren and Admins with a linked forge login: this test has one Admin whose login list is set here (empty: back to `fake`). */
 const owners = (logins: string) => payload.update({ collection: 'bauherren', id: adminId, data: { githubLogin: logins || 'fake' }, ...o })
 
-/** A plan Ticket whose plan Run succeeded: the Approve plan gate. */
 const planTicket = async (title: string) => {
   const issue = await fake.tickets(repo).create({ title, labels: ['bauherr:stage:plan'] })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'plan', labels: ['bauherr:stage:plan'], product, workspace: ws }, ...o })
@@ -133,7 +130,6 @@ it('drops a login the forge rejects for good and still completes the gate', asyn
   await owners('')
 })
 
-/** A Ticket on staging (Accept on staging) with a finished build Run. */
 const stagingTicket = async (title: string) => {
   const issue = await fake.tickets(repo).create({ title, labels: ['bauherr:stage:release'] })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, state: 'open', stage: 'release', releaseState: 'on_staging', labels: ['bauherr:stage:release'], product, workspace: ws }, ...o })

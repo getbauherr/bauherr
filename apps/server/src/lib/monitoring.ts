@@ -16,7 +16,6 @@ type Issue = { path: string; message: string }
 const HOST = /^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?:(\d{1,5})$/
 const HEADER = /^[A-Za-z0-9-]{1,64}$/
 
-/** An http(s) URL without credentials, query or fragment, or null. */
 export const webUrl = (v: unknown): URL | null => {
   try {
     const u = new URL(String(v))
@@ -26,7 +25,6 @@ export const webUrl = (v: unknown): URL | null => {
   }
 }
 
-/** Field errors of a monitoring Connection (`secret` is the plaintext being written, if any); empty = valid. */
 export const monitoringErrors = (service: Service | undefined, config: Cfg, secret: string | undefined, hasSecret: boolean): Issue[] => {
   const out: Issue[] = []
   const bad = (path: string, message: string) => out.push({ path, message })
@@ -51,7 +49,6 @@ export const monitoringErrors = (service: Service | undefined, config: Cfg, secr
 type Tracing = Record<string, unknown>
 type Conn = { config?: Cfg | null; secret?: string | null }
 
-/** The gateway's `frontendPolicies.tracing` for the saved OTLP Connection; without one, what `init` renders (`OTEL_ENABLED=1`: the bundled Jaeger) or null (no tracing). The header value goes into the 0600 config.yaml only. */
 export const tracingPolicy = (conn: Conn | undefined): Tracing | null => {
   if (!conn) return process.env.OTEL_ENABLED === '1' ? { host: 'jaeger:4317', randomSampling: true } : null
   const c = conn.config ?? {}
@@ -65,42 +62,32 @@ export const tracingPolicy = (conn: Conn | undefined): Tracing | null => {
 
 type Row = { id: number | string; service: Service; config: Cfg; secret?: string | null; capabilities?: Cfg | null }
 
-/** Monitoring Connections of the instance, secret included (server only: callers decrypt in memory and never hand it on). */
 export const monitoringRows = async (payload: Payload, req?: PayloadRequest, service?: Service): Promise<Row[]> =>
   (await payload.find({ collection: 'connections', where: { kind: { equals: 'monitoring' }, ...(service ? { service: { equals: service } } : {}) }, sort: 'id', depth: 0, pagination: false, overrideAccess: true, showHiddenFields: true, ...(req ? { req } : {}) })).docs as unknown as Row[]
 
-/**
- * Writes the gateway's tracing from the saved OTLP Connection (or the bundled behaviour when there is none) into config.yaml; a no-op when unchanged, the gateway hot-reloads.
- * `boot` leaves a config without a saved Connection alone (a hand-edited tracing block survives a restart).
- */
 export const renderTracing = async (payload: Payload, req?: PayloadRequest, boot = false): Promise<void> => {
   const row = (await monitoringRows(payload, req, 'otlp'))[0]
   await syncManagedConfig(row || !boot ? tracingPolicy(row) : undefined)
 }
 
-/** UI URL the saved OTLP Connection names for "Open traces". */
 export const savedTracesUrl = async (payload: Payload): Promise<string | undefined> => {
   const url = (await monitoringRows(payload, undefined, 'otlp'))[0]?.config?.uiUrl
   return webUrl(url) ? String(url) : undefined
 }
 
-/** Saved Grafana URL for "Open dashboards". */
 export const savedGrafanaUrl = async (payload: Payload): Promise<string | undefined> => {
   const url = (await monitoringRows(payload, undefined, 'grafana'))[0]?.config?.url
   return webUrl(url) ? String(url) : undefined
 }
 
-/** Job name of the scrape snippet and of the check that Prometheus scrapes Bauherr. */
 export const SCRAPE_JOB = 'bauherr'
 const sha256 = (v: string): Buffer => createHash('sha256').update(v).digest()
 
-/** A new scrape token and the hash that is stored; the token itself is shown once and never kept. */
 export const mintScrapeToken = (): { token: string; hash: string } => {
   const token = `bhm_${randomBytes(32).toString('base64url')}`
   return { token, hash: sha256(token).toString('hex') }
 }
 
-/** Where Prometheus reaches Bauherr, from the request's headers: the first value of a comma list, the forwarded host before `host`, an unusable one falls back to the next, in the end `localhost`. */
 export const scrapeOrigin = (h: { forwardedHost?: string | null; forwardedProto?: string | null; host?: string | null }): URL => {
   const first = (v?: string | null) => v?.split(',')[0]?.trim() ?? ''
   const proto = first(h.forwardedProto).toLowerCase()
@@ -113,14 +100,11 @@ export const scrapeOrigin = (h: { forwardedHost?: string | null; forwardedProto?
   return new URL('http://localhost')
 }
 
-/** The `scrape_configs` entry to paste into Prometheus (`origin` is where Prometheus reaches Bauherr). */
 export const scrapeSnippet = (origin: URL, token: string): string =>
   `scrape_configs:\n  - job_name: ${SCRAPE_JOB}\n    scheme: ${origin.protocol.slice(0, -1)}\n    metrics_path: /-/metrics\n    authorization:\n      type: Bearer\n      credentials: ${token}\n    static_configs:\n      - targets: ['${origin.host}']`
 
-/** Shape of a minted scrape token: checked before any lookup. */
 export const SCRAPE_TOKEN = /^bhm_[A-Za-z0-9_-]{43}$/
 
-/** Whether `presented` is the scrape token of the saved Prometheus Connection: compares hashes in constant time, false without a Connection. */
 export const scrapeTokenValid = async (payload: Payload, presented: string): Promise<boolean> => {
   const stored = String((await monitoringRows(payload, undefined, 'prometheus'))[0]?.config?.tokenHash ?? '')
   const want = Buffer.from(/^[a-f0-9]{64}$/.test(stored) ? stored : '0'.repeat(64), 'hex')
@@ -136,7 +120,6 @@ const why = (e: unknown): string => {
   return WHY[code.code ?? code.cause?.code ?? ''] ?? (code.name === 'TimeoutError' || code.name === 'AbortError' ? 'timed out' : 'failed')
 }
 
-/** TCP connect, `timeoutMs` limit. */
 const reach = (host: string, port: number, timeoutMs: number): Promise<string | null> =>
   new Promise((resolve) => {
     const s = connect({ host, port })
@@ -146,7 +129,6 @@ const reach = (host: string, port: number, timeoutMs: number): Promise<string | 
     s.once('error', (e) => done(why(e)))
   })
 
-/** One GET; a redirect is never followed (it could leave the host). Errors say the origin and a reason, never headers or the body. */
 const get = async (url: URL, path: string, token: string | undefined, timeoutMs: number): Promise<{ status: number; body: unknown } | string> => {
   try {
     const res = await fetch(new URL(path, `${url.origin}${url.pathname.replace(/\/+$/, '')}/`), {
@@ -160,7 +142,6 @@ const get = async (url: URL, path: string, token: string | undefined, timeoutMs:
   }
 }
 
-/** Asks Prometheus whether it scrapes Bauherr (`up{job="bauherr"}`); only a fixed phrase, the origin and a reason leave this function. */
 const testPrometheus = async (url: URL, secret: string | null, timeoutMs: number): Promise<TestResult> => {
   const res = await get(url, `api/v1/query?query=${encodeURIComponent(`up{job="${SCRAPE_JOB}"}`)}`, secret ?? undefined, timeoutMs)
   if (typeof res === 'string') return { ok: false, message: res }
@@ -173,7 +154,6 @@ const testPrometheus = async (url: URL, secret: string | null, timeoutMs: number
   return up === '1' ? { ok: true, message: "Prometheus answered and Bauherr's metrics target is up" } : { ok: false, message: "Prometheus answered, but Bauherr's metrics target is down (the scrape fails: check the address and the token)" }
 }
 
-/** Plain-word check of one monitoring Connection (`secret` is the decrypted credential, if any). Nothing but a fixed phrase, the host and a reason leaves this function. */
 export const testMonitoring = async (service: Service, config: Cfg, secret: string | null, timeoutMs = TIMEOUT_MS): Promise<TestResult> => {
   if (service === 'otlp') {
     const [host, port] = String(config.host).split(':')
@@ -198,7 +178,6 @@ export const testMonitoring = async (service: Service, config: Cfg, secret: stri
 
 export type MonitoringView = { id: number; config: Record<string, string>; hasSecret: boolean; status: 'ok' | 'failed' | 'none'; detail: string }
 
-/** What the Connections page shows per saved service: the plain config and the state of the last test, never the credential (only whether one is stored). */
 export const loadMonitoring = async (payload: Payload): Promise<Partial<Record<Service, MonitoringView>>> =>
   Object.fromEntries(
     (await monitoringRows(payload)).map((r) => [

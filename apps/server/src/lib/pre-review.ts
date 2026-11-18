@@ -10,7 +10,6 @@ type Doc = Record<string, any>
 
 export const BLAST_RADIUS_LADDER = ['you said so', 'read the code', 'test covers it', 'reproduced in the running app'] as const
 
-/** Failure lines for the MR body's `## Blast radius`: the section must exist and name exactly one ladder value. */
 export const blastRadiusFailures = (body: string | null | undefined): string[] => {
   const text = section(body ?? '', 'Blast radius').toLowerCase()
   const list = BLAST_RADIUS_LADDER.map((v) => `\`${v}\``).join(', ')
@@ -22,7 +21,6 @@ export const blastRadiusFailures = (body: string | null | undefined): string[] =
 
 export type PreReviewReport = { failures: string[]; warnings: string[] }
 
-/** Failure lines of the Product's `reviewChecks` for the Ticket's open factory MR, plus the trust guards that need no configuration (fake-green diff, diff budget); `evidence` is the Run's Evidence. Empty when the Product has no rules and the MR is clean. With `record` (a review request that passes), the `No artifact:` lines of the Evidence are stored for the human. */
 export const preReviewReport = async (payload: Payload, t: Doc, evidence: string, record?: { run?: number | string }): Promise<PreReviewReport> => {
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc
   const config = withProofDefaults(product.reviewChecks as ReviewChecks | null, product.pathSets)

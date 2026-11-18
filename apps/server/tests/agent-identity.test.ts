@@ -20,7 +20,6 @@ const human = { kind: 'human' } as const
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 
-/** Every owner decision. approve_production (ticket #84, PR 160) joins by adding its name here and `access: 'human'` on the tool. */
 const GATES = ['approve', 'decide', 'accept_staging', 'grant_review_round', 'stop_review', 'request_changes', 'send_back', 'approve_production', 'approve_skill_proposal', 'reject_skill_proposal']
 
 let testDb: TestDb
@@ -126,7 +125,6 @@ it('replaceAgentKey revokes the previous key with that label, so re-seeding does
   expect(await count('agent_keys', { label: { equals: 'seed' }, revokedAt: { exists: false } })).toBe(1)
 })
 
-/** Exempt: the poller records the forge login of a manual gate-owner label (`ev.actor`) copies the parent's approving person to inherited children (`approval?.actor`), and the factory records its own `auto:staging` path as 'factory'. */
 it('every human_touches writer names the person through personOf', () => {
   const files = execSync("grep -rl \"collection: 'human_touches'\" src --include=*.ts --include=*.tsx", { cwd: process.cwd(), encoding: 'utf8' }).trim().split('\n')
   expect(files.length).toBeGreaterThan(1)

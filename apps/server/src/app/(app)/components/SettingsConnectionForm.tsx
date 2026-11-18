@@ -5,7 +5,6 @@ import { Field, PickField, SettingsForm } from './SettingsForm'
 
 const LABELS: Record<string, string> = { baseUrl: 'Base URL', awsRegion: 'AWS region', vertexProject: 'Vertex project', vertexRegion: 'Vertex region', azureResource: 'Azure resource' }
 const GITLAB_URL = 'https://gitlab.com'
-/** Preset fields with a known set of values (the first is the default) and the Other... fallback. */
 const CHOICES: Record<string, string[]> = {
   awsRegion: ['us-east-1', 'us-east-2', 'us-west-2', 'eu-central-1', 'eu-west-1', 'eu-west-3', 'ap-northeast-1', 'ap-southeast-2'],
   vertexRegion: ['us-east5', 'us-central1', 'europe-west1', 'europe-west4', 'asia-southeast1'],

@@ -4,12 +4,6 @@ import { resolve } from 'node:path'
 import pg from 'pg'
 import { email as seeded } from './user'
 
-/**
- * Regenerates the README and landing-page screenshots in `docs/assets/`, each in a light and a dark variant, on the seeded e2e data (`pnpm screenshots`, see CONTRIBUTING.md).
- * Every shot fails when a seeded e2e identifier is visible on the page.
- * Skipped unless `SCREENSHOTS=1`. Needs the server of the fake-forge job (`BAUHERR_E2E_FAKE_FORGE=1`, `CHAT_FAKE=1`, the gated pack) and `DATABASE_URL`
- * of the screenshot database: the setup gives the seeded rows the names of a small real product there, and nowhere else.
- */
 test.skip(process.env.SCREENSHOTS !== '1', 'SCREENSHOTS=1 regenerates docs/assets')
 test.skip(!seeded || !process.env.E2E_PASSWORD_FILE || !process.env.DATABASE_URL, 'set E2E_EMAIL, E2E_PASSWORD_FILE and DATABASE_URL')
 test.use({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 })

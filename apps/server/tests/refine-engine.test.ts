@@ -47,7 +47,6 @@ const comments = async (id: number) => {
 }
 const decisions = async (id: number) => (await comments(id)).filter((b) => b.startsWith('<!-- bauherr:decisions -->'))
 
-/** A model that ends the turn with one `refine` call; `calls` counts how often it was asked. */
 const scripted = (...results: unknown[]) => {
   const calls = vi.fn()
   const model: ModelCall = async function* (a) {
@@ -200,7 +199,6 @@ describe('on a Triage hold', () => {
   })
 })
 
-/** A model that streams its refine input in `chunks` (accumulated JSON, like `input_json_delta`), then ends with the call. */
 const streaming = (result: Record<string, unknown>, opts: { onChunk?: (i: number) => void } = {}) => {
   const json = JSON.stringify(result)
   const calls = vi.fn()
@@ -365,7 +363,6 @@ describe('the model of a conversation, its images and its cost', () => {
     const turns = v!.cost.turns
     expect(turns.length).toBeGreaterThan(0)
     expect(v!.cost.tokens).toBe(turns.reduce((n, t) => n + t.tokensIn + t.tokensOut, 0))
-    // the scripted model reports `m-1`, which has no price
     expect(turns.every((t) => t.usd === null)).toBe(true)
     expect(v!.cost.usd).toBeNull()
   })

@@ -43,7 +43,6 @@ beforeEach(async () => {
   await payload.update({ collection: 'runs', where: { and: [{ workspace: { equals: ws } }, { status: { in: ['awaiting_session', 'running'] } }] }, data: { status: 'cancelled' }, ...o })
 })
 
-/** A Build Ticket with an awaiting Build Run and an open MR from `branch` (default: the Ticket's factory branch). */
 const seed = async (opts: { branch?: string; rank?: string; mergeSha?: string } = {}) => {
   const issue = await fake.tickets(repo).create({ title: `t${++n}`, labels: ['bauherr:stage:build'] })
   const ticket = await payload.create({ collection: 'tickets', data: { title: 't', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', labels: [], stage: 'build', product, workspace: ws, rank: opts.rank ?? 'a', needsYou: 'Run needs you', ...(opts.mergeSha && { mergeSha: opts.mergeSha }) }, ...o })

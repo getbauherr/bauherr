@@ -44,7 +44,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** An open Ticket with rank `rank` and, unless `run` is null, an awaiting_session Run of the given stage. */
 const seed = async (rank: string | null, extra: Record<string, unknown> = {}, run: Record<string, unknown> | null = {}) => {
   const ticket = await payload.create({ collection: 'tickets', data: { title: `t-${rank}`, externalId: `b-${++n}`, number: 1, state: 'open', labels: [], stage: 'build', product, workspace: ws, rank, ...extra }, ...o })
   const r = run && (await payload.create({ collection: 'runs', data: { ticket: ticket.id, stage: 'build', mode: 'session', status: 'awaiting_session', workspace: ws, ...run }, ...o }))

@@ -3,7 +3,6 @@ import { cn } from '@/lib/utils'
 import type { SetupStepId, SetupSteps } from '../../lib/setup'
 import { StatusWord } from '../SettingsParts'
 
-/** The five steps in order with their state; done steps and the first undone one are links (`?step=`), later ones are plain text. */
 export function SetupRail({ steps, shown }: { steps: SetupSteps; shown?: SetupStepId }) {
   const first = steps.findIndex((s) => !s.done)
   return (

@@ -12,10 +12,6 @@ import { RoleAvatar } from '../team/RoleAvatar'
 import type { Participant } from '../../../../lib/refine/engine'
 import { shortModel } from '../../lib/format'
 
-/**
- * Who the conversation is with: the role as persona (avatar, name), and one line under it that says who really talks: the session that asked, the Factory assistant that replies,
- * the model. The chevron opens the agent card (role profile, session, client, model, Run link). `menu` is the page's "more" menu.
- */
 export const ParticipantHeader: FC<{ participant: Participant; model: string; subtitle: string; /** What the one line under the name says the Factory assistant does. */ line?: string; menu?: ReactNode; /** The heading level of the name: 2 when the page already has its own title. */ level?: 1 | 2 }> = ({ participant: p, model, subtitle, line = 'Factory assistant replies', menu, level = 1 }) => {
   const H = `h${level}` as const
   const s = p.session

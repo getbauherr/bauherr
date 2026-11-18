@@ -5,7 +5,6 @@ import { confirmClick } from './confirm'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-/** The Workspace of this spec (`seed-e2e.ts`): it saves budget, models, Knowledge and a Connection, so no other spec may read it. */
 const ownWorkspace = (page: Page) => page.context().addCookies([{ name: 'bauherr-ws', value: 'settingsco', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
 
 const fake = !!process.env.E2E_FAKE_FORGE // the fake forge lists repositories; the real one fails with the dummy token (the fallback)
@@ -99,7 +98,6 @@ test('at 390 px the Next step bar does not cover the last field of the Models & 
   expect(box.y + box.height).toBeLessThanOrEqual((await bar.boundingBox())!.y)
 })
 
-// Lives in this file (not selects.spec.ts): it saves the whole Models & budget form and the Knowledge form of the Workspace `settingsco`, which these tests own and run one after the other.
 test('Models & budget: model tiers are selects with Other...; Knowledge: the repository is a select or, with a failing forge, text', async ({ page }) => {
   await ownWorkspace(page)
   await page.goto('/login')

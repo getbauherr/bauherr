@@ -51,7 +51,6 @@ beforeEach(async () => {
   await payload.update({ collection: 'products', id: product, data: { reviewChecks: null }, ...o })
 })
 
-/** A claimed session Build Run and an open factory MR whose head carries `checks`. */
 const seed = async (checks: any[]) => {
   const issue = await fake.tickets(repo).create({ title: `t${++n}`, labels: ['bauherr:stage:build'] })
   const ticket = await payload.create({ collection: 'tickets', data: { title: 't', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', labels: [], stage: 'build', product, workspace: ws }, ...o })
@@ -102,7 +101,6 @@ it('pending then red: back to Build with the failing names and a new Build Run, 
   fake.setChecks(repo, pr.headSha, red)
   expect(await actions.watchChecks(payload)).toBe(1)
   expect(await reload(id)).toMatchObject({ stage: 'build', waitingFor: null, reviewRounds: 0 })
-  // the session's own Build Run is still running here, so no second one is queued: the same Build continues
   expect((await runs(id, 'build')).some((r) => ['running', 'awaiting_session'].includes(r.status))).toBe(true)
   expect(await runs(id, 'review')).toHaveLength(0)
   expect(await actions.readWorklog(payload, member, { ticket: id })).toContain('e2e-fake (1)')
@@ -151,7 +149,6 @@ it('the ran rule: the Evidence must show each required command with exit code 0 
   expect((await reload(id)).stage).toBe('review')
 })
 
-/** A Ticket the Runner or poller already moved to Review (label and stage), with its MR head carrying `checks`. */
 const inReview = async (checks: any[]) => {
   const s = await seed(checks)
   await payload.update({ collection: 'runs', id: s.a.runId, data: { status: 'succeeded' }, ...o })
@@ -187,7 +184,6 @@ it('a green head, and a review that is already running, are not touched', async 
   const jobs = await import('../src/jobs')
   expect((await jobs.startReviewIfReady(payload, await reload(id)))?.run).toBeTruthy()
   expect(await reload(id)).toMatchObject({ stage: 'review' })
-  // checks turn red while the review runs: the live review stays, the next call does not park the Ticket
   const live = await inReview(green)
   await jobs.startReviewIfReady(payload, await reload(live.id))
   fake.setChecks(repo, live.pr.headSha, red)

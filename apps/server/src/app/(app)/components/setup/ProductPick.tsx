@@ -3,7 +3,6 @@ import { useState, type ReactNode } from 'react'
 import { createProductWithRepo } from '../../(shell)/settings/actions'
 import { Field, SettingsForm } from '../SettingsForm'
 
-/** Repository and Product name of step 2. The repository is typed or chosen from the datalist the streamed `children` bring (a forge that does not answer leaves it empty); the name follows the repository until edited. One account posts as a hidden field. */
 export function ProductPick({ connections, children }: { connections: { id: number; name: string }[]; children?: ReactNode }) {
   const [repo, setRepo] = useState('')
   const [name, setName] = useState<string>()

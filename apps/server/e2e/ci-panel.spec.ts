@@ -4,7 +4,6 @@ import { email } from './user'
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
-/** Ticket #581 of Acme CI: one check running, one failed, a Run in Build. */
 test('Ticket and Run page show Waiting for CI 1/2, both checks and the pull request link', async ({ page }) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
@@ -22,7 +21,6 @@ test('Ticket and Run page show Waiting for CI 1/2, both checks and the pull requ
   await expect(rows.filter({ hasText: 'test' })).toContainText('Running')
   await expect(rows.filter({ hasText: 'lint' })).toContainText('Failed')
   await expect(page.getByTestId('ci-panel').locator('time')).toContainText(/^Checked /)
-  // the bar's one secondary slot is the fast lane here, so the forge link sits in the CI panel header
   await expect(page.getByTestId('action-bar').getByTestId('forge-link')).toHaveCount(0)
   const link = page.getByTestId('ci-panel').getByRole('link', { name: /^Open pull request #88 on GitHub/ })
   await expect(link).toHaveAttribute('href', 'https://github.com/acme/ci/pull/88')

@@ -46,7 +46,6 @@ beforeEach(async () => {
 const reload = async (id: number) => (await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>
 const gateComments = async (n: string) => (await fake.tickets(repo).listComments(n)).filter((c) => c.body.startsWith('<!-- bauherr:gate:'))
 
-/** A merged Ticket in release, its merge commit green on staging. */
 const releaseTicket = async (title: string, expedite: boolean) => {
   const issue = await fake.tickets(repo).create({ title, labels: ['bauherr:stage:release'] })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'release', product, workspace: ws, mergeSha: `sha-${issue.number}`, releaseAt: new Date().toISOString(), releaseState: 'on_staging', expedite }, ...o })

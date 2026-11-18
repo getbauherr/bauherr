@@ -13,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 
 const Ctx = createContext<FormState>({})
 
-/** Plain buttons; `primary` marks the page's main form. inline field errors from Payload, a "Saved" line. Submits without form-reset so a failed save keeps what was typed; `reset` clears it after success (add forms). */
 export function SettingsForm({ action, children, submit = 'Save', reset, primary, inline, confirm, bar, copy }: { confirm?: string; bar?: boolean; copy?: boolean; action: (p: FormState, fd: FormData) => Promise<FormState>; children?: ReactNode; submit?: string; reset?: boolean; primary?: boolean; inline?: boolean }) {
   const [state, formAction, pending] = useActionState(action, {})
   const ref = useRef<HTMLFormElement>(null)
@@ -72,7 +71,6 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
 
 type Opt = string | [value: string, label: string]
 
-/** `hint` is the help line, `example` renders as "e.g. <mono value>", `explain` is a "What is this?" disclosure. `rows` makes it a textarea. */
 export function Field({ name, label, hint, example, explain, options, empty, rows, ...rest }: { name: string; label: string; hint?: string; example?: string; explain?: string; options?: Opt[]; empty?: string; rows?: number } & Omit<ComponentProps<'input'>, 'name'>) {
   const error = useContext(Ctx).fields?.[name]
   const uid = useId()
@@ -137,15 +135,10 @@ function Picker({ name, label, options, defaultValue, empty, hint, example, requ
   )
 }
 
-/**
- * A select of the known `options` plus "Other..." for a typed value, posted under `name`. Without options (a source that could not list them) it is the plain text field, so saving is never blocked.
- * `empty` adds a leading blank option with that label.
- */
 export function PickField({ options, empty, defaultValue = '', ...rest }: { name: string; label: string; options: Opt[] | null; defaultValue?: string; empty?: string; hint?: string; example?: string; placeholder?: string; required?: boolean }) {
   return options?.length ? <Picker {...rest} options={options} empty={empty} defaultValue={defaultValue} /> : <Field {...rest} defaultValue={defaultValue} />
 }
 
-/** A `mono` block with a Copy button; the label flips to "Copied" for a moment. `block` is multi-line code (scrolls inside its own box) instead of a one-line notice. */
 export function CopyField({ text, block }: { text: string; block?: boolean }) {
   const [copied, setCopied] = useState(false)
   return (
@@ -169,10 +162,6 @@ export function CopyField({ text, block }: { text: string; block?: boolean }) {
 
 export type PickOption = { value: string; label?: string; meta?: string }
 
-/**
- * A checkbox list that posts its checked values comma-joined under `name`. Saved `value`s missing from `options` stay in the list, checked, with `missingMeta`.
- * The add row appends a name typed by hand (any non-empty text; `login` also drops a leading @), so a forge that cannot list options never blocks saving.
- */
 export function MultiPick({ name, legend, hint, options, value, addLabel, example, missingMeta, emptyNote, notice, login, mono = true, disabled }: { name: string; legend: string; hint?: string; options: PickOption[]; value: string[]; addLabel: string; example?: string; missingMeta: string; emptyNote?: string; notice?: string; login?: boolean; mono?: boolean; disabled?: boolean }) {
   const error = useContext(Ctx).fields?.[name]
   const uid = useId()
@@ -235,7 +224,6 @@ export function Checks({ name, items, checked }: { name: string; items: { id: nu
   )
 }
 
-/** Two clicks: the first arms, the second submits. No browser dialog. `danger` text unless `primary`. */
 export function ConfirmButton({ label, confirm, primary }: { label: string; confirm: string; primary?: boolean }) {
   const [armed, setArmed] = useState(false)
   return (
@@ -249,7 +237,6 @@ export function ConfirmButton({ label, confirm, primary }: { label: string; conf
 export type ProofRuleRow = { name: string; globs: string; kind: string; command: string; before: boolean; pathSet: string; pairs: string; builtin: boolean }
 const PROOF_KINDS: [string, string][] = [['image', 'Screenshot'], ['recording', 'Screen recording'], ['preview', 'Link to try it'], ['transcript', 'Terminal session'], ['sample', 'Request and response, or output'], ['report', 'Test or contract report']]
 
-/** The "Proof for review" rules of a Product: when a changed path matches, the command makes the proof a person judges. Posted as the JSON field `proofRules`. */
 export function ProofRules({ rows, sets }: { rows: ProofRuleRow[]; sets: string[] }) {
   const error = useContext(Ctx).fields?.proofRules
   const uid = useId()

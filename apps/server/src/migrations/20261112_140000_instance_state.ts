@@ -1,6 +1,5 @@
 import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 
-/** Instance-wide key/value state written by jobs (price catalog refresh, gateway health), no API access; plus the slugs of the two jobs that write it. */
 export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
   CREATE TABLE "instance_state" (

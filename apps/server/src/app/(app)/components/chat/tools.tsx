@@ -8,7 +8,6 @@ import { artifactOf, type Decision, type Outcome } from './adapter'
 import { ChevronRight, Shield } from './icons'
 import { ProofList } from '../ProofList'
 
-/** One line per read tool: what it looked up and whether it worked; the result is one click away. */
 const Receipt: FC<{ summary: string; result?: Outcome }> = ({ summary, result }) => (
   <details className="group my-1 text-[13px] leading-5 text-muted-foreground" data-testid="read-receipt">
     <summary className="flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden">
@@ -20,7 +19,6 @@ const Receipt: FC<{ summary: string; result?: Outcome }> = ({ summary, result })
   </details>
 )
 
-/** What running the approved call did: "Done." on success; a failure, a decline or "Already decided." in the server's words. */
 const OutcomeLine: FC<{ result?: Outcome; href?: string }> = ({ result, href }) =>
   result ? (
     <p role="status" data-testid="confirm-outcome" className={cn('my-1 text-[13px] leading-5', result.ok ? 'text-ok' : 'text-muted-foreground')}>
@@ -29,7 +27,6 @@ const OutcomeLine: FC<{ result?: Outcome; href?: string }> = ({ result, href }) 
     </p>
   ) : null
 
-/** The approval card of a `confirm` tool: the TL;DR rows, Approve / Decline (with an optional reason), then its outcome. Nothing runs before the person decides. */
 const Card: FC<ToolCallMessagePartProps> = ({ result, addResult, artifact }) => {
   const a = artifact as Extract<NonNullable<ReturnType<typeof artifactOf>>, { kind: 'confirm' }>
   const status = useAuiState((s) => s.message.status?.type)
@@ -70,7 +67,6 @@ const Card: FC<ToolCallMessagePartProps> = ({ result, addResult, artifact }) => 
   )
 }
 
-/** Tool widgets are picked by the `kind` the server sent, never by tool name. */
 export const ToolPart: FC<ToolCallMessagePartProps> = (props) => {
   const a = artifactOf(props)
   if (a?.kind === 'confirm') return <Card {...props} />

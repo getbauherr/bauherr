@@ -5,18 +5,14 @@ export type Draft = { problem: string; context: string; acceptance_criteria: str
 export type Turn = { question: string; options?: { label: string; recommended?: boolean }[]; draft: Draft; split?: Draft[]; ready: boolean; exhausted: boolean }
 
 type Config = {
-  /** `''` on the signed-in page (cookie), the Bauherr origin in the widget. */
   base: string
-  /** `authorization: Bearer <embed token>` in the widget. */
   headers?: Record<string, string>
   product?: () => number
-  /** An already open session to continue. */
   session?: string | null
   onSession(id: string): void
   onTurn(turn: Turn): void
 }
 
-/** A persisted conversation as thread messages; the open `turn` rides on the last assistant message. */
 export function toMessages(messages: { role: string; content: string }[], turn: object | null): ThreadMessageLike[] {
   return messages.map((m, i) => ({
     role: m.role === 'user' ? 'user' : 'assistant',
@@ -25,7 +21,6 @@ export function toMessages(messages: { role: string; content: string }[], turn: 
   }))
 }
 
-/** The Intake API as assistant-ui adapters. The session starts with the first message or screenshot. */
 export function makeIntakeAdapter({ base, headers = {}, product, session: open = null, onSession, onTurn }: Config) {
   let session = open
   const media = new Map<string, string>()

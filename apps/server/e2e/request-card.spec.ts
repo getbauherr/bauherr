@@ -5,7 +5,6 @@ import { password, shoot } from './dock'
 test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1, INTAKE_FAKE=1 and CHAT_FAKE=1 (set E2E_FAKE_FORGE=1 here)')
 
-// A member of the several-Product Workspace with a workbench of their own (seed-e2e.ts); only these tests sign in as them.
 const owner = 'card-owner@example.com'
 const signIn = async (page: Page, who: string) => {
   await page.context().clearCookies()
@@ -25,7 +24,6 @@ const say = async (page: Page, text: string, reply: string | RegExp) => {
   await expect(page.getByTestId('speaker').last().getByTestId('reply-text')).toContainText(reply, { timeout: 30_000 })
   await expect(page.getByTestId('stop')).toHaveCount(0, { timeout: 30_000 })
 }
-/** A new request in the conversation, for Acme Web (the card's Product select, several Products). */
 const start = async (page: Page) => {
   await page.getByRole('banner').getByRole('link', { name: 'New request' }).click()
   await expect(page.getByTestId('conversation-shell')).toBeVisible()

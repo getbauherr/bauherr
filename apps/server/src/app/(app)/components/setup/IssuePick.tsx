@@ -7,7 +7,6 @@ import { Field, SettingsForm } from '../SettingsForm'
 
 const SHOWN = 20
 
-/** Streamed: the Product's open issues as radio rows. The manual field is always there, so a slow or failing forge never blocks the step. */
 async function Issues({ product }: { product: number }) {
   const issues = await within(ticketsOf(await payloadClient(), product).then((ts) => ts.list({ state: 'open' })), FORGE_TIMEOUT_MS).catch(() => null)
   if (!issues) return <p className="small text-muted-foreground" role="status">Could not read the open issues from the forge right now. Type the issue number below.</p>
@@ -25,7 +24,6 @@ async function Issues({ product }: { product: number }) {
   )
 }
 
-/** Step 5, first tab: pick an open issue (or type its number) and send it to Triage. */
 export const IssuePick = ({ product }: { product: number }) => (
   <SettingsForm action={importIssue} submit="Send to Triage" primary>
     <Suspense fallback={<p className="small text-muted-foreground" role="status">Loading open issues…</p>}>

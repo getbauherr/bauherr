@@ -15,29 +15,19 @@ import { Button } from './ui/button'
 
 type Props = {
   ticket: number
-  /** The Ticket's Product, for the "Configure checks" link. */
   product: number
   need: Need | null
-  /** What the staging and production gates name as the change (`changeOf`). */
   change?: string
   stage: string
   missing: string[]
   open: number
-  /** Latest Run id, for the re-run action. */
   run: number | null
-  /** Why the factory stopped (Run error or escalation Comment), part of the sentence. */
   reason?: string | null
-  /** The disabled step shown when it is not the owner's turn: its reason is the bar's sentence and the button's tooltip. */
   idle: NextStep
-  /** Workflow run of a failed release. */
   releaseRunUrl?: string | null
-  /** The Product's staging site, linked next to Accept. */
   stagingUrl?: string | null
-  /** The Ticket can still enter the Expedite lane (open, not flagged, before release); shows the Expedite button. */
   canExpedite?: boolean
-  /** Link to the Ticket's merge request; shown only when the bar has no other secondary (else the CI panel header carries it). */
   forge?: { href: string; label: string } | null
-  /** The prepared Decision's ask: the bar's sentence, so the Inbox and this page say the same. */
   ask?: string | null
 }
 
@@ -48,10 +38,8 @@ const Post = ({ ticket, action, children, variant = 'default', title }: { ticket
   </form>
 )
 
-/** What the fast lane does, in one line (the button's tooltip). */
 export const FAST_LANE_HELP = 'Skips Triage and plan approval, jumps the queue. One at a time.'
 
-/** The one place the owner acts on a Ticket: same position in every state, one primary button. */
 export function ActionBar({ ticket, product, need, stage, missing, open, run, reason, idle, releaseRunUrl, stagingUrl, canExpedite, ask, change, forge }: Props) {
   const gate = need ? GATES[need] : null
   const ctx = { stage, missing, open, reason, title: change }

@@ -61,7 +61,6 @@ test('clone auth: x-access-token by default, the given user (GitLab oauth2) othe
 const sh = (cwd: string, ...a: string[]) =>
   execFileSync('git', a, { cwd, stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).toString().trim();
 
-/** An MR branch with one commit on a.txt, cloned shallow; `moveMain` pushes a commit to main from a second clone. */
 async function mrFixture() {
   const base = makeBareRepo();
   const bare = base.replace('file://', '') + '/o/n.git';
@@ -125,7 +124,6 @@ test('mergeBase: a conflict leaves the merge in progress; the interdiff shows on
   }
 });
 
-/** An epic branch whose slice 1 (`prev`); main moves, then slice 2 merges it and adds `filler` empty commits plus s2.txt. */
 async function sliceFixture(o: { filler: number; mainFile: string; mainContent: string; resolve?: string }) {
   const base = makeBareRepo();
   const bare = base.replace('file://', '') + '/o/n.git';

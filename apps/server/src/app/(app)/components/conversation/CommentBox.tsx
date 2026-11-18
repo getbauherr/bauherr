@@ -10,7 +10,6 @@ import { Restore, mediaId, textOf } from './shared'
 const attachments = makeAttachments()
 const noMessages: ThreadMessageLike[] = []
 
-/** The Ticket page's composer when no refinement is open: it posts a Comment to the Ticket's issue (pasted images included). The agent reads it at its next Run. */
 export const CommentBox: FC<{ ticket: number }> = ({ ticket }) => {
   const router = useRouter()
   const [posted, setPosted] = useState(false)

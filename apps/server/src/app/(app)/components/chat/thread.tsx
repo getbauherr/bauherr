@@ -25,7 +25,6 @@ const Chip: FC<{ removable?: boolean }> = ({ removable }) => {
   )
 }
 
-/** Inline error for a pasted, dropped or picked file the composer refused before any upload (wrong type); an upload error also turns the chip red. */
 const AddError: FC = () => {
   const [message, setMessage] = useState('')
   const text = useAuiState((s) => s.composer.text)
@@ -48,7 +47,6 @@ const Message: FC = () => {
   )
 }
 
-/** The model's option buttons: the last assistant message's `metadata.custom.turn.options`. */
 const Options: FC = () => {
   const aui = useAui()
   const busy = useAuiState((s) => s.thread.isRunning)
@@ -65,8 +63,6 @@ const Options: FC = () => {
   )
 }
 
-/** Thread, option buttons and (optionally) composer on assistant-ui's primitives, shadcn-styled. Needs an `AssistantRuntimeProvider` above it. */
-/** Keeps the unsent composer text in localStorage under `key`, across reloads. */
 const Draft: FC<{ storageKey: string }> = ({ storageKey }) => {
   const aui = useAui()
   const text = useAuiState((s) => s.composer.text)
@@ -76,7 +72,6 @@ const Draft: FC<{ storageKey: string }> = ({ storageKey }) => {
       saved = localStorage.getItem(storageKey)
     } catch {}
     if (!saved) return
-    // The thread runtime is an empty placeholder until it has mounted: retry until setText sticks.
     const timer = setInterval(() => {
       try {
         aui.composer().setText(saved)

@@ -87,7 +87,6 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
   )
 }
 
-/** Step 4: the Runner or your own sessions. Reads the database only; the sessions list refreshes while the page is open. */
 async function SessionStep({ workspace, runner, n }: { workspace: number; runner: boolean; n: number }) {
   const team = await loadTeam(await payloadClient(), workspace)
   const connected = team.roles.filter((r) => r.sessions.length)

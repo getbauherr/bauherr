@@ -13,11 +13,9 @@ export type Phase = 'working' | 'queued' | 'human' | 'ci' | 'closed'
 export type Executor = 'session' | 'runner' | 'ci' | 'human' | 'factory'
 type RunRow = { stage: string; kind?: string | null; status: string; reasonKind?: string | null } | null
 
-/** Where a Ticket's time goes right now. First match: closed; a live Run (running = working, queued or awaiting a session = queued); needs the owner = human; waiting on checks, the merge queue or a deploy = ci; else queued. */
 export const phaseOf = (wf: Workflow, t: Doc, run: RunRow, gates?: Parameters<typeof needsOf>[4]): Phase => {
   const stage = t.stage ?? nameOf(wf, 'triage')
   if (t.state === 'closed' || is(wf, stage, 'done')) return 'closed'
-  // Only a Run of the Ticket's own stage is its work: a Build Run still ending while the Ticket already sits in review is not.
   if (run && run.stage === stage && run.status === 'running') return 'working'
   if (run && run.stage === stage && (run.status === 'queued' || run.status === 'awaiting_session')) return 'queued'
   if (needsOf(wf, { ...t, stage }, run, false, gates)) return 'human'
@@ -28,11 +26,6 @@ export const phaseOf = (wf: Workflow, t: Doc, run: RunRow, gates?: Parameters<ty
 
 type Opts = { cause: string; outcome?: string; note?: string; run?: number | string; actor?: string; executor?: Executor; stage?: string; phase?: Phase }
 
-/**
- * Appends a `ticket_events` row when the Ticket's `stage|phase` changed; never throws (history must not break the workflow).
- * `stage` and `phase` override what the Ticket row says, for callers that run just before the row is written. `loaded` spares the reads of a caller that has the rows.
- * One conditional UPDATE of `tickets.history_key` decides which of several concurrent callers records the change.
- */
 export const record = async (payload: Payload, ticketId: number | string, opts: Opts, loaded?: { ticket: Doc; run: Doc | null }): Promise<void> => {
   try {
     if (opts.stage && !loaded && ['scan', 'docs', 'distill'].includes(opts.stage)) return
@@ -44,7 +37,6 @@ export const record = async (payload: Payload, ticketId: number | string, opts: 
     const phase = opts.phase ?? phaseOf(wf, { ...ticket, stage }, run as RunRow, await gatesOf(payload, wf, { ...ticket, stage }))
     const key = `${stage}|${phase}`
     if (key === ticket.historyKey) return
-    // A sweep right after a gate action still sees the old labels: it must not turn the Ticket back to "waiting for a human".
     if (opts.cause === 'sweep' && phase === 'human') {
       const last = (await payload.find({ collection: 'ticket_events', where: { ticket: { equals: ticketId } }, sort: '-at', limit: 1, ...o })).docs[0] as Doc | undefined
       if (last?.stage === stage && String(last.cause).startsWith('gate:')) return
@@ -71,20 +63,16 @@ export const record = async (payload: Payload, ticketId: number | string, opts: 
       },
       ...o,
     })
-    // The sweep (`notify-gates`) handles its own transitions in the same pass; every other cause queues the Comment update so no request path waits for the forge.
     if (opts.cause !== 'sweep') await payload.jobs.queue({ task: 'sync-progress', queue: 'poll', input: { ticketId: Number(ticketId) } })
   } catch (e) {
     payload.logger.warn({ err: e, ticket: ticketId, cause: opts.cause }, 'recording ticket history failed')
   }
 }
 
-/** The cause of an event that only notes a skipped conditional step: it is no visit of that stage, takes no time and is left out of the spans and the flow metrics. */
 export const SKIP_CAUSE = 'skip:'
 
-/** The cause of an event that only notes a Job of a stage (`job:<id>:queued` or `job:<id>:finished`): like a skip it is no visit of a stage and is left out of the spans and the flow metrics. */
 export const JOB_CAUSE = 'job:'
 
-/** Records that a Job of the stage was queued (its Run created) or finished (`outcome`); one row per call, never deduplicated, never throws. */
 export const jobEvent = async (payload: Payload, ticket: Doc, e: { stage: string; job: string; what: 'queued' | 'finished'; run?: number | string; outcome?: string | null }): Promise<void> => {
   try {
     const wf = workflowFor(ticket.workspace)
@@ -99,13 +87,11 @@ export const jobEvent = async (payload: Payload, ticket: Doc, e: { stage: string
   }
 }
 
-/** The Job events of the Ticket in order: `{ stage, job, what, at, run, outcome }`. */
 export const jobs = async (payload: Payload, ticketId: number | string): Promise<{ stage: string; job: string; what: 'queued' | 'finished'; at: string; run: number | null; outcome: string | null }[]> =>
   ((await payload.find({ collection: 'ticket_events', where: { and: [{ ticket: { equals: ticketId } }, { cause: { like: JOB_CAUSE } }] }, sort: ['at', 'id'], pagination: false, ...o })).docs as Doc[])
     .filter((e) => String(e.cause).startsWith(JOB_CAUSE))
     .map((e) => ({ stage: e.stage, job: e.job, what: String(e.cause).endsWith(':queued') ? 'queued' : 'finished', at: e.at, run: e.run ? (typeof e.run === 'object' ? e.run.id : e.run) : null, outcome: e.outcome ?? null }))
 
-/** Notes that a Ticket passed a conditional step without entering it (`reason` in plain words); never throws. */
 export const skipEvent = async (payload: Payload, ticket: Doc, sk: { stage: { name: string; kind: string }; reason: string }, opts: { from: string; by?: string; job?: string }): Promise<void> => {
   try {
     const cause = SKIP_CAUSE + sk.stage.name
@@ -122,7 +108,6 @@ export const skipEvent = async (payload: Payload, ticket: Doc, sk: { stage: { na
   }
 }
 
-/** The conditional steps the Ticket passed without entering, in order: `{ stage, at, reason }`. */
 export const skips = async (payload: Payload, ticketId: number | string): Promise<{ stage: string; at: string; reason: string; job: string | null }[]> =>
   ((await payload.find({ collection: 'ticket_events', where: { and: [{ ticket: { equals: ticketId } }, { cause: { like: SKIP_CAUSE } }] }, sort: ['at', 'id'], pagination: false, ...o })).docs as Doc[])
     .filter((e) => String(e.cause).startsWith(SKIP_CAUSE))
@@ -130,7 +115,6 @@ export const skips = async (payload: Payload, ticketId: number | string): Promis
 
 export type Span = { id: number; at: string; until: string; seconds: number; stage: string | null; stageKind: string | null; phase: Phase; fromStage: string | null; outcome: string | null; run: number | null; executor: string | null; actor: string | null; cause: string | null; note: string | null; backfilled: boolean; workflowVersion: number | null; job?: string | null }
 
-/** The Ticket's events in order; `until` is the next event's `at` (now for the newest, which is its own `at` once closed). */
 export const timeline = async (payload: Payload, ticketId: number | string): Promise<Span[]> => {
   const events = ((await payload.find({ collection: 'ticket_events', where: { ticket: { equals: ticketId } }, sort: ['at', 'id'], pagination: false, ...o })).docs as Doc[]).filter((e) => !String(e.cause).startsWith(SKIP_CAUSE) && !String(e.cause).startsWith(JOB_CAUSE))
   return events.map((e, i) => {
@@ -149,10 +133,6 @@ export type Flow = {
   throughput: { week: string; tickets: number }[]
 }
 
-/**
- * Flow metrics of the Tickets whose first event falls in [from, to): lead time = first event to the first closed/done event, cycle time = the first event outside the triage stage to done,
- * seconds per stage and phase, median and p85 of those per stage and phase, and the Tickets reaching done per ISO week. A span ends at the next event (now while open).
- */
 export const flow = async (payload: Payload, workspace: number | string, w: { from: string; to: string; product?: number | string }): Promise<Flow> => {
   const db = payload.db.drizzle
   const cohort = sql`

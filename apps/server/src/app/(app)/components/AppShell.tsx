@@ -12,7 +12,6 @@ import { SidebarProvider } from './ui/sidebar'
 
 type Props = Parameters<typeof AppSidebar>[0] & { defaultOpen: boolean; presence: Presence; holds?: Hold[]; version: string; dock?: ReactNode; children: ReactNode }
 
-/** Shell: sidebar | content (header, main) | optional right dock. `dock` is the slot for the AI chat panel; without it nothing renders there. */
 export function AppShell({ defaultOpen, presence, holds, version, dock, children, ...sidebar }: Props) {
   return (
     <SidebarProvider defaultOpen={defaultOpen}>

@@ -2,7 +2,6 @@ import type { Decision } from '../../app/(app)/lib/plan'
 import { readAnswer } from '../../app/(app)/lib/plan'
 import type { Addressee } from '../workflow-rules'
 
-/** Caps of one conversation (design: at most 3 new points per turn, 10 open at a time). */
 export const MAX_ADDED = 3
 export const MAX_OPEN = 10
 export const MAX_TEXT = 2000
@@ -10,10 +9,8 @@ export const MAX_USER_MESSAGES = 60
 const MAX_ANSWER = 500
 
 export type PointStatus = 'open' | 'answered' | 'dropped'
-/** One question of the decision sheet (or added by the conversation) with what became of it. */
 export type Point = { id: string; title: string; why?: string; options: string[]; default: string; critical: boolean; status: PointStatus; answer?: string; source: 'triage' | 'conversation'; run?: number | null; /** Who answers it: the row's `for:`, else whom the checkpoint asks. */ for?: Addressee }
 
-/** Who spoke a message: the Triage session that asked, or the Factory assistant (`model` null: no model call). */
 export type Speaker = { kind: 'session' | 'assistant' | 'person'; role?: string; avatar?: string; session?: string; live?: boolean; run?: number | null; model?: string | null; at: string }
 export type Tier = 'cheap' | 'standard' | 'strong'
 export const TIERS: Tier[] = ['cheap', 'standard', 'strong']
@@ -30,7 +27,6 @@ export type Refine = {
   next: 'ask' | 'summary' | 'split'
 }
 
-/** The tool the model must end every turn with. */
 export const REFINE_TOOL = {
   name: 'refine',
   description: 'End the turn: what you say, which open points the message settled or made pointless, new points it raised, optional edits to the request text, and what comes next.',
@@ -52,7 +48,6 @@ export const REFINE_TOOL = {
 const line = (v: unknown, n: number): string => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
 const MARKER = /<!--\s*bauherr:[^>]*-->/g
 
-/** The sheet's rows as points, with the stored answers (a dropped row reads as `dropped`); added rows come after the sheet's, critical first within each. `by` is whom the checkpoint asks: the addressee of a row without `for:`. */
 export const pointsOf = (sheet: Decision[], added: Decision[], answers: Record<string, string>, run: number | null, by: Addressee = 'bauherr'): Point[] => {
   const ids = new Set(sheet.map((d) => d.id))
   const row = (d: Decision, source: Point['source']): Point => {
@@ -65,9 +60,6 @@ export const pointsOf = (sheet: Decision[], added: Decision[], answers: Record<s
 
 export const openOf = (points: Point[]): Point[] => points.filter((p) => p.status === 'open')
 
-/**
- * Validates the model's `refine` input against the open points and the Ticket. Throws on anything else than the schema's shape, an unknown id, a point named twice, an empty reply or answer, or ticket text that lost a `<!-- bauherr:... -->` marker. Nothing is applied here. A settled id that is already answered is dropped from the result: the first answer stays.
- */
 export const normalizeRefine = (raw: any, points: Point[], ticket: { body: string }): Refine => {
   const bad = (why: string): never => {
     throw new Error(`invalid refine result: ${why}`)
@@ -112,7 +104,6 @@ export const normalizeRefine = (raw: any, points: Point[], ticket: { body: strin
   return { reply, settled, dropped, added, ...(edits && { ticket: edits }), next: raw.next }
 }
 
-/** The points after the result: settled and dropped marked, new ones numbered after the highest id; past `MAX_OPEN` the surplus is dropped and `capped` says so. */
 export const applyRefine = (points: Point[], r: Refine): { points: Point[]; added: Decision[]; capped: boolean } => {
   const mark = new Map<string, Partial<Point>>([...r.settled.map((s) => [s.id, { status: 'answered', answer: s.answer }] as const), ...r.dropped.map((d) => [d.id, { status: 'dropped', answer: d.reason }] as const)])
   const next = points.map((p) => (mark.has(p.id) ? ({ ...p, ...mark.get(p.id) } as Point) : p))
@@ -124,7 +115,6 @@ export const applyRefine = (points: Point[], r: Refine): { points: Point[]; adde
 
 export type DiffLine = { kind: 'context' | 'added' | 'removed'; text: string }
 
-/** Line diff of two texts (longest common subsequence); unchanged lines further than two from a change are left out. */
 export const lineDiff = (a: string, b: string): DiffLine[] => {
   const [x, y] = [a.split('\n'), b.split('\n')]
   const t = Array.from({ length: x.length + 1 }, () => new Array<number>(y.length + 1).fill(0))
@@ -147,7 +137,6 @@ export const lineDiff = (a: string, b: string): DiffLine[] => {
   })
 }
 
-/** The open question is a card under the message that asked it: the message shows it only once, so its own lines (the question, then "Recommended: ...") are left out of the text. */
 export const withoutQuestion = (text: string, p: Pick<Point, 'title'>): string => {
   const lines = text.split('\n')
   const at = lines.findIndex((l) => l.trim() === p.title.trim())

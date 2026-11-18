@@ -14,7 +14,6 @@ export interface CostLine {
   share: number;
 }
 
-// From `elements-cost-meter`: total and a line per turn. The registry's "this run / session" pair is one `total` here, and a line's `label` is free (the turn and its model).
 export function CostMeter({ total, tokens, lines, className, ...props }: Omit<ComponentProps<"div">, "children"> & { total: string; tokens: string; lines: readonly CostLine[] }) {
   return (
     <div data-slot="cost-meter" className={cn(paper, "flex w-full flex-col gap-3 p-4", className)} {...props}>

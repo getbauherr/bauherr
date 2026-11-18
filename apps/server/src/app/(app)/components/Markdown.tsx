@@ -1,6 +1,5 @@
 import { cn } from '@/lib/utils'
 
-/** Server-rendered markdown (already sanitized by `renderMarkdown`). */
 export function Markdown({ html, className }: { html: string; className?: string }) {
   return (
     <div

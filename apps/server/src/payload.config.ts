@@ -16,10 +16,8 @@ const tenantCollections = Object.fromEntries(
 )
 
 const mediaBucket = process.env.MEDIA_S3_BUCKET
-// Fails at boot on a bad LOGIN_IP_MAX_ATTEMPTS / TRUSTED_PROXY_HOPS, like DATABASE_POOL_*.
 if (!loginLimits().trustedProxyHops) console.warn('TRUSTED_PROXY_HOPS=0: x-forwarded-for is ignored, so the per-IP sign-in limit is off (the per-account cap still applies)')
 
-/** Payload's own collections (document locks, jobs, migrations, kv) carry its default access, which answers any signed-in account: closed to everyone but Admins and Bauherren. Preferences are keyed to the user already. */
 const closeBuiltIns = (config: SanitizedConfig): SanitizedConfig => {
   for (const c of config.collections) if (c.slug.startsWith('payload-') && c.slug !== 'payload-preferences') c.access = { ...c.access, read: bauherrOnly, create: bauherrOnly, update: bauherrOnly, delete: bauherrOnly }
   return config
@@ -28,11 +26,8 @@ const closeBuiltIns = (config: SanitizedConfig): SanitizedConfig => {
 export default buildConfig({
   secret: secret('PAYLOAD_SECRET'),
   serverURL: process.env.PUBLIC_URL,
-  // The Factory UI is the product; /admin is a developer escape hatch, off by default: it redirects to /settings and its layout server functions answer 404 unless BAUHERR_ENABLE_ADMIN=1.
   admin: { user: 'bauherren' },
-  // People are added, not created: Bauherr (singular) / Bauherren (plural).
   i18n: { translations: { en: { general: { createNew: 'Add', createNewLabel: 'Add {{label}}', addNew: 'Add', addNewLabel: 'Add {{label}}' } } } },
-  // GraphQL would be a second, unqueued login path (`loginBauherren`); nothing uses it.
   graphQL: { disable: true },
   typescript: { autoGenerate: false },
   db: postgresAdapter({ pool: { connectionString: process.env.DATABASE_URL, ...poolOptions() }, push: !process.env.BAUHERR_TEST_SCHEMA_READY, prodMigrations: migrations }),
@@ -49,7 +44,6 @@ export default buildConfig({
       collections: tenantCollections as never,
       userHasAccessToAllTenants: (user) => (user as { role?: string }).role === 'admin',
     }),
-    // Same code for both stores: MEDIA_S3_BUCKET (+ endpoint, region, keys) switches `media` from the local volume to any S3-compatible bucket. Fields stay in the schema either way (prod runs migrations).
     s3Storage({
       enabled: !!mediaBucket,
       alwaysInsertFields: true,
@@ -68,6 +62,5 @@ export default buildConfig({
     deleteJobOnComplete: false,
     enableConcurrencyControl: true,
     tasks: TASKS,
-    // No in-app autoRun: the `poller` (queue poll) and `worker` (queue runs) processes run the jobs (package.json).
   },
 }).then(closeBuiltIns)

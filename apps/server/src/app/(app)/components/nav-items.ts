@@ -2,7 +2,6 @@ import { Activity, BookOpen, Bot, ChartColumn, Inbox, MessageSquare, Package, Se
 
 export type NavItem = { href: string; label: string; Icon: typeof Ticket; match: (path: string) => boolean }
 
-/** Sidebar destinations of the main group; Knowledge needs a Knowledge repo, Runs an Admin. */
 export const mainItems = ({ hasKnowledge, admin }: { hasKnowledge: boolean; admin: boolean }): NavItem[] => [
   { href: '/inbox', label: 'Inbox', Icon: Inbox, match: (p) => p.startsWith('/inbox') },
   { href: '/', label: 'Workflow', Icon: Ticket, match: (p) => p === '/' || p.startsWith('/tickets') || p.startsWith('/workflow/edit') },
@@ -14,16 +13,13 @@ export const mainItems = ({ hasKnowledge, admin }: { hasKnowledge: boolean; admi
   { href: '/insights', label: 'Insights', Icon: ChartColumn, match: (p: string) => p.startsWith('/insights') },
 ]
 
-/** The sidebar of a Product owner: the Inbox of what asks them, Requests and their profile, nothing else. */
 export const ownerItems = (): NavItem[] => ['/inbox', '/requests'].map((href) => mainItems({ hasKnowledge: false, admin: false }).find((i) => i.href === href)!).concat(settingsItem('Profile'))
 
-/** The sidebar Settings link opens the first page everyone may open. */
 export const settingsItem = (label = 'Settings'): NavItem => ({ href: '/settings/profile', label, Icon: Settings, match: (p) => p.startsWith('/settings') })
 
 type Entry = [label: string, href: string]
 export type SettingsGroup = { heading: string; entries: Entry[] }
 
-/** Settings pages by scope (Account, Factory, Workspace, Admin) that this person may open. */
 export const settingsGroups = (admin: boolean): SettingsGroup[] => [
   { heading: 'Account', entries: [['Profile', '/settings/profile'], ['API keys', '/settings/api-key']] },
   { heading: 'Factory', entries: [...(admin ? [['Workflow', '/workflow/edit'] as Entry] : []), ['Templates', '/settings/templates'], ...(admin ? [['Models & budget', '/settings/models'] as Entry] : []), ['AI usage', '/settings/usage']] },
@@ -31,5 +27,4 @@ export const settingsGroups = (admin: boolean): SettingsGroup[] => [
   ...(admin ? [{ heading: 'Admin', entries: [['Health', '/settings/health'], ['Audit', '/settings/audit'], ['Chat feedback', '/settings/chat-feedback']] as Entry[] }] : []),
 ]
 
-/** Every Settings page the person can open, labelled with its group for the command palette. */
 export const settingsPages = (admin: boolean): Entry[] => settingsGroups(admin).flatMap((g) => g.entries.map(([label, href]): Entry => [`${g.heading} › ${label}`, href]))

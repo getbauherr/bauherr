@@ -11,7 +11,6 @@ const ME = '1700000000000000201';
 
 type Call = { method: string; path: string; body: any; auth: string | null };
 
-/** Stateful stand-in for the Planka 2.x endpoints the adapter uses; every call is recorded. */
 function setup(o: Partial<PlankaOptions> = {}, hook?: (method: string, path: string) => Response | undefined) {
   const state = board();
   const inc = state.included;

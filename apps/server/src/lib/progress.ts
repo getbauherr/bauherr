@@ -15,10 +15,8 @@ type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
 
 export const PROGRESS_MARKER = '<!-- bauherr:progress -->'
-/** The six steps of the path every request takes, in plain words; stage kinds map onto them, stage names never appear. */
 export const PATH = ['Received', 'Planned', 'Built', 'Reviewed', 'On staging', 'Released'] as const
 const STEP_OF: Partial<Record<Kind, number>> = { triage: 0, plan: 1, container: 1, build: 2, review: 3, release: 4, done: 5 }
-/** The keys whose arrival is worth a Comment that mentions the author: a question for them, ready to accept, released, stuck. */
 export const NOTIFY = ['question', 'staging', 'released', 'stuck'] as const
 
 export type ProgressKey = 'received' | 'question' | 'planning' | 'approval' | 'building' | 'reviewing' | 'agent' | 'human' | 'staging' | 'waiting' | 'released' | 'stuck' | 'closed' | 'split' | 'blocked'
@@ -28,10 +26,8 @@ export type ProgressFacts = {
   needsYou: Need | null
   blockedBy?: { number: number }[]
   children?: { total: number; done: number } | null
-  /** The slice an epic parent is building (see `StatusRow.slicing`). */
   slicing?: { index: number; total: number; stage: string | null } | null
   stagingUrl?: string | null
-  /** The Ticket page in the factory, for the keys where a person with a login acts there. */
   link?: string
 }
 
@@ -59,7 +55,6 @@ const STUCK_CAUSE: Record<string, string> = {
   'review-stalled': 'it waits for someone to merge it',
 }
 
-/** The current step: the stage's own kind, or for a custom stage the nearest built-in kind before it in the workflow. */
 export const stepOf = (wf: Workflow, stage: string): number => {
   for (let i = wf.stages.findIndex((s) => s.name === stage); i >= 0; i--) {
     const step = STEP_OF[wf.stages[i]!.kind]
@@ -68,12 +63,10 @@ export const stepOf = (wf: Workflow, stage: string): number => {
   return 0
 }
 
-/** The path as plain markdown: finished steps ticked, the current one in bold. */
 export const pathMarkdown = (step: number): string => PATH.map((p, i) => (i < step ? `${p} ✓` : i === step ? `**${p} (now)**` : p)).join(' → ')
 
 const kindKey: Partial<Record<Kind, ProgressKey>> = { triage: 'received', plan: 'planning', container: 'split', build: 'building', review: 'reviewing', agent: 'agent', human: 'human', release: 'waiting' }
 
-/** One line of a staging summary's "what you get": its leading bullets. */
 const noteOf = (whatYouGet: unknown): string => {
   const lines = String(whatYouGet ?? '').split('\n').map((l) => l.trim())
   const head = lines.slice(0, Math.max(0, lines.findIndex((l) => l.startsWith('**'))) || lines.length)
@@ -82,10 +75,6 @@ const noteOf = (whatYouGet: unknown): string => {
 
 const sectionOf = (tpl: Tpl, key: string): Section | undefined => tpl.parsed.find((s) => s.id === key) ?? packTemplate('progress').parsed.find((s) => s.id === key)
 
-/**
- * Where a Ticket stands, in plain words by stage KIND (a custom stage uses its `title`). Built on `ticketStatus`, the one status every page shows, so the two cannot disagree;
- * the text of each key is the Workspace's `progress` template. `t` is a Ticket row, `facts` what the row does not hold.
- */
 export const progressOf = (wf: Workflow, t: Doc, facts: ProgressFacts, tpl: Tpl): Progress => {
   const stage: string = t.stage ?? byKind(wf, 'triage')!.name
   const kind = wf.stages.find((s) => s.name === stage)?.kind
@@ -123,11 +112,9 @@ export const progressOf = (wf: Workflow, t: Doc, facts: ProgressFacts, tpl: Tpl)
   return { key, headline, ...(rest.length && { detail: rest.join('\n') }), ...(next && { next }), ...(facts.link && ['question', 'approval', 'staging', 'human', 'stuck'].includes(key) && { link: facts.link }), step }
 }
 
-/** The body of the progress Comment, without its time stamp (the part that decides whether the Comment changed). */
 const bodyOf = (p: Progress): string =>
   [PROGRESS_MARKER, `**${p.headline}**`, ...(p.detail ? [p.detail] : []), ...(p.next ? [`**Next:** ${p.next}`] : []), ...(p.step === null ? [] : [pathMarkdown(p.step)])].join('\n\n')
 
-/** Progress of Ticket rows, DB only: the latest Run, open blockers, sub-ticket counts, the Product's staging URL, the Workspace's `progress` template and since when the Ticket is in this state. */
 export const loadProgress = async (payload: Payload, tickets: Doc[]): Promise<Map<number, Progress & { since: string | null }>> => {
   const out = new Map<number, Progress & { since: string | null }>()
   if (!tickets.length) return out
@@ -167,7 +154,6 @@ export const loadProgress = async (payload: Payload, tickets: Doc[]): Promise<Ma
 const hashOf = (s: string) => createHash('sha1').update(s).digest('hex')
 const stamp = () => `${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`
 
-/** Edits the one progress Comment of the issue in place (found by its marker, then by the stored id); the first post is a list plus a create, every later change one update. */
 const write = async (payload: Payload, t: Doc, body: string): Promise<string> => {
   const { tickets: ts } = await forgeOf(payload, id(t.product))
   const n = String(t.number)
@@ -185,10 +171,6 @@ const write = async (payload: Payload, t: Doc, body: string): Promise<string> =>
 const isBot = async (ts: { whoami(): Promise<string | null> }, login: string): Promise<boolean> =>
   /\[bot\]$/.test(login) || login === process.env.BAUHERR_BOT_LOGIN || login === (await ts.whoami().catch(() => null))
 
-/**
- * Mentions the issue's author in one NEW Comment (editing a Comment mails nobody) when the Ticket arrives at a key in NOTIFY; once per arrival, claimed on `progressNotified` before the post and
- * released when the forge refuses. Leaving the key ends the episode. Nobody is mentioned when the author is the factory's own account (Intake issues) or the gate Comment of `syncGate` already mentioned them.
- */
 const notify = async (payload: Payload, t: Doc, p: Progress): Promise<void> => {
   const key = (NOTIFY as readonly string[]).includes(p.key) ? p.key : null
   if (!key) {
@@ -208,10 +190,6 @@ const notify = async (payload: Payload, t: Doc, p: Progress): Promise<void> => {
   }
 }
 
-/**
- * Keeps the progress Comment of each Ticket's issue current (unchanged = no forge call; the body hash lives in `tickets.progressHash`, claimed before the write and released when it fails)
- * and posts the notices. Per Ticket, a failure is logged; with `strict` (the job) it is thrown after the others were handled so the queue retries, otherwise the next sweep retries an existing Comment. Returns how many Comments were written.
- */
 export const syncProgress = async (payload: Payload, ticketIds: (number | string)[], opts: { strict?: boolean } = {}): Promise<number> => {
   if (!ticketIds.length) return 0
   const rows = (await payload.find({ collection: 'tickets', where: { id: { in: ticketIds } }, pagination: false, ...o })).docs as Doc[]
@@ -247,7 +225,6 @@ export const syncProgress = async (payload: Payload, ticketIds: (number | string
       failure ??= e
     }
   }
-  // The job asks for `strict` so a failed first post is retried by the job queue (the sweep never creates a Comment).
   if (opts.strict && failure) throw failure
   return written
 }

@@ -7,7 +7,6 @@ import { GateLadder, RadioCards, SettingsSection, StatusCallout, ToggleRow } fro
 
 const CHECKS_UNREADABLE = 'Could not read checks from GitHub right now. Type the check name instead.'
 
-/** Repository, account and (optionally) "read tickets" of an Add repository form. */
 export const RepositoryFields = ({ connections, tickets = true }: { connections: { id: number; name: string }[]; tickets?: boolean }) => (
   <>
     <Field name="fullName" label="Repository" hint="The code repository the agents work in." example="acme/shop" required />
@@ -26,7 +25,6 @@ async function LoadedChecksPick({ product, ...pick }: PickProps & { product: num
   return <MultiPick {...pick} options={optionsOf(checks)} notice={checks ? undefined : CHECKS_UNREADABLE} />
 }
 
-/** A check picker that renders at once with the saved names and receives the forge's recent check names (`recentChecks`, 3 s, null when unreadable) when they arrive; only the picker is replaced, the rest of the form keeps what was typed. */
 const ChecksPick = (props: PickProps & { product: number }) => (
   <Suspense fallback={<MultiPick {...props} options={[]} notice="Loading recent checks from the forge…" />}>
     <LoadedChecksPick {...props} />
@@ -41,7 +39,6 @@ async function LoadedCallouts({ product, checks, notifiable }: { product: number
 type Data = NonNullable<Awaited<ReturnType<typeof loadProduct>>>
 type SectionProps = { data: Data; admin?: boolean; n?: number; retries?: boolean }
 
-/** Staging section of a Product (the Deploy tab and step 3 of /setup). */
 export function StagingSection({ data: { product: p }, n }: SectionProps) {
   const d = p.deploy
   return (
@@ -60,12 +57,10 @@ export function StagingSection({ data: { product: p }, n }: SectionProps) {
   )
 }
 
-/** Re-run of a failed check (the Checks & merging tab; inside the Approvals section of /setup). */
 export const CheckRetriesField = ({ value }: { value: number }) => (
   <Field name="checkRetries" label="Re-run a failed check once" type="number" min={0} max={1} hint="1: a failed check is re-run once before it sends the change back or stops a release. 0 turns this off." defaultValue={value} />
 )
 
-/** Approvals section of a Product (the Approvals tab and step 3 of /setup); renders the gate ladder with the production switch. */
 export function ApprovalsSection({ data: { product: p, workflow, members, hasApprover }, admin, n, retries = true }: SectionProps) {
   const d = p.deploy
   const names = members.map((m) => `@${m.login}`).join(', ')
@@ -99,7 +94,6 @@ export function ApprovalsSection({ data: { product: p, workflow, members, hasApp
   )
 }
 
-/** Production section of a Product (the Deploy tab when the production gate is on, and step 3 of /setup). */
 export function ProductionSection({ data: { product: p, hasApprover }, n }: SectionProps) {
   const d = p.deploy
   const production = namesOf(d.productionChecks)
@@ -122,7 +116,6 @@ export function ProductionSection({ data: { product: p, hasApprover }, n }: Sect
   )
 }
 
-/** Staging, Approvals and Production in one go (step 3 of /setup); render inside the form that saves them. Reads only the database; the forge-backed parts (check pickers, "Ready" callout) stream in. */
 export function DeploySections({ data, admin, numbered }: { data: Data; admin: boolean; numbered?: boolean }) {
   const num = (i: number) => (numbered ? i + 2 : undefined)
   return (

@@ -33,25 +33,20 @@ type Doc = Record<string, any>
 export const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as { id: number | string }).id : (v as number | string))
 const o = { overrideAccess: true, depth: 0 } as const
 
-/** A release not confirmed on staging after this long needs a human. */
 export const STAGING_TIMEOUT_MS = 60 * 60_000
-/** Webhook mode: staging may answer 200 from the old build right after the request, so wait this long first. */
 export const WEBHOOK_SETTLE_MS = 2 * 60_000
 
-/** PR number of `url` when it is exactly `<web>/<repo>/pull/<n>` (GitHub) or `<web>/<repo>/-/merge_requests/<n>` (GitLab); `web` is the Connection's origin, anything else is not trusted. */
 export const prNumber = (url: unknown, repo: string, web: string): number | null => {
   const esc = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const m = typeof url === 'string' ? new RegExp(`^${esc(web)}/${esc(repo)}/(?:-/merge_requests|pull)/(\\d+)$`).exec(url) : null
   return m ? Number(m[1]) : null
 }
 
-/** A PR the factory may review and merge: base and head in the Ticket's repo (no fork) and a head branch that is the Ticket's epic/slice branch or named `bauherr/<ticket number>-...`. */
 export const isFactoryPr = (pr: PullRequest, repo: string, t: Doc): boolean => {
   const branch = (t.epic as EpicField | null | undefined)?.branch ?? (t.slice as SliceField | null | undefined)?.branch
   return pr.baseRepo.toLowerCase() === repo.toLowerCase() && pr.headRepo.toLowerCase() === repo.toLowerCase() && (pr.head === branch || pr.head.startsWith(`bauherr/${t.number}-`))
 }
 
-/** Throws unless `prUrl` is an open factory MR of the Ticket (same repo, branch `bauherr/<number>-...`). */
 export const assertOpenFactoryMr = async (payload: Payload, ticket: Doc, prUrl: unknown): Promise<void> => {
   const { backend, repo, web } = await forgeOf(payload, id(ticket.product))
   const num = prNumber(prUrl, repo, web)
@@ -61,7 +56,6 @@ export const assertOpenFactoryMr = async (payload: Payload, ticket: Doc, prUrl: 
   }
 }
 
-/** Ticket source of a Product, authenticated with the Workspace's forge Connection; `web` is that forge's origin. */
 export const forgeOf = async (payload: Payload, product: number | string, req?: Partial<PayloadRequest>) => {
   const src = (await payload.find({ collection: 'ticket_sources', where: { product: { equals: product } }, limit: 1, ...o, req })).docs[0]
   if (!src) throw new Error('no ticket source for this Product')
@@ -70,7 +64,6 @@ export const forgeOf = async (payload: Payload, product: number | string, req?: 
   return { backend, repo: src.repo as string, web: webOrigin(connection), tickets: backend.tickets(src.repo), kind: connection.kind === 'gitlab' ? ('gitlab' as const) : ('github' as const) }
 }
 
-/** Posts the staging summary Comment once (idempotent by marker); the data comes from the plan, worklog, linked MRs and the latest build Run. Also freezes the approval brief of the merge commit once (`approvalBrief.sha`), so its MR body is parsed once per merge commit. */
 export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{ posted: boolean }> => {
   const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
   const n = String(t.number)
@@ -113,10 +106,8 @@ export const publishStagingSummary = async (payload: Payload, t: Doc): Promise<{
   return { posted }
 }
 
-/** Whether the release stage's Jobs (the staging walk) are still open; imported late because stage-jobs imports this module. */
 const walking = async (payload: Payload, t: Doc): Promise<boolean> => (await import('./stage-jobs')).jobsOpen(payload, t)
 
-/** Latest run per check name (highest id; later entry wins without ids). */
 export const latestChecks = (checks: Check[]): Check[] => {
   const latest = new Map<string, Check>()
   for (const c of checks) if (!latest.has(c.name) || (c.id ?? 0) >= (latest.get(c.name)!.id ?? 0)) latest.set(c.name, c)
@@ -125,21 +116,18 @@ export const latestChecks = (checks: Check[]): Check[] => {
 export const passed = (c: Check | undefined): boolean => c?.status === 'completed' && ['success', 'neutral', 'skipped'].includes(c.conclusion ?? '')
 export const failedCheck = (c: Check | undefined): c is Check => c?.status === 'completed' && !passed(c)
 
-/** Latest run per check name, then every picked check must have passed. */
 const checksGreen = (checks: Check[], names: string[]): boolean => {
   const latest = latestChecks(checks)
   const picked = names.length ? names.map((n) => latest.find((c) => c.name === n)) : latest
   return picked.length > 0 && picked.every(passed)
 }
 
-/** The default branch tip and its checks, looked up once per repo and tick and shared by every waiting Ticket. */
 type Tip = { sha: string; checks: Check[] } | null
 const tipOf = async (forge: Forge, repo: string): Promise<Tip> => {
   const tip = await forge.getBranch(repo, (await forge.getRepository(repo)).defaultBranch)
   return tip ? { sha: tip.sha, checks: await forge.listChecks(repo, tip.sha) } : null
 }
 
-/** Staging runs the newest default-branch commit, so a Ticket is confirmed when its merge commit, or the branch tip descending from it (a batch tip, a queue group), is green. Polled every minute: mergeSha's pending checks cost no further call, the tip is looked up only once they have completed without going green. */
 const stagingConfirmed = async (forge: Forge, repo: string, mergeSha: string, mergeChecksList: Check[], names: string[], tips: Map<string, Promise<Tip>>): Promise<boolean> => {
   if (checksGreen(mergeChecksList, names)) return true
   if (latestChecks(mergeChecksList).some((c) => c.status !== 'completed')) return false
@@ -148,10 +136,8 @@ const stagingConfirmed = async (forge: Forge, repo: string, mergeSha: string, me
   return !!tip && tip.sha !== mergeSha && checksGreen(tip.checks, names) && (await forge.isAncestor(repo, mergeSha, tip.sha))
 }
 
-/** CI gets this long after the head commit to register its first check before "no checks" counts as green. */
 export const CHECKS_GRACE_MS = 10 * 60_000
 
-/** Merge gate view of a head's checks: red when a finished check failed, pending while one still runs, else green. No checks at all is green only once the head commit is older than the grace period. */
 export const mergeChecks = (checks: Check[], headAgeMs = Infinity): { state: 'green' | 'pending' | 'red'; failed: string[] } => {
   const latest = latestChecks(checks)
   const failed = latest.filter(failedCheck).map((c) => c.name)
@@ -159,11 +145,6 @@ export const mergeChecks = (checks: Check[], headAgeMs = Infinity): { state: 'gr
   return { state: failed.length ? 'red' : pending ? 'pending' : 'green', failed }
 }
 
-/**
- * The Ticket's factory MR: the epic PR (own or the parent's), else the newest build Run artifact `prUrl` in the ticket source repo, with its live state.
- * When that MR was closed unmerged (or is not a factory MR), or a Ticket in review/release has none linked, the newest open factory MR of the Ticket (head `bauherr/<number>-*`) stands in, so a replacement MR is reviewed and merged with no DB edit.
- * Null when there is none. `{ fallback: false }` answers only for the linked MR (the liveness watchdog uses it to find Tickets whose link went stale).
- */
 export const prOf = async (payload: Payload, t: Doc, o2: { fallback?: boolean } = {}) => {
   const { backend, repo, web, tickets } = await forgeOf(payload, id(t.product))
   const runs = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
@@ -186,20 +167,17 @@ const stagingAnswers = async (url: string): Promise<boolean> => {
   }
 }
 
-/** One conditional UPDATE of a Ticket (`set` where the row still matches `where`); true when this call changed it. Payload's update-by-where is find-then-update and lets two callers both win. */
 export const cas = async (payload: Payload, ticket: number | string, set: ReturnType<typeof sql>, where: ReturnType<typeof sql>): Promise<boolean> =>
   (await payload.db.drizzle.execute(sql`UPDATE "tickets" SET ${set}, "updated_at" = now() WHERE "id" = ${ticket} AND ${where} RETURNING "id"`)).rows.length > 0
 
 export { APPROVED_STAGING }
 export const APPROVED_PRODUCTION = 'bauherr:approved:production'
 export const PRODUCTION_MARKER = '<!-- bauherr:production -->'
-/** A production deploy not reported by the Product's checks after this long needs a human. */
 export const PRODUCTION_TIMEOUT_MS = 60 * 60_000
 export const REOPENED_MARKER = '<!-- bauherr:reopened -->'
 
 export const DROPPED_MARKER = '<!-- bauherr:dropped -->'
 
-/** Decides a closed review/release Ticket once. A Ticket reopened on the forge before this pass is only synced back to open. A merged factory MR can close its Ticket (body keyword, commit message, manual close) but only acceptance on staging may: such a `completed` close is reopened (comment once, forge reopen retried until the local state follows). Accepted Tickets, `not_planned`/`duplicate` closes and closes before any merge are settled as `done` (note once, state written last so a failed forge call is retried) and no longer match the watcher query. A Ticket held for production approval is left alone. */
 const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise<'reopened' | 'dropped' | 'held'> => {
   const n = String(t.number)
   const syncOpen = async (): Promise<'reopened'> => {
@@ -230,16 +208,11 @@ const decideClosed = async (payload: Payload, t: Doc, ts: TicketSource): Promise
   return 'dropped'
 }
 
-/**
- * Staging passes: the Ticket moves to `done` (closed) unless the Product's production gate is on (workflow `production_gate` or `Product.productionGate`), then it waits for production approval; without `productionChecks` the Ticket shows the "Configure production checks" gate instead (see `needsYou`).
- * `touch` records the human acceptance; the automatic path (release gate off) records an `auto:staging` touch of the factory, which is also what makes its label verifiable.
- */
 export const passStaging = async (payload: Payload, t: Doc, human?: () => Promise<unknown>, skip?: Doc): Promise<{ approved: string; stage: string }> => {
   const wf = workflowFor(t.workspace)
   const { tickets: ts } = await forgeOf(payload, id(t.product))
   const n = String(t.number)
   const touch = human ?? (() => payload.create({ collection: 'human_touches', data: { kind: skip ? EXPEDITE_SKIP_TOUCH : 'auto:staging', ticket: t.id, workspace: id(t.workspace), actor: 'factory', at: new Date().toISOString(), ...(skip && { status: `Product setting expediteSkipStaging, enabled by ${skip.expediteSkipStagingBy ?? 'unknown'} at ${skip.expediteSkipStagingAt ?? 'unknown'}` }) }, ...o }))
-  // remove first so the label event is the factory's own, not an earlier agent's
   const label = async () => {
     await touch()
     await ts.removeLabels(n, [APPROVED_STAGING])
@@ -264,16 +237,13 @@ export const passStaging = async (payload: Payload, t: Doc, human?: () => Promis
   return { approved: APPROVED_STAGING, stage }
 }
 
-/** A merged factory MR of the Ticket that it was not released with before: a Ticket sent back from release keeps its old merge. */
 export const mergedDuringBuild = (pr: PullRequest, repo: string, t: Doc): boolean => pr.state === 'merged' && isFactoryPr(pr, repo, t) && !(t.mergeSha && pr.mergeSha === t.mergeSha)
 
-/** The PR URLs linked on the Ticket (its epic MR, then the MR of each Run, newest first) and the first trusted PR number among them. */
 const linkedPr = (t: Doc, runs: Doc[], repo: string, web: string) => {
   const urls = [t.epic?.pr, ...runs.map((r) => r.artifacts?.prUrl)].filter(Boolean)
   return { urls, num: urls.map((u) => prNumber(u, repo, web)).find((x) => x !== null) }
 }
 
-/** `prUrl` (else the MR linked on the Ticket) when it is a merged factory MR the Ticket was not released with (see `mergedDuringBuild`), with the Ticket's source; `released` when the Ticket already sits in release with that very merge (a claim or the watcher moved it first). Null otherwise. */
 export const mergedOwnMr = async (payload: Payload, t: Doc, prUrl?: unknown): Promise<{ ts: TicketSource; pr: PullRequest; released: boolean } | null> => {
   const { backend, repo, web, tickets: ts } = await forgeOf(payload, id(t.product))
   const runs = prUrl ? [] : ((await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[])
@@ -284,7 +254,6 @@ export const mergedOwnMr = async (payload: Payload, t: Doc, prUrl?: unknown): Pr
   return t.stage === byKind(workflowFor(t.workspace), 'release')!.name && t.mergeSha && pr.mergeSha === t.mergeSha ? { ts, pr, released: true } : null
 }
 
-/** Moves a Ticket whose MR merged to `release` (conditional on its stage, so two callers release it once; false when another won), clears what waited for the owner, cancels queued Build Runs of a Ticket released from Build, and records the move. */
 export const releaseMerged = async (payload: Payload, ts: TicketSource, t: Doc, pr: PullRequest, now = Date.now()): Promise<boolean> => {
   const wf = workflowFor(t.workspace)
   const release = byKind(wf, 'release')!.name
@@ -301,7 +270,6 @@ export const releaseMerged = async (payload: Payload, ts: TicketSource, t: Doc, 
   return true
 }
 
-/** Review Tickets whose MR merged move to `release`, and so do Build Tickets whose factory MR merged during the Build (a human merged a review fix round; no Run can end that Build); release Tickets get their staging summary once their merge commit is on staging, or `timed_out` after 60 minutes. State is written before any side effect so a failed write never repeats a webhook or comment. */
 export const watchRelease = async (payload: Payload, now = Date.now()): Promise<{ released: number; confirmed: number; timedOut: number }> => {
   const out = { released: 0, confirmed: 0, timedOut: 0 }
   const tips = new Map<string, Promise<Tip>>()
@@ -316,13 +284,11 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
   )
   if (!stages.size) return out
   const owners = new Map<number, Promise<Doc[]>>()
-  /** Whether staging acceptance is asked for this Product (see `stagingGateOn`); the owner lookup is one query per Workspace and sweep, and only for a workflow that asks the Product owner. */
   const stagingAsked = async (wf: ReturnType<typeof workflowFor>, p: Doc): Promise<boolean> => {
     const ws = Number(id(p.workspace))
     if (!owners.has(ws)) owners.set(ws, productOwnersOf(payload, ws))
     return stagingGateOn(wf, p, ownerAssigned(await owners.get(ws)!, { id: p.id, workspace: ws }))
   }
-  /** `auto`: staging acceptance is not asked of every Product, so every Ticket on staging is looked at (a gate that asks the Product owner is decided per Product below). */
   const whereOf = (ws: number, { build, review, release, auto }: { build: string; review: string; release: string; auto: boolean }): Where => {
     const waiting: Where = { or: [{ releaseState: { equals: 'waiting' } }, { releaseState: { exists: false } }, ...(auto ? [{ releaseState: { equals: 'on_staging' } }] : [{ and: [{ releaseState: { equals: 'on_staging' } }, { expedite: { equals: true } }] }])] }
     return { and: [{ workspace: { equals: ws } }, { or: [{ and: [{ state: { equals: 'open' } }, { or: [{ stage: { in: [build, review] } }, { and: [{ stage: { equals: release } }, waiting] }] }] }, { and: [{ state: { equals: 'closed' } }, { stage: { in: [review, release] } }] }] }] }
@@ -336,7 +302,6 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       const n = String(t.number)
       const auto = loose && !(await stagingAsked(wf, product))
       if (t.state === 'closed' && (await decideClosed(payload, t, ts)) !== 'reopened') continue
-      // Product `expediteSkipStaging` is the human decision to skip the staging gate for a Hotfix; passStaging still records the staging touch.
       if (t.stage === release && ((auto && !(await walking(payload, t))) || (t.expedite && product.expediteSkipStaging)) && t.releaseState === 'on_staging') {
         if (!t.productionState) await passStaging(payload, t, undefined, auto ? undefined : product)
         continue
@@ -345,7 +310,6 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
       const inBuild = t.stage === build && build !== review
       if (t.stage === review || inBuild) {
         const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 20, ...o })).docs as Doc[]
-        // A running Build may still push to its MR; the next pass looks again once it ended.
         if (inBuild && runs.some((r) => r.stage === build && r.status === 'running')) continue
         const { urls, num } = linkedPr(t, runs, repo, web)
         if (num == null) {
@@ -353,7 +317,6 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
           continue
         }
         const pr = await backend.forge.getPullRequest(repo, num)
-        // In Build only a merged factory MR that was not released before counts: a Ticket sent back from release keeps its old merge.
         if (inBuild && !mergedDuringBuild(pr, repo, t)) continue
         if (pr.state === 'closed') {
           const marker = `<!-- bauherr:mr-closed:${num} -->`
@@ -404,25 +367,19 @@ export const watchRelease = async (payload: Payload, now = Date.now()): Promise<
 
 const productionNames = (product: Doc): string[] => String(product.productionChecks ?? '').split(',').map((x) => x.trim()).filter(Boolean)
 
-/** Ticket fields that drop any production approval and deploy; used wherever the merge commit or the gate is reset. */
 export const NO_PRODUCTION = { productionState: null, productionApprovedSha: null, productionRequestedAt: null, productionWebhookSentAt: null, productionLabelAt: null } as const
 
-/** Check runs older than the approval by more than this still count (forge and server clocks differ). */
 export const CLOCK_SKEW_MS = 60_000
-/** Production checks pass only on `success`: a skipped or neutral deploy job deployed nothing. */
 const succeeded = (c: Check | undefined): boolean => c?.status === 'completed' && c.conclusion === 'success'
 
-/** Sets the output label once per approval: `productionLabelAt` records the delivery, so a later removal on the forge never re-triggers label-based pipelines. Only a `deploying` Ticket that has not been delivered yet gets it. */
 const deliverLabel = async (payload: Payload, ts: TicketSource, ticket: number | string, number: number): Promise<void> => {
   await ts.addLabels(String(number), [APPROVED_PRODUCTION])
   await cas(payload, ticket, sql`"production_label_at" = ${new Date().toISOString()}`, sql`"production_state" = 'deploying' AND "production_label_at" IS NULL`)
 }
 
-/** The approval label is only an output signal for label-triggered pipelines; a failed removal is logged, never trusted as state. */
 export const clearApprovalLabel = (payload: Payload, ts: TicketSource, n: string) =>
   ts.removeLabels(n, [APPROVED_PRODUCTION]).catch((e) => payload.logger.error({ err: e, ticket: n }, 'could not remove the production label'))
 
-/** Starts the production deploy of a Ticket in `awaiting_approval | failed | timed_out` after an explicit approval by a person: the human touch is written first (no deploy without an audit row; removed again when the CAS is lost), then one CAS records the approval for the current merge sha and moves to `deploying` (a lost race or a changed merge sha changes nothing), then the output label. A label failure is retried by `watchProduction`. The Product's pipeline reacts to the label or the webhook; the factory deploys nothing. */
 export const beginProduction = async (payload: Payload, t: Doc, user: Doc, now = Date.now(), addressee?: 'bauherr' | 'product-owner'): Promise<void> => {
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc
   if (!productionNames(product).length) throw new Error('configure productionChecks on the Product first')
@@ -439,7 +396,6 @@ export const beginProduction = async (payload: Payload, t: Doc, user: Doc, now =
   await deliverLabel(payload, ts, t.id, t.number).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'could not set the production label, retrying'))
 }
 
-/** Moves a `deploying` Ticket to `to` once; false when another pass already did. A failed or timed out deploy spends the approval (record and label). */
 const moveProduction = async (payload: Payload, t: Doc, ts: TicketSource, to: 'deployed' | 'failed' | 'timed_out'): Promise<boolean> => {
   const won = await cas(payload, t.id, to === 'deployed' ? sql`"production_state" = ${to}` : sql`"production_state" = ${to}, "production_approved_sha" = NULL`, sql`"production_state" = 'deploying'`)
   if (won && to !== 'deployed') await clearApprovalLabel(payload, ts, String(t.number))
@@ -447,7 +403,6 @@ const moveProduction = async (payload: Payload, t: Doc, ts: TicketSource, to: 'd
   return won
 }
 
-/** The single production Comment (updated on a retry): result, sha, checks, approver, time. */
 const postProduction = async (payload: Payload, t: Doc, ts: TicketSource, result: string, names: string[]) => {
   const n = String(t.number)
   const touch = (await payload.find({ collection: 'human_touches', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'approve:production' } }] }, sort: '-at', limit: 1, ...o })).docs[0] as Doc | undefined
@@ -466,9 +421,6 @@ const finishDeployed = async (payload: Payload, t: Doc, ts: TicketSource, names:
   Object.assign(t, await payload.update({ collection: 'tickets', id: t.id, data: { stage: done, state: 'closed' }, ...o }))
 }
 
-/**
- * Production observer. The deploy starts only through `beginProduction` (owner approval); a forge label never starts it. A `deploying` Ticket gets the optional webhook once and its output label until one add succeeded (never again afterwards), then the Product's `productionChecks` on the merge commit decide, counting only runs that started at or after `productionRequestedAt` minus a 60 s clock-skew margin (older runs are a previous attempt): all `success` is `deployed` (done, closed), a finished red one `failed`, nothing after 60 minutes `timed_out`. State is claimed before side effects. Returns the Tickets that just became `deployed`.
- */
 export const watchProduction = async (payload: Payload, now = Date.now()): Promise<{ released: Doc[] }> => {
   const released: Doc[] = []
   const tickets = (await payload.find({ collection: 'tickets', where: { and: [await inKindStage(payload, 'release'), { productionState: { in: ['deploying', 'deployed'] } }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
@@ -517,10 +469,8 @@ export const watchProduction = async (payload: Payload, now = Date.now()): Promi
 }
 
 export const releaseMarker = (sha: string) => `<!-- bauherr:release:${sha} -->`
-/** `notes-only` Product with no release for the deployed commit after this long: the notes go on the Tickets, nothing is created. */
 export const RELEASE_WAIT_MS = 6 * 60 * 60_000
 
-/** Prepends the release to CHANGELOG.md (after `## Unreleased`) on `bauherr/release-<tag>` and opens an MR; a human merges it. Safe to repeat: an existing branch or MR is kept. */
 export const changelogPr = async (forge: Forge, repo: string, release: Release, marker: string, now: number) => {
   const branch = `bauherr/release-${release.tag}`
   const base = (await forge.getRepository(repo)).defaultBranch
@@ -534,20 +484,14 @@ export const changelogPr = async (forge: Forge, repo: string, release: Release, 
   if (!(await forge.listPullRequests(repo, 'all', branch)).some((p) => p.head === branch)) await forge.openPullRequest(repo, { title: `docs(changelog): ${release.tag}`, head: branch, base, body: `Changelog entry for [${release.tag}](${release.url}).` })
 }
 
-/** While a `notes-only` Product's tooling has not made the release yet, look again after this long. */
 export const RELEASE_POLL_MS = 10 * 60_000
-/** After a failed publish, retry after this long; the 3rd failure gives up. */
 export const RELEASE_RETRY_MS = 60 * 60_000
 export const RELEASE_MAX_ATTEMPTS = 3
 
-/** Tickets approved for production whose release is not published and not given up on, optionally narrowed. */
 const unreleased = (extra: Doc[] = []) => ({ and: [{ productionApprovedSha: { exists: true } }, { productionState: { in: ['deploying', 'deployed'] } }, { releasePublishedAt: { exists: false } }, { or: [{ releaseAttempts: { exists: false } }, { releaseAttempts: { less_than: RELEASE_MAX_ATTEMPTS } }] }, ...extra] })
 
 const retryAfter = (payload: Payload, tickets: Doc[], at: number, extra: Doc = {}) => Promise.all(tickets.map((t) => payload.update({ collection: 'tickets', id: t.id, data: { releaseRetryAt: new Date(at).toISOString(), ...extra }, ...o })))
 
-/**
- * Publishes the Release for the Product's Tickets that were approved for production and have none yet. The deployed commit is the newest (by commit date) approved merge sha. Idempotent by the marker `<!-- bauherr:release:<sha> -->` in the release body: the release that shipped the sha is found before one is created. `notes-only` adds the notes to the release the Product's tooling made (waiting for it, then falling back to Ticket Comments); `factory` tags `v<semver>` itself and opens a CHANGELOG MR. The notes get one cheap-tier model pass (deterministic text on any failure) and are cached on the Tickets before the publish step so a retry does not re-run the model.
- */
 export const publishRelease = async (payload: Payload, productId: number | string, now = Date.now()): Promise<{ state: 'none' | 'waiting' | 'published' | 'fallback'; url?: string }> => {
   const batch = (await payload.find({ collection: 'tickets', where: unreleased([{ product: { equals: productId } }]), sort: 'productionRequestedAt', limit: 200, pagination: false, ...o })).docs as Doc[]
   if (!batch.length) return { state: 'none' }
@@ -601,14 +545,9 @@ export const publishRelease = async (payload: Payload, productId: number | strin
   return { state: 'published', url: release.url }
 }
 
-/** Names in a comma-separated check list. */
 const checkNames = (v: unknown): string[] => String(v ?? '').split(',').map((x) => x.trim()).filter(Boolean)
-/** A pre-release whose release workflow has not finished after this long is `failed`. */
 export const RELEASE_CHECKS_TIMEOUT_MS = 60 * 60_000
 
-/**
- * Reads the Product's `releaseChecks` (for example `image, npm`) on the tagged sha for Tickets in `waiting` or `failed`, counting only runs that started at or after the window start (`releaseChecksSince`: the publish time, or the creation time of a reused older release so its own runs count; never the commit date GitHub reports for a new release) minus the clock-skew margin, and timing out 60 minutes after `releasePublishedAt`. All `success`: "Released in" and `passed` (also after a re-run of a failed workflow); a finished red check, or nothing after 60 minutes: `failed` with the run link (needs-you "Release failed", one Comment on the transition).
- */
 export const watchReleaseChecks = async (payload: Payload, now = Date.now()): Promise<number> => {
   const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ releaseChecksState: { in: ['waiting', 'failed'] } }, await inLiveWorkspace(payload)] }, limit: 200, pagination: false, ...o })).docs as Doc[]
   let changed = 0
@@ -641,7 +580,6 @@ export const watchReleaseChecks = async (payload: Payload, now = Date.now()): Pr
   return changed
 }
 
-/** Stores the error on the Product's pending Tickets and delays the next try by an hour; the 3rd failure gives up with a Comment. */
 const recordFailure = async (payload: Payload, productId: number | string, e: unknown, now: number) => {
   const message = (e instanceof Error ? e.message : String(e)).slice(0, 500)
   const batch = (await payload.find({ collection: 'tickets', where: unreleased([{ product: { equals: productId } }]), limit: 200, pagination: false, ...o })).docs as Doc[]
@@ -655,7 +593,6 @@ const recordFailure = async (payload: Payload, productId: number | string, e: un
   }
 }
 
-/** One `publishRelease` per Product with unreleased approved Tickets that are due for a try; one failing Product does not stop the others. */
 export const publishReleases = async (payload: Payload, now = Date.now()): Promise<number> => {
   const due = { or: [{ releaseRetryAt: { exists: false } }, { releaseRetryAt: { less_than_equal: new Date(now).toISOString() } }] }
   const tickets = (await payload.find({ collection: 'tickets', where: unreleased([due, await inLiveWorkspace(payload)]), limit: 1000, pagination: false, select: { product: true }, ...o })).docs as Doc[]

@@ -8,17 +8,12 @@ export interface ContractEnv {
   backend: Backend;
   repo: string;
   user: string;
-  /** Runs only the TicketSource part (a ticket source without a forge, e.g. Planka). */
   ticketsOnly?: boolean;
-  /** Writes a file on a branch (needed so a PR has a diff). */
   commitFile(branch: string, path: string, content: string): Promise<void>;
-  /** Switches the repo's native merge queue on (fakes only); the enqueue cases run only when given. */
   enableQueue?(): void;
-  /** Runs after the suite with the created ticket ids, branches and PR numbers. */
   cleanup?(created: { tickets: string[]; branches: string[]; prs: number[]; labels: string[] }): Promise<void>;
 }
 
-/** GitHub's list endpoints are eventually consistent (seconds): retry assertions. */
 async function eventually(fn: () => Promise<void>, tries = 10): Promise<void> {
   for (let i = 1; ; i++) {
     try {

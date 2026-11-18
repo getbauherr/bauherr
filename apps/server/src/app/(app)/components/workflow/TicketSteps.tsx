@@ -13,7 +13,6 @@ const Meta = ({ k, v, href }: { k: string; v: string | null; href?: string }) =>
 
 const JOB_TONE: Record<JobStatus, 'ok' | 'accent' | 'muted' | 'destructive' | 'warn'> = { done: 'ok', working: 'accent', queued: 'muted', skipped: 'muted', failed: 'destructive', cancelled: 'muted', needs_you: 'warn', waiting: 'warn', pending: 'muted' }
 
-/** The Jobs of a stage visit nested under it: status, who worked it, how long and what it cost. */
 export function JobList({ jobs, stage }: { jobs: JobRow[]; stage: string }) {
   return (
     <ol className="m-0 flex list-none flex-col gap-1.5 border-l-2 border-border p-0 pl-3" aria-label={`Jobs of ${stage}`} data-testid="step-jobs">
@@ -37,7 +36,6 @@ export function JobList({ jobs, stage }: { jobs: JobRow[]; stage: string }) {
 
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 
-/** A row the Ticket has left shows its outcome (or "Done"); only the row the Ticket is in now shows where it stands (its latest phase). */
 const badgeOf = (row: Row, current: boolean) => {
   const r = row.run
   const last = row.steps.at(-1)!
@@ -47,7 +45,6 @@ const badgeOf = (row: Row, current: boolean) => {
   return { text: failed ? 'Failed' : text ? cap(text) : 'Done', tone: failed ? ('destructive' as const) : ('ok' as const) }
 }
 
-/** `open`: the Ticket's decision while this row's latest phase is the one it waits at; it replaces "who decided" until someone has. */
 function StepRow({ row, open, current }: { row: Row; open?: { ticket: number; ask: string } | null; current: boolean }) {
   const r = row.run
   const badge = badgeOf(row, current)
@@ -110,7 +107,6 @@ function StepRow({ row, open, current }: { row: Row; open?: { ticket: number; as
   )
 }
 
-/** The Ticket's steps, newest first: one row per Run (stage, outcome, duration, who ran it, model, cost) with its phases as one thin bar; the full executor data opens under "Details". */
 export function TicketSteps({ steps, decision }: { steps: Steps; decision?: { ticket: number; ask: string } | null }) {
   const rows = steps.visits.flatMap(rowsOf).reverse()
   const items = [...rows.map((row, i) => ({ at: row.at, row, i })), ...steps.skipped.map((skip) => ({ at: skip.at, skip }))].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))

@@ -24,7 +24,6 @@ export type RunRow = {
   kind?: string | null
   job?: string | null
   status: string
-  /** Why the Run ended (failed, cancelled, needs_human). */
   error?: string | null
   mode: string
   sessionOwner: number | null
@@ -35,9 +34,7 @@ export type RunRow = {
   reconcileStatus?: string | null
   gatewayTokensTotal?: number | null
   createdAt: string
-  /** Set on an investigation Plan Run. */
   investigation?: unknown
-  /** Set on an escalated Run: { step, reason, previousRuns }. */
   escalation?: { step: number; reason: string } | null
   reasonKind?: string | null
   preemptedFor?: number | null
@@ -50,7 +47,6 @@ export type RunRow = {
   provider?: string | null
 }
 import { KINDS, type Kind } from '../../../lib/intake/kinds'
-/** The type of a Ticket from its `bauherr:type:<kind>` label (null for tickets that did not come from a typed request). */
 export const kindOfLabels = (labels: readonly string[] | null | undefined): Kind | null => {
   const k = labels?.find((l) => l.startsWith('bauherr:type:'))?.slice(13)
   return KINDS.find((x) => x === k) ?? null
@@ -64,47 +60,28 @@ export type TicketRow = {
   stage: Stage
   rank: string | null
   reviewRounds: number
-  /** Hotfix: the Expedite lane serves this open Ticket. */
   expedite: boolean
-  /** The request's type from its `bauherr:type:<kind>` label; null for a ticket nobody typed. */
   kind: Kind | null
-  /** Tag of the release the Ticket shipped in, e.g. v0.2.0. */
   releasedIn: string | null
   product: { id: number; name: string } | null
   run: RunRow | null
-  /** Email local-part of the session owner of a live Run; null for scheduler Runs. */
   owner: string | null
   needsYou: string | null
-  /** Who the gate notified and since when; null before the notify job ran. */
   gate: { people: string[]; since: string } | null
   gateUnreachable: string | null
-  /** Open Tickets this one is blocked by. */
   blockedBy: { id: number; number: number }[]
-  /** Number of the Ticket whose paths hold this Build, else null. */
   overlaps: number | null
-  /** "Queued for Build: Build is full (2/2). Starts by itself." (`nextStep` reason) while the Ticket waits for a full column; null otherwise. */
   waiting: string | null
-  /** The bare reason of `waiting` ("Build is full (2/2)", "waits for #12, which changes the same files"). */
   queuedWhy: string | null
-  /** Kind of the Product's forge Connection; names who runs the checks. */
   forge: 'github' | 'gitlab' | null
-  /** What the factory waits for between Runs (`phaseOf` reads the same fields). */
   track: Track
-  /** Sub-tickets of a split Ticket; null otherwise. */
   children: { total: number; done: number } | null
-  /** When the Ticket entered its stage: the latest stage-change event, else the Ticket's last update. */
   enteredAt: string
-  /** Parent Ticket of a sub-ticket. */
   parent: { id: number; number: number; title: string } | null
-  /** An epic parent: slices passed of `total`. Null for every other Ticket. */
   epic: { total: number; passed: number } | null
-  /** The slice an epic parent is building while it is split; its card sits in that slice's stage column. */
   slicing: { index: number; total: number; stage: Stage | null } | null
-  /** A slice sub-ticket of an epic: hidden on the Workflow view outside its epic. */
   slice: { index: number; total: number } | null
-  /** A parked epic or one of its open slices: stopped, not counted in its column. */
   parked: boolean
-  /** Why the Ticket waits for the owner without holding a WIP slot (`parkedWhyOf`); null = it holds one. */
   parkedWhy: string | null
 }
 
@@ -122,22 +99,18 @@ const q = { depth: 0, overrideAccess: true } as const
 
 const docsOf = async (payload: Payload, collection: string, extra: object): Promise<Doc[]> => ((await payload.find({ collection, pagination: false, ...q, ...extra } as never)).docs as unknown as Doc[])
 
-/** The newest Run of each Ticket (one `DISTINCT ON` query for the ids, then the Run fields), never all Runs of the Tickets. */
 const latestRuns = async (payload: Payload, tickets: number[]): Promise<Map<number, RunRow>> => {
   if (!tickets.length) return new Map()
   const ids = (await payload.db.drizzle.execute(sql`SELECT DISTINCT ON ("ticket_id") "id" FROM "runs" WHERE "ticket_id" IN (${sql.join(tickets.map((t) => sql`${t}`), sql`, `)}) ORDER BY "ticket_id", "created_at" DESC, "id" DESC`)).rows.map((r) => r.id as number)
   return new Map((await docsOf(payload, 'runs', { where: { id: { in: ids } }, select: RUN_FIELDS }) as unknown as RunRow[]).map((r) => [r.ticket, r]))
 }
 
-/** Kind of the forge Connection per Product id. */
 export const forgeKinds = async (payload: Payload, workspace: number): Promise<Map<number, 'github' | 'gitlab'>> =>
   new Map((await payload.db.drizzle.execute(sql`SELECT s."product_id" AS product, c."kind" AS kind FROM "ticket_sources" s JOIN "connections" c ON c."id" = s."connection_id" WHERE s."workspace_id" = ${workspace}`)).rows.map((r) => [r.product as number, r.kind as 'github' | 'gitlab']))
 
-/** The newest stage-change event of each Ticket: when it entered its current stage. */
 const stageEntries = async (payload: Payload, tickets: number[]): Promise<Map<number, string>> =>
   !tickets.length ? new Map() : new Map((await payload.db.drizzle.execute(sql`SELECT DISTINCT ON ("ticket_id") "ticket_id" AS ticket, "at" FROM "ticket_events" WHERE "ticket_id" IN (${sql.join(tickets.map((t) => sql`${t}`), sql`, `)}) AND "stage" IS NOT NULL AND COALESCE("cause", '') NOT LIKE 'skip:%' AND COALESCE("cause", '') NOT LIKE 'job:%' AND "from_stage" IS DISTINCT FROM "stage" ORDER BY "ticket_id", "at" DESC, "id" DESC`)).rows.map((r) => [r.ticket as number, new Date(r.at as string).toISOString()]))
 
-/** Board rows of `ticketDocs`: their blockers, parents, newest Run and its owner, in two parallel rounds. Database only. */
 const rowsOf = async (payload: Payload, workspace: number, ticketDocs: Doc[], productRows: { id: number; name: string; productionChecks?: string | null; productOwnerTestsStaging?: boolean | null }[], wip: Base['wip']): Promise<TicketRow[]> => {
   const ws = { workspace: { equals: workspace } }
   const wf = workflowFor(workspace)
@@ -228,7 +201,6 @@ const epicOf = (wf: Workflow, e: Doc, subs: Doc[], byRow: Map<number, TicketRow>
   }
 }
 
-/** Everything the Board, Runs and the top bar need, from the database only (no forge call). */
 export const loadOverviewRows = cache(async (workspace: number, all: boolean): Promise<Base> => {
   const wf = workflowFor(workspace)
   const payload = await payloadClient()
@@ -254,10 +226,8 @@ export const loadOverviewRows = cache(async (workspace: number, all: boolean): P
   return { tickets: rows, runs: runRows, runsTotal: recent.totalDocs, products: productRows, epics: epicDocs.map((e) => epicOf(wf, e, subs, byRow)), wip }
 })
 
-/** Same data as `loadOverviewRows`; the name the Board and Runs pages use. */
 export const loadOverview = loadOverviewRows
 
-/** The epic a Ticket is (its sub-tickets with their status), else null; reads only that Ticket's children. */
 export const loadEpic = async (workspace: number, ticket: Doc): Promise<Epic | null> => {
   const wf = workflowFor(workspace)
   const payload = await payloadClient()

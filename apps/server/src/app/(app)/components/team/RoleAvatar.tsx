@@ -103,7 +103,6 @@ const art: Record<string, () => ReactNode> = {
   ),
 }
 
-/** Character of a role. Each known `avatar` id has its own drawing; any other id gets initials on a shape. Motion is CSS only and only with `animate`. */
 export function RoleAvatar({ avatar, size, animate }: { avatar: string; size: keyof typeof PX; animate: boolean }) {
   const draw = art[avatar]
   const h = hash(avatar)

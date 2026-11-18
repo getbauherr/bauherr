@@ -50,7 +50,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** A Ticket accepted on staging (with a staging summary) and approved for production. */
 const approved = async (slug: string, title: string, sha: string, labels: string[] = []) => {
   const repo = `acme/${slug}`
   const ts = fake.tickets(repo)

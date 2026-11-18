@@ -68,7 +68,6 @@ beforeEach(async () => {
   await payload.update({ collection: 'workspaces', id: ws, data: { preemptForHotfix: true, wipLimits: {}, expediteLane: true }, ...o })
 })
 
-/** An open Ticket in `stage` with an awaiting_session Run of that stage. */
 const ticket = async (title: string, stage: string, extra: Doc = {}) => {
   const labels = [`bauherr:stage:${stage}`]
   const issue = await fake.tickets(repo).create({ title, labels })
@@ -77,10 +76,8 @@ const ticket = async (title: string, stage: string, extra: Doc = {}) => {
   return { id: t.id as number, number: issue.number as number, run: run.id as number }
 }
 const session = async (key: string) => (await call('connect', { role: 'engineer', session: key, label: key })).sessionId as string
-/** The session claims its next Run through `next_work`. */
 const work = async (sessionId: string) => (await call('next_work', { sessionId })).work as Doc
 
-/** Two engineer sessions, each holding a Build Run (a before b, so b started last). */
 const busy = async () => {
   const [a, b] = [await ticket('a-build', 'build'), await ticket('b-build', 'build')]
   const [sa, sb] = [await session('sa'), await session('sb')]
@@ -252,7 +249,6 @@ describe('AC3: no victim when it is not needed or not wanted', () => {
 })
 
 describe('a hotfix preempts a Runner Run', () => {
-  /** A running autonomous engineer Run of a build Ticket. */
   const runner = async (title: string) => {
     const t = await ticket(title, 'build')
     await db().execute(sql`UPDATE "runs" SET "mode" = 'autonomous', "status" = 'running', "role" = 'engineer', "started_at" = now() WHERE "id" = ${t.run}`)

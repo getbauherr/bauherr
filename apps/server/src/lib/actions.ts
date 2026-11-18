@@ -43,9 +43,7 @@ import { connectionInput } from './connection'
 import { NOT_PARKED, type EpicField, type SliceField } from './epic'
 
 
-/** Writes shared by the MCP tools and the UI; both call these with the acting Bauherr. */
 type Doc = Record<string, any>
-/** Written with the create of an escalated Run (`runs.escalation`). */
 export type Escalation = { step: 2 | 3; reason: string; previousRuns: number[] }
 type TicketId = number | string
 
@@ -67,21 +65,18 @@ export class NotInWorkspace extends Error {
   }
 }
 
-/** Loads the Ticket and, when `workspaceId` is given (UI callers), refuses a Ticket of another Workspace. */
 export const loadIn = async (payload: Payload, user: Doc, ticket: TicketId, workspaceId?: TicketId): Promise<Doc> => {
   const t = await loadTicket(payload, user, ticket)
   if (workspaceId !== undefined && String(id(t.workspace)) !== String(workspaceId)) throw new NotInWorkspace()
   return t
 }
 
-/** A person tried a decision that is addressed to someone else (the Ticket itself is theirs to see). */
 export class NotAddressed extends Error {
   constructor() {
     super('this decision is not addressed to you')
   }
 }
 
-/** The Ticket of a gate decision, for the people the checkpoint may ask: `row` is the addressee of a decision row, else the checkpoint's own (`checkpointBy` of `key`). A Bauherr or Admin passes for every checkpoint of their Workspaces; a Product owner only for one addressed to them on a Product of their assignment (any other Ticket is not found for them). Every gate function starts here, so the UI, the MCP human tools and the chat tools share the rule. */
 export const loadGate = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }, key: CheckpointOf, row?: Addressee): Promise<Doc> => {
   const t = isBauherr(user) ? await loadIn(payload, user, a.ticket, a.workspaceId) : ((await payload.findByID({ collection: 'tickets', id: a.ticket, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null)
   if (!t || (a.workspaceId !== undefined && String(id(t.workspace)) !== String(a.workspaceId)) || !canSeeProduct(user, { id: id(t.product), workspace: id(t.workspace) })) throw new NotInWorkspace()
@@ -90,10 +85,8 @@ export const loadGate = async (payload: Payload, user: Doc, a: { ticket: TicketI
   return t
 }
 
-/** A rank longer than this triggers a rebalance of the Workspace. */
 export const MAX_RANK_LENGTH = 12
 
-/** Replaces every rank of the Workspace by short, evenly spaced keys in the same order (one statement, so atomic). */
 export const rebalanceRanks = async (payload: Payload, workspaceId: TicketId): Promise<void> => {
   const r = await payload.db.drizzle.execute(sql`SELECT "id" FROM "tickets" WHERE "workspace_id" = ${workspaceId} AND "rank" IS NOT NULL ORDER BY "rank" COLLATE "C", "id"`)
   if (!r.rows.length) return
@@ -102,23 +95,19 @@ export const rebalanceRanks = async (payload: Payload, workspaceId: TicketId): P
   await payload.db.drizzle.execute(sql`UPDATE "tickets" AS t SET "rank" = v.rank FROM (VALUES ${values}) AS v(id, rank) WHERE t."id" = v.id`)
 }
 
-/** Moves a Ticket between two neighbours of its Workspace's Board order (`before` above, `after` below; either may be absent). A key past `MAX_RANK_LENGTH` rebalances the Workspace first. */
 export const rankTicket = async (payload: Payload, user: Doc, a: { ticket: TicketId; before?: TicketId | null; after?: TicketId | null; workspaceId: TicketId }): Promise<{ rank: string }> => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   const place = async (): Promise<string> => {
     const rankOf = async (n?: TicketId | null) => (n == null ? null : ((await loadIn(payload, user, n, a.workspaceId)).rank as string | null) ?? null)
     let [lo, hi] = [await rankOf(a.before), await rankOf(a.after)]
-    // At a stage-group boundary the displayed neighbours can be out of rank order: the card then sits just above `after`, below its predecessor in rank.
     if (lo !== null && hi !== null && lo >= hi) {
       const r = await payload.db.drizzle.execute(sql`SELECT max("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "id" <> ${t.id} AND "rank" COLLATE "C" < ${hi}`)
       lo = (r.rows[0]?.rank as string | null) ?? null
     }
-    // Known limitation: two concurrent drops between the same neighbours can get equal ranks; the order then falls back to the Ticket number.
     try {
       return rankBetween(lo, hi)
     } catch (e) {
       if (!(e instanceof NoRoom)) throw e
-      // `hi` is `lo` plus trailing zeros: move `after` up past its successor to open a gap, order unchanged.
       const r = await payload.db.drizzle.execute(sql`SELECT min("rank" COLLATE "C") AS rank FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "rank" COLLATE "C" > ${hi}`)
       const moved = rankBetween(hi, (r.rows[0]?.rank as string | null) ?? null)
       await payload.update({ collection: 'tickets', id: id(a.after), data: { rank: moved }, overrideAccess: true })
@@ -134,7 +123,6 @@ export const rankTicket = async (payload: Payload, user: Doc, a: { ticket: Ticke
   return { rank }
 }
 
-/** "Send to top of the queue": the Ticket gets a rank below every other of its Workspace, so it is first within its stage group. */
 export const rankFirst = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId: TicketId }): Promise<{ rank: string }> => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   const r = await payload.db.drizzle.execute(sql`SELECT "id" FROM "tickets" WHERE "workspace_id" = ${a.workspaceId} AND "id" <> ${t.id} AND "rank" IS NOT NULL ORDER BY "rank" COLLATE "C", "id" LIMIT 1`)
@@ -150,7 +138,6 @@ export class NotAdmin extends Error {
 export const COUNTERS = ['gatePendingAttempts', 'mergeFailures', 'releaseAttempts', 'reviewRounds', 'conflictReturns'] as const
 export type Repair = { kind: 'stage'; stage: string } | { kind: 'clear-waiting' } | { kind: 'reset-counters' } | { kind: 'rank-top' }
 
-/** Admin-only "Fix state": narrow repairs of one Ticket of the selected Workspace, each recorded as a `repair:<kind>` human touch. The stage move writes the forge label through `moveStage` (the poller sees it as the factory's own move). */
 export const repairTicket = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId: TicketId; repair: Repair }) => {
   if (user.role !== 'admin') throw new NotAdmin()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
@@ -172,7 +159,6 @@ export const repairTicket = async (payload: Payload, user: Doc, a: { ticket: Tic
   await touch(payload, user, t, `repair:${r.kind}`)
 }
 
-/** Admin-only: points a Build Run at the replacement MR (same check as the agent's `relink_mr`, without the lease). */
 export const relinkRunMr = async (payload: Payload, user: Doc, a: { runId: TicketId; workspaceId: TicketId; prUrl: string }) => {
   if (user.role !== 'admin') throw new NotAdmin()
   const run = (await payload.findByID({ collection: 'runs', id: a.runId, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
@@ -191,20 +177,17 @@ export class NotReleasable extends Error {
   }
 }
 
-/** A Run whose session still reports in cannot be force-released. */
 export class RunHealthy extends Error {
   constructor(runId: TicketId, minutesSinceReport: number | null) {
     super(`run ${runId} is healthy; its session reported ${minutesSinceReport ?? '?'} min ago`)
   }
 }
 
-/** Workspace ids of a Bauherr's tenants. */
 export const tenantsOf = (user: Doc): TicketId[] => ((user.tenants as { tenant: unknown }[]) ?? []).map((t) => id(t.tenant))
 
 import { personOf } from './person'
 export { personOf }
 
-/** Human force-release of a leased session Run (Admin or a member of its Workspace): ends it `abandoned`, queues the successor, records a human touch. Never escalates to needs_human. */
 export const releaseLock = async (payload: Payload, user: Doc, a: { runId: TicketId }) => {
   const run = (await payload.findByID({ collection: 'runs', id: a.runId, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
   if (!run || (user.role !== 'admin' && !tenantsOf(user).some((w) => String(w) === String(id(run.workspace))))) throw new NotInWorkspace()
@@ -219,7 +202,6 @@ export const releaseLock = async (payload: Payload, user: Doc, a: { runId: Ticke
     const seen = [run.heartbeatAt, session?.lastSeenAt].filter(Boolean).sort().pop()
     throw new RunHealthy(run.id, seen ? Math.round((at - +new Date(seen)) / 60000) : null)
   }
-  // A heartbeat after the health read keeps the Run (conditional end in abandonRun).
   const staleBefore = run.heartbeatAt ? new Date(+new Date(run.heartbeatAt) + 1).toISOString() : undefined
   if ((await abandonRun(payload, run, { reason: `${RELEASED_BY}${user.email}`, escalate: false, staleBefore })) === null) throw new NotReleasable(run.id)
   await payload.create({
@@ -246,10 +228,8 @@ export const updateWorklog = async (payload: Payload, user: Doc, a: { ticket: Ti
   return { commentId: saved.id, created: !existing }
 }
 
-/** Posts or updates the Ticket's single plan Comment (`<!-- bauherr:plan -->`). */
 export const submitPlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; markdown: string; /** An agent's submission must carry the TL;DR; plans already posted are never re-checked. */ requireSummary?: boolean }) => {
   const t = await loadTicket(payload, user, a.ticket)
-  // A hotfix plan is audited, not decided on by a person: it needs no summary.
   const heading = headingOf(await template(payload, id(t.workspace), 'plan'), 'tldr')
   const missing = a.requireSummary && !t.expedite ? tldrError(a.markdown, heading) : null
   if (missing) throw new Error(missing)
@@ -266,7 +246,6 @@ export class CommentRefused extends Error {}
 
 const commentMedia = (t: Doc, ...more: Doc[]) => ({ and: [{ product: { equals: id(t.product) } }, { ticketNumber: { equals: t.number } }, { workspace: { equals: id(t.workspace) } }, { session: { exists: false } }, { attached: { equals: false } }, ...more] })
 
-/** Posts a Ticket comment from the UI: `body` plus one `![name](link)` line per uploaded image. The images are marked sent before the forge call and released again when it fails, so a retry works and the daily prune never deletes a posted image. Returns the image links. */
 export const postComment = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId; body: string; mediaIds: TicketId[] }): Promise<string[]> => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   const text = a.body.trim()
@@ -287,7 +266,6 @@ export const postComment = async (payload: Payload, user: Doc, a: { ticket: Tick
   return links.map((l) => l.url)
 }
 
-/** The docked chat's direct comment path: images the person pasted into the chat composer (stored without a Ticket by `/api/chat/media`, not yet used) become this Ticket's comment images, then `postComment` posts text and images as it does for the comment box. */
 export const postCommentFromChat = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId; body: string; mediaIds: TicketId[] }): Promise<string[]> => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (a.mediaIds.length) {
@@ -296,18 +274,15 @@ export const postCommentFromChat = async (payload: Payload, user: Doc, a: { tick
   return postComment(payload, user, a)
 }
 
-/** Moves the Ticket to review. The Product's pre-review checks run first and block the move; `evidence` is the calling Run's Evidence. */
 export const requestReview = async (payload: Payload, user: Doc, a: { ticket: TicketId; evidence: string; run?: TicketId }) => {
   const t = await loadTicket(payload, user, a.ticket)
   const failures = await preReviewFailures(payload, t, a.evidence, { run: a.run })
   if (failures.length) throw new Error(`Pre-review checks failed:\n- ${failures.join('\n- ')}`)
-  // Review only green heads: the required checks of the MR head decide before a reviewer is involved.
   const mr = await prOf(payload, t)
   if (mr?.pr.state === 'open') {
     const gate = await checksGate(payload, t, mr)
     if (gate.state === 'red') return { stage: t.stage as string, refused: `checks red: ${gate.failed.join(', ')}`, checks: gate.failed }
     if (gate.state === 'pending') {
-      // Already in Review (review was requested before the MR was linked): wait in Build like every other pending head, where watchChecks picks it up.
       if (is(workflowFor(t.workspace), t.stage, 'review')) {
         await parkForChecks(payload, t, mr, gate)
         return { stage: nameOf(workflowFor(t.workspace), 'build'), waiting: 'checks' }
@@ -319,7 +294,6 @@ export const requestReview = async (payload: Payload, user: Doc, a: { ticket: Ti
   return enterReview(payload, t)
 }
 
-/** The move out of Build along `done` (review by default; WIP rule included) and the Review Run; shared by `request_review` and the checks watcher. */
 const enterReview = async (payload: Payload, t: Doc) => {
   const wf = workflowFor(t.workspace)
   const { ts } = await sourceOf(payload, t)
@@ -327,15 +301,10 @@ const enterReview = async (payload: Payload, t: Doc) => {
   return r.entered === 'moved' ? { stage: r.stage! } : { stage: t.stage as string, waiting: r.stage! }
 }
 
-/** Starts the Review Run of a Ticket that just entered review. */
 export const startReviewNow = async (payload: Payload, ticket: TicketId): Promise<void> => {
   await startReviewIfReady(payload, (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc)
 }
 
-/**
- * A Ticket that reached Review (a Runner or poller moved the label, or a full column released it) while its head is not green goes back: pending waits in Build for checks, red returns to Build with the failing names, no review round.
- * Never touches a Ticket outside review.
- */
 export const parkForChecks = async (payload: Payload, t: Doc, mr: Mr, gate: { state: string; failed: string[] }): Promise<void> => {
   const wf = workflowFor(t.workspace)
   if (!is(wf, t.stage, 'review') || gate.state === 'green') return
@@ -350,13 +319,8 @@ export const parkForChecks = async (payload: Payload, t: Doc, mr: Mr, gate: { st
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), reviewState: null, waitingFor: 'checks', waitingReason: null, reviewWaitingSince: now() }, overrideAccess: true })
 }
 
-/** A pending head that no check settled after this long needs a human. */
 export const CHECKS_WAIT_MS = 2 * 3_600_000
 
-/**
- * Required checks of the MR head: `green`, `pending` (a check still runs, none registered yet within the grace period, or #291's retry of a red one is under way) or `red` with the failed names.
- * One definition for the gate before Review and the merge gate.
- */
 export const checksGate = async (payload: Payload, t: Doc, mr: Mr, at = Date.now()): Promise<{ state: 'green' | 'pending' | 'red'; failed: string[] }> => {
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc
   const list = await mr.backend.forge.listChecks(mr.repo, mr.pr.headSha)
@@ -367,14 +331,9 @@ export const checksGate = async (payload: Payload, t: Doc, mr: Mr, at = Date.now
   return checks
 }
 
-/**
- * Per minute: Tickets in Build that asked for review while the head's checks were pending (`waitingFor: 'checks'`). Green: into Review. Red: back to Build with the failing names (no review round).
- * Pending past CHECKS_WAIT_MS: the latest Build Run goes `needs_human` (shown as "Run needs you" with the reason). Returns how many Tickets moved.
- */
 export const watchChecks = async (payload: Payload, at = Date.now()): Promise<number> => {
   const waiting = (await payload.find({ collection: 'tickets', where: { and: [await inKindStage(payload, 'build'), { state: { equals: 'open' } }, NOT_PARKED, { waitingFor: { equals: 'checks' } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let moved = 0
-  // A Ticket in Review that still carries the checks wait is watched by nobody else: drop the wait and let the review start decide (green: Review Run, pending: back to waiting in Build, red: back to Build).
   for (const t of (await payload.find({ collection: 'tickets', where: { and: [await inKindStage(payload, 'review'), { state: { equals: 'open' } }, NOT_PARKED, { waitingFor: { equals: 'checks' } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]) {
     try {
       await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: null, reviewWaitingSince: null }, overrideAccess: true })
@@ -411,20 +370,17 @@ export const watchChecks = async (payload: Payload, at = Date.now()): Promise<nu
   return moved
 }
 
-/** Records the human touch (who acted, as whom, and for the checkpoint's addressee); a gate action also ends the Ticket's wait for the owner in its history. */
 const touch = async (payload: Payload, user: Doc, t: Doc, kind: string, addressee?: Addressee) => {
   const row = await payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: personOf(user), as: decidingAs(user), ...(addressee && { addressee }), at: now() }, overrideAccess: true })
   if (/^(approve:plan|accept:staging|request-changes|review-cap:grant|decide:)/.test(kind)) await record(payload, t.id, { phase: 'queued', executor: 'human', actor: personOf(user), cause: `gate:${kind}` })
   return row
 }
 
-/** Whether the Ticket has an open critical decision: it holds every forward move. */
 export const holdsRefine = async (payload: Payload, t: Doc, ts: TicketSource) => openCritical(await decisionComments(payload, t, ts, { notify: true })).length > 0
 
 const factoryTouch = (payload: Payload, t: Doc, kind: string) =>
   payload.create({ collection: 'human_touches', data: { kind, ticket: t.id, workspace: id(t.workspace), actor: 'factory', at: now() }, overrideAccess: true })
 
-/** Plan gate: refuses while critical decisions are unanswered, then adds `bauherr:approved:plan` and records the human touch. */
 export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadGate(payload, user, a, 'plan')
   if (await jobsOpen(payload, t)) throw new Error('The plan is not ready: its checks are still running')
@@ -440,7 +396,6 @@ export const approvePlan = async (payload: Payload, user: Doc, a: { ticket: Tick
   return { approved: APPROVED_PLAN }
 }
 
-/** The Expedite action: puts the `bauherr:expedite` label on the Ticket (and drops Triage's proposal); the poller turns it into `expedite`. */
 export const expedite = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   if (!canPutOnFastLane(user)) throw new NotAdmin()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
@@ -453,36 +408,28 @@ export const expedite = async (payload: Payload, user: Doc, a: { ticket: TicketI
   return { labelled: EXPEDITE_LABEL }
 }
 
-/** The Inbox decision "Fast lane held": releases the fast-lane place of a Ticket that holds it. */
 export const releaseLane = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   if (!t.expedite) throw new Error('the Ticket does not hold the fast lane')
   return { outcome: await releaseFastLane(payload, t) }
 }
 
-/** The label of an urgent request filed by an Admin: the Ticket row is made now (the poller would only see it later) so the `expedite` touch that vouches for the label has a Ticket to belong to; the poller then verifies the label like a button press and `startExpedites` takes over. */
 const putOnFastLane = async (payload: Payload, s: Doc, t: { id: string; number: number; url: string; title: string; labels: string[] }) => {
   const row = await upsertTicket(payload, { workspace: id(s.workspace), product: id(s.product), externalId: t.id, number: t.number, url: t.url, title: t.title, state: 'open', labels: t.labels, stage: null, sourceUpdatedAt: null, rank: await lastRankAfter(payload, id(s.workspace)) }, null)
   await touch(payload, s.user, row as Doc, 'expedite')
   await (await ticketsOf(payload, id(s.product))).addLabels(String(t.number), [EXPEDITE_LABEL])
 }
 
-/** A rank after the last Ticket of the Workspace (byte order, so the DB collation is bypassed). */
 export const lastRankAfter = async (payload: Payload, workspace: number | string): Promise<string> => {
   const r = await payload.db.drizzle.execute(sql`SELECT "rank" FROM "tickets" WHERE "workspace_id" = ${workspace} AND "rank" IS NOT NULL ORDER BY "rank" COLLATE "C" DESC LIMIT 1`)
   return rankBetween((r.rows[0]?.rank as string | undefined) ?? null, null)
 }
 
-/** Postgres unique violation (23505), also when wrapped by the ORM. */
 const isUniqueViolation = (e: unknown): boolean => {
   for (let c: any = e; c; c = c.cause) if (c.code === '23505') return true
   return false
 }
 
-/**
- * Creates the Ticket row for `(product, externalId)`, or applies `update` (null: leave it) to the existing one.
- * Losing a create race against the unique index re-reads the winner's row and merges `update` into it.
- */
 export const upsertTicket = async (payload: Payload, create: Record<string, any>, update: Record<string, unknown> | null, req?: Partial<PayloadRequest>): Promise<Doc & { id: number | string }> => {
   const find = async () => (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: create.product } }, { externalId: { equals: create.externalId } }] }, limit: 1, depth: 0, overrideAccess: true, req })).docs[0] as Doc | undefined
   const save = async (doc?: Doc): Promise<Doc & { id: number | string }> =>
@@ -496,16 +443,11 @@ export const upsertTicket = async (payload: Payload, create: Record<string, any>
 }
 
 const ro = { depth: 0, overrideAccess: true } as const
-/** Forge time after our own Comment as `triagedAt`; `sourceUpdatedAt` stays with the poller, so it still syncs the labels we just changed. */
 const covered = async (ts: TicketSource, n: string) => {
   const at = (await ts.get(n)).updatedAt
   return { triagedAt: at }
 }
 
-/**
- * Plan gate off: moves a Ticket in `plan` whose latest Run is a succeeded plan Run on, without a label or human touch. Idempotent; a no-op while the gate is on.
- * An unanswered critical decision puts the Ticket back on the refine hold instead (answering re-plans); otherwise it goes to `build` (or `parent`, its Sub-tickets going straight to Build).
- */
 export const advancePlan = async (payload: Payload, t: Doc): Promise<string | null> => {
   const wf = workflowFor(t.workspace)
   const gated = gateOn(wf, 'plan') && !t.expedite
@@ -522,7 +464,6 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<string | nu
       await refuseReplan(payload, t, ts, n, plan.id, problem)
       return 'refused'
     }
-    // A re-plan that keeps the approved Goal stays within scope; any other waits for the plan gate.
     if (gated && goalOf(plan.body) !== (t.epic as EpicField).goal) return null
   }
   const rows = parseDecisions(plan.body)
@@ -549,11 +490,6 @@ export const advancePlan = async (payload: Payload, t: Doc): Promise<string | nu
   return parent ? nameOf(wf, 'container') : next
 }
 
-/**
- * Plan approval fan-out (D1): creates each item of the latest plan's `## Sub-tickets` as a sub-issue that inherits the plan approval,
- * then moves the parent to stage `parent`. Runs only while the parent is not yet `parent` and only for items listed now (matched by title,
- * so a retry after a partial failure completes the set and never adds later items; a child created but not yet linked is found by its local row and only linked). An item's `after:` sibling title becomes a forge + local blockedBy. Serialised per ticket; true when the Ticket is a parent.
- */
 export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean> =>
   exclusive(`spawn:${id(parent.product)}:${parent.number}`, async () => {
     const wf = workflowFor(parent.workspace)
@@ -627,14 +563,12 @@ export const spawnSubTickets = (payload: Payload, parent: Doc): Promise<boolean>
     return true
   })
 
-/** Records the epic PR on the parent when a slice's Run opened it (first PR wins). */
 export const setEpicPr = async (payload: Payload, sub: Doc, prUrl: string): Promise<void> => {
   if (!sub.slice) return
   const parent = (await payload.findByID({ collection: 'tickets', id: (sub.slice as SliceField).epic, depth: 0, overrideAccess: true })) as Doc
   if (parent.epic && !parent.epic.pr) await payload.update({ collection: 'tickets', id: parent.id, data: { epic: { ...parent.epic, pr: prUrl } }, overrideAccess: true })
 }
 
-/** Rank directly after the epic parent (the parent gets one at the end of the list when it has none). */
 const rankAfterParent = async (payload: Payload, parent: Doc): Promise<string> => {
   let prev = (parent.rank as string | null) ?? null
   if (!prev) {
@@ -650,10 +584,6 @@ const rankAfterParent = async (payload: Payload, parent: Doc): Promise<string> =
   }
 }
 
-/**
- * Creates slice `index` of an epic as a sub-ticket (forge sub-issue, inherited plan approval) and links it in `epic.slices`. Idempotent: a sub-ticket that exists for the index is reused.
- * It enters Build through the usual WIP path: a full Build column holds it (`waitingFor`), a free one starts it. `prev`/`main` bound the slice's commits on the epic branch.
- */
 const createSlice = async (payload: Payload, parent: Doc, index: number, bounds: { prev: string | null; main: string | null }): Promise<Doc> => {
   const wf = workflowFor(parent.workspace)
   const epic = parent.epic as EpicField
@@ -688,7 +618,6 @@ const createSlice = async (payload: Payload, parent: Doc, index: number, bounds:
   return sub
 }
 
-/** The slices of `epic` that are built: the leading ones whose sub-ticket passed its review. */
 const builtSlices = async (payload: Payload, epic: EpicField): Promise<number> => {
   let built = 0
   for (const s of epic.slices) {
@@ -701,7 +630,6 @@ const builtSlices = async (payload: Payload, epic: EpicField): Promise<number> =
 
 const flat = (text: string): string => text.trim().replace(/\s+/g, ' ')
 
-/** Why a new plan of an epic parent cannot be taken, or null: the built slices must stay an unchanged ordered prefix and a slice must be left to build. */
 const replanProblem = async (payload: Payload, parent: Doc, items: { title: string; body: string }[]): Promise<string | null> => {
   const epic = parent.epic as EpicField
   const built = await builtSlices(payload, epic)
@@ -713,7 +641,6 @@ const replanProblem = async (payload: Payload, parent: Doc, items: { title: stri
   return null
 }
 
-/** Rejects a new epic plan: one comment per plan (the reason), approval dropped, a new plan Run started. */
 const refuseReplan = async (payload: Payload, parent: Doc, ts: TicketSource, n: string, planId: string, reason: string): Promise<void> => {
   const marker = `<!-- bauherr:replan-refused:${planId} -->`
   if (!(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) await ts.comment(n, `${marker}\nBauherr refused this plan: ${reason}. Plan again with the built slices unchanged.`)
@@ -725,10 +652,6 @@ const refuseReplan = async (payload: Payload, parent: Doc, ts: TicketSource, n: 
 
 const sliceList = (slices: { title: string }[], built: number): string => slices.map((s, i) => `${i + 1}. ${s.title}${i < built ? ' (built)' : ''}`).join('; ')
 
-/**
- * Epic path of the plan fan-out. First plan: writes `parent.epic` (branch, slice list in plan order, `after:` ignored, the approved Goal), creates only slice 0 and parks the parent as a container.
- * A new plan of an epic that already has slices (a re-plan): rewrites the unbuilt slices, keeps the built ones with their tickets, continues at the first unbuilt one and logs before and after in the epic worklog.
- */
 const spawnEpic = async (payload: Payload, p: Doc, ts: TicketSource, plan: { id: string; body: string }, items: { title: string; body: string }[]): Promise<boolean> => {
   const container = byKind(workflowFor(p.workspace), 'container')!.name
   let parent = (await payload.findByID({ collection: 'tickets', id: p.id, ...ro })) as Doc
@@ -755,10 +678,6 @@ const spawnEpic = async (payload: Payload, p: Doc, ts: TicketSource, plan: { id:
   return true
 }
 
-/**
- * The unbuilt slice `sub` cannot go on (a Build Run asked for a re-plan, or merging the base failed twice): closes it as `not_planned`, logs why in the epic worklog
- * and sends the parent back to the plan stage; its new plan is taken by `spawnEpic`. Idempotent: a parent that is no longer slicing is left alone.
- */
 const replanNow = async (payload: Payload, sub: Doc, why: string): Promise<{ stage: string; entered: 'moved' | 'waiting' | 'held' }> => {
   const slice = sub.slice as SliceField
   const parent = (await payload.findByID({ collection: 'tickets', id: slice.epic, ...ro })) as Doc
@@ -785,10 +704,8 @@ const replanNow = async (payload: Payload, sub: Doc, why: string): Promise<{ sta
   return { stage: plan, entered }
 }
 
-/** Sends the epic of slice `sub` back to plan (decision 9); see `replanNow`. */
 export const replanEpic = (payload: Payload, sub: Doc, why: string) => exclusive(`epic:${(sub.slice as SliceField).epic}`, () => replanNow(payload, sub, why))
 
-/** A slice's Build Run ended without resolving the merge of the base into the epic branch: counts it; the second one sends the epic back to plan (decision 8). */
 export const noteMergeFailure = (payload: Payload, sub: Doc): Promise<void> =>
   exclusive(`epic:${(sub.slice as SliceField).epic}`, async () => {
     const parent = (await payload.findByID({ collection: 'tickets', id: (sub.slice as SliceField).epic, ...ro })) as Doc
@@ -799,13 +716,11 @@ export const noteMergeFailure = (payload: Payload, sub: Doc): Promise<void> =>
     if (mergeFailures >= 2) await replanNow(payload, sub, `merging the base branch into the epic branch failed ${mergeFailures} times at slice ${(sub.slice as SliceField).index + 1}`)
   })
 
-/** Epic review: the base is merged into the epic branch first, so the review waits for checks until the merge-main job ran. Idempotent. */
 export const queueEpicMergeMain = async (payload: Payload, parent: Doc): Promise<void> => {
   await moveReview(payload, parent.id, 'waiting_checks')
   await payload.jobs.queue({ task: 'merge-main', queue: 'runs', input: { ticketId: Number(parent.id), reviewedSha: null } })
 }
 
-/** The base branch's head sha, or null when the forge cannot say cheaply. */
 const mainHead = async (payload: Payload, product: TicketId): Promise<string | null> => {
   try {
     const { backend, repo } = await forgeOf(payload, product)
@@ -815,11 +730,6 @@ const mainHead = async (payload: Payload, product: TicketId): Promise<string | n
   }
 }
 
-/**
- * Moves an epic forward after a slice passed; idempotent, called on pass and by the poll sweep. While the parent is a container and the current slice passed:
- * creates the next slice (`prev` = the passed slice's head, `main` = the base head now), or, after the last one, sends the parent to epic review (the `review` stage) with the base merged into the epic branch first.
- * Returns true when it created a slice or moved the parent.
- */
 export const advanceEpic = (payload: Payload, p: Doc): Promise<boolean> =>
   exclusive(`epic:${p.id}`, async () => {
     const parent = (await payload.findByID({ collection: 'tickets', id: p.id, ...ro })) as Doc
@@ -849,7 +759,6 @@ export const advanceEpic = (payload: Payload, p: Doc): Promise<boolean> =>
     return entered === 'moved'
   })
 
-/** Poll sweep over epics (never a parked one): advances every slicing parent and closes the open slices of an epic that is accepted (closed or done) or was discarded. Returns how many parents moved. */
 export const advanceEpics = async (payload: Payload): Promise<number> => {
   const stage = { or: [await inKindStage(payload, 'container'), await inKindStage(payload, 'done'), { state: { equals: 'closed' } }] } as Where
   const parents = (await payload.find({ collection: 'tickets', where: { and: [{ epic: { exists: true } }, stage] }, pagination: false, ...ro })).docs as Doc[]
@@ -864,7 +773,6 @@ export const advanceEpics = async (payload: Payload): Promise<number> => {
       const open = (await payload.find({ collection: 'tickets', where: { and: [{ parent: { equals: p.id } }, { state: { equals: 'open' } }] }, pagination: false, ...ro })).docs as Doc[]
       if (!open.length) continue
       const ts = await ticketsOf(payload, id(p.product))
-      // A parent closed as not planned (discarded, abandoned) takes its slices with it; an accepted one closes them as completed.
       const reason = p.state === 'closed' && (await ts.get(String(p.number))).closeReason === 'not_planned' ? 'not_planned' : 'completed'
       for (const k of open) {
         if ((await ts.get(String(k.number))).state !== 'closed') await ts.close(String(k.number), reason)
@@ -883,14 +791,11 @@ export class NotBauherr extends Error {
   }
 }
 
-/** The epic parent a Ticket belongs to (the Ticket itself for a parent), or null for any other Ticket. */
 const epicParentOf = async (payload: Payload, t: Doc): Promise<Doc | null> =>
   t.epic ? t : t.slice ? ((await payload.findByID({ collection: 'tickets', id: (t.slice as SliceField).epic, ...ro })) as Doc) : null
 
-/** The epic parent and its open slices. */
 const epicTickets = async (payload: Payload, parent: Doc): Promise<Doc[]> => [parent, ...((await payload.find({ collection: 'tickets', where: { and: [{ parent: { equals: parent.id } }, { state: { equals: 'open' } }] }, pagination: false, ...ro })).docs as Doc[])]
 
-/** Cancels every live Run of `tickets` (a session holding one gets `lease lost`); returns how many ended. */
 const cancelLiveRuns = async (payload: Payload, tickets: Doc[], why: string): Promise<number> => {
   const ended = await payload.db.drizzle.execute(
     sql`UPDATE "runs" SET "status" = 'cancelled', "error" = ${why}, "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "ticket_id" IN (${sql.join(tickets.map((t) => sql`${t.id}`), sql`, `)}) AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)}) RETURNING "id"`,
@@ -899,7 +804,6 @@ const cancelLiveRuns = async (payload: Payload, tickets: Doc[], why: string): Pr
   return ended.rows.length
 }
 
-/** One history row and one epic worklog line for a park, resume or discard (the dedupe of `record` would swallow a repeat of the same stage and phase). */
 const epicNote = async (payload: Payload, parent: Doc, cause: string, by: string, executor: 'human' | 'factory', line: string): Promise<void> => {
   const wf = workflowFor(parent.workspace)
   await payload.create({ collection: 'ticket_events', data: { ticket: parent.id, workspace: id(parent.workspace), at: now(), stage: parent.stage, stageKind: stageDef(wf, parent.stage)?.kind ?? null, phase: 'queued', executor, actor: by, cause, note: line }, ...ro })
@@ -908,10 +812,6 @@ const epicNote = async (payload: Payload, parent: Doc, cause: string, by: string
 
 const liveEpic = (wf: Workflow, parent: Doc): boolean => parent.state === 'open' && !is(wf, parent.stage, 'release', 'done')
 
-/**
- * Parks the epic of `t` (a parent or one of its slices): the branch stays, nothing merges, the parent and its open slices hold no WIP and start no Run,
- * and every live Run of them is cancelled. Idempotent; false when `t` is no epic, the epic is parked already or it is merged or closed.
- */
 export const parkEpicNow = async (payload: Payload, t: Doc, o: { by: string; executor: 'human' | 'factory'; why: string }): Promise<boolean> => {
   const root = await epicParentOf(payload, t)
   if (!root) return false
@@ -927,7 +827,6 @@ export const parkEpicNow = async (payload: Payload, t: Doc, o: { by: string; exe
   })
 }
 
-/** The owner's "Park epic": Bauherr or Admin, on the epic parent. */
 export const parkEpic = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   if (!isBauherr(user)) throw new NotBauherr()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
@@ -938,7 +837,6 @@ export const parkEpic = async (payload: Payload, user: Doc, a: { ticket: TicketI
   await touch(payload, user, t, 'epic:park')
 }
 
-/** Starts again what the park cancelled in `t`'s stage: its review, or its plan or Build Run when that stage's latest Run was cancelled. */
 const restartStage = async (payload: Payload, t: Doc): Promise<void> => {
   const wf = workflowFor(t.workspace)
   if (!t.stage || t.waitingFor || is(wf, t.stage, 'human', 'container', 'done', 'release')) return
@@ -946,7 +844,6 @@ const restartStage = async (payload: Payload, t: Doc): Promise<void> => {
   if (is(wf, t.stage, 'review') ? !t.reviewState : latest?.stage === t.stage && latest?.status === 'cancelled') await startAfterPull(payload, t, t.stage)
 }
 
-/** Resumes a parked epic where it stopped: clears the park, then continues the slicing (next slice) or restarts the stage the cancelled Run belonged to. */
 export const resumeEpic = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   if (!isBauherr(user)) throw new NotBauherr()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
@@ -967,10 +864,6 @@ export const resumeEpic = async (payload: Payload, user: Doc, a: { ticket: Ticke
   await touch(payload, user, t, 'epic:resume')
 }
 
-/**
- * The owner's "Discard epic": cancels the live Runs, closes the epic PR unmerged, deletes the epic branch, then closes the parent and every open slice as not planned.
- * Bauherr or Admin only; refused for an epic that is merged or closed. A retry after a partial failure finishes the rest (`advanceEpics` closes slices of a parent closed as not planned).
- */
 export const discardEpic = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   if (!isBauherr(user)) throw new NotBauherr()
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
@@ -995,7 +888,6 @@ export const discardEpic = async (payload: Payload, user: Doc, a: { ticket: Tick
   await touch(payload, user, t, 'epic:discard')
 }
 
-/** Finishes every parent (stage `parent`) whose sub-tickets are all closed, with a Comment listing them. Returns how many were closed. */
 export const closeFinishedParents = async (payload: Payload): Promise<number> => {
   const parents = (await payload.find({ collection: 'tickets', where: await inKindStage(payload, 'container'), pagination: false, ...ro })).docs as Doc[]
   let closed = 0
@@ -1019,10 +911,8 @@ export const closeFinishedParents = async (payload: Payload): Promise<number> =>
   return closed
 }
 
-/** The worklog a Ticket starts with: the Workspace's template without its guidance. */
 const worklogTemplate = async (payload: Payload, t: Doc): Promise<string> => renderTemplate(await template(payload, id(t.workspace), 'worklog'), {})
 
-/** Appends `lines` to the `**Decisions**` section (created at the end when missing). */
 const appendDecisions = (worklog: string, lines: string[]): string => {
   const rows = worklog.split('\n')
   const start = rows.findIndex((l) => l.trim() === '**Decisions**')
@@ -1035,7 +925,6 @@ const appendDecisions = (worklog: string, lines: string[]): string => {
 }
 
 const pending = new Map<string, Promise<unknown>>()
-/** In-process per-ticket mutex; multi-instance deployments need a DB lock instead. */
 export const exclusive = async <T>(key: string, fn: () => Promise<T>): Promise<T> => {
   const next = (pending.get(key) ?? Promise.resolve()).catch(() => undefined).then(fn)
   pending.set(key, next)
@@ -1046,10 +935,6 @@ export const exclusive = async <T>(key: string, fn: () => Promise<T>): Promise<T
   }
 }
 
-/**
- * Posts the answers as the `<!-- bauherr:decisions -->` Comment (replaced when it exists) and dates every changed
- * answer into the worklog's Decisions. Serialised per ticket; the worklog is looked up in comments re-read after the write.
- */
 export const postDecisions = async (
   payload: Payload,
   user: Doc,
@@ -1057,11 +942,8 @@ export const postDecisions = async (
     ticket: TicketId
     workspaceId?: TicketId
     answers: { id: string; title: string; answer: string }[]
-    /** Points the conversation added: written into the same Comment's `## Decisions` block. */
     added?: Decision[]
-    /** Points to open again (their answer line is removed). */
     reopen?: string[]
-    /** `false`: do not release a Triage hold even when every critical row is answered (the conversation releases it when the person sends). Default `true`. */
     release?: boolean
   },
 ) => {
@@ -1070,7 +952,6 @@ export const postDecisions = async (
     const src = await sourceOf(payload, t)
     const comments = await decisionComments(payload, t, src.ts)
     const existing = answersOf(comments)
-    // Each row has its own addressee (`for:`, else the checkpoint's): a Product owner answers, reopens and adds only rows addressed to them.
     const sheet = sheetOf(comments)
     const wf = workflowFor(t.workspace)
     const by = checkpointBy(wf, is(wf, t.stage ?? '', 'plan') ? 'plan' : 'refine')
@@ -1083,7 +964,6 @@ export const postDecisions = async (
     for (const k of a.reopen ?? []) delete merged[k]
     const rows = [...addedOf(comments), ...(a.added ?? [])]
     const body = `${DECISIONS_MARKER}\n${Object.entries(merged).map(([k, v]) => `${k}: ${v}`).join('\n')}${rows.length ? `\n\n## Decisions\n${rows.map(formatDecision).join('\n')}` : ''}`
-    // Only the factory's own Comment is edited in place: a counted Comment of a person stays theirs, and the merged answers go in a newer one.
     if (existing && isFactoryAuthor(existing.author, await factoryLoginOf(payload, t, src.ts))) await src.ts.updateComment(src.n, existing.id, body)
     else await src.ts.comment(src.n, body)
     if (changed.length) {
@@ -1099,10 +979,6 @@ export const postDecisions = async (
   })
 }
 
-/**
- * The person sends a refined Ticket on: applies the proposed text edits to the forge issue (title and body), then releases the Triage hold exactly like the last decision row of the sheet does (`releaseIfAnswered`).
- * Refused while a critical point is open.
- */
 export const finishRefinement = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId; edits?: { title?: string; body?: string } }) => {
   const t = await loadGate(payload, user, a, 'refine')
   return exclusive(String(t.id), async () => {
@@ -1117,7 +993,6 @@ export const finishRefinement = async (payload: Payload, user: Doc, a: { ticket:
   })
 }
 
-/** A Ticket held by Triage (`needs-refinement`) whose critical questions are all answered leaves the hold and enters `plan`; the poller starts the Plan Run. */
 const releaseIfAnswered = async (payload: Payload, { ts, n }: Source, t: Doc): Promise<'moved' | 'waiting' | 'held' | undefined> => {
   const wf = workflowFor(t.workspace)
   const { labels } = await ts.get(n)
@@ -1135,7 +1010,6 @@ export const postStagingSummary = async (payload: Payload, user: Doc, a: { ticke
   return publishStagingSummary(payload, t)
 }
 
-/** Staging gate: the checkpoint's addressee (`loadGate`: the Product owner of the Product where the workflow asks them, a Bauherr or Admin always) accepts; the Ticket moves to `done` unless a production gate is on. */
 export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadGate(payload, user, a, 'staging')
   const wf = workflowFor(t.workspace)
@@ -1144,7 +1018,6 @@ export const acceptStaging = async (payload: Payload, user: Doc, a: { ticket: Ti
   return passStaging(payload, t, () => touch(payload, user, t, 'accept:staging', checkpointBy(wf, 'staging')))
 }
 
-/** The owner's decision in a `human` stage: records the touch `decide:<stage>:<outcome>` and takes the Ticket along the outcome the stage maps (an optional note is posted on the Ticket). */
 export const decide = async (payload: Payload, user: Doc, a: { ticket: TicketId; outcome: string; note?: string; workspaceId?: TicketId }) => {
   const t = await loadGate(payload, user, a, 'human')
   const wf = workflowFor(t.workspace)
@@ -1159,7 +1032,6 @@ export const decide = async (payload: Payload, user: Doc, a: { ticket: TicketId;
   return { stage: moved.stage, entered: moved.entered }
 }
 
-/** Production gate: a Workspace member approves the deploy; the Product's own pipeline deploys, `watchProduction` observes. Also the retry after a failed or timed out deploy. */
 export const approveProduction = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadGate(payload, user, a, 'production')
   const wf = workflowFor(t.workspace)
@@ -1169,10 +1041,6 @@ export const approveProduction = async (payload: Payload, user: Doc, a: { ticket
   return { approved: APPROVED_PRODUCTION, productionState: 'deploying' }
 }
 
-/**
- * Human gate of the distill stage: merges the proposal's Knowledge PR only while its head is still `expectSha`, then marks it `accepted`.
- * Admin-only; the MCP tool is `access: 'human'`, so an agent key never reaches this. Only a `proposed` or `replayed` proposal can be approved.
- */
 export const approveSkillProposal = async (payload: Payload, user: Doc, a: { proposal: TicketId; expectSha: string; workspaceId?: TicketId }) => {
   if (user.role !== 'admin') throw new NotAdmin()
   if (typeof a.expectSha !== 'string' || !a.expectSha) throw new Error('expectSha required')
@@ -1189,10 +1057,6 @@ export const approveSkillProposal = async (payload: Payload, user: Doc, a: { pro
   return { approved: 'accepted' as const }
 }
 
-/**
- * Human gate of the distill stage, the other way: closes the proposal's Knowledge PR (with the owner's note as its comment) and marks the proposal `rejected`.
- * Admin-only like the approval; a second call on a rejected proposal is the same success. Only a `proposed` or `replayed` proposal can be rejected. A forge that does not answer leaves the proposal as it was.
- */
 export const rejectSkillProposal = async (payload: Payload, user: Doc, a: { proposal: TicketId; note?: string; workspaceId?: TicketId }) => {
   if (user.role !== 'admin') throw new NotAdmin()
   const p = (await payload.findByID({ collection: 'skill_proposals', id: a.proposal, ...scoped(user) }).catch(() => null)) as Doc | null
@@ -1211,7 +1075,6 @@ export const rejectSkillProposal = async (payload: Payload, user: Doc, a: { prop
   return { rejected: 'rejected' as const }
 }
 
-/** Approves the proposal of a Ticket's Inbox card: the head the factory replayed (`results.headSha`) is the one that gets merged, never a newer one. */
 export const approveSkillProposalOf = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const p = (await payload.find({ collection: 'skill_proposals', where: { ticket: { equals: a.ticket } }, limit: 1, ...scoped(user) })).docs[0] as Doc | undefined
   if (!p) throw new NotInWorkspace()
@@ -1220,7 +1083,6 @@ export const approveSkillProposalOf = async (payload: Payload, user: Doc, a: { t
   return approveSkillProposal(payload, user, { proposal: p.id, expectSha, workspaceId: a.workspaceId })
 }
 
-/** Writes `text` as the body of the worklog section headed `heading` (appended when missing). */
 const setSection = (worklog: string, heading: string, text: string): string => {
   const rows = worklog.split('\n')
   const start = rows.findIndex((l) => l.trim() === heading)
@@ -1230,7 +1092,6 @@ const setSection = (worklog: string, heading: string, text: string): string => {
   rows.splice(start + 1, end - start - 1, text, '')
   return rows.join('\n')
 }
-/** Adds each of `lines` not yet in the section headed `heading` (exact match); drops the template placeholder; creates the section when missing. */
 const appendToSection = (worklog: string, heading: string, lines: string[]): string => {
   const rows = worklog.split('\n')
   const start = rows.findIndex((l) => l.trim() === heading)
@@ -1242,7 +1103,6 @@ const appendToSection = (worklog: string, heading: string, lines: string[]): str
 }
 const setInstructions = (worklog: string, text: string): string => setSection(worklog, '**Current instructions**', text)
 
-/** Adds `lines` under `heading` of the Ticket's worklog Comment (created from the template when missing). */
 const addWorklogLines = async (payload: Payload, t: Doc, heading: string, lines: string[]): Promise<void> => {
   const src = await sourceOf(payload, t)
   const log = await worklogComment(src)
@@ -1252,10 +1112,6 @@ const addWorklogLines = async (payload: Payload, t: Doc, heading: string, lines:
 
 const SLICE_TRAILER = /^Bauherr-Slice:[ \t]*#(\d+)[ \t]*$/im
 
-/**
- * After a Build Run on an epic parent: attributes the fix commits since the last reviewed head to the slices they belong to (trailer `Bauherr-Slice: #<n>`).
- * A tagged commit goes to the owning sub's `slice.fixes`, its history (`epic:fix`) and worklog; an untagged one to the parent's worklog under Open. Idempotent by sha. `head` defaults to the head of the epic PR.
- */
 export const tagFixes = async (payload: Payload, parent: Doc, head?: string | null): Promise<{ tagged: number; untagged: number }> => {
   if (!parent.epic) return { tagged: 0, untagged: 0 }
   const reviewed = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: parent.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }, { reviewedSha: { exists: true } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
@@ -1286,7 +1142,6 @@ export const tagFixes = async (payload: Payload, parent: Doc, head?: string | nu
   return { tagged, untagged: loose.length }
 }
 
-/** The Ticket leaves the release stage for Build: no staging or production state, no approval label, and the live Runs of the release stage (the staging walk) are cancelled. */
 export const leaveRelease = async (payload: Payload, ts: TicketSource, t: Doc): Promise<void> => {
   const release = byKind(workflowFor(t.workspace), 'release')?.name ?? ''
   await payload.update({ collection: 'tickets', id: t.id, data: { releaseState: null, ...NO_PRODUCTION }, overrideAccess: true })
@@ -1294,7 +1149,6 @@ export const leaveRelease = async (payload: Payload, ts: TicketSource, t: Doc): 
   await clearApprovalLabel(payload, ts, String(t.number))
 }
 
-/** Sends a released Ticket back: the note becomes the worklog's Current instructions, a Build Run starts, then the stage is `build`. A Ticket already in `build` without an active Run is a retry of a partial failure. */
 export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: TicketId; note: string; workspaceId?: TicketId }) => {
   const rawNote = a.note?.trim()
   if (!rawNote) throw new Error('a note is required')
@@ -1326,32 +1180,22 @@ export const requestChanges = async (payload: Payload, user: Doc, a: { ticket: T
 }
 
 export const REVIEW_MARKER = '<!-- bauherr:review -->'
-/** A Ticket waiting on checks (or a draft MR) this long needs a human. */
 export const WAIT_CHECKS_MAX_MS = 2 * 60 * 60_000
-/** Consecutive failed merge attempts before a Ticket needs a human. */
 export const MAX_MERGE_FAILURES = 3
-/** Returns to Build because the MR conflicted, before a Ticket needs a human. */
 export const MAX_CONFLICT_RETURNS = 3
-/** Merges of the base that found nothing to merge on the same MR head while the forge still reports it behind or conflicting; the 3rd needs a human. */
 const MAX_MAIN_MERGE_NOOPS = 3
 const BLOCKING = ['high', 'medium']
 export const MAX_FINDINGS = 50
 export const MAX_TEXT = 1000
-/** Fits GitHub's 65536-character comment limit with the marker. */
 export const MAX_MARKDOWN = 60_000
-/** GitHub's comment limit, minus the marker. */
 const MAX_COMMENT = 65_000
 export const FILE_PATTERN = '^(?!(?:.*/)?\\.\\.(?:/|$))[\\w./@+()\\[\\]-]{1,300}$'
 const FILE = new RegExp(FILE_PATTERN)
-/** Areas a review must account for, each with a one-line justification. */
 export const CHECKED_AREAS = ['correctness', 'over-engineering', 'spec-vs-plan', 'evidence']
 
-/** Important = every class but `low` and `pre-existing`; `low` is a Nit (at most `MAX_NITS` per review), `pre-existing` a real bug the MR did not introduce. Neither sends the Ticket back; the others do, subject to the proof and round rules in `normalizeReview`. */
 export const FINDING_CLASSES = ['correctness', 'wrong-results', 'data-loss', 'security', 'rule', 'plan', 'low', 'pre-existing'] as const
 export const MAX_NITS = 5
-/** Classes that need a failing test on the MR head: the reviewer states how to see the defect, not only a scenario. */
 const NEEDS_TEST = ['correctness', 'wrong-results', 'data-loss']
-/** Classes a round after the first may still raise, on the fix only. */
 const SEVERE = ['security', ...NEEDS_TEST]
 export const OPEN_REASONS = ['no-failing-test', 'constructed-input', 'out-of-round-scope', 'no-evidence'] as const
 export const MAX_PATCH = 4000
@@ -1359,16 +1203,12 @@ export const MAX_PATCH = 4000
 export type FindingClass = (typeof FINDING_CLASSES)[number]
 export type FindingTest = { command: string; failure: string; patch?: string }
 export type Finding = { severity: 'high' | 'medium' | 'low'; class: FindingClass; file: string; line: number; msg: string; scenario: string; test?: FindingTest; /** Ticket number of the slice the finding belongs to (epic review). */ slice?: number }
-/** Noted by the reviewer, never sent back to Build and never changes the outcome. */
 export type OpenItem = { text: string; reason: (typeof OPEN_REASONS)[number] }
-/** `problem` is set when the output cannot be trusted as a verdict (incomplete checklist, contradictory verdict): the Ticket goes to a human, never to a merge. */
 export type Review = { verdict: 'clean' | 'changes'; findings: Finding[]; markdown: string; open: OpenItem[]; problem?: string }
 export type ReviewOutcome = 'merged' | 'queued' | 'waiting_checks' | 'ready_for_human' | 'build' | 'needs_human' | 'review_restarted' | 'slice_passed' | 'noop'
 
-/** A finding the factory counts: it sends the Ticket back to Build. */
 const counts = (f: Finding) => f.class !== 'low' && f.class !== 'pre-existing'
 
-/** Derived label of a finding's severity class. */
 export const severityLabel = (f: Pick<Finding, 'class'>): string => (f.class === 'low' ? '🟡 Nit' : f.class === 'pre-existing' ? '🟣 Pre-existing' : '🔴 Important')
 const loc = (f: { file: string; line: number }) => `${f.file}:${f.line}`
 
@@ -1397,7 +1237,6 @@ export const normalizeFinding = (f: any, i: number): Finding => {
   return { severity: f.severity, class: f.class, file: f.file, line: f.line, msg: f.msg, scenario: f.scenario, ...(f.slice !== undefined && { slice: f.slice }), ...(t && { test: { command: t.command, failure: t.failure, ...(t.patch && { patch: t.patch }) } }) }
 }
 
-/** The findings and open items a find Job of a review stage reports: shape and `MAX_FINDINGS` only; proof, round scope and the verdict are the stage's own Job's. */
 export const normalizeCandidates = (raw: { findings?: unknown; open?: unknown }): { findings: Finding[]; open: OpenItem[] } => {
   const list = raw.findings ?? []
   if (!Array.isArray(list)) throw new Error('findings must be a list')
@@ -1407,13 +1246,6 @@ export const normalizeCandidates = (raw: { findings?: unknown; open?: unknown })
   return { findings: list.map(normalizeFinding), open }
 }
 
-/**
- * Validates a reviewer's output. The verdict is derived: `changes` iff a counted finding (any class but `low` and `pre-existing`) exists.
- * Nits beyond `MAX_NITS` are dropped and counted in the markdown; pre-existing findings are listed under `## Pre-existing`.
- * A correctness, wrong-results or data-loss finding needs `test: {command, failure}`; from the second round on only security and those classes count.
- * A finding that breaks one of these is refused with the instruction to move it to `open`; with `demote` (the autonomous Run cannot be asked again) it is moved there instead.
- * The old shape (no `class`) is refused with a message naming the classes.
- */
 export const normalizeReview = (raw: any, o: { round?: number; demote?: boolean } = {}): Review => {
   const round = o.round ?? 1
   if (!raw || !['clean', 'changes'].includes(raw.verdict) || !Array.isArray(raw.findings) || typeof raw.markdown !== 'string' || !raw.markdown.trim()) {
@@ -1460,7 +1292,6 @@ export const normalizeReview = (raw: any, o: { round?: number; demote?: boolean 
   return { verdict: contradicts ? 'changes' : derived, findings: kept, markdown: [raw.markdown, ...extra].join('\n\n'), open, ...(problem && { problem }) }
 }
 
-/** Words for an Open reason, on the Ticket page and in the cap decision. */
 export const OPEN_WORDS: Record<OpenItem['reason'], string> = { 'no-failing-test': 'no failing test', 'constructed-input': 'needs an input no real path produces', 'out-of-round-scope': 'outside this round', 'no-evidence': 'no evidence beyond naming' }
 export const openLine = (x: OpenItem) => `- [${OPEN_WORDS[x.reason]}] ${oneLine(x.text)}`
 
@@ -1468,7 +1299,6 @@ const oneLine = (v: unknown) => String(v).replace(/\s+/g, ' ').trim()
 const findingLine = (f: Finding) =>
   `- [${oneLine(f.severity)}] ${oneLine(f.file)}:${oneLine(f.line)} ${oneLine(f.msg)} Scenario: ${oneLine(f.scenario)}${f.test ? ` Failing test: \`${oneLine(f.test.command)}\` fails with: ${oneLine(f.test.failure)}.${f.test.patch ? ' Test code: in the review comment on the MR.' : ''}` : ''}`
 
-/** The MR comment: the reviewer's markdown, then what the factory adds from the structured output (the failing tests Build adds first, the Open items). */
 const reviewComment = (r: Review): string => {
   const tests = r.findings.filter((f) => f.test)
   const block = (code: string) => {
@@ -1483,22 +1313,18 @@ const reviewComment = (r: Review): string => {
   return parts.join('\n\n').slice(0, MAX_COMMENT)
 }
 
-/** The review round a Ticket's next review is: returns to Build counted so far plus one. */
 export const reviewRoundOf = (t: Doc): number => Number(t.reviewRounds ?? 0) + 1
 
-/** From the second round on: the head the previous review (verdict changes) covered, so the reviewer sees only the fix. Null in round 1 and after a conflict return (which has its own base). */
 export const fixBaseOf = async (payload: Payload, t: Doc): Promise<string | null> => {
   if (reviewRoundOf(t) < 2 || t.conflictReturnBase) return null
   const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }, { verdict: { equals: 'changes' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
   return last?.reviewedSha ?? null
 }
 
-/** The MR body has a `## Evidence` heading followed by content. */
 export const hasEvidence = (body: string): boolean => !!/^##[ \t]+Evidence\b[^\n]*$([\s\S]*?)(?=^#{1,2}[ \t]|(?![\s\S]))/im.exec(body)?.[1]?.trim()
 
 type Mr = NonNullable<Awaited<ReturnType<typeof prOf>>>
 
-/** Moves `reviewState` only out of the `from` state: "open" (unset or waiting_checks), "merged" or "queued"; true when this call did it. The conditional UPDATE is what keeps two ticks from merging (or enqueuing) twice. `reviewWaitingSince` starts with the first wait, survives the merge claim (a pending merge keeps its clock) and clears on any other state; `queuedAt` is set on entering `queued` and cleared on leaving it. */
 export const moveReview = async (payload: Payload, ticket: TicketId, to: string | null, from: 'open' | 'merged' | 'queued' = 'open'): Promise<boolean> =>
   (
     await payload.db.drizzle.execute(
@@ -1506,12 +1332,10 @@ export const moveReview = async (payload: Payload, ticket: TicketId, to: string 
     )
   ).rows.length > 0
 
-/** Cancels the Ticket's active review Runs. */
 const cancelReviewRuns = async (payload: Payload, t: Doc): Promise<void> => {
   await payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'cancelled', "updated_at" = now() WHERE "ticket_id" = ${t.id} AND ("kind" = 'review' OR "stage" = ${byKind(workflowFor(t.workspace), 'review')?.name ?? ''}) AND "status" IN (${sql.join(ACTIVE.map((x) => sql`${x}`), sql`, `)})`)
 }
 
-/** The head moved after a verdict: a review stage without Jobs starts its Review Run, one with Jobs starts a new visit of all its Jobs. */
 const restartReview = async (payload: Payload, t: Doc): Promise<void> => {
   const wf = workflowFor(t.workspace)
   const stage = nameOf(wf, 'review')
@@ -1519,7 +1343,6 @@ const restartReview = async (payload: Payload, t: Doc): Promise<void> => {
   else await startRunIfNeeded(payload, { id: t.id, workspace: t.workspace }, stage)
 }
 
-/** Parks the Ticket on a human with a Ticket comment (never overwrites a completed merge). */
 export const escalate = async (payload: Payload, t: Doc, why: string): Promise<ReviewOutcome> => {
   await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "review_state" = 'needs_human', "review_waiting_since" = NULL, "updated_at" = now() WHERE "id" = ${t.id} AND "review_state" IS DISTINCT FROM 'merged'`)
   const { ts, n } = await sourceOf(payload, t)
@@ -1532,10 +1355,6 @@ const handOver = async (payload: Payload, t: Doc, mr: Mr, message: string): Prom
   return 'ready_for_human'
 }
 
-/**
- * Back to Build on the same MR: counts a round; the 3rd return needs a human. Findings become the worklog's Current instructions and Unfinished work.
- * Only acts while the Ticket is in review with an open state and the MR is still open (re-read); otherwise `noop`. Active review Runs are cancelled.
- */
 const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, lines: string[], low: string[] = [], opts: { countRound?: boolean; text?: string; conflictBase?: string | null; escalation?: Escalation } = {}): Promise<ReviewOutcome> => {
   const wf = workflowFor(t.workspace)
   const countRound = opts.countRound ?? true
@@ -1561,7 +1380,6 @@ const returnToBuild = async (payload: Payload, t: Doc, mr: Mr, reason: string, l
   return 'build'
 }
 
-/** Ticket back to Build: `text` becomes the worklog's Current instructions, `lines` go under Unfinished work and `low` under Open; active review Runs are cancelled and a Build Run is queued. */
 export const handBackToBuild = async (payload: Payload, t: Doc, src: Source, text: string, lines: string[] = [], low: string[] = [], escalation?: Escalation): Promise<void> => {
   const wf = workflowFor(t.workspace)
   const { ts, n } = src
@@ -1576,10 +1394,6 @@ export const handBackToBuild = async (payload: Payload, t: Doc, src: Source, tex
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: nameOf(wf, 'build'), reviewState: null }, overrideAccess: true })
 }
 
-/**
- * The factory merged the base into the MR itself (`mergeMainIntoMr`) and found real conflicts: back to Build, where an agent or session resolves the markers.
- * Neither a review round nor a failed merge; the 4th conflict return needs a human.
- */
 export const returnConflictToBuild = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null): Promise<ReviewOutcome> => {
   const returns = Number((await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })).conflictReturns ?? 0)
   if (returns >= MAX_CONFLICT_RETURNS) return escalate(payload, t, `the MR conflicted with \`${mr.pr.base}\` ${returns} times after other merges; resolve it by hand.`)
@@ -1590,10 +1404,6 @@ export const returnConflictToBuild = async (payload: Payload, t: Doc, mr: Mr, re
   return outcome
 }
 
-/**
- * The forge reports the MR as conflicting or behind its base: the factory merges the base itself, in every Run mode (the `merge-main` job decides with git).
- * The same head still conflicting or behind after 3 no-op merges needs a human.
- */
 const mergeMainFirst = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null): Promise<ReviewOutcome> => {
   if (t.mainMergeSha === mr.pr.headSha && (t.mainMergeNoops ?? 0) >= MAX_MAIN_MERGE_NOOPS) return escalate(payload, t, `the forge still reports the MR as conflicting with or behind \`${mr.pr.base}\` although the factory found nothing to merge ${t.mainMergeNoops} times; fix the MR by hand.`)
   await moveReview(payload, t.id, 'waiting_checks')
@@ -1605,7 +1415,6 @@ const mergeMainFirst = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: str
 
 const CAP_MARKER = 'Bauherr needs a human:'
 
-/** The Ticket's round-cap gate: a review `needs_human` past the cap with its factory MR still open. Throws otherwise. */
 const loadAtCap = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   const wf = workflowFor(t.workspace)
@@ -1615,7 +1424,6 @@ const loadAtCap = async (payload: Payload, user: Doc, a: { ticket: TicketId; wor
   return { t, mr, n: String(t.number) }
 }
 
-/** Owner grant at the round cap: lowers `reviewRounds` by 1 (exactly one more round), hands the escalation findings to Build on the same MR. Owner-only; MCP callers are checked in the tool. */
 export const grantReviewRound = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const { t, mr, n } = await loadAtCap(payload, user, a)
   const wf = workflowFor(t.workspace)
@@ -1637,7 +1445,6 @@ export const grantReviewRound = async (payload: Payload, user: Doc, a: { ticket:
   return { stage: nameOf(wf, 'build'), run: run.id as TicketId }
 }
 
-/** Owner stop at the round cap: the MR stays open, the Ticket goes to triage with a Comment. `reviewRounds` is kept so a restart never gets free rounds. */
 export const stopReview = async (payload: Payload, user: Doc, a: { ticket: TicketId; note?: string; workspaceId?: TicketId }) => {
   const { t, mr, n } = await loadAtCap(payload, user, a)
   const wf = workflowFor(t.workspace)
@@ -1652,10 +1459,6 @@ export const stopReview = async (payload: Payload, user: Doc, a: { ticket: Ticke
   return { stage: stopped.stage ?? nameOf(wf, 'triage') }
 }
 
-/**
- * Back to Build from a review the factory could not conclude (`needs_human`, MR closed or checks red): on the open MR when there is one, else with the note to open a new one on a `bauherr/<number>-*` branch.
- * Neither counts a review round. Returns `noop` when the Ticket is no longer in review.
- */
 export const sendBackToBuild = async (payload: Payload, t: Doc, note: string, escalation?: Escalation): Promise<ReviewOutcome> => {
   const wf = workflowFor(t.workspace)
   const fresh = await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })
@@ -1669,7 +1472,6 @@ export const sendBackToBuild = async (payload: Payload, t: Doc, note: string, es
   return 'build'
 }
 
-/** Owner action on a stuck review (the "Needs you" need): back to Build, with an optional note for the next Run. */
 export const backToBuild = async (payload: Payload, user: Doc, a: { ticket: TicketId; note?: string; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   const wf = workflowFor(t.workspace)
@@ -1683,7 +1485,6 @@ export const backToBuild = async (payload: Payload, user: Doc, a: { ticket: Tick
   return { outcome }
 }
 
-/** The untriaged state: no stage label, no stage; the next sweep offers Triage. `note` is posted as the Ticket Comment. */
 export const sendToBacklog = async (payload: Payload, t: Doc, a: { executor: 'human' | 'factory'; actor: string; note?: string; why?: string; cause?: string }): Promise<void> => {
   const wf = workflowFor(t.workspace)
   const { ts, n } = await sourceOf(payload, t)
@@ -1695,7 +1496,6 @@ export const sendToBacklog = async (payload: Payload, t: Doc, a: { executor: 'hu
   if (a.note) await ts.comment(n, a.note)
 }
 
-/** Owner action on a cancelled Ticket (the "Cancelled" need): the Ticket goes to Triage and is planned again; its Runs stay as they are. */
 export const backToBacklog = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
   const t = await loadIn(payload, user, a.ticket, a.workspaceId)
   const wf = workflowFor(t.workspace)
@@ -1706,13 +1506,10 @@ export const backToBacklog = async (payload: Payload, user: Doc, a: { ticket: Ti
   return { stage: nameOf(wf, 'triage') }
 }
 
-/** The untriaged target of a send back, beside the workflow's own backward stages. */
 export const BACKLOG = 'backlog'
 
-/** Stages a Ticket can be sent back from: the live stages and staging (the Product owner's "Request changes"). */
 const sendableFrom = (wf: Workflow, stage: string | null | undefined): boolean => !!stage && (liveStages(wf).includes(stageDef(wf, stage)?.name ?? '') || is(wf, stage, 'release'))
 
-/** Where a Ticket in `stage` can be sent back: the stages its workflow outcomes lead back to (earlier in the workflow's order), then the backlog; none for a stage it cannot be sent back from. */
 export const sendBackTargets = (wf: Workflow, stage: string): string[] => {
   const from = stageDef(wf, stage)
   if (!from || !sendableFrom(wf, from.name)) return []
@@ -1722,18 +1519,10 @@ export const sendBackTargets = (wf: Workflow, stage: string): string[] => {
 }
 
 type SendBackHow = {
-  /** Replaces the default move for a caller with its own (resolves false when it moved nothing); the caller owns its comments and its idempotence. */
   move?: (t: Doc) => Promise<boolean>
-  /** The human touch to record once the Ticket moved. */
   touch?: { kind: string; addressee?: Addressee }
 }
 
-/**
- * Sends an open Ticket back to an earlier stage `to` of `sendBackTargets` (or the backlog) with an optional note.
- * Admin and Bauherr of the Workspace; a Product owner only at staging, on their Product. Every check runs before the first write; WIP limits do not apply.
- * One conditional UPDATE of the Ticket's stage claims the move, so a double submit moves once and the second call throws. The live Runs of the Ticket then end `cancelled` (lease and owner cleared: a late heartbeat gets `lease lost`; no failure, no escalation, no successor),
- * the transition is recorded as `sendBack`, the stage moves through `moveStage` (`factoryStage`, label), the note is posted as a Comment and the target stage's Run starts as for any entry. A plan target drops the plan approval.
- */
 export const sendBack = async (payload: Payload, user: Doc, a: { ticket: TicketId; to: string; note?: string; workspaceId?: TicketId }, how: SendBackHow = {}): Promise<{ stage: string | null; moved: boolean }> => {
   const t = isBauherr(user) ? await loadIn(payload, user, a.ticket, a.workspaceId) : await loadGate(payload, user, a, 'staging')
   const wf = workflowFor(t.workspace)
@@ -1779,7 +1568,6 @@ export const sendBack = async (payload: Payload, user: Doc, a: { ticket: TicketI
   return { stage: toBacklog ? null : to, moved: true }
 }
 
-/** A slice reviewed clean on green checks: records its head, moves it to `done` (the forge issue stays open until the epic is accepted) and lets the epic go on. */
 const passSlice = async (payload: Payload, t: Doc, head: string): Promise<ReviewOutcome> => {
   const wf = workflowFor(t.workspace)
   const done = nameOf(wf, 'done')
@@ -1791,25 +1579,18 @@ const passSlice = async (payload: Payload, t: Doc, head: string): Promise<Review
   if (epicParent.epic?.mergeFailures) await payload.update({ collection: 'tickets', id: epicParent.id, data: { epic: { ...epicParent.epic, mergeFailures: 0 } }, overrideAccess: true })
   await moveStage(payload, await ticketsOf(payload, id(t.product)), t, done, 'slice_passed')
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: done }, overrideAccess: true })
-  // The slice has passed either way; a failure here is retried by the poll sweep (`advanceEpics`).
   await advanceEpic(payload, (await payload.findByID({ collection: 'tickets', id: slice.epic, depth: 0, overrideAccess: true })) as Doc).catch((e) => payload.logger.error({ err: e, ticket: slice.epic }, 'advancing the epic failed'))
   return 'slice_passed'
 }
 
-/**
- * Merge gate for a clean review of `reviewedSha`: the MR must be an open factory MR whose head is still `reviewedSha` (else a new review starts),
- * auto-merge on, `## Evidence` present, not a draft, checks and statuses green (none = green once the head is 10 minutes old). Pending waits, red returns to Build.
- */
 export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: string | null, at = Date.now()): Promise<ReviewOutcome> => {
   const wf = workflowFor(t.workspace)
   if (!isFactoryPr(mr.pr, mr.repo, t) || mr.pr.state !== 'open') return escalate(payload, t, 'the MR is not an open factory MR of this Ticket; refusing to merge it.')
-  // Any head move starts a new review, except a Runner main-merge with an unchanged Ticket diff (`rebindReview` moves the verdict to the new head before this runs).
   if (mr.pr.headSha !== reviewedSha) {
     if (await moveReview(payload, t.id, null)) await restartReview(payload, t)
     return 'review_restarted'
   }
   const product = (await payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })) as Doc
-  // A slice never merges its PR: it only has to be reviewed clean on green checks; the epic PR merges once, after the epic review.
   if (t.slice) {
     const checks = await checksGate(payload, t, mr, at)
     if (checks.state === 'red') return returnToBuild(payload, t, mr, `checks failed on the MR head: ${checks.failed.join(', ')}`, checks.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
@@ -1825,7 +1606,6 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
     await moveReview(payload, t.id, 'waiting_checks')
     return 'waiting_checks'
   }
-  // The queue and the train test against current main themselves: a PR behind it is not merged with the base by the Runner there; a conflict still is.
   if (mr.pr.mergeable === false || (mr.pr.behind && !isQueue(product) && !isTrain(product))) return mergeMainFirst(payload, t, mr, reviewedSha)
   const checks = await checksGate(payload, t, mr, at)
   if (checks.state === 'red') return returnToBuild(payload, t, mr, `checks failed on the MR head: ${checks.failed.join(', ')}`, checks.failed.map((c) => `- [high] check \`${c}\` is red on ${mr.pr.headSha.slice(0, 7)}; make it pass.`))
@@ -1861,10 +1641,6 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
   return 'merged'
 }
 
-/**
- * Both review paths end here, after the review Run holds its verdict on `reviewedSha`: posts the MR comment, then hands an unusable review to a human,
- * returns to Build (blocking findings) or runs the merge gate. `resume` (a retry by `resumeReviews`) posts the MR comment only when an identical one is missing. Never throws: a failure parks the Ticket on a human and the (succeeded) Run stays as it is.
- */
 export const concludeReview = async (payload: Payload, ticket: TicketId, review: Review, reviewedSha: string | null, resume = false): Promise<{ outcome: ReviewOutcome }> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc & { id: number | string }
   if (t.parked) return { outcome: 'noop' }
@@ -1895,10 +1671,6 @@ export const concludeReview = async (payload: Payload, ticket: TicketId, review:
   }
 }
 
-/**
- * One-off recovery: Tickets parked on `needs_human` by 3 failed merges before conflicts had their own route (`conflict_returns` still NULL, set by the migration only on old rows)
- * go back to `waiting_checks` only when the MR conflicts; every inspected row gets `conflict_returns` = 0, so each is checked once and a genuine merge error stays with the human.
- */
 const recoverMergeFailures = async (payload: Payload): Promise<void> => {
   const rows = (await Promise.all((await stagesOfKind(payload, 'review')).map(async (p) => (await payload.db.drizzle.execute(sql`SELECT "id" FROM "tickets" WHERE "workspace_id" = ${p.workspace} AND "stage" = ${p.name} AND "state" = 'open' AND "review_state" = 'needs_human' AND "merge_failures" >= ${MAX_MERGE_FAILURES} AND "conflict_returns" IS NULL`)).rows))).flat()
   for (const { id: ticket } of rows as { id: TicketId }[]) {
@@ -1915,10 +1687,6 @@ const recoverMergeFailures = async (payload: Payload): Promise<void> => {
   }
 }
 
-/**
- * After a Build Run or the `merge-main` job (`from`) that only merged the base (or resolved a conflict) on the MR: when the Ticket's own diff is unchanged (the Run's `patchId` equals the latest clean review's `reviewedPatchId`),
- * the verdict moves to the new head and goes through the merge gate again (checks still decide); no Review Run starts. Returns false when a new review is needed.
- */
 export const rebindReview = async (payload: Payload, t: Doc, from?: { patchId: string; pushedSha: string; reviewedPatchId?: string }): Promise<boolean> => {
   const wf = workflowFor(t.workspace)
   if (!is(wf, t.stage, 'review') || t.state !== 'open' || (t.reviewState && t.reviewState !== 'waiting_checks')) return false
@@ -1936,7 +1704,6 @@ export const rebindReview = async (payload: Payload, t: Doc, from?: { patchId: s
   return true
 }
 
-/** Per-minute pass: Tickets waiting on checks re-run the merge gate against the latest reviewed SHA; waiting longer than 2 hours needs a human. */
 export const watchReviews = async (payload: Payload, at = Date.now()): Promise<number> => {
   await recoverMergeFailures(payload)
   const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, NOT_PARKED, await inKindStage(payload, 'review'), { reviewState: { equals: 'waiting_checks' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
@@ -1958,28 +1725,19 @@ export const watchReviews = async (payload: Payload, at = Date.now()): Promise<n
   return merged
 }
 
-/** Head the Ticket's latest succeeded review Run reviewed; null when there is none. */
 export const reviewedShaOf = async (payload: Payload, t: Doc): Promise<string | null> => {
   const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
   return last?.reviewedSha ?? null
 }
 
-/** A queued MR the forge does not report as queued after this long was dropped by the queue (its merge-group checks failed). */
 export const QUEUE_DROP_GRACE_MS = 2 * 60_000
-/** Times the queue drops an MR before a Ticket needs a human. */
 export const MAX_TRAIN_FAILURES = 3
 
-/** Where the failed queue run of an MR is to be found: GitHub's merge_group runs, GitLab's pipelines of the target branch. */
 export const queueRunsLink = (pr: { url: string; base: string }, repo: string): string => {
   const origin = new URL(pr.url).origin
   return pr.url.includes('/-/merge_requests/') ? `${origin}/${repo}/-/pipelines?ref=${encodeURIComponent(pr.base)}` : `${origin}/${repo}/actions?query=event%3Amerge_group`
 }
 
-/**
- * Per-minute pass over Tickets in `queued`: a merged MR is left to `watchRelease` (reviewState becomes `merged`); a moved head dequeues and starts a new review;
- * an open MR the forge no longer reports as queued (after a 2 minute grace, and a fresh read that still finds it open) was dropped: back to Build with the queue run link, `trainFailures` + 1, the 3rd needs a human;
- * queued longer than `WAIT_CHECKS_MAX_MS` needs a human (dequeued first; not for a member of the running train of a `train` Product: the train has its own step timeout). An unknown queue state (the forge call failed) changes nothing.
- */
 export const watchQueued = async (payload: Payload, at = Date.now()): Promise<number> => {
   const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, NOT_PARKED, await inKindStage(payload, 'review'), { reviewState: { equals: 'queued' } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let merged = 0
@@ -1988,7 +1746,6 @@ export const watchQueued = async (payload: Payload, at = Date.now()): Promise<nu
       const mr = await prOf(payload, t)
       if (!mr || mr.pr.state === 'closed') continue
       if (mr.pr.state === 'merged') {
-        // A queue merge is a merge like the direct gate's: it may distill a skill too (#41).
         if (await moveReview(payload, t.id, 'merged', 'queued')) {
           merged++
           await queueDistill(payload, t)
@@ -2026,7 +1783,6 @@ export const watchQueued = async (payload: Payload, at = Date.now()): Promise<nu
 
 const trainProduct = (payload: Payload, t: Doc): Promise<Doc> => payload.findByID({ collection: 'products', id: id(t.product), depth: 0, overrideAccess: true })
 
-/** A queued MR whose checks failed in the forge queue or the factory train: back to Build with the run `link`, `trainFailures` + 1, the 3rd needs a human. `by` names who dropped it. */
 export const returnDroppedToBuild = async (payload: Payload, t: Doc, mr: Mr, link = queueRunsLink(mr.pr, mr.repo), by = 'merge queue'): Promise<ReviewOutcome> => {
   if (!(await moveReview(payload, t.id, 'waiting_checks', 'queued'))) return 'noop'
   const failures = Number((await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "train_failures" = COALESCE("train_failures", 0) + 1 WHERE "id" = ${t.id} RETURNING "train_failures"`)).rows[0]!.train_failures)
@@ -2037,7 +1793,6 @@ export const returnDroppedToBuild = async (payload: Payload, t: Doc, mr: Mr, lin
 
 const RESUME_GRACE_MS = 2 * 60_000
 
-/** Per-minute pass: a review Run of the current review (reviewed the MR head, finished after the last Build Run) holds its verdict but the Ticket never left review (crash between the Run write and the stage move); the verdict is applied again. A stale Run is not applied; a fresh review starts. A crash after the round claim in `returnToBuild` counts that round twice on resume (accepted, D3). */
 export const resumeReviews = async (payload: Payload, at = Date.now()): Promise<number> => {
   const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, NOT_PARKED, await inKindStage(payload, 'review'), { reviewState: { exists: false } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let resumed = 0
@@ -2064,10 +1819,8 @@ export const resumeReviews = async (payload: Payload, at = Date.now()): Promise<
   return resumed
 }
 
-/** `needs_human` reason kinds that are the owner's (#378); `stuck` is the factory's. */
 const OWNER_REASONS = ['decision', 'access']
 
-/** Per-minute pass: a Ticket parked at `ready_for_human`, or at `needs_human` below the round cap, whose MR head moved since the last review restarts the review (a same-diff main merge is rebound instead). The cap is the owner's decision. */
 export const restartParkedReviews = async (payload: Payload): Promise<number> => {
   const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, NOT_PARKED, await inKindStage(payload, 'review'), { reviewState: { in: ['ready_for_human', 'needs_human'] } }] }, limit: 200, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
   let restarted = 0
@@ -2075,7 +1828,6 @@ export const restartParkedReviews = async (payload: Payload): Promise<number> =>
     try {
       if (t.reviewState === 'needs_human' && (t.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) continue
       const reviewStage = nameOf(workflowFor(t.workspace), 'review')
-      // A review that asked the owner (a product decision, an access problem) waits for the answer: a new head must not merge past it.
       const newest = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { or: [{ kind: { equals: 'review' } }, { stage: { equals: reviewStage } }] }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
       if (newest?.status === 'needs_human' && OWNER_REASONS.includes(newest.reasonKind)) continue
       const last = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'review' } }, { status: { equals: 'succeeded' } }] }, sort: '-createdAt', limit: 1, depth: 0, overrideAccess: true })).docs[0] as Doc | undefined
@@ -2096,14 +1848,11 @@ export const restartParkedReviews = async (payload: Payload): Promise<number> =>
   return restarted
 }
 
-/** `expedite`: Triage proposes the expedite lane (production down, factory blocked); a human decides. */
 export type Triage = { outcome: 'plan' | 'refine' | 'skip'; reason: string; questions: { title: string; default: string; alternatives: string[] }[]; expedite?: true; causedBy?: number }
 export const MAX_QUESTIONS = 10
 
-/** One line without the characters the decision-sheet parser treats as structure. */
 const plain = (v: unknown, max: number): string => String(v).replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/\*\*/g, '').replace(/[;.]\s|[;.]$/g, ', ').replace(/\s+/g, ' ').replace(/,\s*$/, '').trim().slice(0, max)
 
-/** Validates a triage outcome. `refine` needs 1..MAX_QUESTIONS questions (title, default, optional alternatives); `reason` is always required. */
 export const normalizeTriage = (raw: any): Triage => {
   if (!raw || !['plan', 'refine', 'skip'].includes(raw.outcome) || typeof raw.reason !== 'string' || !raw.reason.trim()) throw new Error('a triage needs outcome (plan|refine|skip) and a reason')
   if (raw.causedBy !== undefined && (!Number.isInteger(raw.causedBy) || raw.causedBy < 1)) throw new Error('causedBy must be a Ticket number')
@@ -2117,18 +1866,12 @@ export const normalizeTriage = (raw: any): Triage => {
   return { outcome: raw.outcome, reason: plain(raw.reason, 1000), questions, ...(raw.expedite === true && { expedite: true as const }), ...(raw.causedBy !== undefined && { causedBy: raw.causedBy }) }
 }
 
-/** The questions as a decision sheet in the plan's format; every row is critical, so the owner answers all of them. */
 export const triageSheet = (t: Triage, tpl: Tpl = packTemplate('triage-questions')): string =>
   `${TRIAGE_MARKER}\n${renderTemplate(tpl, {
     questions: `Triage needs your answers before this Ticket can be planned: ${t.reason}`,
     decisions: t.questions.map((q, i) => `- **D${i + 1} ${q.title}, critical**. Default: ${q.default}.${q.alternatives.length ? ` Alternatives: ${q.alternatives.join('; ')}.` : ''}`).join('\n'),
   })}`
 
-/**
- * Applies a triage outcome (system action, called after the Run's lease or autonomous finish is checked): `plan` sets the stage label (the poller starts the Plan Run);
- * `refine` adds the hold label and posts the sheet; `skip` posts the reason. `refine` and `skip` record the Ticket's new `updatedAt` as triaged, so only a change re-triages.
- * A Ticket that gained a stage label meanwhile is left alone.
- */
 export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage): Promise<{ outcome: Triage['outcome'] | 'noop' }> => {
   const doc = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc
   const wf = workflowFor(doc.workspace)
@@ -2156,13 +1899,10 @@ export const submitTriage = async (payload: Payload, ticket: TicketId, t: Triage
 
 const SIBLINGS_MARKER = '<!-- bauherr:intake-siblings -->'
 
-/** Escapes `<` and `>` so no requester text can form or close an HTML comment marker, and drops heading hashes. */
 const plainLine = (v: string): string => v.replace(/[<>]/g, (c) => (c === '<' ? '&lt;' : '&gt;')).replace(/^#+\s*/gm, '').trim()
 
-/** The factory label of a request's type (`bauherr:type:bug`); the plain `type:<kind>` label stays for the release and overlap rules. */
 export const typeLabel = (kind: string) => `bauherr:type:${kind}`
 
-/** Ticket title, body and labels for a draft; draft values cannot add headings or the marker. `extra.proposeFastLane` adds Triage's own proposal label (the Inbox asks "Fast lane for ...?" at once); `followUp` is the number of the request this one reports a problem with. */
 export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[], productSlug: string, part?: number, shots: { name: string; url: string }[] = [], tpl: Tpl = packTemplate('request'), extra: { urgent?: boolean; proposeFastLane?: boolean; followUp?: number } = {}): { title: string; body: string; labels: string[] } => ({
   title: plainLine(draft.title?.trim() || draft.problem).replace(/\s+/g, ' ').slice(0, 80),
   body: [
@@ -2181,11 +1921,6 @@ export const intakeTicket = (draft: Draft, sessionId: TicketId, missing: string[
   labels: [`type:${draft.type}`, typeLabel(draft.type), `product:${productSlug}`, ...(extra.proposeFastLane ? [EXPEDITE_PROPOSED] : [])],
 })
 
-/**
- * Creates the Ticket from a finished (or question-capped) Intake session: no stage label, so Triage picks it up; the interview is appended as a Comment.
- * A session with a `split` creates one Ticket per item (marker `part=<i>`), each linking its siblings; `expect` is required and must equal the item count (the requester's confirmation).
- * Idempotent: a retry resumes at the first missing part, a submitted session returns its numbers.
- */
 export const submitIntake = async (payload: Payload, sessionId: TicketId, expect?: number): Promise<{ number: number; numbers?: number[] }> =>
   exclusive(`intake:${sessionId}`, async () => {
     const s = (await payload.findByID({ collection: 'intake_sessions', id: sessionId, depth: 1, overrideAccess: true })) as Doc
@@ -2235,7 +1970,6 @@ export const submitIntake = async (payload: Payload, sessionId: TicketId, expect
     return { number: numbers[0]!, ...(split && { numbers }) }
   })
 
-/** Discards an open Product-user session of the caller (the New request page's resume list). */
 export const abandonIntake = async (payload: Payload, user: Doc, sessionId: TicketId): Promise<void> => {
   const s = (await payload.findByID({ collection: 'intake_sessions', id: sessionId, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
   if (!s || s.persona !== 'product-user' || s.status !== 'open' || String(id(s.user)) !== String(user.id)) throw new NotInWorkspace()

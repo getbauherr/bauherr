@@ -8,7 +8,6 @@ export const SESSION_TTL_S = 14 * 86400
 const b64 = (b: Buffer | string) => Buffer.from(b).toString('base64url')
 const mac = (body: string, key: string) => createHmac('sha256', key).update(body).digest()
 
-/** HS256 JWT `{ id, v, typ, aud, exp }` signed with PAYLOAD_SECRET; `v` is the Bauherr's sessionVersion. */
 export const signSession = (id: number | string, v: number, key = secret('PAYLOAD_SECRET'), now = Date.now()): string => {
   const body = `${b64(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))}.${b64(JSON.stringify({ id, v, typ: 'bauherr-session', aud: 'bauherr', exp: Math.floor(now / 1000) + SESSION_TTL_S }))}`
   return `${body}.${b64(mac(body, key))}`
@@ -32,14 +31,11 @@ export const isLocked = (lockUntil?: string | null): boolean => !!lockUntil && n
 
 export const ACCOUNT_LOCKED = 'This account is locked.'
 
-/** Request headers whose API-key lookup hit a locked account; lets the caller of `payload.auth` tell a lock from an unknown key. */
 export const lockedRequests = new WeakSet<Headers>()
 
-/** Whether the request carries a credential Payload's built-in strategies resolve through `findByID`: API key, `JWT`/`Bearer` header or `payload-token` cookie. */
 export const carriesPayloadCredential = (headers?: Headers | null): boolean =>
   /^(bauherren API-Key|JWT|Bearer) /.test(headers?.get?.('authorization') ?? '') || /(^|;\s*)payload-token=/.test(headers?.get?.('cookie') ?? '')
 
-/** Whether the Bauherr is locked. `lockUntil` is hidden: it is read alone so hash/salt never reach callers. A failed read fails closed. */
 export const accountLocked = async (payload: Payload, id: number | string): Promise<boolean> => {
   const lock = await payload.findByID({ collection: 'bauherren', id, depth: 0, overrideAccess: true, showHiddenFields: true, select: { lockUntil: true } }).catch(() => null)
   return !lock || isLocked(lock.lockUntil as string | null | undefined)

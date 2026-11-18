@@ -1,7 +1,6 @@
 import type { Graph } from '../../../../lib/workflow'
 
 export type Variant = 'full' | 'path'
-/** `fullCompact` and `pathCompact` are the narrow-container layouts of the two variants (container below 900 px). */
 export type Size = 'full' | 'path' | 'fullCompact' | 'pathCompact'
 const SIZE = {
   full: { stage: [104, 244], small: [68, 244], check: [68, 76], gap: 22, step: 20, font: 11, straightLabels: true },
@@ -11,17 +10,11 @@ const SIZE = {
 } as const
 
 export type Placed = { id: string; x: number; y: number; w: number; h: number }
-/** Coordinates are in layout units: x scales with the container, y is pixels. `end` is where the arrowhead points: `down` into a card top, `up` into a card bottom, `right` into a card side. */
 export type Edge = { key: string; from: string; to: string; outcome: string; back: boolean; dotted: boolean; d: string; label: { x: number; y: number } | null; end: { x: number; y: number; dir: 'down' | 'up' | 'right' } | null }
 export type Layout = { width: number; height: number; nodes: Placed[]; edges: Edge[]; terminals: Map<string, { outcome: string; to: string }[]> }
 
 type Arc = { key: string; from: number; to: number; outcome: string; up: boolean; back: boolean; level: number }
 
-/**
- * Left-to-right layout of a workflow graph from the node order alone (no measuring, so it renders on the server): nodes in a row, adjacent forward edges as straight lines,
- * forward edges that skip nodes as arcs above, backward edges as dashed arcs below, nested by span so no two arcs share a lane where they overlap. A checkpoint that sits on the
- * way (plan gate, staging gate, production) joins its stage to the next stage; the refine checkpoint only hangs on its stage.
- */
 export const JOB_ROW = 26
 
 export const layoutFlow = (g: Graph, variant: Size, jobRows = 0): Layout => {

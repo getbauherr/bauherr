@@ -2,7 +2,6 @@ import type { TaskConfig } from 'payload'
 
 type Schedule = NonNullable<TaskConfig['schedule']>
 
-/** Poll-queue schedule whose failed scheduling attempts are logged with the task slug instead of vanishing. */
 export const scheduled = (cron: string): Schedule => [{
   cron,
   queue: 'poll',

@@ -7,7 +7,6 @@ import { TimelineView } from '../RunViews'
 import { Time } from '../Time'
 import { Panel } from './Panel'
 
-/** The Steps the agent reported, oldest first. Everyone sees summary and time; an Admin also sees tokens, duration and tool calls, and may switch to the bars. */
 export function RunTimeline({ run, steps, total, calls, state, now, admin, bars, className }: { run: RunDoc; steps: StepDoc[]; total: number; calls: Map<number, ToolCallDoc[]>; state: RunHealthState; now: number; admin: boolean; bars: boolean; className?: string }) {
   return (
     <Panel id="run-timeline" title="Timeline" className={className}>

@@ -55,7 +55,6 @@ const edit = async (ws: number, fn: (d: Doc) => void): Promise<string> => {
   return stringify(d)
 }
 const stageDoc = (d: Doc, name: string) => d.workflow.stages.find((s: Doc) => s.name === name) as Doc
-/** Renames a stage in the document: its name and every outcome that targets it. */
 const renameStage = (d: Doc, from: string, to: string) => {
   for (const s of d.workflow.stages as Doc[]) {
     if (s.name === from) s.name = to

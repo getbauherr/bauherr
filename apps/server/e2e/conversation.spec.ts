@@ -1,10 +1,10 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { pickRow } from './inbox-row'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-// Own Workspace (slug `conv`), own Admin and Product owner (seed-e2e.ts): the three Tickets (Docs Agent, Export the invoices, Name the export file) are answered by no other spec.
 const admin = 'conv-admin@example.com'
 const owner = 'conv-owner@example.com'
 const shots = process.env.SHOTS_DIR && `${process.env.SHOTS_DIR}/conv`
@@ -34,7 +34,6 @@ const shoot = async (page: Page, name: string, scheme: 'light' | 'dark' = 'light
   await page.emulateMedia({ colorScheme: 'light' })
 }
 
-// Embedded in the Ticket page's split, the refined Ticket opens as a sheet (the bar in the stream): open it to read or act on it, close it to use the conversation.
 const openPanel = async (page: Page) => {
   if (await page.getByTestId('artifact-sheet').count()) return
   await page.getByTestId('artifact-bar').click()
@@ -46,10 +45,9 @@ const closePanel = async (page: Page) => {
   await expect(page.getByTestId('artifact-sheet')).toHaveCount(0)
 }
 
-/** The Inbox card of a Ticket, "Answer questions" opens the conversation (a navigation, no in-card expansion). */
 const open = async (page: Page, title: string) => {
   await page.goto('/inbox')
-  await page.getByTestId('inbox-row').filter({ hasText: title }).click()
+  await pickRow(page, title)
   const card = page.locator('article[data-decision]').filter({ hasText: title })
   await expect(card).toHaveCount(1)
   hrefs[title] = (await card.getByRole('link', { name: new RegExp(title) }).getAttribute('href'))!
@@ -74,19 +72,17 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await signIn(page, admin)
   await page.goto('/inbox')
   for (const t of ['Export the invoices', 'Name the export file']) {
-    await page.getByTestId('inbox-row').filter({ hasText: t }).click()
+    await pickRow(page, t)
     hrefs[t] = (await page.locator('article[data-decision]').filter({ hasText: t }).getByRole('link', { name: new RegExp(t) }).getAttribute('href'))!
   }
   await open(page, 'Docs Agent')
   await expect(page).toHaveURL(/\/tickets\/\d+\?view=conversation$/)
 
-  // The conversation sits left of the Now pane with its one action bar; the app sidebar keeps its state.
   await expect(page.getByTestId('ticket-split')).toBeVisible()
   await expect(page.getByTestId('now-pane')).toBeVisible()
   await expect(page.getByTestId('action-bar')).toHaveCount(1)
   await expect(page.getByTestId('chat-dock')).toBeHidden()
 
-  // Who is talking: the role as persona, the session that asked, the Factory assistant that replies, the model.
   const header = page.getByTestId('participant')
   await expect(header).toContainText('Orchestrator')
   await expect(header).toContainText('refining #1 with you')
@@ -98,7 +94,6 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await expect(first.getByRole('img', { name: /connected/ })).toBeVisible()
   await expect(first.getByRole('link', { name: /Run #\d+/ })).toBeVisible()
 
-  // The question card (question 1 of 4, why, options with the recommended one), the checklist and the placeholders of the artifact.
   const card = page.getByTestId('current-point')
   await expect(card).toContainText('Question 1 of 4')
   await expect(card).toContainText('What should it deliver?')
@@ -122,7 +117,6 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await expect(panel.getByTestId('foot-status')).toHaveText('Answer 4 more, or take the recommended answers.')
   await expect(panel.getByTestId('foot-next')).toContainText('Then: the Orchestrator finishes Triage')
 
-  // An option click records at once: checklist, chip and artifact follow without a reload.
   await closePanel(page)
   await card.getByRole('button', { name: /A recurring Docs Agent/ }).click()
   await openPanel(page)
@@ -132,7 +126,6 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await expect(page.getByTestId('refine-thread').getByTestId('point-chip').first()).toContainText('A recurring Docs Agent')
   await expect(page.getByTestId('current-point')).toContainText('Question 2 of 4')
 
-  // A typed answer that edits the Ticket: the changed sections are highlighted, the version goes up, and the diff lists them.
   await expect(page.getByTestId('rechecking')).toHaveCount(0) // the re-check after the click has ended: the composer sends again
   await closePanel(page)
   const typed = page.getByRole('textbox', { name: 'Your answer' })
@@ -158,7 +151,6 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await panel.getByTestId('changes').click()
   await expect(panel.getByTestId('artifact-diff')).toHaveCount(0)
 
-  // "Change" on a chip reopens only that point.
   await panel.locator('[data-point=D1]').getByRole('button', { name: 'Change' }).click()
   await expect(panel.locator('[data-point=D1]')).toHaveAttribute('data-status', 'active')
   await expect(panel.getByTestId('points-count')).toHaveText('3 of 4 open')
@@ -167,7 +159,6 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await openPanel(page)
   await expect(panel.getByTestId('points-count')).toHaveText('2 of 4 open')
 
-  // Send to planning waits until nothing is open; "Use recommended" settles the rest.
   await expect(panel.getByTestId('send-to-planning')).toBeDisabled()
   await panel.getByRole('button', { name: 'Use recommended' }).click()
   await expect(panel.getByTestId('points-count')).toHaveText('all settled')
@@ -186,7 +177,6 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await expect(panel.getByTestId('send-to-planning')).toHaveCount(0)
   await expect(panel.locator('[data-section=trigger]')).toContainText('After every merged MR.')
 
-  // The Ticket no longer waits: the same page shows the conversation as read-only history beside the Now pane.
   await page.goto(hrefs['Docs Agent']!)
   await expect(page.getByTestId('conversation-shell')).toBeVisible()
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Docs Agent')
@@ -199,13 +189,12 @@ test('the Inbox card stays short and opens the shell; the info popover holds the
   await page.setViewportSize({ width: 1280, height: 800 })
   await signIn(page, admin)
   await page.goto('/inbox')
-  await page.getByTestId('inbox-row').filter({ hasText: 'Export the invoices' }).click()
+  await pickRow(page, 'Export the invoices')
   const card = page.locator('article[data-decision]').filter({ hasText: 'Export the invoices' })
   await expect(card.getByTestId('refine-panel')).toHaveCount(0)
   await expect(card.getByRole('button', { name: 'Answer questions' })).toHaveCount(0)
   await open(page, 'Export the invoices')
 
-  // The Ticket meta is the Now pane's About and its action bar (no info popover in the split).
   await page.getByText('About', { exact: true }).click()
   const info = page.getByTestId('ticket-about')
   await expect(info).toContainText('Conv App')
@@ -267,7 +256,6 @@ test('the model chip chooses the model of the next turns, a pasted screenshot go
   const requests = async () => (await page.evaluate(async () => (await fetch('/api/chat/fake-requests')).json())) as { model: string; text: string; images: number }[]
   await expect.poll(async () => (await requests()).filter((r) => r.text.includes('Just call it export.')).map((r) => r.model)).toEqual(['anthropic/claude-opus-5-5']) // the header shows the model at once; the request is recorded when the turn runs
 
-  // The choice is stored on the conversation: it survives a reload.
   await page.reload()
   await expect(page.getByTestId('header-model')).toHaveText('claude-opus-5-5')
 

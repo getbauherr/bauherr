@@ -4,7 +4,6 @@ import { MediaRejected, mediaUrl, readUpload, saveMedia, type ImageMime } from '
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Stores one pasted or dropped image of the current Workspace for a request conversation (the same as `api/chat/media`, open to a Product owner too). Multipart field `file`. Answers `{ id, url }`; send `id` in `images` of a turn. */
 export const POST = async (req: Request): Promise<Response> => {
   const w = await chatWho(req, { owner: true })
   if (w instanceof Response) return w

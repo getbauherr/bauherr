@@ -15,7 +15,6 @@ export class ApiError extends Error {
 
 export const jsonRequest = (method: string, body?: unknown): RequestInit => ({ method, ...(body !== undefined && { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }) })
 
-/** The server's `{error}` text of a failed answer. */
 export const errorOf = async (r: Response): Promise<string> => ((await r.json().catch(() => ({}))) as { error?: string }).error ?? r.statusText
 
 const call = async <T>(path: string, method = 'GET', body?: unknown): Promise<T> => {
@@ -27,7 +26,6 @@ const call = async <T>(path: string, method = 'GET', body?: unknown): Promise<T>
 export const api = {
   list: () => call<{ threads: Meta[] }>('/threads').then((r) => r.threads),
   create: (path: string) => call<Meta>('/threads', 'POST', { path }),
-  /** The person's one thread of a Ticket (created on first use). */
   ticketThread: (ticket: number) => call<Meta>('/threads', 'POST', { ticket }),
   fetch: (id: string) => call<Meta>(`/threads/${id}`),
   update: (id: string, patch: { title?: string | null; archived?: boolean }) => call<void>(`/threads/${id}`, 'PATCH', patch),
@@ -35,7 +33,6 @@ export const api = {
   messages: (id: string) => call<Loaded>(`/threads/${id}/messages`),
   putMessage: (id: string, item: HistoryItem, answerId?: string) => {
     const m = item.message
-    // A `File` cannot be serialized; the uploaded image is addressed by the URL in the attachment content.
     const message = m.role === 'user' ? { ...m, attachments: m.attachments.map(({ file: _f, ...a }) => a) } : m
     return call<void>(`/threads/${id}/messages`, 'PUT', { parentId: item.parentId, message, ...(answerId && { answerId }) })
   },
@@ -43,7 +40,6 @@ export const api = {
   context: (path: string) => call<{ label: string; markdown: string }>(`/context?path=${encodeURIComponent(path)}`),
 }
 
-/** What the page behind the dock is: pathname and query, read when it is needed (the person navigates while the dock stays open). */
 export const currentPath = (): string => location.pathname + location.search
 
 export const remember = {

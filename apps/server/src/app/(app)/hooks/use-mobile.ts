@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 
 const MOBILE_BREAKPOINT = 768
 
-/** True below 768px; false until mounted so server and first client render agree. */
 export function useIsMobile(): boolean {
   const [mobile, setMobile] = useState(false)
   useEffect(() => {

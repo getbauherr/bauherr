@@ -27,7 +27,6 @@ type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
 const PLAN_GATES: (Need | null)[] = ['Approve plan', 'Answer decisions']
 
-/** Stores the Ticket's count of unanswered critical decisions from its forge comments (`unansweredCriticalCount`), so pages show "Answer decisions" without a forge call; returns the count. Written only when it changed. */
 export const storeOpenCritical = async (payload: Payload, ticket: number | string, comments: Parameters<typeof unansweredCriticalCount>[0]): Promise<number> => {
   const n = unansweredCriticalCount(comments)
   await cas(payload, ticket, sql`"open_critical_decisions" = ${n}::int`, sql`"open_critical_decisions" IS DISTINCT FROM ${n}::int`)
@@ -36,59 +35,42 @@ export const storeOpenCritical = async (payload: Payload, ticket: number | strin
   return n
 }
 
-/** Whether `login` owns the Ticket's current gate, so a session release must leave it assigned. */
 export const ownsGate = async (payload: Payload, t: Doc, login: string): Promise<boolean> =>
   !!(t.gateNotified || logins(t.gateAssignees).length) && (await gateOwnersOf(payload, t.workspace)).some((l) => l.toLowerCase() === login.toLowerCase())
 
-/** The logins of the running session Runs on the Ticket: they hold the assignment for their Run, whatever the gate does. */
 const sessionLoginsOf = async (payload: Payload, ticketId: number | string): Promise<string[]> => {
   const runs = await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticketId } }, { mode: { equals: 'session' } }, { status: { equals: 'running' } }] }, pagination: false, ...o, depth: 1 })
   return runs.docs.flatMap((r) => ((r.sessionOwner as Doc | null)?.githubLogin ?? process.env.BAUHERR_BOT_LOGIN) || [])
 }
 
-/** A claim the forge rejected for good (unknown or unassignable login): retrying cannot help. */
 const definitive = (e: unknown): boolean => [404, 422].includes((e as { status?: number }).status ?? 0)
 
-/**
- * Notifies the gate's person once per gate value: assigns them on the forge and posts one Comment that @mentions them (idempotent by marker).
- * `gateNotified` is only set once every owner is assigned (or already was), so failed claims are retried each minute.
- * A passed or changed gate unassigns exactly the logins the factory added (`gateAssignees`) that do not own the next gate; other assignees stay.
- * A gate whose owners are all rejected for good is not notified and is flagged `gateUnreachable`; it is retried each sweep.
- * Returns whether the Ticket row changed.
- */
 export const syncGate = async (payload: Payload, t: Doc, run: { id: number | string; stage: string; kind?: string | null; job?: string | null; status: string; reasonKind?: string | null } | null): Promise<boolean> => {
   const wf = workflowFor(t.workspace)
   const productionChecksMissing = is(wf, t.stage, 'release') && t.productionState === 'awaiting_approval' && !hasProductionChecks((await payload.findByID({ collection: 'products', id: id(t.product), ...o })) as Doc)
-  // A checkpoint the owner decided in the UI a moment ago stays closed until the forge side has caught up.
   const raw = needsOf(wf, { ...t, jobsOpen: await jobsOpen(payload, t) }, run, productionChecksMissing, await gatesOf(payload, wf, t))
   const candidate = justDecided(t, raw) ? null : raw
-  // Reconciling writer of `tickets.needsYou` (the top bar's count); every sweep visits each open Ticket.
   if ((t.needsYou ?? null) !== candidate) await cas(payload, t.id, sql`"needs_you" = ${candidate}`, sql`"needs_you" IS DISTINCT FROM ${candidate}`)
-  // Parked on a need outside an approval: no slot while no Run of the Ticket is live. When the need clears the Ticket rejoins its column in turn (`rejoin`).
   const liveRun = candidate && PARKING_NEEDS.includes(candidate) ? (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { status: { in: ['running', 'queued', 'awaiting_session'] } }] }, limit: 1, select: { status: true }, ...o })).docs[0] as { status: string } | undefined : null
   const parking = parkingNeed(wf, t, candidate, liveRun ?? run)
   if ((t.parkedNeed ?? null) !== parking) {
     if (!parking && t.parkedNeed && t.state === 'open' && wipStages(wf).includes(t.stage)) await rejoin(payload, t)
     else await cas(payload, t.id, sql`"parked_need" = ${parking}`, sql`"parked_need" IS DISTINCT FROM ${parking}`)
   }
-  // Who it asks (`needsBy`): what the workflow addresses it to, the Bauherr when that is the Product owner and the Product has none assigned.
   const nominal = candidate ? needBy(wf, candidate, t.stage) : null
   const ownerRows = nominal === 'product-owner' ? await productOwnersOfTicket(payload, t) : []
   const asked = candidate ? askedOf(nominal!, ownerRows.length > 0) : null
   if ((t.needsBy ?? null) !== asked) await cas(payload, t.id, sql`"needs_by" = ${asked}`, sql`"needs_by" IS DISTINCT FROM ${asked}`)
-  // The prepared Decision (Inbox card, Ticket page) follows `needsYou`: written when its content changed, cleared with the need.
   const decision = candidate ? await prepareDecision(payload, t, candidate, run) : null
   if (!sameDecision(t.decision, decision)) await cas(payload, t.id, sql`"decision" = ${decision ? JSON.stringify(decision) : null}::jsonb`, sql`true`)
   await record(payload, t.id, { cause: 'sweep' }, { ticket: t, run })
   const held: Need | null = t.gateNotified ?? null
   const mine = logins(t.gateAssignees)
   if (!candidate && !held && !mine.length && !t.gateUnreachable) return false
-  // The people told: the Product owners' forge logins when it asks them, else the Bauherren and Admins with a linked login.
   const owners = !candidate ? [] : asked === 'product-owner' ? ownerRows.flatMap((u) => logins(u.githubLogin)) : await gateOwnersOf(payload, t.workspace)
   const base = owners.length ? candidate : null
   let forge: ReturnType<typeof forgeOf> | undefined
   const source = async (): Promise<TicketSource> => (await (forge ??= forgeOf(payload, id(t.product)))).tickets
-  // The one bounded forge read per awaiting-plan Ticket and sweep that keeps `openCriticalDecisions` current for the pages; a failed read keeps the stored value, and only a first notice (not yet held) needs the answer.
   const open = candidate === 'Approve plan' ? await (async () => storeOpenCritical(payload, t.id, await decisionComments(payload, t, await source(), { notify: true })))().catch((e) => { if (!PLAN_GATES.includes(held)) throw e; return null }) : null
   let want = base
   if (base === 'Approve plan' && PLAN_GATES.includes(held)) want = held
@@ -122,7 +104,6 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
     complete = mentioned.length > 0 && mentioned.every((l) => assigned.includes(l) || added.includes(l))
     const marker = `<!-- bauherr:gate:${want}:${createHash('sha1').update(`${want}${run?.id ?? ''}`).digest('hex')} -->`
     if (mentioned.length && !(await ts.listComments(n)).some((c) => c.body.startsWith(marker))) {
-      // Parallel watcher passes would all see "no Comment yet": one conditional UPDATE decides who posts; a forge error releases the claim so the next pass retries.
       const claim = marker
       if (await cas(payload, t.id, sql`"gate_notice_claim" = ${claim}`, sql`"gate_notice_claim" IS DISTINCT FROM ${claim}`)) {
         try {
@@ -143,7 +124,6 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
     data: { gateNotified: notified, gateNotifiedAt: notified === held ? t.gateNotifiedAt : notified ? new Date().toISOString() : null, gateAssignees: added.join(',') || null, gateUnreachable: unreachable },
     ...o,
   })
-  // Closes the claim/poll race: the poll may have seen the new assignee before it was recorded and skipped the Run start on stage entry.
   const factory = [...mine, ...added]
   if (is(wf, t.stage, 'plan', 'build') && t.state === 'open' && !t.waitingFor && logins(t.assignees).every((a) => factory.includes(a))) {
     const runs = await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { stage: { equals: t.stage } }, { job: { exists: false } }] }, ...o })
@@ -152,7 +132,6 @@ export const syncGate = async (payload: Payload, t: Doc, run: { id: number | str
   return true
 }
 
-/** Syncs the gate of every open Ticket and of closed ones still holding one; a failing Ticket does not stop the others. */
 export const syncGates = async (payload: Payload, expediteOnly = false): Promise<number> => {
   const tickets = (await payload.find({ collection: 'tickets', sort: '-expedite', where: { and: [...(expediteOnly ? [{ expedite: { equals: true } }] : []), { or: [{ state: { equals: 'open' } }, { gateNotified: { exists: true } }, { gateAssignees: { exists: true } }, { gateUnreachable: { exists: true } }, { and: [{ state: { equals: 'closed' } }, { progressHash: { exists: true } }, { updatedAt: { greater_than: new Date(Date.now() - 2 * 864e5).toISOString() } }] }] }] }, pagination: false, ...o })).docs as Doc[]
   if (!tickets.length) return 0
@@ -174,8 +153,6 @@ export const syncGates = async (payload: Payload, expediteOnly = false): Promise
       payload.logger.error({ err: e, ticket: t.id }, 'syncGate failed')
     }
   }
-  // The reconciling sweep of the progress Comments: after the gates, so each Ticket's `needsYou` is current; a closed Ticket stays in for 2 days so its "Released" lands.
-  // It only heals a Ticket that already has a progress Comment; the first one is written by the `sync-progress` job queued on a real transition, so an upgrade posts nothing on untouched issues.
   await syncProgress(payload, tickets.filter((t) => t.progressHash || t.progressCommentId).map((t) => t.id))
   return changed
 }

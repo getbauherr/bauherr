@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation'
 import { useEffect, type ComponentProps } from 'react'
 
 const FROM_TEAM = 'bauherr:team-list'
-/** The list's scroll offset when an agent was opened; the Sessions list scrolls back to it. */
 export const LIST_SCROLL = 'bauherr:team-scroll'
 const store = (fn: (s: Storage) => void) => {
   try {
@@ -12,7 +11,6 @@ const store = (fn: (s: Storage) => void) => {
   } catch {}
 }
 
-/** A link from the Team page to an agent; remembers that the visit started on the list, so Back returns to it as it was. */
 export const AgentLink = (props: ComponentProps<typeof Link>) => <Link {...props} onClick={() =>
       store((s) => {
         s.setItem(FROM_TEAM, '1')
@@ -20,7 +18,6 @@ export const AgentLink = (props: ComponentProps<typeof Link>) => <Link {...props
       })
     } />
 
-/** "Agent team": history back when the agent was opened from the list (toggle and scroll as they were), else a plain link. */
 export function BackLink({ className }: { className?: string }) {
   const router = useRouter()
   return (
@@ -45,7 +42,6 @@ export function BackLink({ className }: { className?: string }) {
   )
 }
 
-/** `/team#ses_<id>` (an old link) goes to `/team/<id>`: a hash never reaches the server. */
 export function HashRedirect() {
   const router = useRouter()
   useEffect(() => {

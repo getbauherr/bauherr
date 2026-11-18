@@ -11,7 +11,6 @@ export type JobChip = { id: string; title: string; count: number }
 
 export const hasJobs = (def: StageDef): boolean => !!def.jobs?.length
 
-/** The Jobs of a stage in order, with their depth in the `needs` graph; a plan stage with an approval gate gets its human `approve` Job last (the gate is compiled out of `jobs`). */
 export const stageJobs = (def: StageDef): ViewJob[] => {
   const list = jobsOf(def).map((j) => ({ id: j.id, title: j.id === def.name ? def.title : humanize(j.id).replace(/\bAx\b/g, 'AX'), kind: j.kind, role: j.role, skill: j.skill, by: j.by, needs: j.needs, when: j.when, blocking: j.blocking }))
   if (def.kind === 'plan' && def.jobs && def.gate === 'human') list.push({ id: 'approve', title: 'Approve', kind: 'human', role: undefined, skill: undefined, by: def.gate_by ?? 'bauherr', needs: list.map((j) => j.id), when: undefined, blocking: true })
@@ -23,7 +22,6 @@ export const stageJobs = (def: StageDef): ViewJob[] => {
   })
 }
 
-/** Per stage with explicit Jobs, per Job: the open Tickets waiting in or working on it; a live Run of a Job counts its Ticket, the human Job counts the Tickets waiting at the stage's approval. `only` limits the result to one stage (also a stage without explicit Jobs). */
 export const jobTickets = (wf: Workflow, rows: Pick<TicketRow, 'id' | 'stage' | 'open' | 'parked' | 'needsYou'>[], live: LiveRun[], only?: string): Map<string, Map<string, number[]>> => {
   const out = new Map<string, Map<string, number[]>>()
   for (const def of wf.stages) {
@@ -44,7 +42,6 @@ export const BOX = { w: 232, h: 272, gap: 56, row: 16, lane: 8 }
 export type Seg = [x1: number, y1: number, x2: number, y2: number]
 export type JobLayout = { width: number; height: number; top: number; gaps: { x: number; w: number }[]; nodes: Map<string, { x: number; y: number }>; edges: { key: string; skip: boolean; segs: Seg[] }[] }
 
-/** Columns by dependency depth, one row per Job of a column in order; a `needs` edge runs from the right side of the needed Job to the left side of the Job, a skip over a column along a lane above all cards. Every edge is a list of axis-aligned segments that lie in the gaps between columns or in the lane above (never over a card), so each can be drawn by a small SVG that overlaps no card. Coordinates are pixels (fixed card size, so it renders on the server). */
 export const layoutJobs = (jobs: ViewJob[]): JobLayout => {
   const rows = new Map<number, number>()
   const nodes = new Map<string, { x: number; y: number }>()

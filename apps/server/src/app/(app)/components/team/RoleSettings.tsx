@@ -77,7 +77,6 @@ export function RoleSettingsForm({ role, modelOptions, canEdit, onSave }: Settin
   )
 }
 
-/** Avatar, title (`heading`), model, skills, profile and stages of a role. */
 export function RoleBody({ role, heading: Heading = 'h2' }: { role: TeamRole; heading?: ElementType }) {
   return (
     <>

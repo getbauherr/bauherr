@@ -3,7 +3,6 @@ import { isWebUrl } from './url'
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-/** Raw HTML is escaped, images become their alt text, links keep only http(s) targets. Everything else is marked's own safe output. */
 const md = new Marked({
   async: false,
   renderer: {

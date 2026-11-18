@@ -7,7 +7,6 @@ const app = join(root, 'src', 'app')
 
 const pages = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? pages(join(dir, e.name)) : e.name === 'page.tsx' ? [join(dir, e.name)] : []))
 
-/** `(app)/(shell)/tickets/[id]/page.tsx` -> `/tickets/[id]` */
 const route = (file: string) => `/${relative(app, file).split(sep).slice(0, -1).filter((s) => !/^\(.*\)$/.test(s)).join('/')}`.replace(/\/$/, '') || '/'
 
 const spec = readFileSync(join(root, 'e2e', 'a11y.spec.ts'), 'utf8')

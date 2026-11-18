@@ -17,7 +17,6 @@ const ownReviewJob = (j: Record<string, any>, s: Record<string, any>, earlier: s
   return { id: j.id, kind: 'agent', role: s.role, skill: s.skill, needs: j.needs ?? earlier, blocking: true, outcomes, outcomeOrder: Object.keys(outcomes) }
 }
 
-/** Throws one Error listing every lint finding. */
 export const compile = (doc: unknown): Workflow => {
   const findings = lint(doc)
   if (findings.length) throw new Error(`invalid factory file:\n- ${findings.join('\n- ')}`)
@@ -41,7 +40,6 @@ let cached: { path: string; wf: Workflow } | undefined
 
 export const corePack = () => resolve(process.cwd(), '../../pack')
 
-/** The workflow of `factory.yaml` in the pack dir, compiled once per path. A pack dir without the file (an overlay that only adds rules or skills) uses the core pack's; throws on first use when neither is readable or the file is invalid. */
 export const DEFAULT = (): Workflow => {
   const path = resolve(packDir(), 'factory.yaml')
   if (cached?.path !== path) {
@@ -66,7 +64,6 @@ export const stage = (wf: Workflow, name: string): StageDef | undefined => {
   return wf.stages.find((s) => s.name === n)
 }
 export const byKind = (wf: Workflow, kind: Kind): StageDef | undefined => wf.stages.find((s) => s.kind === kind)
-/** The name of the stage of a built-in kind; throws when the workflow has none. */
 export const nameOf = (wf: Workflow, kind: Kind): string => {
   const s = byKind(wf, kind)
   if (!s) throw new Error(`the workflow has no ${kind} stage`)
@@ -94,7 +91,6 @@ export const pullRank = (wf: Workflow): string[] => board(wf).filter((n) => kind
 export const wipStages = (wf: Workflow): string[] => named(wf, ...WIP)
 export const defaultWip = (wf: Workflow): Record<string, number> => Object.fromEntries(wf.stages.filter((s) => s.wip).map((s) => [s.name, s.wip as number]))
 export const heldStages = (wf: Workflow): string[] => wf.stages.filter((s) => WIP.includes(s.kind) && s.kind !== 'release').map((s) => s.name).reverse()
-/** Stages whose Run mode a Workspace overrides (Settings > Factory > Models & budget). */
 export const modeStages = (wf: Workflow): string[] => named(wf, 'plan', 'build')
 export const liveStages = (wf: Workflow): string[] => named(wf, ...LIVE)
 export const inFlight = (wf: Workflow): string[] => named(wf, ...IN_FLIGHT)
@@ -105,7 +101,6 @@ export const gates = (wf: Workflow): { plan: boolean; staging: boolean; producti
   production: byKind(wf, 'release')?.production_gate === 'human',
 })
 export type CheckpointOf = 'refine' | 'plan' | 'staging' | 'production' | 'human'
-/** Who a checkpoint asks. Files and stored versions without `by:` ask the Bauherr (`gate: human` = `{by: bauherr}`; only `product-owner` is stored, so a compiled file without it hashes as before); `name` is the `human` stage. */
 export const checkpointBy = (wf: Workflow, key: CheckpointOf, name?: string): Addressee =>
   (key === 'refine' ? byKind(wf, 'triage')?.refine_by : key === 'plan' ? byKind(wf, 'plan')?.gate_by : key === 'staging' ? byKind(wf, 'release')?.gate_by : key === 'production' ? byKind(wf, 'release')?.production_gate_by : name ? stage(wf, name)?.by : undefined) ?? 'bauherr'
 export const excludeLabels = (wf: Workflow): string[] => byKind(wf, 'triage')?.exclude_labels ?? []

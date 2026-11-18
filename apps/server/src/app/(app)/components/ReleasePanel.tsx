@@ -12,12 +12,10 @@ import { Textarea } from './ui/textarea'
 type Row = { id: number; number: number; title: string; kind: string }
 type Past = { tag: string; url: string; at: string | null; html: string }
 
-/** A rc tag is `vX.Y.Z-rc.N`; the final it promotes to is `vX.Y.Z`. */
 const finalOf = (rc: string) => rc.replace(/-rc\.\d+$/, '')
 
 const VERSION = /^\d+\.\d+\.\d+(-rc\.\d+)?$/
 
-/** Tickets waiting for a release (ticked), the proposed version (a select of the bumps), the notes and an optional model-written summary (both editable; the summary only on the Summarise button), the ship button in the next-step bar, and the past releases. With an open release candidate (`rc`) the action select offers "Promote" next to cutting the next candidate; promoting tags the final on the candidate's commit. */
 export function ReleasePanel({ product, admin, tickets, last, rc, finishing, rcTickets, version: v0, versions, notes: n0, past }: { product: number; admin: boolean; tickets: Row[]; last: string | null; rc: string | null; finishing: boolean; rcTickets: { number: number; title: string }[]; version: string; versions: string[]; notes: string; past: Past[] }) {
   const router = useRouter()
   const [picked, setPicked] = useState(() => new Set(tickets.map((t) => t.id)))

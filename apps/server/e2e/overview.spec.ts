@@ -21,10 +21,8 @@ test('Workflow view, Runs on its own page, legacy view URLs redirect, Product fi
   await expect(page.getByRole('navigation', { name: 'View' })).toHaveCount(0)
   await expect(main.getByRole('link', { name: /^Workflow/ })).toHaveAttribute('aria-current', 'page')
   await expect(main.getByLabel(/need you/)).toBeVisible()
-  // decision sheets are read from the forge; the production image has no fake forge
   if (process.env.E2E_FAKE_FORGE) await expect(page.locator('.col[data-stage=plan] .card').filter({ hasText: 'Answer decisions' }).first()).toBeVisible()
 
-  // plan has no human gate by default (#175); the gated pack (E2E_GATED_PACK) turns it on, notification itself is covered in tests/gates.test.ts
   if (!process.env.E2E_GATED_PACK) await expect(page.locator('.col[data-stage=plan] .card [data-gate]')).toHaveCount(0)
   await expect(page.locator('.card .ticket-title', { hasText: 'Overhaul invoicing' })).toHaveCount(0)
   const tag = page.locator('.col[data-stage=build] .card').filter({ hasText: 'Invoice PDF layout' }).locator('.epic-tag')
@@ -38,12 +36,10 @@ test('Workflow view, Runs on its own page, legacy view URLs redirect, Product fi
   const blocked = page.locator('.card').filter({ hasText: 'Blocked: add the invoice filter' }).first()
   await expect(blocked.locator('[data-status=blocked]')).toHaveText('Blocked')
   await expect(blocked.getByTestId('status-detail')).toHaveText('by #8')
-  // Hotfix swimlane (#373): the lane's card is marked and first in its column, above every ranked card
   const buildCards = page.locator('.col[data-stage=build] .card')
   await expect(buildCards.first()).toHaveAttribute('data-lane', 'hotfix')
   await expect(buildCards.first().locator('[data-hotfix]')).toHaveText('Hotfix')
   await expect(buildCards.first()).toContainText('Hotfix: checkout crash')
-  // Only hotfix-lane cards carry the marker (the seed has more than one: #125 here, and the fast-lane Tickets other specs use)
   await expect(page.locator('.card [data-hotfix]')).toHaveCount(await page.locator('.card[data-lane=hotfix]').count())
   const shots = process.env.SHOTS_DIR
   if (shots) {
@@ -85,7 +81,6 @@ test('Workflow view, Runs on its own page, legacy view URLs redirect, Product fi
   await expect(main.getByRole('link', { name: /^Workflow/ })).not.toHaveAttribute('aria-current', 'page')
   await page.getByRole('combobox', { name: 'Product' }).selectOption({ label: 'Acme Web' })
   await expect(page).toHaveURL(/\/runs\?product=/)
-  // other specs start Runs on Acme Web Tickets, so assert the seeded Runs by Ticket instead of the row count
   for (const title of ['Tidy the settings copy', 'Fix the date parser', 'Add a dark theme to the dashboard', 'Export invoices as CSV', 'Live build in progress']) await expect(page.locator('table tbody tr').filter({ hasText: title }).first()).toBeVisible()
   await page.getByRole('combobox', { name: 'Product' }).selectOption({ label: 'Acme Shop' })
   await expect(page.locator('table tbody tr')).toHaveCount(2)
@@ -121,7 +116,6 @@ test('hovering or dropping on a closed card in a mixed column shows no drop posi
   await expect(marks).toHaveCount(0)
   await page.mouse.up()
   await expect(marks).toHaveCount(0)
-  // release.spec.ts accepts Tickets into this column meanwhile: the order of the cards that were there is what must stay
   expect((await titles()).filter((t) => before.includes(t))).toEqual(before)
 })
 

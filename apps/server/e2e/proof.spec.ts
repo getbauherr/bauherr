@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { pickRow } from './inbox-row'
 
 const shots = process.env.SHOTS_DIR
 
@@ -69,7 +70,6 @@ test('the proof file is served to signed-in members only, with safe headers', as
   await page.locator('.card', { hasText: 'Ship the proof export' }).first().getByRole('link', { name: /Ship the proof export/ }).click()
   await page.getByTestId('pane-tab-proof').click()
   const src = await page.getByTestId('proof-pair').getByRole('img').first().getAttribute('src')
-  // Fetched from the page like the <img> does: a request without browser headers (Sec-Fetch-Site / Origin) is not a signed-in one for Payload's cookie check.
   const signedIn = await page.evaluate(async (u) => {
     const r = await fetch(u)
     return { status: r.status, type: r.headers.get('content-type'), sniff: r.headers.get('x-content-type-options') }
@@ -82,7 +82,7 @@ test('the accept card in the Inbox carries the same proof', async ({ page }) => 
   test.skip(!process.env.E2E_GATED_PACK, 'the staging checkpoint exists with the gated pack')
   await signIn(page)
   await page.goto('/inbox')
-  await page.getByTestId('inbox-row').filter({ hasText: 'Ship the proof export' }).click()
+  await pickRow(page, 'Ship the proof export')
   const card = page.locator('article[data-decision]').filter({ hasText: 'Ship the proof export' })
   await expect(card.getByRole('button', { name: 'Accept on staging' })).toBeVisible()
   await expect(card.getByTestId('proof-row')).toHaveCount(3)

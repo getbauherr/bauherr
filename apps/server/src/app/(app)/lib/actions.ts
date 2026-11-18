@@ -33,7 +33,6 @@ export async function login(form: FormData) {
     token = result.token
     home = homeOf(result.user)
   } catch (e) {
-    // A wrong password and too many sign-ins at once get the same generic error: neither says whether the account exists.
     if (!(e instanceof LoginBusy) && (e as { status?: number }).status !== 401) throw e
   }
   if (!token) redirect('/login?error=1')
@@ -44,7 +43,6 @@ export async function login(form: FormData) {
 
 export async function logout() {
   const payload = await payloadClient()
-  // Revoke this session server-side; the cookie goes regardless.
   const { user } = await payload.auth({ headers: await headers() })
   if (user) await payload.update({ collection: 'bauherren', id: user.id, data: { sessionVersion: ((user as { sessionVersion?: number }).sessionVersion ?? 0) + 1 }, overrideAccess: true, depth: 0 }).catch(() => undefined)
   if (user) await logoutOperation({ collection: payload.collections.bauherren, req: await createLocalReq({ user }, payload) }).catch(() => undefined)
@@ -63,14 +61,12 @@ export async function selectWorkspace(slug: string) {
 
 type Doc = Record<string, any>
 
-/** The acting Bauherr and the selected Workspace; 404 when none is selected. */
 const acting = async () => {
   const { workspace } = await currentWorkspace()
   if (!workspace) notFound()
   return { user: await requireBauherr(), payload: await payloadClient(), workspaceId: workspace.id }
 }
 
-/** Like `acting`, for the few actions open to a Product owner too (an addressed decision, the refinement conversation): their Workspace is one they are assigned in. Every function behind it decides by `mayDecide`. */
 const actingPerson = async () => {
   const { user, workspace } = await currentPersonWorkspace()
   if (!workspace) notFound()
@@ -157,7 +153,6 @@ export async function stopReviewAction(form: FormData) {
   revalidatePath('/inbox')
 }
 
-/** "Needs you" on a stuck review: back to Build, with an optional note for the next Run. */
 export async function backToBuildAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
@@ -167,7 +162,6 @@ export async function backToBuildAction(form: FormData) {
   revalidatePath('/inbox')
 }
 
-/** "Cancelled": the Ticket goes back to Triage. */
 export async function backToBacklogAction(form: FormData) {
   const ticket = Number(form.get('ticket'))
   const { user, payload, workspaceId } = await acting()
@@ -177,7 +171,6 @@ export async function backToBacklogAction(form: FormData) {
   revalidatePath('/inbox')
 }
 
-/** The Send back dialog: one entry over `backToBuild`, `backToBacklog`, `requestChanges` and `sendBack` to any target (`to:<stage>`); the error is shown in the dialog. */
 export async function sendBackAction(form: FormData): Promise<{ error?: string }> {
   const ticket = Number(form.get('ticket'))
   const option = String(form.get('option'))
@@ -203,7 +196,6 @@ export async function sendBackAction(form: FormData): Promise<{ error?: string }
   return {}
 }
 
-/** The epic buttons of the Ticket page: Park, Resume and Discard (each behind its own confirm dialog); the error is shown in the dialog. */
 export async function epicAction(form: FormData): Promise<{ error?: string }> {
   const ticket = Number(form.get('ticket'))
   const option = String(form.get('option'))
@@ -231,13 +223,11 @@ export async function requestChangesAction(form: FormData) {
   revalidatePath('/inbox')
 }
 
-/** `actingPerson` in the shape the request conversation's functions take (`workspace`, not `workspaceId`). */
 const requestWho = async () => {
   const { user, payload, workspaceId } = await actingPerson()
   return { user: user as Doc, payload, workspace: workspaceId }
 }
 
-/** Discards one of the caller's open drafts and its conversation ("Discard" on the Requests page, "Discard draft" in the conversation). */
 export async function discardIntake(session: number) {
   const w = await requestWho()
   await inWorkspace(discardRequest(w, session))
@@ -246,7 +236,6 @@ export async function discardIntake(session: number) {
 
 const cardError = (e: unknown): { error: string } => ({ error: e instanceof Error ? e.message : 'This could not be saved.' })
 
-/** Runs one action of the request conversation as the acting person and answers its whole state (or the refusal as text). `lists`: the action changes what the Requests lists and the draft count show (a read or a card edit does not, so nothing is refreshed behind the conversation). */
 const requesting = async (run: (w: Awaited<ReturnType<typeof requestWho>>) => Promise<RequestView | null>, lists = false): Promise<{ view: RequestView | null } | { error: string }> => {
   const w = await requestWho()
   try {
@@ -259,14 +248,10 @@ const requesting = async (run: (w: Awaited<ReturnType<typeof requestWho>>) => Pr
   }
 }
 
-/** The conversation of one of the caller's requests (an open draft or a filed request); null when it is not theirs. */
 export const requestState = async (session: number) => requesting((w) => loadRequestView(w, session))
-/** A direct edit of the request card (the next interview turn keeps it), or the removal of one screenshot. */
 export const requestChange = async (session: number, change: { patch: CardPatch } | { removeImage: number }) => requesting((w) => requestEdit(w, session, change))
-/** "File request": creates the Ticket(s) from the card as it stands. */
 export const requestSubmit = async (session: number) => requesting((w) => requestFile(w, session), true)
 
-/** "Report a problem" on a released request: a new Bug draft of the same Product, linked to the original ("Follow-up to #n" on the filed issue). Returns the new request's id. */
 export async function reportProblem(session: number): Promise<{ session: number } | { error: string }> {
   const { user, payload, workspaceId } = await acting()
   const o = { overrideAccess: true, depth: 0 } as const
@@ -277,7 +262,6 @@ export async function reportProblem(session: number): Promise<{ session: number 
   return { session: Number(created.id) }
 }
 
-/** Saves the person's order of their own open requests in one Product (see `orderOwnRequests`). */
 export async function orderRequests(ticketIds: number[]): Promise<{ error?: string }> {
   const { user, payload, workspaceId } = await acting()
   try {
@@ -289,7 +273,6 @@ export async function orderRequests(ticketIds: number[]): Promise<{ error?: stri
   }
 }
 
-/** Runs one action of the refinement panel as the acting person and answers the panel's whole state (or the refusal as text), then refreshes the pages that show the Ticket. */
 const refining = async <T extends { ticket: number }>(a: T, run: (x: { user: Doc; payload: Awaited<ReturnType<typeof payloadClient>>; workspaceId: number } & T) => Promise<RefineView | null>, person = true): Promise<{ view: RefineView | null } | { error: string }> => {
   const ctx = person ? await actingPerson() : await acting()
   try {
@@ -303,38 +286,27 @@ const refining = async <T extends { ticket: number }>(a: T, run: (x: { user: Doc
   }
 }
 
-/** The refinement conversation of a Ticket (see `lib/refine`), null when it has no open points and no history. */
 export const refineState = async (ticket: number) => refining({ ticket }, (x) => loadRefine(x.payload, x.user, { ticket, workspaceId: x.workspaceId }))
-/** A message typed in the panel: one refine-engine turn. */
 export const refineSay = async (ticket: number, text: string) => refining({ ticket }, (x) => refineTurn(x.payload, x.user, { ticket, workspaceId: x.workspaceId, text }))
-/** A click on an option of an open point (no model call). */
 export const refinePick = async (ticket: number, point: string, option: number) => refining({ ticket }, (x) => refineOption(x.payload, x.user, { ticket, workspaceId: x.workspaceId, point, option }))
-/** "Why does this matter?" (no model call). */
 export const refineExplain = async (ticket: number, point: string) => refining({ ticket }, (x) => refineWhy(x.payload, x.user, { ticket, workspaceId: x.workspaceId, point }))
-/** "Use the recommended answers for the rest". */
 export const refineRest = async (ticket: number) => refining({ ticket }, (x) => refineRecommended(x.payload, x.user, { ticket, workspaceId: x.workspaceId }))
-/** The model tier the conversation's next turns use. */
 export const refineTier = async (ticket: number, tier: string) => refining({ ticket }, (x) => refineModel(x.payload, x.user, { ticket, workspaceId: x.workspaceId, tier }), false)
-/** "Change" on an answered point. */
 export const refineChange = async (ticket: number, point: string) => refining({ ticket }, (x) => refineReopen(x.payload, x.user, { ticket, workspaceId: x.workspaceId, point }))
-/** "Send to planning". */
 export const refineFinish = async (ticket: number) => refining({ ticket }, (x) => refineSend(x.payload, x.user, { ticket, workspaceId: x.workspaceId }))
 
-/** Starts a new Run of the stage of a failed or needs_human Run (Admin or a member of its Workspace) and records a human touch; null when the Run cannot be re-run by this person. */
 const startRerun = async (user: Awaited<ReturnType<typeof requireBauherr>>, payload: Awaited<ReturnType<typeof payloadClient>>, runId: number) => {
   const o = { depth: 0, overrideAccess: true } as const
   const run = (await payload.findByID({ collection: 'runs', id: runId, ...o }).catch(() => null)) as { id: number; ticket: number; stage: string; status: string; workspace: number; job?: string | null } | null
   if (!run || !RERUNNABLE.includes(run.status) || !(await workspacesOf(user)).some((w) => w.id === run.workspace)) return null
   const ticket = await payload.findByID({ collection: 'tickets', id: run.ticket, ...o })
   const started = await startRunOrRejoin(payload, ticket, run.stage, jobExtra(run))
-  // Parked in a full column: the Ticket waits for its slot (no Run yet); its page says so.
   if (!started) return { run, next: null, created: false }
   const { run: next, created } = started
   if (created) await payload.create({ collection: 'human_touches', data: { kind: `rerun:${run.stage}`, ticket: run.ticket, run: next.id, workspace: run.workspace, actor: personOf(user), at: new Date().toISOString() }, overrideAccess: true })
   return { run, next: next.id as number, created }
 }
 
-/** Re-runs the stage of a failed or needs_human Run, opens the new Run. */
 export async function rerunStage(runId: number) {
   const user = await requireBauherr()
   const payload = await payloadClient()
@@ -344,15 +316,12 @@ export async function rerunStage(runId: number) {
   redirect(r.next ? `/runs/${r.next}${r.created ? '' : '?notice=active'}` : `/tickets/${r.run.ticket}`)
 }
 
-/** One decision of the Inbox card: runs the existing action of the option for the Ticket (a note goes where the action takes one), then closes the card at once. A card for a need the Ticket no longer has is refused. Answers an error text instead of throwing. */
 export async function decideAction(ticket: number, need: string, action: DecisionAction, note = '', outcome = ''): Promise<{ error?: string }> {
   const { user, payload, workspaceId } = await actingPerson()
   const a = { ticket, workspaceId }
-  // A Product owner takes only the decisions of a checkpoint addressed to them: each function behind these actions asks `mayDecide`; everything else is a Bauherr's.
   if (!isBauherr(user) && !['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'decide', 'open'].includes(action)) return { error: 'Only a Bauherr can do this.' }
   try {
     const row = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true }).catch(() => null)) as { needsYou?: string | null; workspace: unknown; product: unknown } | null
-    // A Ticket outside the person's Products is a 404 before anything else is said about it.
     if (!row || String((row.workspace as { id?: number })?.id ?? row.workspace) !== String(workspaceId) || !canSeeProduct(user, { id: id(row.product), workspace: workspaceId })) notFound()
     if (need === SKILL_NEED) {
       if (!canDecide(user, need)) return { error: 'Only an Admin can decide this.' }
@@ -393,7 +362,6 @@ export async function decideAction(ticket: number, need: string, action: Decisio
   return {}
 }
 
-/** Marks one decision of the Inbox seen by the signed-in person (or unseen again, `seen = false`). A Ticket outside their Workspace or Products is a 404. */
 export async function markSeen(key: SeenKey, seen = true): Promise<void> {
   const { user, payload, workspaceId } = await actingPerson()
   const row = (await payload.findByID({ collection: 'tickets', id: key.ticket, depth: 0, overrideAccess: true }).catch(() => null)) as { workspace: unknown; product: unknown } | null
@@ -405,13 +373,11 @@ export async function markSeen(key: SeenKey, seen = true): Promise<void> {
     return
   }
   if ((await payload.count({ collection: 'inbox_seen', where, overrideAccess: true })).totalDocs) return
-  // A second tab marking the same decision at once hits the unique index: that row is the one we wanted.
   await payload.create({ collection: 'inbox_seen', data: { workspace: workspaceId, user: user.id, ...key, seenAt: new Date().toISOString() }, ...o }).catch(async (e) => {
     if (!(await payload.count({ collection: 'inbox_seen', where, overrideAccess: true })).totalDocs) throw e
   })
 }
 
-/** Force-releases the lease of a running session Run (Admin only); the successor Run is claimable at once. */
 export async function releaseRunLock(runId: number) {
   const user = await requireBauherr()
   if (user.role !== 'admin') redirect(`/runs/${runId}`)
@@ -423,14 +389,12 @@ export async function releaseRunLock(runId: number) {
   redirect(healthy ? `/runs/${runId}?notice=healthy` : `/runs/${runId}`)
 }
 
-/** Persists a Board drop: the Ticket now sits between `before` and `after` (Admin or Workspace member, selected Workspace only). */
 export async function rankTicketAction(ticket: number, before: number | null, after: number | null) {
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(rankTicket(payload, user, { ticket, before, after, workspaceId }))
   revalidatePath('/')
 }
 
-/** Persists "Send to top of the queue": first among the Workspace's Tickets of its stage group. */
 export async function rankFirstAction(ticket: number) {
   const { user, payload, workspaceId } = await acting()
   await inWorkspace(rankFirst(payload, user, { ticket, workspaceId }))
@@ -439,7 +403,6 @@ export async function rankFirstAction(ticket: number) {
 
 export type EditState = { pr?: { number: number; url: string }; stale?: { sha: string; diff: string }; error?: string }
 
-/** Saves a Knowledge document as a PR (merged later by the watcher); a stale base returns the diff instead of writing. */
 export async function saveKnowledgeDocument(_prev: EditState, fd: FormData): Promise<EditState> {
   const { user, payload, workspaceId } = await acting()
   try {
@@ -450,7 +413,6 @@ export async function saveKnowledgeDocument(_prev: EditState, fd: FormData): Pro
   }
 }
 
-/** The docked chat's `/comment`: posts text and the composer's pasted images (media ids from the chat upload) to the Ticket's issue. */
 export async function postDockComment(ticket: number, body: string, mediaIds: number[]): Promise<{ images: string[] } | { error: string }> {
   const { user, payload, workspaceId } = await acting()
   try {
@@ -466,7 +428,6 @@ const repairError = (e: unknown): { error: string } => {
   throw e
 }
 
-/** Admin "Fix state" on the Ticket page. The disclosure posts `kind` (and `stage`); answers an error text instead of throwing. */
 export async function repairTicketAction(ticket: number, _prev: { error?: string; saved?: boolean }, fd: FormData): Promise<{ error?: string; saved?: boolean }> {
   const { user, payload, workspaceId } = await acting()
   const kind = String(fd.get('kind'))
@@ -482,7 +443,6 @@ export async function repairTicketAction(ticket: number, _prev: { error?: string
   return { saved: true }
 }
 
-/** Admin: relink a Build Run to its replacement MR (Run page). */
 export async function relinkRunAction(runId: number, _prev: { error?: string; saved?: boolean }, fd: FormData): Promise<{ error?: string; saved?: boolean }> {
   const { user, payload, workspaceId } = await acting()
   try {

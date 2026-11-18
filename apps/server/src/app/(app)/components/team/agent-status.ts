@@ -4,7 +4,6 @@ import type { SessionView } from '../../../../lib/sessions'
 const mins = (from: string | null, to: number | string | null) => Math.max(1, Math.round(((typeof to === 'number' ? to : +new Date(to ?? 0)) - +new Date(from ?? 0)) / 6e4))
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1)
 
-/** The status sentence of the agent view, in the activity vocabulary (Working, Waiting for CI n/m, Stuck, Not responding, Idle, Disconnected with its reason). */
 export const agentStatus = ({ session: s, ci }: Pick<SessionView, 'session' | 'ci'>, now = Date.now()): string => {
   const silent = `No signal for ${durationHm((now - +new Date(s.lastSeenAt ?? 0)) / 1000)}`
   switch (s.health) {

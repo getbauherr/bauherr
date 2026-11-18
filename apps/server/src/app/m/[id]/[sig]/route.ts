@@ -7,7 +7,6 @@ export const dynamic = 'force-dynamic'
 
 const notFound = () => Response.json({ error: 'not found' }, { status: 404 })
 
-/** Public image link `/m/<id>/<sig>.<ext>` (HMAC of the id; no login, no cookies). Embedded in forge Ticket bodies, so it must work without a Bauherr session. */
 export const GET = async (_req: Request, { params }: { params: Promise<{ id: string; sig: string }> }): Promise<Response> => {
   const { id, sig } = await params
   if (!/^\d+$/.test(id) || !verifyMediaSig(id, sig)) return notFound()

@@ -16,7 +16,6 @@ const WORD = { working: 'Working', idle: 'Idle', stuck: 'Stuck', 'not-responding
 type Props = {
   view: SessionView
   role: { title: string; avatar: string }
-  /** Stage name to title. */
   titles: Record<string, string>
   admin: boolean
   now?: number

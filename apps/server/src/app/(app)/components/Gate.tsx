@@ -3,7 +3,6 @@ import { Card } from './ui/card'
 
 type ReleaseGateProps = { ticket: number; timedOut: boolean; summaryHtml: string | null }
 
-/** The staging summary; Request changes is the Send back dialog of the action bar. */
 export function ReleaseGate({ timedOut, summaryHtml }: ReleaseGateProps) {
   return (
     <>

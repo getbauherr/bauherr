@@ -3,7 +3,6 @@ import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 
 export type Decision = { allow: true } | { allow: false; reason: string };
 
-/** realpath of the nearest existing ancestor plus the not-yet-existing remainder. */
 function realish(p: string): string {
   const rest: string[] = [];
   let cur = p;
@@ -17,7 +16,6 @@ function realish(p: string): string {
   }
 }
 
-/** Port of pack/hooks/write-scope-guard.ts: writes only inside cwd (symlinks resolved), and inside owned paths when set. */
 export function writeScopeGuard(cwd: string, filePath: string | undefined, owned: string[] = []): Decision {
   const target = realish(resolve(cwd, filePath ?? ''));
   const rel = relative(realpathSync(cwd), target);
@@ -31,7 +29,6 @@ export function writeScopeGuard(cwd: string, filePath: string | undefined, owned
 
 const NETWORK = /(^|[ ;|&])(curl|wget|nc|ssh|scp|git\s+(push|clone|fetch|pull))( |$)/;
 
-/** Port of pack/hooks/egress-guard.sh. A guide, not a security boundary. */
 export function egressGuard(tool: string, input: { command?: string; url?: string }, gatewayHost: string): Decision {
   if (tool === 'WebFetch' || tool === 'WebSearch') {
     return { allow: false, reason: 'network tools are disabled; egress only via the gateway' };

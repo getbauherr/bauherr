@@ -43,7 +43,6 @@ test('every page of the factory is a 404 for a Product owner', async ({ page }) 
   }
 })
 
-/** Fetched from inside the page, so the call carries the browser's session like the app's own requests do: `page.request` sends no `Sec-Fetch-Site`/`Origin`, which Payload's cookie check treats as anonymous. */
 const call = (page: Page, path: string, init?: { method: string; body?: string; headers?: Record<string, string> }) =>
   page.evaluate(async ([p, i]) => {
     const r = await fetch(p, i ?? undefined)
@@ -71,7 +70,6 @@ test('the API refuses a Product owner on every path the same call of a signed-in
   const mcp = { method: 'POST', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' } }
   expect([401, 403], 'POST /mcp takes a bearer key only: a Product owner session gets nothing').toContain((await call(page, '/mcp', mcp)).status)
 
-  // The one thing the Product owner reads is their own account, exactly like the Bauherr reads theirs.
   expect((await call(control, '/api/bauherren')).body?.docs?.map((d) => d.email)).toEqual(['guard-bauherr@example.com'])
   expect((await call(page, '/api/bauherren')).body?.docs?.map((d) => d.email)).toEqual([owner])
   expect((await call(anonymous, '/api/bauherren')).body?.docs ?? []).toEqual([])

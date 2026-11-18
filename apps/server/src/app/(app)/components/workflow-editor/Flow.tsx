@@ -36,7 +36,6 @@ export const checkpointId = (c: Pick<Checkpoint, 'stage' | 'key'>) => `cp-${c.st
 
 const rowSwitch: Record<string, 'plan' | 'staging' | 'production'> = { plan: 'plan', staging: 'staging', production: 'production' }
 
-/** The words of a path on a card: "then Build" or "↩ if changes are needed: back to Build". */
 function Paths({ s, doc, order }: { s: Doc; doc: Doc; order: string[] }) {
   const rows = Object.entries((s.outcomes ?? {}) as Record<string, string>).filter(([, t]) => t !== s.name && !(t in SPECIAL_TARGET))
   const here = order.indexOf(s.name)
@@ -188,7 +187,6 @@ function Slot({ after, p, reason }: { after: Doc; p: FlowProps; reason: string }
   )
 }
 
-/** The stages top to bottom as a path: cards, the places you are asked, and a "+" between two steps. */
 export function Flow(p: FlowProps) {
   const stages = stagesOf(p.doc)
   const order = stages.map((s) => String(s.name))

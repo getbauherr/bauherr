@@ -19,7 +19,6 @@ test.beforeEach(async ({ page }) => {
 const tile = (page: import('@playwright/test').Page, id: string) => page.getByTestId(`tile-${id}`).locator('dd')
 
 test('renders the seeded numbers: tiles, where time goes with its bottleneck, throughput', async ({ page }) => {
-  // seed: five Tickets done within 30 days (lead times 26.7 h to 57.9 h, median 35.6 h), three of them within 7 days
   expect(Number(await tile(page, 'done').textContent())).toBeGreaterThanOrEqual(5)
   await expect(tile(page, 'lead-median')).toHaveText(/^1\.\d d$/)
   await expect(tile(page, 'share-queued')).toHaveText(/^\d+ %$/)
@@ -58,7 +57,6 @@ test('WIP age lists the longest waiting open Tickets first and links to them', a
 })
 
 test('Cost & tokens breaks the seeded usage down and says how much of it is covered', async ({ page }) => {
-  // seed: a gateway-priced Opus review ($2.50), a session-reported Sonnet build ($0.40); a $40 session row of the gateway-priced Run must not count
   const section = page.getByTestId('cost-section')
   await expect(section.getByRole('heading', { name: 'Cost & tokens' })).toBeVisible()
   await expect(page.getByTestId('cost-total').locator('dd').first()).toHaveText('$2.90')

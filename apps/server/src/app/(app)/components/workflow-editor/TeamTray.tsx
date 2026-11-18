@@ -9,7 +9,6 @@ import type { RoleView } from './model'
 
 type Props = { doc: Doc; roles: RoleView[]; highlight: string | null; onHighlight: (id: string | null) => void; onPlace: (role: RoleView) => void; onDrag: (id: string | null) => void }
 
-/** The agents of the draft: who they are, where they work, and the ones not in the workflow yet (drag one onto a step to seat it). */
 export function TeamTray({ doc, roles, highlight, onHighlight, onPlace, onDrag }: Props) {
   const stages = stagesOf(doc)
   return (

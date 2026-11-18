@@ -17,7 +17,6 @@ it('inherits the parent criteria for child Tickets, own criteria win', async () 
   const payload = { findByID: async () => ({ number: 7, workspace: 1, product: 1 }) } as unknown as Payload
   expect(goalOf('child', 'build', ac)).toEqual(['one', 'two'])
   expect(goalOf('## Acceptance criteria\n- own', 'build', ac)).toEqual(['own'])
-  // no parent, or a parent whose forge read fails: stage default
   expect(await goalFor(payload, {}, 'orphan', 'build')).toEqual(['MR linked on the Ticket'])
   expect(await goalFor(payload, { parent: 3, workspace: 2 }, 'child', 'build')).toEqual(['MR linked on the Ticket'])
   expect(await goalFor(payload, { parent: 3, workspace: 1 }, 'child', 'build')).toEqual(['MR linked on the Ticket'])

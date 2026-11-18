@@ -5,7 +5,6 @@ import { discardIntake } from '../lib/actions'
 import { Button } from './ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog'
 
-/** "Discard" of a draft (Requests list, Request page, the conversation's menu): asks in a dialog first, then removes the draft with its conversation and goes to the Requests list. With `open` the dialog is controlled and has no button. */
 export function DiscardDraft({ session, title, label = 'Discard draft', open: controlled, onOpenChange }: { session: number; title: string; label?: string; open?: boolean; onOpenChange?(open: boolean): void }) {
   const router = useRouter()
   const [own, setOwn] = useState(false)

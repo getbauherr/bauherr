@@ -16,7 +16,6 @@ import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedTok
 export const dynamic = 'force-dynamic'
 
 const TABS = [['repository', 'Repository'], ['deploy', 'Deploy'], ['approvals', 'Approvals'], ['checks', 'Checks & merging'], ['releases', 'Releases'], ['security', 'Security scan'], ['docs', 'Docs'], ['widget', 'Widget'], ['danger', 'Danger zone']] as const
-/** Section anchor -> tab, for the setup checklist and for links that name a section (`#production`). */
 const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', approvals: 'approvals', 'pre-review': 'checks', proof: 'checks', merging: 'checks', overlap: 'checks', 'path-sets': 'checks', release: 'releases', security: 'security', docs: 'docs', widget: 'widget', danger: 'danger' }
 
 const when = (iso: string) => iso.slice(0, 16).replace('T', ' ')
@@ -43,7 +42,6 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   const revoked = p.embedTokens.filter((e) => e.revokedAt)
   const orphans = p.sources.filter((s) => !p.repositories.some((r) => r.fullName === s.repo))
 
-  /** One form per tab: only that tab's fields are posted and saved (`section`). */
   const form = (section: string, children: ReactNode) => admin ? (
     <SettingsForm action={saveDeploy} submit="Save changes" primary bar>
       <input type="hidden" name="id" value={p.id} />

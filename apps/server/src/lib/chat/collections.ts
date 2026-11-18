@@ -1,9 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
-/** Nothing outside the app's own routes (overrideAccess + an owner check) reads or writes chat data. */
 const closed = { read: () => false, create: () => false, update: () => false, delete: () => false }
 
-/** Factory chat: one thread per conversation, owned by one Bauherr in one Workspace (tenant field added by the multi-tenant plugin). */
 export const chatCollections: CollectionConfig[] = [
   {
     slug: 'chat_threads',

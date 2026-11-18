@@ -8,7 +8,6 @@ import { Markdown } from './Markdown'
 
 const COMMENTS_MS = 5000
 
-/** The forge-backed Comments, streamed after the page; 5 s per Ticket, then "could not be reached". */
 export async function Comments({ tickets, owner }: { tickets: { id: number; number: number }[]; owner: boolean }) {
   const payload = await payloadClient()
   let forgeError = false

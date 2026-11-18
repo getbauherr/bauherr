@@ -8,10 +8,8 @@ import { durationHm, usd } from '../../lib/format'
 import type { SessionRun } from '../../../../lib/sessions'
 
 const PAGE = 20
-/** Phone: header row hidden visually, each Run is a two-line row (ticket, then stage, outcome, duration, cost). */
 const PHONE = 'max-sm:block max-sm:[&_tbody]:block max-sm:[&_thead]:sr-only max-sm:[&_tr]:flex max-sm:[&_tr]:flex-wrap max-sm:[&_tr]:items-center max-sm:[&_tr]:gap-x-3 max-sm:[&_tr]:gap-y-1 max-sm:[&_tbody_tr]:border-t max-sm:[&_tbody_tr]:border-border max-sm:[&_tbody_tr]:px-4 max-sm:[&_tbody_tr]:py-3 max-sm:[&_td]:border-0 max-sm:[&_td]:p-0 max-sm:[&_td:first-child]:basis-full'
 
-/** Runs of the agent, newest first: 20, then "Show more". Cost only when the page sent it (Admin). */
 export function AgentRuns({ runs, titles, admin }: { runs: SessionRun[]; titles: Record<string, string>; admin: boolean }) {
   const [all, setAll] = useState(false)
   const shown = all ? runs : runs.slice(0, PAGE)

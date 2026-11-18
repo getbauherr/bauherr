@@ -5,8 +5,6 @@ import { FileTextIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { mono } from "./surfaces";
 
-// From `elements-canvas-split`: the document half only (the thread half is the conversation shell's chat column). The header takes the version as text
-// and the page's actions as children instead of the registry's copy and close buttons.
 export function CanvasSplitDocument({ className, ...props }: ComponentProps<"div">) {
   return <div data-slot="canvas-split-document" className={cn("flex min-h-0 min-w-0 flex-1 flex-col", className)} {...props} />;
 }

@@ -30,7 +30,6 @@ beforeEach(async () => {
   await payload.db.drizzle.execute((await import('@payloadcms/db-postgres')).sql`DELETE FROM "instance_state"`)
 })
 
-/** A source catalog with `n` filler models plus the tricky shapes of the published one. */
 const source = (n = 400, extra: Record<string, unknown> = {}, generatedAt = '2026-11-10T00:00:00Z') => ({
   metadata: { generatedAt },
   providers: {
@@ -91,7 +90,6 @@ it('a refresh writes the base catalog atomically, stores status and model list, 
   const urls: string[] = []
   const inits: RequestInit[] = []
   const status = await refreshPrices(payload, { fetcher: (async (u: unknown, init: RequestInit) => (urls.push(String(u)), inits.push(init), new Response(JSON.stringify(source()), { status: 200 }))) as typeof fetch })
-  // The default is the final address: agentgateway.dev/model-catalog answers 302 and a redirect is refused.
   expect(urls).toEqual(['https://raw.githubusercontent.com/agentgateway/agentgateway/main/catalog/model-catalog.json'])
   expect(inits[0]!.redirect).toBe('error')
   expect(status).toMatchObject({ source: 'raw.githubusercontent.com', generatedAt: '2026-11-10T00:00:00Z', models: 401, error: null })
@@ -160,6 +158,5 @@ it('the first refresh is compared with the shipped prices and lists the models t
   expect(status?.error).toBeNull()
   expect(status?.changed).toEqual([{ model: 'claude-haiku-5-5', input: ['1', '0.1'], output: ['5', '0.5'] }])
   expect((await loadPriceStatus(payload))?.changed).toHaveLength(1)
-  // The next refresh compares with the refreshed file: nothing moved, nothing listed.
   expect((await refreshPrices(payload, { force: true, fetcher: answer(next) }))?.changed).toEqual([])
 })

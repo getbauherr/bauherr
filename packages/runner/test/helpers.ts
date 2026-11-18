@@ -12,7 +12,6 @@ export type Stub = { url: string; seen: { headers: IncomingHttpHeaders; body: st
 
 export type StubTool = { name: string; input: object };
 
-/** Plays the gateway: answers every /v1/messages with a minimal streamed end_turn message, or with one tool_use when `tool` returns a call for the request's `model`, `prompt` (all messages, as JSON) and the agent's `cwd`. */
 export async function startStubGateway(text = 'done', port = 0, budgetExceeded = false, tool?: (model: string, prompt: string, cwd: string) => StubTool | undefined): Promise<Stub> {
   const seen: Stub['seen'] = [];
   let n = 0;
@@ -51,7 +50,6 @@ export async function startStubGateway(text = 'done', port = 0, budgetExceeded =
   };
 }
 
-/** Bare repo `<root>/o/n.git` with one commit on `main`; returns the file:// base URL. */
 export function makeBareRepo(): string {
   const root = mkdtempSync(join(tmpdir(), 'bauherr-bare-'));
   const bare = join(root, 'o/n.git');

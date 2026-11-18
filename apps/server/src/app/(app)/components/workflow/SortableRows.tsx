@@ -8,7 +8,6 @@ import { CardMenu, longPress, type CardAction } from '../CardMenu'
 
 type Item = { id: number; cells: ReactNode[]; movable: boolean; running?: boolean; hotfix?: boolean }
 
-/** Column classes, one per cell of an item; the last column is the row menu. */
 export const COLUMNS = [
   { head: '#', col: 'w-14', cell: '' },
   { head: 'Ticket', col: '', cell: '' },
@@ -24,7 +23,6 @@ const move = <T,>(xs: T[], from: number, to: number): T[] => {
   return out
 }
 
-/** The rows of one stage: sortable by drag and drop, Alt+ArrowUp/Down or the row menu; a move persists via `rankTicketAction`. The Hotfix lane sits above the ranked rows and is ranked on its own: neighbours are always those of the same lane. */
 export function SortableRows({ items, head }: { items: Item[]; head: boolean }) {
   const router = useRouter()
   const [order, setOrder] = useState(items)

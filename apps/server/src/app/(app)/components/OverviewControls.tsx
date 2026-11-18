@@ -20,7 +20,6 @@ function useHref() {
 
 const Navigating = createContext<(href: string) => void>(() => {})
 
-/** Wraps the controls: a select change navigates in a transition, so the row shows `aria-busy` and a loader until the new data arrived. */
 function Pending({ className, children }: { className: string; children: ReactNode }) {
   const router = useRouter()
   const [pending, start] = useTransition()

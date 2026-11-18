@@ -14,8 +14,6 @@ export const DEFAULT_MODEL_BY_TIER = { cheap: 'claude-haiku-5-5', standard: 'cla
 type Ws = { id: number | string; slug: string; gatewayKey?: string | null; routerKey?: string | null; budgetUsd30d?: number | null; budgetUnit?: string | null; budgetTokens30d?: number | null; routerBudgetShare?: number | null }
 type Resource = { id: string; value: { key: string; metadata?: { name?: string; kind?: string } } }
 
-/** Hooks no-op without a gateway (tests, seed outside compose). */
-/** Where a session on this machine reaches the gateway (loopback by default); set `GATEWAY_PUBLIC_URL` to the TLS address for remote sessions. */
 export const gatewayPublicUrl = (): string => (process.env.GATEWAY_PUBLIC_URL || `http://127.0.0.1:${process.env.GATEWAY_PORT || 4000}`).replace(/\/+$/, '')
 
 export const gatewayEnabled = (): boolean => {
@@ -32,7 +30,6 @@ const dir = () => process.env.GATEWAY_CONFIG_DIR ?? '/gateway'
 export const providerFile = (ws: string, conn: string, ext: 'key' | 'json' = 'key') => join(dir(), 'providers', `ws-${ws}.${conn}.${ext}`)
 const KEYS = '/api/config/resources/llm.apiKey'
 
-/** Admin API call; retries transient failures. Errors carry method, path and status only. */
 const call = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
   let last = ''
   for (let i = 0; i < 4; i++) {
@@ -60,13 +57,8 @@ const keyOf = (slug: string) => keyNamed(keyName(slug))
 
 export const DEFAULT_ROUTER_SHARE = 20
 
-/** Percent of the budget for the router key (1-99). */
 const routerShare = (ws: Ws): number => ws.routerBudgetShare ?? DEFAULT_ROUTER_SHARE
 
-/**
- * Workspace key: Block. The owner-session key has its own USD budget (`SESSION_BUDGET_USD`, default 100), Audit only: subscription traffic costs the Workspace nothing, the gateway only prices it.
- * `share` is the percent of the budget this key gets; tokens and USD cents round down, so the parts of a split never sum to more than the budget.
- */
 export const shareOf = (base: number, tokens: boolean, share: number): number => (share === 100 ? base : tokens ? Math.floor((base * share) / 100) : Math.floor(base * share) / 100)
 
 const budget = (ws: Ws, share = 100) => {
@@ -75,7 +67,6 @@ const budget = (ws: Ws, share = 100) => {
   return [{ name: 'monthly', limit: { unit: tokens ? 'Tokens' : 'USD', amount: shareOf(base, tokens, share) }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' }]
 }
 
-/** Writes a secret file (0600, owned by the directory's owner so a root container leaves it readable on the host). Never logs the value. */
 export const writeSecretFile = async (path: string, value: string): Promise<void> => {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, value, { mode: 0o600 })
@@ -88,7 +79,6 @@ export const writeSecretFile = async (path: string, value: string): Promise<void
 const loadWs = async (req: PayloadRequest, id: number | string): Promise<Ws> =>
   (await req.payload.findByID({ collection: 'workspaces', id, depth: 0, overrideAccess: true, req })) as unknown as Ws
 
-/** Creates or updates the Workspace's consumer key (budget, allowed models) from its stored key. */
 export const ensureKey = async (req: PayloadRequest, id: number | string): Promise<void> => {
   const ws = await loadWs(req, id)
   if (!ws.gatewayKey) throw new Error(`workspace ${ws.slug} has no gateway key`)
@@ -105,10 +95,6 @@ export const ensureKey = async (req: PayloadRequest, id: number | string): Promi
   await syncRouterKey(req, id)
 }
 
-/**
- * Second consumer key per Workspace for the owner's own Claude Code session: `sub/*` (own login) and `ws-<slug>/*` (Workspace API key), see docs/legal.md.
- * The value lives in the gateway only; an existing key is reused. With BAUHERR_SESSION_KEY_FILE set it is written there (0600).
- */
 export const ensureSessionKey = async (ws: Ws, rotate = false): Promise<string> => {
   const existing = await keyNamed(sessionKeyName(ws.slug))
   const value = {
@@ -123,13 +109,10 @@ export const ensureSessionKey = async (ws: Ws, rotate = false): Promise<string> 
   return value.key
 }
 
-/** A new session key for the Workspace; the old one stops working. Returned once to the caller, never stored by Bauherr. */
 export const rotateSessionKey = async (req: PayloadRequest, id: number | string): Promise<string> => ensureSessionKey(await loadWs(req, id), true)
 
-/** Gateway model IDs per tier; a tier the Workspace never set gets the default model of its (first) non-router LLM Connection, or fails the Run when it has none. `auto` is added only while the Workspace has a `router` Connection. */
 export const tierModels = async (payload: Payload, ws: Record<string, any>, req?: PayloadRequest): Promise<Record<string, string>> => {
   const set = (ws.modelByTier ?? {}) as Record<string, string>
-  // Filtered here, not in SQL: older migrations call this through renderModels before the `router` enum value exists, and a query comparing against it aborts their transaction. `select` keeps those queries off columns added later (e.g. `service`).
   const conns = (await payload.find({ collection: 'connections', where: { workspace: { equals: ws.id }, kind: { equals: 'llm-provider' } }, sort: 'id', select: { provider: true, slug: true }, depth: 0, pagination: false, overrideAccess: true, ...(req ? { req } : {}) })).docs as Record<string, any>[]
   const first = Object.keys(DEFAULT_MODEL_BY_TIER).some((t) => !set[t]) ? conns.find((c) => c.provider !== 'router') : undefined
   const tiers = Object.fromEntries(
@@ -143,10 +126,6 @@ export const tierModels = async (payload: Payload, ws: Record<string, any>, req?
   return router ? { ...tiers, auto: `ws-${ws.slug}/${router.slug}/auto` } : tiers
 }
 
-/**
- * Router key: a third consumer key per Workspace, used only by the vLLM Semantic Router for its inner calls (docs/router.md).
- * Stored encrypted on the Workspace like the gateway key, created once, never shown or logged. `allowedModels` are the tier models, never `.../auto`, so the router cannot loop into itself.
- */
 export const ensureRouterKey = async (req: PayloadRequest, id: number | string): Promise<void> => {
   let ws = await loadWs(req, id)
   if (!ws.routerKey) ws = (await req.payload.update({ collection: 'workspaces', id, data: { routerKey: encrypt(newKey()) }, overrideAccess: true, req })) as unknown as Ws
@@ -162,19 +141,16 @@ export const ensureRouterKey = async (req: PayloadRequest, id: number | string):
   else await call('PUT', KEYS, { resources: [{ value }] })
 }
 
-/** Archived Workspaces (their Connections leave the gateway). Empty before the migration that adds `archived_at`: older migrations render the gateway too, and a query on a missing column aborts their transaction. */
 const archivedIds = async (req: PayloadRequest): Promise<(number | string)[]> => {
   const has = (await req.payload.db.drizzle.execute(sql`SELECT 1 FROM information_schema.columns WHERE table_name = 'workspaces' AND column_name = 'archived_at' AND table_schema = current_schema()`)).rows.length
   if (!has) return []
   return (await req.payload.find({ collection: 'workspaces', where: { archivedAt: { exists: true } }, select: {}, pagination: false, depth: 0, overrideAccess: true, req })).docs.map((w) => w.id)
 }
 
-/** Re-applies the router key (tier models, budget) while the Workspace has one. */
 export const syncRouterKey = async (req: PayloadRequest, id: number | string): Promise<void> => {
   if ((await loadWs(req, id)).routerKey) await ensureRouterKey(req, id)
 }
 
-/** Revokes the router key and forgets it (the next `router` Connection mints a new one), then gives the Workspace key the whole budget again. */
 export const revokeRouterKey = async (req: PayloadRequest, id: number | string, slug: string): Promise<void> => {
   const existing = await keyNamed(routerKeyName(slug))
   if (existing) await call('DELETE', `${KEYS}/${existing.id}`)
@@ -182,7 +158,6 @@ export const revokeRouterKey = async (req: PayloadRequest, id: number | string, 
   await ensureKey(req, id)
 }
 
-/** Replaces the Workspace key; the old key stops working. */
 export const rotateKey = async (req: PayloadRequest, id: number | string): Promise<void> => {
   await req.payload.update({ collection: 'workspaces', id, data: { gatewayKey: encrypt(newKey()) }, overrideAccess: true, req })
   await ensureKey(req, id)
@@ -197,7 +172,6 @@ export const deleteKey = async (slug: string): Promise<void> => {
 
 const cache = new Map<string, { at: number; v: { spentUsd: number; limitUsd: number | null } }>()
 
-/** Spend over the rolling 30 d (gateway request_logs) and the limit; cached for 60 s. */
 export const budgetStatus = async (slug: string): Promise<{ spentUsd: number; limitUsd: number | null }> => {
   const hit = cache.get(slug)
   if (hit && Date.now() - hit.at < 60_000) return hit.v
@@ -217,7 +191,6 @@ export const budgetStatus = async (slug: string): Promise<{ spentUsd: number; li
   }
 }
 
-/** Writes the Connection's provider credential as a 0600 file the gateway reads (`apiKey.file`, `auth.gcp.credential.file`). */
 export const writeProvider = async (ws: string, conn: string, secret: string, ext: 'key' | 'json' = 'key'): Promise<void> => {
   await mkdir(join(dir(), 'providers'), { recursive: true })
   const tmp = `${providerFile(ws, conn, ext)}.tmp`
@@ -228,25 +201,18 @@ export const writeProvider = async (ws: string, conn: string, secret: string, ex
 export const removeProvider = (ws: string, conn: string, ...exts: ('key' | 'json')[]) =>
   Promise.all((exts.length ? exts : (['key', 'json'] as const)).map((e) => rm(providerFile(ws, conn, e), { force: true })))
 
-/** Removes every provider file of a Workspace (its Connections are gone with it). */
 export const removeWorkspaceProviders = async (ws: string): Promise<void> => {
   const files = await readdir(join(dir(), 'providers')).catch(() => [] as string[])
   await Promise.all(files.filter((f) => f.startsWith(`ws-${ws}.`) && /^[a-z0-9-]+\.(key|json)$/.test(f.slice(`ws-${ws}.`.length))).map((f) => rm(join(dir(), 'providers', f), { force: true })))
 }
 
-/** Which router categories (MMLU domains of the router's built-in classifier) go to which tier; everything else takes `cheap`. */
 const ROUTER_DOMAINS = {
   strong: ['math', 'physics', 'chemistry', 'engineering', 'law'],
   standard: ['computer science', 'business', 'economics', 'health', 'biology'],
 }
 
-/**
- * Writes `/gateway/router/config.yaml` (0600, holds the router key) for the vLLM Semantic Router while a `router` Connection exists; removes it with the last one.
- * The gateway is the router's only backend; categories map to the Workspace's tier models, the inner calls carry the router key (never the Workspace key).
- */
 export const renderRouter = async (req: PayloadRequest): Promise<void> => {
   const path = join(dir(), 'router', 'config.yaml')
-  // Filtered here, not in SQL (see tierModels): older migrations render the gateway before the `router` enum value exists.
   const gone = await archivedIds(req)
   const conn = ((await req.payload.find({ collection: 'connections', where: { kind: { equals: 'llm-provider' } }, sort: 'id', select: { provider: true, workspace: true }, depth: 0, pagination: false, overrideAccess: true, req })).docs as Record<string, any>[]).find((c) => c.provider === 'router' && !gone.includes(typeof c.workspace === 'object' ? c.workspace.id : c.workspace))
   if (!conn) return void (await rm(path, { force: true }))
@@ -286,17 +252,12 @@ export const renderRouter = async (req: PayloadRequest): Promise<void> => {
 export const KEY_LOCATION = 'coalesce(request.headers["x-agw-key"], request.headers["x-api-key"], request.headers["x-goog-api-key"], request.headers["authorization"].stripPrefix("Bearer "))'
 const OLD_KEY_LOCATION = 'coalesce(request.headers["x-agw-key"], request.headers["authorization"].stripPrefix("Bearer "))'
 
-/** Log fields every session call carries (docs/gateway.md); the template renders them for new installs, `ensureManaged` adds them to an older config. */
 export const SESSION_LOG_FIELDS = {
   session: 'request.headers["x-bauherr-session"]',
   role: 'request.headers["x-bauherr-role"]',
   client: 'coalesce(request.headers["x-bauherr-client"], request.headers["user-agent"])',
 } as const
 
-/**
- * Brings the parts of an existing config.yaml that the template owns up to date and lists every catalog file: the session log fields,
- * the `claude-*` login passthrough (a copy of `sub/*` without the model rename) and `config.modelCatalog`. `tracing` (docs/observability.md) sets `frontendPolicies.tracing`, null removes it, undefined leaves it. Returns whether anything changed.
- */
 export const ensureManaged = (cfg: Record<string, any>, catalogFiles: string[], tracing?: Record<string, unknown> | null): boolean => {
   const before = JSON.stringify(cfg)
   if (tracing !== undefined) {
@@ -323,7 +284,6 @@ const catalogFiles = async (): Promise<string[]> => (await readdir(join(dir(), '
 
 let configQueue: Promise<unknown> = Promise.resolve()
 
-/** Runs every read-modify-write of config.yaml one after the other in this process, so no update is lost. */
 export const withConfig = <T>(fn: () => Promise<T>): Promise<T> => {
   const run = configQueue.then(fn, fn)
   configQueue = run.catch(() => undefined)
@@ -336,7 +296,6 @@ const writeConfig = async (path: string, cfg: unknown): Promise<void> => {
   await rename(tmp, path)
 }
 
-/** Applies `ensureManaged` to the config on disk (no-op without one, or when nothing changes); the gateway hot-reloads it. */
 export const syncManagedConfig = (tracing?: Record<string, unknown> | null): Promise<boolean> =>
   withConfig(async () => {
     const path = join(dir(), 'config.yaml')
@@ -346,7 +305,6 @@ export const syncManagedConfig = (tracing?: Record<string, unknown> | null): Pro
     return true
   })
 
-/** Rewrites (0600, inline secrets live here) the managed `ws-<slug>/<connection>/*` entries of `llm.models` (one per llm-provider Connection, rendered by its preset) and `modelCatalog` (every file in `catalogs/`); keeps the rest (e.g. `sub/*`). */
 export const renderModels = async (req: PayloadRequest): Promise<void> => {
   const conns = await req.payload.find({
     collection: 'connections',
@@ -389,7 +347,6 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
   await renderRouter(req)
 }
 
-/** One Messages call as the Workspace on its `cheap` tier (the key's budget applies); throws on any non-2xx. */
 export const completeCheap = async (w: { slug: string; gatewayKey: string; modelByTier?: Partial<typeof DEFAULT_MODEL_BY_TIER> | null }, system: string, user: string): Promise<string> => {
   const res = await fetch(`${process.env.GATEWAY_URL}/v1/messages`, {
     method: 'POST',
@@ -401,7 +358,6 @@ export const completeCheap = async (w: { slug: string; gatewayKey: string; model
   return ((await res.json()) as { content: { type: string; text?: string }[] }).content.find((c) => c.type === 'text')?.text ?? ''
 }
 
-/** One 1-token request through the local gateway as the Workspace; retries while the config hot-reloads. Returns the capability patch, never the response body. */
 export const verifyProvider = async (slug: string, key: string, model: string /* `<connection>/<model>` */): Promise<{ verifiedAt: string } | { lastError: string }> => {
   let last = 'network error'
   for (let i = 0; i < 3; i++) {

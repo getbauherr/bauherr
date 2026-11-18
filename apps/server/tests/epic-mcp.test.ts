@@ -51,7 +51,6 @@ const issue = async (title: string, stage: string) => {
   return { number: i.number as number, url: i.url as string }
 }
 
-/** An epic parent in `stage` with `count` slice sub-tickets (slice 2 started, slice 1 passed), and the epic branch. */
 const seedEpic = async (stage = 'review', count = 2) => {
   const p = await issue('epic', stage)
   const branch = `bauherr/${p.number}-epic`

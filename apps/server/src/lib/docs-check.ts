@@ -12,9 +12,7 @@ import { nameOf } from './workflow'
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
-/** Label of the one long-lived anchor Ticket per Product; the triage stage excludes it. */
 export const DOCS_CHECK_LABEL = 'bauherr:docs-check'
-/** Label of the Ticket a docs check files. */
 export const DOCS_LABEL = 'bauherr:docs'
 export const DEFAULT_DOCS_PATHS = ['README.md', 'docs/**/*.md']
 const FIRST_CHECK_DAYS = 30
@@ -23,12 +21,10 @@ const DOCS_LOCK = 465
 const marker = (runId: number | string) => `<!-- bauherr:docs-check:run:${runId} -->`
 const markerRun = (body?: string) => Number(body?.match(/<!-- bauherr:docs-check:run:(\d+) -->/)?.[1] ?? 0)
 
-/** The Product's docs anchor Ticket, created on first use (forge issue and local row). */
 const anchorTicket = async (payload: Payload, product: Doc, req?: Partial<PayloadRequest>): Promise<Doc & { id: number | string }> => {
   const existing = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product.id } }, { labels: { equals: DOCS_CHECK_LABEL } }] }, limit: 1, ...o, req })).docs[0]
   if (existing) return existing as Doc & { id: number | string }
   const { tickets } = await forgeOf(payload, product.id, req)
-  // The forge issue outlives a rolled-back transaction: look for one by label before creating, so a retry never makes a second anchor.
   const issue =
     (await tickets.list({ labels: [DOCS_CHECK_LABEL], state: 'open' }))[0] ??
     (await tickets.create({
@@ -39,11 +35,6 @@ const anchorTicket = async (payload: Payload, product: Doc, req?: Partial<Payloa
   return upsertTicket(payload, { workspace: id(product.workspace), product: product.id, externalId: issue.id, number: issue.number, url: issue.url, title: issue.title, state: 'open', labels: issue.labels }, null, req)
 }
 
-/**
- * Starts a docs Run (always autonomous) on the Product's anchor Ticket unless one is active.
- * One transaction under a per-Product advisory lock taken on that transaction's connection, every read and write on the same connection,
- * so two clicks cannot both create the anchor Ticket.
- */
 export const startDocsCheck = async (payload: Payload, productId: number | string): Promise<{ run: Doc; created: boolean }> => {
   const req = await createLocalReq({}, payload)
   const tx = await payload.db.beginTransaction()
@@ -64,11 +55,9 @@ export const startDocsCheck = async (payload: Payload, productId: number | strin
 
 export type MergedTicket = { number: number; title: string; mergeSha: string }
 
-/** Where a check counts from: the last finished check, else the last published release, else 30 days back. */
 export const sinceOf = (product: Doc, now = new Date()): Date =>
   new Date(product.docsCheck?.lastCheckAt ?? product.lastReleaseAt ?? now.getTime() - FIRST_CHECK_DAYS * 86_400_000)
 
-/** Tickets of the Product that entered the release stage after `sinceOf` and have a merge commit, oldest first, one row per Ticket. */
 export const mergedSince = async (payload: Payload, product: Doc, now = new Date()): Promise<MergedTicket[]> => {
   const events = (await payload.find({ collection: 'ticket_events', where: { and: [{ stageKind: { equals: 'release' } }, { at: { greater_than: sinceOf(product, now).toISOString() } }, { 'ticket.product': { equals: product.id } }] }, sort: ['at', 'id'], pagination: false, select: { ticket: true }, ...o })).docs as Doc[]
   const ids = [...new Set(events.map((e) => id(e.ticket)))]
@@ -83,10 +72,8 @@ export const mergedSince = async (payload: Payload, product: Doc, now = new Date
 
 const inDocsPaths = (file: string, paths: string[]) => !isAbsolute(file) && !file.split(/[\\/]/).includes('..') && paths.some((g) => matchesGlob(file, g))
 
-/** The files of `files` that are not under the docs `paths`. */
 export const outsideDocsPaths = (files: string[], paths: string[]): string[] => files.filter((f) => !inDocsPaths(f, paths))
 
-/** Throws unless every ticket and commit of the findings is one of the merged Tickets given to the Run and every file matches the docs paths. */
 export const checkAgainstMerged = (f: DocsFindings, merged: MergedTicket[], paths: string[]): void => {
   const numbers = new Set(merged.map((m) => m.number))
   const shas = new Set(merged.map((m) => m.mergeSha.toLowerCase()))
@@ -95,7 +82,6 @@ export const checkAgainstMerged = (f: DocsFindings, merged: MergedTicket[], path
   for (const c of [...f.stale, ...f.missing].map((x) => x.commit)) if (!shas.has(c.toLowerCase())) throw new Error(`commit ${c} is not a merge commit of the Tickets given to the Run`)
 }
 
-/** The docs part of a docs Run's context. */
 export const docsContext = async (payload: Payload, product: Doc) => ({ paths: (product.docsCheck?.paths as string[] | undefined) ?? DEFAULT_DOCS_PATHS, merged: await mergedSince(payload, product) })
 
 export type DocsFindings = { stale: { file: string; claim: string; commit: string; fix: string }[]; missing: { ticket: number; commit: string; feature: string; file: string }[] }
@@ -103,7 +89,6 @@ export type DocsFindings = { stale: { file: string; claim: string; commit: strin
 const isText = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
 const isSha = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{7,40}$/i.test(v)
 
-/** Parses `.bauherr/docs-findings.json`; throws on any shape error so nothing is filed from a bad file. */
 export const parseDocsFindings = (raw: unknown): DocsFindings => {
   const r = raw as { stale?: unknown; missing?: unknown } | null
   if (!r || !Array.isArray(r.stale) || !Array.isArray(r.missing)) throw new Error('docs-findings.json must be {"stale": [...], "missing": [...]}')
@@ -122,7 +107,6 @@ export const parseDocsFindings = (raw: unknown): DocsFindings => {
 const line = (s: string) => scrub(s).replace(/\s+/g, ' ')
 const code = (s: string) => `\`${line(s).replace(/`/g, "'")}\``
 
-/** One checkbox per finding with file and commit as evidence; at most 30, the rest listed as overflow. */
 export const docsTicketBody = (run: Doc, paths: string[], f: DocsFindings): string => {
   const items = [
     ...f.stale.map((s) => `- [ ] ${code(s.file)} is stale: ${line(s.claim)} (commit ${code(s.commit)}). Write: ${line(s.fix)}`),
@@ -136,11 +120,6 @@ export const docsTicketBody = (run: Doc, paths: string[], f: DocsFindings): stri
   ].join('\n\n')
 }
 
-/**
- * Files the findings of a succeeded docs Run (any other status files nothing and records nothing) as one docs Ticket in Plan, or updates the open docs Ticket in place when it carries an older Run's marker or none; zero findings files nothing.
- * A bad findings file fails the Run and records nothing. Idempotent per Run: a body that already carries the Run's marker is left alone.
- * The check is recorded (`docsCheck.lastCheckAt`/`lastCheckRun`) once filing is done.
- */
 export const fileDocsTicket = async (payload: Payload, run: Doc): Promise<{ filed: 'created' | 'updated' | 'none' }> => {
   if (run.status !== 'succeeded') return { filed: 'none' }
   const ticket = (await payload.findByID({ collection: 'tickets', id: id(run.ticket), ...o })) as Doc

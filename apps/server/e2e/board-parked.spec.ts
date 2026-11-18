@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
-// Own Workspace (slug `park`, Build limit 3) and own Admin (seed-e2e.ts): one parked and two working Build Tickets.
 const email = 'park-admin@example.com'
 
 test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')

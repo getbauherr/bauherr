@@ -8,7 +8,6 @@ export const rolesOf = (doc: Doc): RoleView[] =>
 
 export const targetTitle = (doc: Doc, t: string): string => SPECIAL_TARGET[t] ?? stageTitle(stagesOf(doc).find((s) => s.name === t) ?? { name: t })
 
-/** Findings that name a step (`stage "x" ...`), by step name; the rest are about the file as a whole. */
 export const findingsByStage = (findings: string[]): Map<string, string[]> => {
   const m = new Map<string, string[]>()
   for (const f of findings) {
@@ -18,13 +17,11 @@ export const findingsByStage = (findings: string[]): Map<string, string[]> => {
   return m
 }
 
-/** Findings the edit `after` adds on top of the ones the draft already has. */
 const added = (before: string[], after: string): string[] => {
   const r = readDraft(after)
   return r.ok ? r.findings.filter((f) => !before.includes(f)) : ['not valid']
 }
 
-/** Whether a step may be spliced in after `after`: tried, then judged by the rules (no stage name is built in). */
 export const canAddAfter = (yaml: string, findings: string[], after: string, role: string): boolean => {
   try {
     return added(findings, addStep(yaml, { after, kind: 'agent', title: 'Probe', role, skill: 'probe' }).yaml).length === 0
@@ -33,7 +30,6 @@ export const canAddAfter = (yaml: string, findings: string[], after: string, rol
   }
 }
 
-/** Targets a path may take: the current one plus every step or special target the rules still accept. */
 export const allowedTargets = (yaml: string, findings: string[], doc: Doc, stage: string, outcome: string): string[] => {
   const current = stagesOf(doc).find((s) => s.name === stage)?.outcomes?.[outcome] as string
   return [...stagesOf(doc).map((s) => String(s.name)), ...Object.keys(SPECIAL_TARGET)].filter((t) => {

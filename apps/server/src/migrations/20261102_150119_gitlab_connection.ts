@@ -6,5 +6,4 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
 }
 
 export async function down(_args: MigrateDownArgs): Promise<void> {
-  // The enum value 'gitlab' of enum_connections_kind stays: Postgres cannot drop an enum value.
 }

@@ -6,10 +6,6 @@ type Doc = Record<string, any>
 type Ctx = { backend: { forge: Forge }; repo: string; tickets: TicketSource }
 const o = { overrideAccess: true, depth: 0 } as const
 
-/**
- * A failed required check is re-run once per (Ticket, sha, check) before it counts. `check_flakes` holds one row per retry and is the once-only guard.
- * `retried` = a re-run is under way (or the old failure is still listed, its workflow run is still in progress, or another pass claimed it): wait. `exhausted` = retries off, already retried, or the forge cannot re-run: today's behaviour.
- */
 export const retryRed = async (payload: Payload, t: Doc, product: Doc, ctx: Ctx, sha: string, failed: Check[], all: Check[]): Promise<'retried' | 'exhausted'> => {
   if (!((product.checkRetries ?? 1) > 0)) return 'exhausted'
   if (failed.some((c) => c.runId && all.some((x) => x.runId === c.runId && x.status !== 'completed'))) return 'retried'
@@ -31,7 +27,6 @@ export const retryRed = async (payload: Payload, t: Doc, product: Doc, ctx: Ctx,
   return 'retried'
 }
 
-/** Records the tests an `e2e-flaky*` check run lists (output text `[{shard,file,title}]`) as `flake` rows; the (ticket, sha, checkName) unique index makes every pass idempotent. */
 const recordTestFlakes = async (payload: Payload, t: Doc, sha: string, checks: Check[]): Promise<void> => {
   for (const c of latestChecks(checks).filter((x) => x.name.startsWith('e2e-flaky') && x.output)) {
     let tests: { file: string; title: string }[] = []
@@ -48,7 +43,6 @@ const recordTestFlakes = async (payload: Payload, t: Doc, sha: string, checks: C
   }
 }
 
-/** Settles the `pending` retries of (Ticket, sha) once their check has a newer finished run: passed = `flake`, failed again = `failed`. Safe to call on every gate pass. */
 export const settleRetries = async (payload: Payload, t: Doc, sha: string, checks: Check[]): Promise<void> => {
   await recordTestFlakes(payload, t, sha, checks)
   const rows = (await payload.find({ collection: 'check_flakes', where: { ticket: { equals: t.id }, sha: { equals: sha }, outcome: { equals: 'pending' } }, pagination: false, ...o })).docs as Doc[]

@@ -19,7 +19,6 @@ export type RatedAnswer = {
 const EXCERPT_CHARS = 500
 const cut = (s: string) => (s.length > EXCERPT_CHARS ? `${s.slice(0, EXCERPT_CHARS)}…` : s)
 
-/** Rated answers of a Workspace, newest rating first: the question, an excerpt of the answer, tools used, usage, thread and rater. */
 export const chatFeedback = async (payload: Payload, workspace: number | string, { limit = 50 }: { limit?: number } = {}): Promise<RatedAnswer[]> => {
   const q = { overrideAccess: true } as const
   const { docs } = await payload.find({ collection: 'chat_messages', where: { and: [{ workspace: { equals: workspace } }, { feedback: { exists: true } }] }, sort: '-feedbackAt', limit: Math.min(Math.max(limit, 1), 200), depth: 2, ...q })

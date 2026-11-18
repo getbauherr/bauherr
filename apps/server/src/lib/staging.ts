@@ -5,7 +5,6 @@ import { gates, is, type Workflow } from './workflow'
 
 type Product = { id: number | string; productOwnerTestsStaging?: boolean | null }
 
-/** The human gates of each Product where the workflow asks the Product owner to accept on staging (decided per Product, see `stagingGateOn`); the function answers `undefined` where the workflow's own gates apply. One query for the Workspace's Product owners per call. */
 export const productGates = async (payload: Payload, wf: Workflow, workspace: number | string, products: Product[]): Promise<(product: unknown) => HumanGate[] | undefined> => {
   if (!gates(wf).staging || gateOn(wf, 'release')) return () => undefined
   const owners = await productOwnersOf(payload, workspace)
@@ -13,7 +12,6 @@ export const productGates = async (payload: Payload, wf: Workflow, workspace: nu
   return (product) => by.get(Number(product && typeof product === 'object' ? (product as { id: unknown }).id : product))
 }
 
-/** `productGates` for the one Product of a Ticket row (read only when the workflow asks the Product owner and the Ticket is in the release stage). */
 export const gatesOf = async (payload: Payload, wf: Workflow, t: Record<string, any>): Promise<HumanGate[] | undefined> => {
   if (!gates(wf).staging || gateOn(wf, 'release') || !is(wf, t.stage ?? '', 'release')) return undefined
   const id = Number(t.product && typeof t.product === 'object' ? (t.product as { id: unknown }).id : t.product)

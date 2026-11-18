@@ -6,7 +6,6 @@ const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
-/** Signs in on the Workspace `settingsco` (`seed-e2e.ts`): these tests save its templates, which no spec reading `acme` may see. */
 const login = async (page: Page) => {
   await page.context().addCookies([{ name: 'bauherr-ws', value: 'settingsco', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
   await page.goto('/login')
@@ -46,7 +45,6 @@ test('a template that loses a part the factory fills cannot be saved, and the fi
   await login(page)
   await page.goto('/settings/templates/staging-summary')
   const editor = page.getByLabel('Template')
-  // A fill before hydration changes the DOM only: repeat it until the page reacts.
   await expect(async () => {
     await editor.fill((await editor.inputValue()).replace('## Accept {#accept}', '## Done'))
     await expect(page.getByRole('alert').filter({ hasText: '{#accept}' })).toBeVisible({ timeout: 1_500 })

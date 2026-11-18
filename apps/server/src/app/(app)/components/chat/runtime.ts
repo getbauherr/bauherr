@@ -9,7 +9,6 @@ type TitleChunk = TitleStream extends ReadableStream<infer C> ? C : never
 type Item = { getState(): { remoteId?: string | undefined }; initialize(): Promise<{ remoteId: string }> }
 
 export type Hooks = {
-  /** A stored thread was opened: the page it was about (null for a new one) and its Ticket. */
   onLoaded(threadId: string | undefined, context: Meta['context'], ticket: number | null): void
   onWrite(): void
 }
@@ -30,7 +29,6 @@ const titleStream = (title: string | undefined): TitleStream =>
     },
   })
 
-/** Saves in flight by message id, so a rating waits for the answer's row to carry the client's id. */
 const writes = new Map<string, Promise<unknown>>()
 const track = async (id: string, p: Promise<void>): Promise<void> => {
   const q = p.catch(() => {}).finally(() => writes.get(id) === q && writes.delete(id))
@@ -47,7 +45,6 @@ const cardOf = (p: Pending) => ({
   artifact: { kind: 'confirm', summary: p.summary, title: p.title, details: p.details, destructive: p.destructive, approve: p.approve, decline: p.decline, noReason: p.noReason } satisfies Artifact,
 })
 
-/** A stored item as assistant-ui's exported repository item; the server's usage and rating win over what the client stored. A pending card the client never saved is put back. */
 const decode = (s: Stored) => {
   const m = s.message
   const custom = (m.metadata?.custom ?? {}) as Custom
@@ -115,7 +112,6 @@ const listAdapter = (hooks: RefObject<Hooks>): RemoteThreadListAdapter => {
 
 const attachments = makeAttachments()
 
-/** Thread list over `/api/chat/threads`; per thread a local runtime whose adapter reads the NDJSON stream. */
 export function useChatRuntime(hooks: Hooks, initialThreadId: string | undefined, userKey: string) {
   const ref = useRef(hooks)
   ref.current = hooks

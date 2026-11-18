@@ -1,7 +1,6 @@
 'use client'
 import { useState, type ReactNode } from 'react'
 
-/** The full executor data of a step row, one click away (not a `<details>`: the Ticket page has exactly one). */
 export function RowDetail({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
   return (

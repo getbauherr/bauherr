@@ -25,30 +25,22 @@ const o = { depth: 0, overrideAccess: true } as const
 const idOf = (v: unknown): any => (v && typeof v === 'object' ? (v as Doc).id : v)
 const now = () => new Date().toISOString()
 
-/** The conversation partner: the role as persona, and the session that asked Triage's questions (null when no session did). */
 export type Participant = { role: string; avatar: string; about: string; session: { label: string; live: boolean; client: string | null; model: string | null; run: number | null } | null }
 export type TurnCost = { id: string; at: string; model: string; tokensIn: number; tokensOut: number; usd: number | null }
-/** What the panel shows; every action answers it whole, so the client never merges. */
 export type View = {
-  /** Who is looking: a Product owner sees only their rows, no model choice and no cost (`models` and `cost` are empty for them). */
   viewer: 'bauherr' | 'product-owner'
   ticket: { id: number; number: number; title: string }
   sent: boolean
-  /** Why a sent Ticket has not entered planning yet, e.g. "Queued for planning: Plan is full (3 of 3). It starts when a slot is free."; null once it moved. */
   queued: string | null
   points: Point[]
   messages: Msg[]
   earlier: { role: string; text: string }[]
   participant: Participant
   artifact: Artifact
-  /** The Workspace's models per tier and the one this conversation uses for its next turns. */
   models: { tier: Tier; model: string }[]
   tier: Tier
-  /** Tokens and list price of the turns so far (`usd` null: some turn's model has no price). */
   cost: { turns: TurnCost[]; tokens: number; usd: number | null }
-  /** Cost and usage are an Admin's: for anyone else `cost` is empty and no message carries `usage`. */
   showCost: boolean
-  /** The role that plans next and the line under "Send to planning". */
   planner: string
   next: string
   thread: number
@@ -68,7 +60,6 @@ const PROMPT = [
   'A <recheck> block is not the person\'s words but the system telling you which option they just clicked. Then only drop the points that choice made pointless (`dropped`, or `added` for a point that must be asked differently) and ask the next one in `reply`; never settle a point (`settled` stays empty) and never edit the Ticket. When nothing changes, `reply` is just `ok`.',
 ].join('\n')
 
-/** The owner `intake_sessions` row of this person and Ticket that holds the conversation: the open one, else a new one when points are open, else the latest sent one. */
 const sessionOf = async (payload: Payload, user: User, t: Doc, anyOpen: boolean): Promise<Doc | null> => {
   const mine = (await payload.find({ collection: 'intake_sessions', where: { and: [{ persona: { equals: 'owner' } }, { user: { equals: user.id } }, { 'draft.ticket': { equals: t.id } }] }, sort: '-createdAt', limit: 5, ...o })).docs as Doc[]
   const open = mine.find((s) => s.status === 'open')
@@ -87,14 +78,12 @@ const asMsg = (m: Doc): Msg => ({ id: m.messageId, role: m.role, text: m.message
 const stored = async (payload: Payload, thread: number): Promise<Msg[]> =>
   ((await payload.find({ collection: 'chat_messages', where: { and: [{ thread: { equals: thread } }, { message: { exists: true } }] }, sort: 'createdAt', pagination: false, ...o })).docs as Doc[]).map(asMsg)
 
-/** Writes one message in assistant-ui's exported shape (so ratings, the insights page and the thread reader work on it unchanged). */
 const say = async (payload: Payload, t: Doc, thread: Doc, m: Msg, parentId: string | null, usage?: { model: string; tokensIn: number; tokensOut: number }): Promise<void> => {
   const message = { id: m.id, role: m.role, createdAt: m.speaker.at, content: [{ type: 'text', text: m.text }, ...(m.images ?? []).map((i) => ({ type: 'image', image: i.url }))], metadata: { custom: { speaker: m.speaker, ...(m.images && { images: m.images }), ...(m.settled?.length && { settled: m.settled }) } } }
   await payload.create({ collection: 'chat_messages', data: { workspace: idOf(t.workspace), thread: thread.id, messageId: m.id, parentId, role: m.role, message, ...(usage && { answer: { ...usage, costUsd: null, ms: 0, toolCalls: [] } }) } as never, overrideAccess: true })
   await payload.update({ collection: 'chat_threads', id: thread.id, data: { lastMessageAt: now() }, overrideAccess: true })
 }
 
-/** The Triage Run that asked the points: its session (name, presence), the role as persona (title, avatar, one line of its profile) and model. */
 const triageSpeaker = async (payload: Payload, t: Doc): Promise<{ speaker: Speaker & { role: string; avatar: string }; about: string; client: string | null }> => {
   const wf = workflowFor(t.workspace)
   const runs = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 30, depth: 1, overrideAccess: true })).docs as Doc[]
@@ -111,7 +100,6 @@ const workspaceDoc = async (payload: Payload, t: Doc): Promise<Doc> => (await pa
 type Ctx = { t: Doc; s: Doc | null; thread: Doc | null; points: Point[]; body: string; labels: string[]; edits: { title?: string; body?: string } | null; triage: Awaited<ReturnType<typeof triageSpeaker>>; tier: Tier; version: { n: number; at: string | null } }
 
 const read = async (payload: Payload, user: User, ticket: number, workspaceId: number | string): Promise<Ctx> => {
-  // `product-owner`: the precondition for a Product owner is only that the Ticket is theirs to see; each point is checked below by its own addressee.
   const t = await loadGate(payload, user, { ticket, workspaceId }, 'refine', 'product-owner')
   const { ts, n } = await sourceOf(payload, t)
   const [comments, issue, triage] = [await decisionComments(payload, t, ts), await ts.get(n), await triageSpeaker(payload, t)]
@@ -119,14 +107,12 @@ const read = async (payload: Payload, user: User, ticket: number, workspaceId: n
   const wf = workflowFor(t.workspace)
   const all = pointsOf(sheet ? parseDecisions(sheet.body) : [], addedOf(comments), parseAnswers(answersOf(comments)?.body ?? ''), triage.speaker.run ?? null, checkpointBy(wf, is(wf, t.stage ?? '', 'plan') ? 'plan' : 'refine'))
   const points = isBauherr(user) ? all : all.filter((p) => p.for === 'product-owner')
-  // An approved plan no longer asks anything: its leftover rows start no conversation (an existing one stays as history).
   const s = await sessionOf(payload, user, t, openOf(points).length > 0 && !issue.labels.includes(APPROVED_PLAN))
   const thread = s ? await threadOf(payload, user, t, s) : null
   const tier = TIERS.includes(s?.draft?.tier) ? (s!.draft.tier as Tier) : 'standard'
   return { t, s, thread, points, body: issue.body ?? '', labels: issue.labels, edits: s?.draft?.edits ?? null, triage, tier, version: s?.draft?.version ?? { n: 1, at: null } }
 }
 
-/** Whether the person has at least one row to answer (a Product owner: only rows addressed to them, on a Ticket of their Products); reads, writes nothing. For the turn route to answer 404 before it streams. */
 export const hasRows = async (payload: Payload, user: User, a: { ticket: number; workspaceId: number | string }): Promise<boolean> => {
   const t = await loadGate(payload, user, a, 'refine', 'product-owner').catch(() => null)
   if (!t) return false
@@ -150,7 +136,6 @@ const view = async (payload: Payload, user: User, c: Ctx, workspaceId: number | 
   const { speaker, about, client } = c.triage
   const models = tierModels(w)
   const wf = workflowFor(c.t.workspace)
-  // A Product owner sees no model, no usage and no session of the executor.
   const showCost = viewer === 'bauherr' && user.role === 'admin'
   const hide = <T extends { speaker: Speaker; usage?: unknown }>(m: T): T => (viewer !== 'bauherr' ? { ...m, usage: undefined, speaker: { ...m.speaker, model: null } } : showCost ? m : { ...m, usage: undefined })
   const messages = stored_.map((m) => hide(m.speaker.kind === 'person' ? m : { ...m, speaker: { ...m.speaker, role: speaker.role, avatar: speaker.avatar } }))
@@ -179,13 +164,11 @@ const view = async (payload: Payload, user: User, c: Ctx, workspaceId: number | 
   }
 }
 
-/** The text of the person's old docked thread of this Ticket, read-only; the helper keeps that thread, the panel never writes to it. */
 const earlierOf = async (payload: Payload, user: User, t: Doc): Promise<View['earlier']> => {
   const th = (await payload.find({ collection: 'chat_threads', where: { and: [{ owner: { equals: user.id } }, { ticket: { equals: t.id } }] }, limit: 1, ...o })).docs[0] as Doc | undefined
   return th ? (await stored(payload, th.id)).filter((m) => m.text.trim()).map((m) => ({ role: m.role, text: m.text })) : []
 }
 
-/** Opens (or resumes) the conversation of a Ticket; null while it has no points at all. The first load puts Triage's first question in as the first message. */
 export const loadRefine = async (payload: Payload, user: User, a: { ticket: number; workspaceId: number | string }): Promise<View | null> => {
   const c = await read(payload, user, a.ticket, a.workspaceId)
   if (c.s && c.thread && c.s.status === 'open' && !(await stored(payload, c.thread.id)).length) {
@@ -198,18 +181,15 @@ export const loadRefine = async (payload: Payload, user: User, a: { ticket: numb
   return view(payload, user, c, a.workspaceId)
 }
 
-/** The question a no-model reply asks next, in two lines: the first open point (critical first), then the answer recommended for it as its own sentence. */
 export const nextQuestion = (points: Point[]): string | null => {
   const p = openOf(points)[0]
   return p ? `${p.title}${p.default ? `\nRecommended: ${p.default}.` : ''}` : null
 }
 
-/** Triage's first message: who asked and how many points are open, then the first question on its own lines. */
 export const openingText = (asked: number, open: number, first: string): string => `Triage asked ${asked} question${asked === 1 ? '' : 's'} about this Ticket. ${open === asked ? (open === 1 ? 'It is' : `All ${open} are`) : `${open} are`} still open.\n\n${first}`
 
 const speakAs = (c: Ctx, model: string | null): Speaker => ({ kind: 'assistant', role: c.triage.speaker.role, avatar: c.triage.speaker.avatar, model, at: now() })
 
-/** The shared tail of every action: write the points, store the messages, answer the view. Runs under the Ticket's lock. */
 const commit = async (
   payload: Payload,
   user: User,
@@ -229,7 +209,6 @@ const commit = async (
 
 const lock = <T>(a: { ticket: number }, fn: () => Promise<T>): Promise<T> => exclusive(`refine:${a.ticket}`, fn)
 
-/** The open session of a conversation that may still change; throws when it is sent or has no points. */
 const live = (c: Ctx): void => {
   if (!c.s || !c.thread || !c.points.length) throw new NotInWorkspace()
   if (c.s.status !== 'open') throw new Error('this conversation was sent; it is read-only')
@@ -237,7 +216,6 @@ const live = (c: Ctx): void => {
 
 export const MAX_IMAGES = 4
 
-/** The person's uploaded images of this Workspace (at most `MAX_IMAGES`) with their signed URLs; an id of another Workspace or a missing file throws. */
 const imagesOf = async (payload: Payload, t: Doc, ids: number[]): Promise<Image[]> => {
   if (ids.length > MAX_IMAGES) throw new Error(`at most ${MAX_IMAGES} images per message`)
   return Promise.all(
@@ -257,15 +235,12 @@ const sanitize = (text: string): string => {
 }
 
 export type TurnHooks = {
-  /** The reply as far as the model has written it (whitespace collapsed); `''` when a retry starts over. */
   onReply?: (text: string) => void
-  /** Aborts the turn: nothing is stored. */
   signal?: AbortSignal
 }
 
 type Asked = { r: Refine; usage: { model: string; tokensIn: number; tokensOut: number } }
 
-/** One model call that must end in a valid `refine` result; one retry. `check` rejects results the caller does not allow. The reply streams to `hooks.onReply` as the tool input arrives. Throws the last error. */
 const ask = async (payload: Payload, c: Ctx, input: { tag: 'person' | 'recheck'; text: string; images?: Image[] }, history: Msg[], model: Awaited<ReturnType<typeof chatModelFor>>, hooks: TurnHooks = {}, check?: (r: Refine) => void): Promise<Asked> => {
   const state = JSON.stringify({ ticket: { title: c.t.title, body: c.body }, edits: c.edits, points: c.points.map((p) => ({ id: p.id, question: p.title, why: p.why, options: p.options, default: p.default, status: p.status, answer: p.answer })) })
   const turns = history.slice(-20).map((m) => ({ role: m.role, content: [{ type: 'text' as const, text: m.text }] }))
@@ -310,10 +285,6 @@ const changeOf = (c: Ctx, r: Refine, done: ReturnType<typeof applyRefine>) => {
   return { answers: [...r.settled.map((s) => ({ id: s.id, title: title(s.id), answer: s.answer })), ...r.dropped.map((d) => ({ id: d.id, title: title(d.id), answer: dropLine(d.reason) }))], added: done.added, edits: r.ticket ? { ...c.edits, ...r.ticket } : undefined }
 }
 
-/**
- * A message typed into the panel: always one `refine` turn of the refinement model, never the helper. The result is validated whole and applied through the existing writers
- * (one decisions Comment write for settled, dropped and added points); an invalid result, after one retry, or an abort changes nothing and throws.
- */
 export const refineTurn = (payload: Payload, user: User, a: TurnHooks & { ticket: number; workspaceId: number | string; text: string; /** Ids of images uploaded to `api/chat/media`; the model gets them as image blocks. */ images?: number[]; model?: Awaited<ReturnType<typeof chatModelFor>> }): Promise<View> =>
   lock(a, async () => {
     const text = sanitize(a.text)
@@ -329,10 +300,6 @@ export const refineTurn = (payload: Payload, user: User, a: TurnHooks & { ticket
     return commit(payload, user, a, c, changeOf(c, r, done), { user: text, images, reply, model: usage.model, usage })
   })
 
-/**
- * The short turn after an option click (design section 2): when other points are still open, the model may only drop points the choice made pointless (or ask one differently
- * with `added`) and asks the next one. Its text is never streamed (the panel shows a quiet "checking" line; the message appears whole, only when something changed). A result that settles a point or edits the Ticket is invalid. When it changes nothing, nothing is stored. Skipped (no call) when no point is open.
- */
 export const refineRecheck = (payload: Payload, user: User, a: Pick<TurnHooks, 'signal'> & { ticket: number; workspaceId: number | string; point: string; model?: Awaited<ReturnType<typeof chatModelFor>> }): Promise<View> =>
   lock(a, async () => {
     const c = await read(payload, user, a.ticket, a.workspaceId)
@@ -354,7 +321,6 @@ const pointOf = (c: Ctx, id: string): Point => {
   return p
 }
 
-/** A click on an option of an open point: recorded verbatim without a model call; the reply is the next question from the stored points. */
 export const refineOption = (payload: Payload, user: User, a: { ticket: number; workspaceId: number | string; point: string; option: number }): Promise<View> =>
   lock(a, async () => {
     const c = await read(payload, user, a.ticket, a.workspaceId)
@@ -366,7 +332,6 @@ export const refineOption = (payload: Payload, user: User, a: { ticket: number; 
     return commit(payload, user, a, c, { answers: [{ id: p.id, title: p.title, answer }] }, { user: `${p.id}: ${answer}`, reply: nextQuestion(after) ?? 'That was the last open point.', model: null })
   })
 
-/** "Why does this matter?": the stored reason of the point, no model call. */
 export const refineWhy = (payload: Payload, user: User, a: { ticket: number; workspaceId: number | string; point: string }): Promise<View> =>
   lock(a, async () => {
     const c = await read(payload, user, a.ticket, a.workspaceId)
@@ -375,7 +340,6 @@ export const refineWhy = (payload: Payload, user: User, a: { ticket: number; wor
     return commit(payload, user, a, c, {}, { user: 'Why does this matter?', reply: p.why ? `${p.title} ${p.why}` : 'Triage gave no reason for this point. Pick an option or tell me in your own words.', model: null })
   })
 
-/** "Use the recommended answers for the rest": every open point with a default is settled with it in one write. */
 export const refineRecommended = (payload: Payload, user: User, a: { ticket: number; workspaceId: number | string }): Promise<View> =>
   lock(a, async () => {
     const c = await read(payload, user, a.ticket, a.workspaceId)
@@ -387,7 +351,6 @@ export const refineRecommended = (payload: Payload, user: User, a: { ticket: num
     return commit(payload, user, a, c, { answers: rest.map((p) => ({ id: p.id, title: p.title, answer: p.default })) }, { user: 'Use the recommended answers for the rest', reply: `Done: I took the recommended answer for ${rest.length} point${rest.length === 1 ? '' : 's'}.${left ? ` Still open: ${left}` : ' Nothing is open; check the summary and send it on.'}`, model: null })
   })
 
-/** "Change" on an answered or dropped point: it is open again (its answer line removed) and becomes the next question. */
 export const refineReopen = (payload: Payload, user: User, a: { ticket: number; workspaceId: number | string; point: string }): Promise<View> =>
   lock(a, async () => {
     const c = await read(payload, user, a.ticket, a.workspaceId)
@@ -397,13 +360,11 @@ export const refineReopen = (payload: Payload, user: User, a: { ticket: number; 
     return commit(payload, user, a, c, { reopen: [p.id] }, { user: `Change ${p.id}`, reply: `${nextQuestion([{ ...p, status: 'open' }])}\nWhat should it be?`, model: null })
   })
 
-/** The last line of a sent conversation: "Sent to planning." only when the Ticket entered Plan, else what it waits for (`waitingLabel`). */
 export const sentText = async (payload: Payload, ticket: number | string, result?: 'moved' | 'waiting' | 'held'): Promise<string> => {
   const label = result === 'moved' ? null : await waitingLabel(payload, (await payload.findByID({ collection: 'tickets', id: ticket, ...o })) as Doc)
   return label ? `Queued for planning: ${label.replace(/^Waiting: /, '').replace(/\((\d+)\/(\d+)\)/, '($1 of $2)')}. It starts when a slot is free.` : 'Sent to planning.'
 }
 
-/** "Send to planning": the proposed Ticket text is applied, the hold is released the way the last decision row releases it, and the conversation is read-only history. */
 export const refineSend = (payload: Payload, user: User, a: { ticket: number; workspaceId: number | string }): Promise<View> =>
   lock(a, async () => {
     const c = await read(payload, user, a.ticket, a.workspaceId)
@@ -417,7 +378,6 @@ export const refineSend = (payload: Payload, user: User, a: { ticket: number; wo
     return (await view(payload, user, fresh, a.workspaceId))!
   })
 
-/** The model for the next turns of this conversation: one of the Workspace's tiers. No message, no model call. */
 export const refineModel = (payload: Payload, user: User, a: { ticket: number; workspaceId: number | string; tier: string }): Promise<View> =>
   lock(a, async () => {
     if (!isBauherr(user)) throw new NotInWorkspace() // the model choice is the Bauherr's

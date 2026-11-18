@@ -12,5 +12,4 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   ALTER TYPE "public"."enum_payload_jobs_task_slug" ADD VALUE IF NOT EXISTS 'reclaim-jobs';`)
 }
 
-// Postgres cannot drop an enum value; leftovers are harmless.
 export async function down(_: MigrateDownArgs): Promise<void> {}

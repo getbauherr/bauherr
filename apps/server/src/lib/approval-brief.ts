@@ -12,7 +12,6 @@ export { BRIEF_KINDS, MAX_CHANGES, noVisibleReason, type ApprovalBrief, type Bri
 const KIND = /^(?:[[(*]+)?(visible|behaviou?r|internal)(?:[\])*]+)?\s*[:\-–—]?\s*(.+)$/i
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
-/** Parses the `## Approval brief` section of an MR body; a missing or junk section gives empty parts, never an error. A bullet without a recognised kind counts as `internal`. */
 export const parseApprovalBrief = (body: string): Pick<ApprovalBrief, 'changes' | 'notIncluded' | 'risk'> => {
   const parts = new Map<string, string[]>()
   let current: string[] | null = null
@@ -30,11 +29,9 @@ export const parseApprovalBrief = (body: string): Pick<ApprovalBrief, 'changes' 
   return { changes, notIncluded: bullets(part('not included')).map((b) => clip(b, 300)), risk: clip(part('risk').trim().replace(/\s*\n\s*/g, ' '), 600) }
 }
 
-/** Agent-written text goes into a forge Comment: break @mentions so it notifies nobody. */
 const quiet = (s: string) => s.replace(/@(?=\w)/g, '@\u200b')
 const list = (items: string[]) => items.map((i) => `- ${quiet(i)}`).join('\n')
 
-/** The brief as markdown for the gate Comment (the proof table follows in its own section). */
 export const approvalBriefMarkdown = (b: ApprovalBrief): string => {
   const reason = noVisibleReason(b)
   return [
@@ -52,17 +49,12 @@ export const approvalBriefMarkdown = (b: ApprovalBrief): string => {
   ].filter(Boolean).join('\n\n')
 }
 
-/** Stores the brief once per merge commit: the same sha is a no-op, a new one replaces it. */
 export const storeApprovalBrief = (payload: Payload, ticket: number | string, brief: ApprovalBrief): Promise<boolean> =>
   cas(payload, ticket, sql`"approval_brief" = ${JSON.stringify(brief)}::jsonb`, sql`"approval_brief"->>'sha' IS DISTINCT FROM ${brief.sha}`)
 
 type Doc = Record<string, any>
 const TEST_FILE = /(^|\/)(tests?|__tests__|e2e)\/|\.(test|spec)\./
 
-/**
- * Builds the brief of a merge commit from the Ticket's MRs (the first with a `## Approval brief` section), its newest proof, the last review's open items and the checks of the merge commit.
- * Forge reads that fail leave their part empty; nothing here throws.
- */
 export const freezeApprovalBrief = async (a: { mergeSha: string | null; mrs: { number: number; url: string; body: string }[]; runs: Doc[]; forge: Forge; repo: string; stagingUrl: string | null; proof: ProofData | null }): Promise<ApprovalBrief> => {
   const parsed = a.mrs.map((m) => parseApprovalBrief(m.body)).find((p) => p.changes.length || p.risk || p.notIncluded.length) ?? { changes: [], notIncluded: [], risk: '' }
   const review = a.runs.find((r) => r.kind === 'review' && r.status === 'succeeded')

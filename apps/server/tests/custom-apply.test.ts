@@ -5,7 +5,6 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/** The custom pack applied to ONE Workspace of a default-pack instance: its Tickets go through the security stage, the other Workspace's do not. */
 let payload: Payload
 let fake: FakeBackend
 let actions: typeof import('../src/lib/actions')

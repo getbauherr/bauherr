@@ -30,7 +30,6 @@ export const quantile = (xs: number[], q: number): number => {
 }
 const quantiles = (xs: number[]): Quantiles | null => (xs.length ? { n: xs.length, median: quantile(xs, 0.5), p85: quantile(xs, 0.85) } : null)
 
-/** Sums the rows by `key`; `labelOf` names a group, `runs` counts distinct Runs. */
 export const group = (rows: Row[], key: (r: Row) => string | null, label: (r: Row) => string = (r) => key(r)!): Line[] => {
   const m = new Map<string, Line & { set: Set<number> }>()
   for (const r of rows) {
@@ -47,7 +46,6 @@ export const group = (rows: Row[], key: (r: Row) => string | null, label: (r: Ro
   return [...m.values()].map(({ set, ...l }) => ({ ...l, runs: set.size })).sort((a, b) => b.costUsd - a.costUsd || a.key.localeCompare(b.key))
 }
 
-/** Per-Ticket totals of `rows` (all Runs of each Ticket). */
 const perTicket = (rows: Row[]): Map<number, number> => {
   const m = new Map<number, number>()
   for (const r of rows) if (r.ticket != null) m.set(r.ticket, (m.get(r.ticket) ?? 0) + (r.cost ?? 0))
@@ -56,7 +54,6 @@ const perTicket = (rows: Row[]): Map<number, number> => {
 
 const NO_ROLE: Record<string, string> = { runner: 'Runner, no role', ci: 'CI, no role', session: 'Session, no role' }
 
-/** Pure aggregation of effective usage rows into the Insights breakdowns. `done` is the whole history of the Tickets that reached done in the range. */
 export const aggregate = (wf: Workflow, rows: Row[], done: { ids: number[]; rows: Row[] }, coverage: Cost['coverage']): Cost => {
   const doneCost = perTicket(done.rows)
   const priced = done.ids.filter((id) => doneCost.has(id))
@@ -89,10 +86,6 @@ export const aggregate = (wf: Workflow, rows: Row[], done: { ids: number[]; rows
 }
 
 const COLS = sql`e."run_id", e."ticket_id", e."stage", e."role", e."model", e."source"::text AS "source", COALESCE(e."tokens_in", 0)::float8 + COALESCE(e."tokens_out", 0)::float8 AS "tokens", (COALESCE(e."cache_read", 0) + COALESCE(e."cache_write", 0))::float8 AS "cache", e."cost_usd"::float8 AS "cost", e."at"`
-/**
- * Session-reported rows are dropped once the gateway has priced the same thing (the gateway is exact): a Run with gateway rows, and every row of a session at or after that session's first gateway row.
- * So a session that moves from the usage hook to the gateway never counts a call twice.
- */
 export const EFFECTIVE = sql`NOT (e."source" = 'session-reported' AND (
   (e."run_id" IS NOT NULL AND EXISTS (SELECT 1 FROM "usage_entries" g WHERE g."run_id" = e."run_id" AND g."source" = 'gateway'))
   OR (e."session_id" IS NOT NULL AND EXISTS (SELECT 1 FROM "usage_entries" g WHERE g."session_id" = e."session_id" AND g."source" = 'gateway' AND g."at" <= e."at"))))`
@@ -114,7 +107,6 @@ const toRow = (r: Record<string, any>): Row => ({
   at: new Date(r.at).toISOString(),
 })
 
-/** Effective usage rows of the Workspace since `since` (optionally one Product), with their Ticket, session label and Run executor; chat answers are read from `chat_messages`. */
 export const loadRows = async (payload: Payload, workspace: number, since: Date, product: number | null): Promise<Row[]> => {
   const s = since.toISOString()
   const rows = (await payload.db.drizzle.execute(sql`
@@ -130,7 +122,6 @@ export const loadRows = async (payload: Payload, workspace: number, since: Date,
   return rows.map(toRow)
 }
 
-/** Share of the Runs finished since `since` that have usage, by who ran them. */
 const loadCoverage = async (payload: Payload, workspace: number, since: Date, product: number | null): Promise<Cost['coverage']> => {
   const rows = (await payload.db.drizzle.execute(sql`
     SELECT r."mode"::text AS "mode", count(*)::int AS "runs", count(*) FILTER (WHERE EXISTS (SELECT 1 FROM "usage_entries" e WHERE e."run_id" = r."id"))::int AS "covered"
@@ -144,7 +135,6 @@ const loadCoverage = async (payload: Payload, workspace: number, since: Date, pr
   return [{ label: 'Runner and CI Runs (gateway)', ...of('autonomous') }, { label: 'Session Runs (gateway or reported)', ...of('session') }]
 }
 
-/** The "Cost & tokens" numbers of the last `days` days; cost per finished Ticket uses the Tickets that reached done in the range, with their whole history. */
 export const loadCost = async (payload: Payload, wf: Workflow, workspace: number, o: { days: number; product: number | null; now?: number }): Promise<Cost> => {
   const since = new Date((o.now ?? Date.now()) - o.days * 864e5)
   const [rows, coverage, done] = await Promise.all([
@@ -162,7 +152,6 @@ export const loadCost = async (payload: Payload, wf: Workflow, workspace: number
 
 export type TeamCost = { sessions: Record<string, { today: number; d30: number }>; roles: Record<string, { today: number; d30: number }> }
 
-/** Cost today and in the last 30 days per session (public id) and per role. DB only. */
 export const loadTeamCost = async (payload: Payload, workspace: number, now = Date.now()): Promise<TeamCost> => {
   const rows = (await payload.db.drizzle.execute(sql`
     SELECT s."public_id", COALESCE(e."role", s."role") AS "role",

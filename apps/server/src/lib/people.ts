@@ -13,19 +13,14 @@ const id = (v: unknown): number | undefined => {
   return Number.isFinite(n) && v != null && v !== '' ? n : undefined
 }
 
-/** Admin > Bauherr > Product owner; anything else (no user, an unknown role) ranks 0 and is refused everywhere. */
 export const rank = (user: Doc | null | undefined): number => RANK[user?.role as string] ?? 0
-/** Admin or Bauherr: the factory's own people. */
 export const isBauherr = (user: Doc | null | undefined): boolean => rank(user) >= RANK.bauherr
 export const isProductOwner = (user: Doc | null | undefined): boolean => user?.role === 'product-owner'
 
-/** Where a person lands after sign-in: a Product owner on Requests, everyone else on the Workflow. */
 export const homeOf = (user: Doc | null | undefined): string => (isProductOwner(user) ? '/requests' : '/')
 
-/** The Workspace ids of the account's `tenants` rows. */
 export const tenantIds = (user: Doc): number[] => ((user.tenants as { tenant: unknown }[] | undefined) ?? []).flatMap((t) => id(t.tenant) ?? [])
 
-/** What a Product owner may see in a Workspace; null for anyone else and for a Workspace without an assignment. An empty product list grants nothing. */
 export const assignmentOf = (user: Doc, workspace: number | string): Assignment | null => {
   if (!isProductOwner(user)) return null
   const row = ((user.assignments as Doc[] | undefined) ?? []).find((a) => id(a.workspace) === Number(workspace))
@@ -33,7 +28,6 @@ export const assignmentOf = (user: Doc, workspace: number | string): Assignment 
   return row.scope === 'workspace' ? { scope: 'workspace' } : row.scope === 'products' ? { scope: 'products', products: ((row.products as unknown[]) ?? []).flatMap((p) => id(p) ?? []) } : null
 }
 
-/** Bauherren and Admins see every Product of their Workspaces (an Admin of all); a Product owner only what the assignment names. */
 export const canSeeProduct = (user: Doc, product: { id: number | string; workspace: unknown }): boolean => {
   const ws = id(product.workspace)
   if (ws === undefined) return false
@@ -45,7 +39,6 @@ export const canSeeProduct = (user: Doc, product: { id: number | string; workspa
 
 const NOTHING = { equals: -1 } as const
 
-/** The ONE filter of "which Products of a Workspace may this person see" for a collection with a `field` relation to products (Bauherr/Admin: the Workspace; Product owner: the assignment; anyone else: nothing). */
 export const productScope = (user: Doc, workspace: number | string, field = 'product'): Where => {
   const ws = Number(workspace)
   if (isBauherr(user)) return { [`${field}.workspace`]: { equals: ws } }
@@ -54,18 +47,15 @@ export const productScope = (user: Doc, workspace: number | string, field = 'pro
   return { [field]: a?.scope === 'products' && a.products.length ? { in: a.products } : NOTHING }
 }
 
-/** The products of a Workspace this person may see, as a `where` on the `products` collection. */
 export const productsVisibleTo = (user: Doc, workspace: number | string): Where => {
   const a = assignmentOf(user, workspace)
   return { and: [{ workspace: { equals: Number(workspace) } }, ...(isBauherr(user) || a?.scope === 'workspace' ? [] : [{ id: a?.scope === 'products' && a.products.length ? { in: a.products } : NOTHING }])] }
 }
 
-/** Which requests of a Workspace a person sees: Bauherren and Admins all, a Product owner those of their Products that were sent, plus their own drafts. */
 export const requestsVisibleTo = (user: Doc, workspace: number | string): Where => ({
   and: [productScope(user, workspace), ...(isProductOwner(user) ? [{ or: [{ status: { equals: 'submitted' } }, { user: { equals: user.id } }] }] : [])],
 })
 
-/** Whether a stored file (a media row read at depth 1) may be served to this person: it belongs to a Product they see, and a request draft's files only to its author. */
 export const mediaVisibleTo = (user: Doc, m: Doc): boolean => {
   const s = m.session && typeof m.session === 'object' ? m.session : null
   const workspace = id(s?.workspace ?? m.workspace)
@@ -76,7 +66,6 @@ export const mediaVisibleTo = (user: Doc, m: Doc): boolean => {
 
 export type AssignmentRow = { workspace: number; scope: 'workspace' | 'products'; products: number[] }
 
-/** Assignment rows as stored (ids, populated docs, empty `products` under `workspace`). */
 export const assignmentRows = (raw: unknown): AssignmentRow[] =>
   ((raw as Doc[] | undefined) ?? []).flatMap((a) => {
     const workspace = id(a.workspace)
@@ -85,31 +74,24 @@ export const assignmentRows = (raw: unknown): AssignmentRow[] =>
     return [{ workspace, scope, products: scope === 'workspace' ? [] : ((a.products as unknown[]) ?? []).flatMap((p) => id(p) ?? []) }]
   })
 
-/** The first rule of the role field on a re-sync: a Product owner is raised only by an Admin or an admin claim, never by the claim's default `bauherr`. */
 export const resyncRole = (stored: string | undefined, claimed: Role): Role => (stored === 'product-owner' && claimed === 'bauherr' ? 'product-owner' : claimed)
 
-/** The words of an assignment for the People table, e.g. "All Products of Acme" or "Acme Shop, Acme Web". */
 export const assignmentWords = (rows: { workspace: string; scope: 'workspace' | 'products'; products: string[] }[]): string =>
   rows.length ? rows.map((r) => (r.scope === 'workspace' ? `All Products of ${r.workspace}` : r.products.join(', ') || `No Products in ${r.workspace}`)).join('; ') : 'Nothing assigned'
 
-/** Whom a decision is recorded as: a Product owner decides as `product-owner`, a Bauherr or Admin as `bauherr` (also when stepping in for a checkpoint addressed to the Product owner). */
 export const decidingAs = (user: Doc): Addressee => (isProductOwner(user) ? 'product-owner' : 'bauherr')
 
-/** Whether the person may take a decision addressed to `addressee` on the Ticket: a Bauherr or Admin of the Ticket's Workspace always; a Product owner only when it is addressed to the Product owner AND the Ticket's Product is in their assignment. Anyone else never. */
 export const mayDecide = (user: Doc, { ticket, addressee }: { ticket: Doc; addressee: Addressee }): boolean => {
   const product = id(ticket.product)
   if (!user || product === undefined || !canSeeProduct(user, { id: product, workspace: ticket.workspace })) return false
   return isBauherr(user) || (isProductOwner(user) && addressee === 'product-owner')
 }
 
-/** The Product owner accounts with an assignment in the Workspace (whether it reaches a given Product is `ownerAssigned`). */
 export const productOwnersOf = async (payload: Payload, workspace: number | string): Promise<Doc[]> =>
   (await payload.find({ collection: 'bauherren', where: { and: [{ role: { equals: 'product-owner' } }, { 'assignments.workspace': { equals: Number(workspace) } }] }, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]
 
-/** Whether one of the Product owners (`productOwnersOf`) is assigned to the Product. */
 export const ownerAssigned = (owners: Doc[], product: { id: number | string; workspace: unknown }): boolean => owners.some((u) => canSeeProduct(u, product))
 
-/** The Product owners assigned to the Product of a Ticket row. */
 export const productOwnersOfTicket = async (payload: Payload, t: Doc): Promise<Doc[]> => {
   const workspace = id(t.workspace)
   const product = id(t.product)

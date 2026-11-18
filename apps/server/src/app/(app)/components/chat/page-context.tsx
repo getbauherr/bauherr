@@ -7,7 +7,6 @@ import { api } from './api'
 
 export type PageContext = { path: string; label: string; markdown: string }
 
-/** What the page behind the dock is, refetched on every client-side navigation; `pinned`: the page a Ticket thread is about, wherever the dock sits. */
 export function usePageContext(pinned?: string): PageContext | null {
   const pathname = usePathname()
   const query = useSearchParams().toString()
@@ -23,7 +22,6 @@ export function usePageContext(pinned?: string): PageContext | null {
   return info
 }
 
-/** The context the model gets, one click away. */
 export const ContextChip: FC<{ info: PageContext | null }> = ({ info }) => (
   <Popover>
     <PopoverTrigger asChild>
@@ -38,7 +36,6 @@ export const ContextChip: FC<{ info: PageContext | null }> = ({ info }) => (
   </Popover>
 )
 
-/** A reopened chat that was about another page. */
 export const WasAbout: FC<{ was: { path: string; label: string } | null; now: string | undefined }> = ({ was, now }) =>
   was && now && was.path !== now ? (
     <p data-testid="chat-was-about" className="text-xs text-muted-foreground">

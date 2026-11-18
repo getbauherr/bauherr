@@ -45,8 +45,6 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_ticket_events_fk" FOREIGN KEY ("ticket_events_id") REFERENCES "public"."ticket_events"("id") ON DELETE cascade ON UPDATE no action;
   CREATE INDEX "payload_locked_documents_rels_ticket_events_id_idx" ON "payload_locked_documents_rels" USING btree ("ticket_events_id");`)
 
-  // Best-effort backfill from Runs and human touches; stage names are the default pack's (triage, plan, release, done).
-  // 1. a Ticket's creation.
   await db.execute(sql`
   INSERT INTO "ticket_events" ("workspace_id", "ticket_id", "at", "stage", "stage_kind", "phase", "executor", "cause", "backfilled")
   SELECT "workspace_id", "id", "created_at", 'triage', 'triage', 'queued', 'factory', 'backfill:created', true FROM "tickets";
@@ -68,7 +66,6 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   INSERT INTO "ticket_events" ("workspace_id", "ticket_id", "at", "stage", "stage_kind", "phase", "executor", "cause", "backfilled")
   SELECT t."workspace_id", t."id", GREATEST(LEAST(t."updated_at", COALESCE(t."release_published_at", t."updated_at")), COALESCE((SELECT max(e."at") FROM "ticket_events" e WHERE e."ticket_id" = t."id"), t."created_at")), 'done', 'done', 'closed', 'factory', 'backfill:closed', true
   FROM "tickets" t WHERE t."state" = 'closed';`)
-  // 2. order the rows, drop consecutive duplicates (same stage and phase), fill from_stage and the Ticket's history key.
   await db.execute(sql`
   DELETE FROM "ticket_events" WHERE "id" IN (
     SELECT "id" FROM (SELECT "id", "stage", "phase", LAG("stage") OVER w AS "prev_stage", LAG("phase") OVER w AS "prev_phase" FROM "ticket_events" WINDOW w AS (PARTITION BY "ticket_id" ORDER BY "at", "id")) x

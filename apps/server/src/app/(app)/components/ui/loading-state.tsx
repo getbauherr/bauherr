@@ -3,7 +3,6 @@
 import { useEffect, useState, type ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
-/** assistant-ui's `GenerationLoader` (elements/loading-state), added by hand: the registry item needs `tw-shimmer`, so the label is a plain span and the tick is its own interval. */
 export function GenerationLoader({ label, className, ...props }: Omit<ComponentProps<'div'>, 'children'> & { label: string }) {
   const [tick, setTick] = useState(0)
   useEffect(() => {

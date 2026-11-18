@@ -22,12 +22,10 @@ const suggestions: Record<Kind, string[]> = {
   other: ['What needs me right now?', 'Explain this page'],
 }
 
-/** `arg`: the command takes the rest of the line (`/comment <text>`); `run` gets it and the ids of the images in the composer, and answers false to keep the composer as it is (a failure). */
 export type Command = { name: string; help: string; arg?: boolean; run(arg: string, mediaIds: number[]): void | boolean | Promise<void | boolean> }
 
 const imageOf = (a: { content?: readonly { type: string; image?: string }[] | undefined }): string | undefined => a.content?.find((c) => c.type === 'image')?.image
 
-/** A thumbnail of an attached image: uploading, failed or ready; a click enlarges it. */
 const Thumb: FC<{ removable?: boolean }> = ({ removable }) => {
   const a = useAuiState((s) => s.attachment)
   const [open, setOpen] = useState(false)
@@ -67,7 +65,6 @@ const UserMessage: FC = () => (
 
 const elapsed = (since: number) => Math.max(0, Math.floor((Date.now() - since) / 1000))
 
-/** Shown whenever the run is active but nothing visibly streams (before the first event, between tool calls). */
 const Waiting: FC = () => {
   const [start] = useState(() => Date.now())
   const [, tick] = useState(0)
@@ -90,7 +87,6 @@ const waiting = (m: { role: string; status?: { type: string }; content: readonly
 }
 
 const nf = new Intl.NumberFormat('en')
-/** model · tokens in → out · seconds (cost when the gateway knows a price). */
 const Usage: FC = () => {
   const u = (useAuiState((s) => s.message.metadata.custom) as Custom | undefined)?.usage
   if (!u || !(u.tokensIn || u.tokensOut)) return null
@@ -146,7 +142,6 @@ const Welcome: FC<{ kind: Kind }> = ({ kind }) => (
   </div>
 )
 
-/** Inline error for a file the composer refused (wrong type, too many); an upload error also turns the thumbnail red. */
 const AddError: FC = () => {
   const [message, setMessage] = useState('')
   const aui = useAui()
@@ -212,7 +207,6 @@ const Composer: FC<{ commands: Command[]; kind: Kind }> = ({ commands, kind }) =
   )
 }
 
-/** Thread, composer and everything between; `above` renders over the composer (context chip, notes). */
 export const DockThread: FC<{ kind: Kind; commands: Command[]; above: ReactNode }> = ({ kind, commands, above }) => (
   <ThreadPrimitive.Root data-kind={kind} className="aui-root group/dock flex min-h-0 flex-1 flex-col text-foreground">
     <ThreadPrimitive.Viewport className="relative flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 py-3" aria-live="polite">

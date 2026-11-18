@@ -13,7 +13,6 @@ const PICK = 'team:pick-role'
 const PICKED = 'Chosen by you'
 const storageKey = (workspaceId: number | string) => `bauherr-team-role:${workspaceId}`
 
-/** "Connect" of a needs-an-agent row: selects the role in the Connect panel and focuses its select. */
 export function ConnectRoleButton({ role }: { role: string }) {
   return <Button type="button" variant="outline" size="sm" onClick={() => window.dispatchEvent(new CustomEvent(PICK, { detail: role }))}>Connect</Button>
 }
@@ -21,7 +20,6 @@ export function ConnectRoleButton({ role }: { role: string }) {
 type Props = {
   workspaceId: number | string
   roles: TeamRole[]
-  /** The role chosen on load (`/team?role=`). */
   initialRole?: string
   presence: { key: boolean; anySession: boolean }
   docsHref: string
@@ -29,7 +27,6 @@ type Props = {
   gateway?: GatewaySetup
 }
 
-/** "Connect a session": the role, the prompt to paste and the one primary action, Copy prompt. */
 export function ConnectPanel({ workspaceId, roles, initialRole, presence, docsHref, mcpLine, gateway }: Props) {
   const fromLink = roles.find((r) => r.id === initialRole)?.id
   const start = defaultRole(roles)
@@ -45,7 +42,6 @@ export function ConnectPanel({ workspaceId, roles, initialRole, presence, docsHr
       const next = defaultRole(roles, last)
       if (next) setChoice((c) => (c.hint === PICKED ? c : next))
     } catch {}
-    // once on load: the 5 s refresh must not move the choice
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   useEffect(() => {

@@ -13,8 +13,6 @@ export interface DiffHunk {
 
 const GUTTER = { context: "", added: "+", removed: "−" } as const;
 
-// From `elements-reviewable-diff`, read-only: one hunk per changed section. The registry's keep/discard per hunk and "Apply" footer are not used: the engine applies a
-// turn's Ticket text whole or not at all, so there is nothing to keep or discard per hunk (the person changes the text by talking to the conversation).
 export function ReviewableDiff({ filename, hunks, className, ...props }: Omit<ComponentProps<"div">, "children"> & { filename: string; hunks: readonly DiffHunk[] }) {
   return (
     <div data-slot="reviewable-diff" className={cn(paper, "flex w-full flex-col overflow-hidden", className)} {...props}>

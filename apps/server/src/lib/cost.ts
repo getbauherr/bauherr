@@ -15,17 +15,11 @@ export type Usage = { tokensIn: number; tokensOut: number; cacheRead: number; ca
 type Rates = { input: number; output: number; cacheRead: number; cacheWrite: number }
 
 const catalogDirs = () => [join(process.env.GATEWAY_CONFIG_DIR ?? '/gateway', 'catalogs'), resolve(process.cwd(), '../../deploy/gateway/catalogs')]
-/** Providers whose price wins when several catalog providers list the same model name (a usage row only knows the model name). */
 const FIRST_PARTY = ['anthropic', 'openai', 'gcp.gemini', 'mistral', 'xai', 'deepseek', 'greenpt']
 type CatalogFile = { metadata?: { generatedAt?: string }; providers?: Record<string, { models?: Record<string, { rates?: Record<string, string> }> }> }
 
 let loaded: { at: number; sig: string; rates: Map<string, Rates> } | undefined
 
-/**
- * USD per million tokens by model name, from the gateway price catalogs, the way the gateway reads them:
- * the base catalog with the newest `metadata.generatedAt` (the daily refresh, `base-costs.json`), then every catalog without `metadata` as an overlay in file order.
- * Re-read when a file changes (checked at most every 10 s).
- */
 const catalog = (): Map<string, Rates> => {
   if (loaded && Date.now() - loaded.at < 10_000) return loaded.rates
   for (const dir of catalogDirs()) {
@@ -66,15 +60,12 @@ const catalog = (): Map<string, Rates> => {
   return (loaded = { at: Date.now(), sig: '', rates: new Map() }).rates
 }
 
-/** Forgets the read catalog; the next price lookup reads the files again. */
 export const reloadCatalog = (): void => {
   loaded = undefined
 }
 
-/** Model name without gateway prefix (`ws-x/conn/`) and context suffix (`[1m]`). */
 export const modelName = (m: string | null | undefined): string => (m ?? '').replace(/\[.*\]$/, '').split('/').pop() || 'unknown'
 
-/** List-price cost of a usage, null when the model has no catalog entry. */
 export const priceOf = (model: string, u: Pick<Usage, 'tokensIn' | 'tokensOut' | 'cacheRead' | 'cacheWrite'>): number | null => {
   const name = modelName(model)
   const r = catalog().get(name) ?? [...catalog()].find(([k]) => name.startsWith(k))?.[1]
@@ -87,7 +78,6 @@ const num = (v: unknown, what: string): number => {
   return v
 }
 
-/** Validates a usage report; unknown fields are dropped. */
 export const parseUsage = (v: unknown): Usage => {
   const u = (v ?? {}) as Doc
   if (typeof v !== 'object' || v === null) throw new Error('usage must be an object')
@@ -100,7 +90,6 @@ type Ctx = { workspace: number; run: number | null; session: number | null; tick
 const runCtx = async (payload: Payload, run: number | string): Promise<Doc> =>
   (await payload.db.drizzle.execute(sql`SELECT "workspace_id", "ticket_id", "stage", "role", "session_id", "model", "provider" FROM "runs" WHERE "id" = ${run}`)).rows[0] as Doc
 
-/** Copies the Run's session-reported rows into the Run's own cost fields (a gateway-priced Run keeps its gateway source). */
 const syncRun = (payload: Payload, run: number | string) =>
   payload.db.drizzle.execute(sql`
     UPDATE "runs" r SET "tokens_in" = s."tin", "tokens_out" = s."tout", "tokens_cache" = s."cache", "cost_estimate_usd" = s."cost",
@@ -108,10 +97,6 @@ const syncRun = (payload: Payload, run: number | string) =>
     FROM (SELECT sum("tokens_in") AS "tin", sum("tokens_out") AS "tout", sum(COALESCE("cache_read", 0) + COALESCE("cache_write", 0)) AS "cache", sum("cost_usd") AS "cost" FROM "usage_entries" WHERE "run_id" = ${run} AND "source" = 'session-reported') s
     WHERE r."id" = ${run}`)
 
-/**
- * Writes the gateway rows of a Run, one per model (`rows`), replacing earlier ones: a re-reconcile never double counts.
- * `model` may carry the gateway prefix `ws-<slug>/<connection>/<model>`; the connection becomes the provider.
- */
 export const saveGatewayUsage = async (payload: Payload, run: number | string, rows: { model: string | null; tokensIn: number; tokensOut: number; costUsd: number | null }[]): Promise<void> => {
   const r = await runCtx(payload, run)
   for (const x of rows) {
@@ -125,10 +110,6 @@ export const saveGatewayUsage = async (payload: Payload, run: number | string, r
   }
 }
 
-/**
- * A session's own report, cumulative for the Run so far: stored as the maximum of what was reported, so a repeat or an out-of-order report never double counts.
- * Ignored when the session's usage hook reports (its cursor exists): the hook is the exact source.
- */
 export const reportRunUsage = async (payload: Payload, run: number | string, session: Doc | undefined, input: unknown): Promise<{ stored: boolean; note?: string }> => {
   const u = parseUsage(input)
   if (session && (await payload.db.drizzle.execute(sql`SELECT 1 FROM "usage_cursors" WHERE "session_id" = ${session.id} LIMIT 1`)).rows.length) return { stored: false, note: 'the usage hook of this session reports already; usage ignored' }
@@ -146,14 +127,8 @@ export const reportRunUsage = async (payload: Payload, run: number | string, ses
 }
 
 type Totals = Record<string, [number, number, number, number]>
-/** First report of a Claude session counts its whole history only when the session began this long before `connect`. */
 const FRESH_MS = 15 * 60_000
 
-/**
- * The usage hook's report: cumulative per-model totals of one Claude Code session (`claudeSession`), from its transcript.
- * The server keeps a cursor per Claude session (`usage_cursors`) for the connected agent session (resolved by `clientKey`, else by the agent key), stores only the delta since the last report and attributes it to the Run the session holds now (none: a Run-less row of the session).
- * A repeat of the same totals is a delta of 0. History from before the factory session (`firstAt` older than 15 min before `connect`) is the baseline and not counted.
- */
 export const reportDelta = async (payload: Payload, who: { owner: number | string; keyId: number | string }, body: { claudeSession: string; firstAt?: string; models: Totals; clientKey?: string }): Promise<{ run: number | null; delta: Record<string, number> }> => {
   if (!body.claudeSession || typeof body.models !== 'object' || !body.models) throw new Error('claudeSession and models are required')
   const totals = Object.entries(body.models).map(([m, v]) => [modelName(m), v.map((n, i) => num(n, String(i)))] as const)

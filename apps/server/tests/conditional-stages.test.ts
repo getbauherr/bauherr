@@ -5,7 +5,6 @@ import { afterAll, beforeAll, expect, it } from 'vitest'
 import { claimOnly } from './helpers/claim'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/** The default flow with three conditional agent stages between build and review (fixtures/routing-pack): security (touches security), ux (touches ui), test (bugs). */
 let payload: Payload
 let fake: FakeBackend
 let ws: number
@@ -57,7 +56,6 @@ const reload = async (id: number) => (await payload.findByID({ collection: 'tick
 const runsOf = async (id: number) => (await payload.find({ collection: 'runs', where: { ticket: { equals: id } }, sort: 'createdAt', depth: 0, pagination: false, ...o })).docs as Record<string, any>[]
 const eventsOf = async (id: number) => (await payload.find({ collection: 'ticket_events', where: { ticket: { equals: id } }, sort: ['at', 'id'], depth: 0, pagination: false, ...o })).docs as Record<string, any>[]
 const green = [{ name: 'ci', status: 'completed', conclusion: 'success' }]
-/** A Ticket in build with an MR that changes `files`. */
 const ticketWith = async (title: string, files: string[], labels: string[] = [], r = repo, p = product) => {
   const issue = await fake.tickets(r).create({ title, labels: ['bauherr:stage:build'] })
   const id = (await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'build', labels, product: p, workspace: ws }, ...o })).id as number
@@ -112,12 +110,10 @@ it('findings still go back to build, and a second review skips the same steps on
 })
 
 it('unknown changed paths match a declared set; a set the Product never declared never matches', async () => {
-  // no MR and no plan: the paths are not known, so the declared security set matches
   const issue = await fake.tickets(repo).create({ title: 'no mr', labels: ['bauherr:stage:build'] })
   const id = (await payload.create({ collection: 'tickets', data: { title: 'no mr', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'build', product, workspace: ws }, ...o })).id as number
   const { advance } = await import('../src/lib/advance')
   expect(await advance(payload, null, await reload(id), 'done', { by: 'factory' })).toMatchObject({ stage: 'security-review', entered: 'moved' })
-  // the bare Product declares no set: security and ux are skipped whatever the files are
   const b = await ticketWith('bare', ['src/auth/x.ts'], ['bauherr:type:bug'], bareRepo, bare)
   expect(await review(b)).toMatchObject({ stage: 'test-review' })
   expect(await skipsOf(b)).toEqual([['skip:security-review', 'the Product declares no security paths'], ['skip:ux-review', 'the Product declares no ui paths']])

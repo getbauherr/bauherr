@@ -5,7 +5,6 @@ import { email } from './user'
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-// The roles are the ones every pack has (orchestrator, engineer, reviewer): the e2e-fake job runs the 3-role gated pack. The orchestrator has a session, so it is never the default role. The Role settings test saves the reviewer's agents and restores it (it writes the Workspace's factory file, so it shares one worker with workflow-editor.spec.ts). Seeded in scripts/seed-e2e.ts: an orchestrator session working on #128, an idle reviewer, a disconnected engineer.
 
 const signIn = async (page: Page, who = email) => {
   await page.goto('/login')

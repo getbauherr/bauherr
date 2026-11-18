@@ -9,7 +9,6 @@ test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSW
 test.skip(!process.env.E2E_FAKE_FORGE, 'needs the dev server started with BAUHERR_E2E_FAKE_FORGE=1 and INTAKE_FAKE=1 (set E2E_FAKE_FORGE=1 here)')
 test.describe.configure({ mode: 'serial' })
 
-/** Only this file touches the Workspace `newco` (no Product, no factory file in the seed): the wizard walks it from nothing. */
 const signIn = async (page: Page, as = email) => {
   await page.context().addCookies([{ name: 'bauherr-ws', value: 'newco', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
   await page.goto('/login')
@@ -59,7 +58,6 @@ test('the five steps end to end: forge, repository, Careful team, agent key, an 
   await signIn(page)
   await page.goto('/setup')
 
-  // 1 Connect your forge
   await step(page, 'Connect your forge')
   await shoot(page, 'wizard/1-forge')
   await page.getByLabel('Name', { exact: true }).fill('GitHub Newco')
@@ -70,7 +68,6 @@ test('the five steps end to end: forge, repository, Careful team, agent key, an 
   await step(page, 'Connect your forge')
   await page.getByRole('button', { name: 'Verify', exact: true }).click()
 
-  // 2 Pick a product: the repository list streams in, the name follows the repository
   await step(page, 'Pick a product')
   await expect(rail(page, 'Connect your forge')).toContainText('Done')
   await page.reload()
@@ -81,7 +78,6 @@ test('the five steps end to end: forge, repository, Careful team, agent key, an 
   await shoot(page, 'wizard/2-product')
   await page.getByRole('button', { name: 'Create product' }).click()
 
-  // 3 Pick your team: three presets, the roster of the chosen one, Careful adds the specialist roles
   await step(page, 'Pick your team')
   await expect(rail(page, 'Pick a product')).toContainText('Done')
   await expect(chip(page)).toContainText('Setup 2/5')
@@ -102,7 +98,6 @@ test('the five steps end to end: forge, repository, Careful team, agent key, an 
   await shoot(page, 'wizard/3-team-careful', [[1280, 800], [390, 844]])
   await page.getByRole('button', { name: 'Use this team' }).click()
 
-  // 4 Connect a session: an agent key shows the command once; nothing connects, so the line keeps waiting; skip
   await step(page, 'Connect a session')
   await expect(rail(page, 'Pick your team')).toContainText('Done')
   await expect(page.getByText('Waiting for a session…')).toBeVisible()
@@ -118,7 +113,6 @@ test('the five steps end to end: forge, repository, Careful team, agent key, an 
   await expect(page.getByTestId('connect').locator('pre').first()).toContainText('<your agent key>')
   await page.getByRole('button', { name: 'Skip for now' }).click()
 
-  // 5 First request: an open issue of the repository becomes a Ticket in Triage
   await step(page, 'First request')
   await expect(rail(page, 'Connect a session')).toContainText('Done')
   await page.getByRole('link', { name: 'Describe something new' }).click()
@@ -135,7 +129,6 @@ test('the five steps end to end: forge, repository, Careful team, agent key, an 
   await expect(page.getByRole('link', { name: 'Open the Inbox' })).toBeVisible()
   await shoot(page, 'wizard/6-finish')
 
-  // Done is computed: a reload stays on the finish screen, steps can be revisited, the palette keeps the checklist
   await page.reload()
   await expect(page.getByRole('status').filter({ hasText: 'Your factory is set up.' })).toBeVisible()
   for (const l of ['Connect your forge', 'Pick a product', 'Pick your team', 'Connect a session', 'First request']) await expect(rail(page, l)).toContainText('Done')

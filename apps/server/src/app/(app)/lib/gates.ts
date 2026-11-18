@@ -1,14 +1,11 @@
 import { GATE_NAMES, type Need } from './needs-you'
 
-/** `reason`: why the factory stopped (the Run's error or the latest escalation Comment), shown as the bar's sentence. */
 export type GateCtx = { stage: string; missing: string[]; open: number; reason?: string | null; title?: string }
 type Kind = 'plan' | 'questions' | 'release' | 'production' | 'production-checks' | 'review-cap' | 'rerun' | 'release-failed' | 'back-to-build' | 'cancelled' | 'expedite' | 'decision'
 export type GateConfig = {
   kind: Kind
   title: string
-  /** The ActionBar's left side. */
   sentence: (c: GateCtx) => string
-  /** The ActionBar's primary button; the Overview card shows the same word. */
   verb: (c: Pick<GateCtx, 'stage'>) => string
   secondary?: string
 }
@@ -16,7 +13,6 @@ export type GateConfig = {
 const s = (n: number) => (n === 1 ? '' : 's')
 const rerun = (c: Pick<GateCtx, 'stage'>) => `Re-run ${c.stage}`
 
-/** One mapping from a needs-you value to the Gate the Ticket page shows for it and the copy of its ActionBar. */
 export const GATES: Record<Need, GateConfig> = {
   'Approve plan': { kind: 'plan', title: GATE_NAMES.plan, sentence: () => 'Approve the plan so the factory can build it.', verb: () => GATE_NAMES.plan },
   'Answer decisions': { kind: 'plan', title: GATE_NAMES.plan, sentence: (c) => `Answer the critical decision${s(c.missing.length)} ${c.missing.join(', ')} before you approve the plan.`, verb: () => 'Answer decisions' },

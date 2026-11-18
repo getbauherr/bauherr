@@ -22,10 +22,8 @@ export const toMessage = (m: Msg, text = m.text): ThreadMessageLike => ({
 })
 
 export const textOf = (m: { content: readonly { type: string; text?: string }[] }): string => m.content.map((p) => (p.type === 'text' ? p.text : '')).join('').trim()
-/** The media id of an uploaded image: its signed URL is `/m/<id>/<signature>.<ext>`. */
 export const mediaId = (url: string): number | null => Number(/\/m\/(\d+)\//.exec(url)?.[1]) || null
 
-/** Pulls the composer's text back when a failed turn did not take it; `clear` empties it once a retry took the text. */
 export const Restore: FC<{ text: string; done(): void; clear?: boolean; cleared?(): void }> = ({ text, done, clear, cleared }) => {
   const aui = useAui()
   useEffect(() => {

@@ -1,8 +1,3 @@
-/**
- * MCP transport test against a real `next dev`. Needs Postgres: set MCP_E2E_DATABASE_URL
- * (any database on a server you may create databases on); skipped without it (CI without Postgres).
- * Run: MCP_E2E_DATABASE_URL=postgres://u:p@127.0.0.1:5432/postgres pnpm --filter server test:mcp
- */
 import { type ChildProcess, spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import assert from 'node:assert/strict'

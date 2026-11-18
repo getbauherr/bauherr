@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-/** `AutoRefresh` run without a DOM: effects run at once, the document and fetch are stubs, time is faked. */
 const h = vi.hoisted(() => ({ refresh: vi.fn(), cleanups: [] as (() => void)[] }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: h.refresh }) }))
 vi.mock('react', () => ({

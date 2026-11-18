@@ -5,7 +5,6 @@ import { preflight, withCors } from '../../../../lib/intake/embed'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Starts an Intake session for a Product of one of the caller's Workspaces. Body: `{ product }`; an embed token is bound to its Product and ignores the body. */
 export const OPTIONS = preflight
 export const POST = withCors(async (req: Request): Promise<Response> => {
   const a = await actor(req)

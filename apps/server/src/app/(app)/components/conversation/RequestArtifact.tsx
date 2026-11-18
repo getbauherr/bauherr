@@ -15,10 +15,6 @@ const mark = (on: boolean, children: ReactNode): ReactNode => (on ? <mark classN
 
 type Editor = { label: string; value: string; max: number; lines?: boolean; onSave(v: string): Promise<boolean> }
 
-/**
- * One line of the card: its label, its value or a dashed placeholder for what the conversation has not filled in yet, and the field's own action. `action` is a button of its own
- * ("Change"); `editor` makes the line editable by hand: "Edit" opens a text box in place of the value (`lines`: one item per line). The agent keeps what the person edited.
- */
 const Row: FC<{ field: string; label: string; changed?: boolean; waiting?: string; action?: ReactNode; editor?: Editor | null; busy?: boolean; children?: ReactNode }> = ({ field, label, changed, waiting, action, editor, busy, children }) => {
   const [text, setText] = useState<string | null>(null)
   return (
@@ -47,10 +43,6 @@ const Row: FC<{ field: string; label: string; changed?: boolean; waiting?: strin
   )
 }
 
-/**
- * The living request card (the artifact of request drafting): what the team will get, as the conversation has shaped it. Fields the last turn changed are marked, what is still needed
- * is a dashed placeholder, and every field can be corrected by hand (the agent keeps the person's words). Reads the card only; every edit goes through `onChange`.
- */
 export const RequestArtifact: FC<{ card: CardData; busy: boolean; started: boolean; onChange(patch: CardPatch): Promise<boolean>; onRemoveImage(id: number): void }> = ({ card, busy, started, onChange, onRemoveImage }) => {
   const live = card.editable
   const changed = (f: string) => live && card.changed.includes(f)

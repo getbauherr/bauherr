@@ -18,5 +18,4 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
   ALTER TABLE "runs" DROP COLUMN "lease_hash";
   ALTER TABLE "runs" DROP COLUMN "previous_run_id";
   UPDATE "runs" SET "status" = 'needs_human' WHERE "status" = 'abandoned';`)
-  // The enum value 'abandoned' stays: Postgres cannot drop an enum value.
 }

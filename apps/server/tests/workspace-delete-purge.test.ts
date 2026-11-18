@@ -22,7 +22,6 @@ const purgeAt = new Date(archivedAt.getTime() + 14 * day)
 const after = new Date(purgeAt.getTime() + 1000)
 
 let n = 0
-/** Inserts one row; every NOT NULL column without a default that `values` leaves out is filled by its type. Returns the id. */
 const seed = async (table: string, values: Record<string, unknown> = {}): Promise<number> => {
   const cols = await rows(sql`SELECT column_name, data_type, udt_name, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ${table}`)
   const data: Record<string, unknown> = { ...values }
@@ -42,7 +41,6 @@ const seed = async (table: string, values: Record<string, unknown> = {}): Promis
   return (await rows(sql`INSERT INTO ${sql.identifier(table)} (${cols_}) VALUES (${vals}) RETURNING *`))[0].id as number
 }
 
-/** One Workspace with a row in every table of `PURGE_ORDER` (plus media files on disk). */
 const seedWorkspace = async (slug: string, owner: number) => {
   const workspace = (await payload.create({ collection: 'workspaces', data: { name: slug, slug, defaultMode: 'session', wipLimits: {} }, ...o })).id as number
   const w = { workspace }
@@ -208,7 +206,6 @@ it('every table that reaches a Workspace, Ticket or Product is covered by the pu
   const loose = await rows(sql`SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name ILIKE '%workspace%' AND table_name NOT IN (SELECT unnest(${`{${[...reach].join(',')}}`}::text[]))`)
   expect(loose, 'a column naming a Workspace without a foreign key: purge it by hand').toEqual([])
   for (const t of del.PURGE_CASCADED) expect(fks.filter((f) => f.child === t && reach.has(f.parent)).every((f) => f.del === 'c'), `${t} must cascade`).toBe(true)
-  // The Workspace row's own references (workflow version, knowledge Connection) are cleared before the deletes.
   for (const f of fks) {
     if (f.del === 'c' || f.child === f.parent || f.child === 'workspaces' || !order.includes(f.child) || !order.includes(f.parent)) continue
     expect(order.indexOf(f.child), `${f.child} must be deleted before ${f.parent}`).toBeLessThan(order.indexOf(f.parent))

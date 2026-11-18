@@ -10,7 +10,6 @@ import { Textarea } from './ui/textarea'
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>
 
-/** Markdown of a template next to its rendered preview with sample content; the linter runs on every keystroke and Save is refused while it finds an error. */
 export function TemplateEditor({ name, initial, packBody, layout, custom, canEdit, save, reset }: { name: TemplateName; initial: string; packBody: string; layout: 'tight' | 'normal'; custom: boolean; canEdit: boolean; save: Action; reset: Action }) {
   const [body, setBody] = useState(initial)
   const [checked, setChecked] = useState(false)

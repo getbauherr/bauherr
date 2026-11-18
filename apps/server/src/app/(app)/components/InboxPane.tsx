@@ -5,7 +5,6 @@ import type { DecisionOption } from '../../../lib/decision'
 import type { InboxItem } from '../lib/inbox'
 import { DecisionCard } from './DecisionCard'
 
-/** The reading pane: the selected decision as the full card. Below 960px it is the whole page, with a link back to the list. */
 export function InboxPane({ item, admin, multi, back, onDecided, onSucceeded, onFailed }: { item: InboxItem; admin: boolean; multi: boolean; back: string; onDecided: (id: number, option: DecisionOption) => void; onSucceeded: (id: number, option: DecisionOption) => void; onFailed: (id: number, error: string) => void }) {
   return (
     <div className="flex min-w-0 flex-col gap-3 break-words [overflow-wrap:anywhere]" data-testid="inbox-pane">

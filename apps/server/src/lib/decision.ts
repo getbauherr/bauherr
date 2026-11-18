@@ -10,7 +10,6 @@ import { bullets, section } from './summary'
 import { type Tpl, packTemplate, renderTemplate } from './templates'
 import { parseTldr, type PlanTldr } from './tldr'
 
-/** The decisions that show the proof: accepting on staging and approving production. */
 export const PROOF_NEEDS: readonly string[] = ['Accept on staging', 'Staging not confirmed', 'Approve production', 'Production deploy failed']
 
 export type DecisionAction = 'approvePlan' | 'requestChanges' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'stopReview' | 'backToBuild' | 'backToBacklog' | 'rerun' | 'expedite' | 'releaseLane' | 'decide' | 'approveSkill' | 'rejectSkill' | 'open'
@@ -31,11 +30,9 @@ export type Decision = {
   openSince: string
 }
 
-/** The checkpoints in workflow order: the Workflow graph's checkpoint titles (`checkpoints.ts`) and the groups of the needs that are no graph node. */
 export const CHECKPOINTS = ['Triage', GRAPH_CHECKPOINT.refine, GRAPH_CHECKPOINT.plan, 'Review', GRAPH_CHECKPOINT.staging, GRAPH_CHECKPOINT.production, 'Decision', 'Skill proposal', 'Stuck'] as const
 export type Checkpoint = (typeof CHECKPOINTS)[number]
 
-/** What the sweep (or the Inbox, for a Ticket the sweep has not reached yet) knows without reading the forge. */
 export type DecisionFacts = {
   ticket: { id: number | string; number?: number; title: string; stage?: string | null; reviewRounds?: number | null; openCriticalDecisions?: number | null; releaseRunUrl?: string | null; releasedIn?: string | null }
   product: { id: number | string; name?: string; stagingUrl?: string | null }
@@ -44,27 +41,20 @@ export type DecisionFacts = {
   planTldr?: PlanTldr | null
   stagingTldr?: { whatYouGet: string; found: string } | null
   productionGate?: boolean
-  /** The custom `human` stage the Ticket waits in: its title and outcome keys (the options of a "Decision needed"). */
   human?: { title: string; outcomes: string[] } | null
-  /** The distilled skill a person is asked to merge (`Approve skill proposal`). */
   skill?: { name: string; score: number | null; baseline: number | null; pr: number | null } | null
-  /** What the requester wrote on an urgent request: what is broken, for whom, since when. */
   urgentReason?: string | null
   now?: string
-  /** The stored decision, so `openSince` survives a rebuild of the same need. */
   previous?: Pick<Decision, 'need' | 'openSince'> | null
 }
 
 const clip = (s: string, n: number): string => (s.length <= n ? s : `${s.slice(0, n - 1).trimEnd()}…`)
 const one = (s: string): string => s.replace(/\s+/g, ' ').trim()
 const s = (n: number): string => (n === 1 ? '' : 's')
-/** `prefix "title" suffix`, the title shortened so the sentence stays within 120 characters. */
-/** What a gate names as the change: the staging brief's first bullet, else the Ticket title. */
 export const changeOf = (stg: { whatYouGet: string } | null | undefined, title: string): string => (stg ? bullets(stg.whatYouGet)[0] : undefined)?.trim() || title
 const sentence = (prefix: string, title: string, suffix = ''): string => `${prefix} "${clip(one(title), Math.max(10, 118 - prefix.length - suffix.length - 3))}"${suffix}`.slice(0, 120)
 const SEVERITY = ['high', 'medium', 'low']
 
-/** The Decision of one need: a pure function of what is already stored, so the sweep needs no forge read and the Inbox and the Ticket page say the same. */
 export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts): Decision => {
   const { ticket: t, product: p, run, planTldr: plan, stagingTldr: stg } = f
   const now = f.now ?? new Date().toISOString()
@@ -260,7 +250,6 @@ export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts):
   }
 }
 
-/** The decision without its timestamps: what makes two builds "the same" for the sweep's write-only-on-change. */
 export const sameDecision = (a: Decision | null | undefined, b: Decision | null | undefined): boolean => {
   const strip = (d: Decision | null | undefined) => (d ? JSON.stringify({ ...d, preparedAt: undefined, openSince: undefined }) : null)
   return strip(a) === strip(b)
@@ -268,35 +257,29 @@ export const sameDecision = (a: Decision | null | undefined, b: Decision | null 
 
 export const DECIDED_GRACE_MS = 2 * 60_000
 
-/** Whether the sweep must not reopen `need`: the owner decided it a moment ago and the forge side has not caught up. */
 export const justDecided = (t: { decidedAt?: string | null; decidedNeed?: string | null }, need: Need | null, at = Date.now()): boolean =>
   !!need && t.decidedNeed === need && !!t.decidedAt && at - Date.parse(t.decidedAt) < DECIDED_GRACE_MS
 
-/** The owner took the Ticket's decision: clears `needsYou`, `needsBy` and `decision` at once (conditional, so a newer need is never cleared) and remembers what was decided. */
 export const settleDecision = (payload: Payload, ticket: number | string): Promise<boolean> =>
   cas(payload, ticket, sql`"decided_need" = "needs_you", "decided_at" = now(), "needs_you" = NULL, "needs_by" = NULL, "decision" = NULL`, sql`"needs_you" IS NOT NULL`)
 
-/** Whether the person may decide the need: an Expedite is an Admin's, every other checkpoint belongs to the Workspace's members (as the Ticket page's buttons). */
 export const canDecide = (user: { role?: string | null }, need: Need | typeof SKILL_NEED): boolean => (need !== 'Expedite?' && need !== SKILL_NEED) || user.role === 'admin'
 
 export const isNeed = (v: unknown): v is Need => (NEEDS as readonly unknown[]).includes(v)
 
 type Doc = Record<string, any>
 
-/** The `human` stage a Ticket row sits in (its Workspace's workflow), for the options of its "Decision needed". */
 export const humanStage = (t: Doc): { title: string; outcomes: string[] } | null => {
   const def = t.stage ? stage(workflowFor(t.workspace), t.stage) : undefined
   return def?.kind === 'human' ? { title: def.title, outcomes: def.outcomeOrder ?? Object.keys(def.outcomes) } : null
 }
 
-/** What the requesters wrote on their urgent requests, by `<product>:<number>` of the Ticket: the reason on the card "Fast lane for ...?". Database only. */
 export const urgentReasons = async (payload: Payload, tickets: { product: unknown; number: number }[]): Promise<Map<string, string>> => {
   if (!tickets.length) return new Map()
   const { docs } = await payload.find({ collection: 'intake_sessions', where: { and: [{ urgency: { equals: 'urgent' } }, { status: { equals: 'submitted' } }, { or: tickets.map((t): Where => ({ and: [{ product: { equals: id(t.product) } }, { ticketNumber: { equals: t.number } }] })) }] }, select: { product: true, ticketNumber: true, urgentReason: true }, pagination: false, depth: 0, overrideAccess: true })
   return new Map(docs.flatMap((s) => (s.urgentReason ? [[`${id(s.product)}:${s.ticketNumber}`, s.urgentReason as string] as const] : [])))
 }
 
-/** The Decision of a Ticket row for the sweep: the Product and the newest MR link are the only extra reads, none of them on the forge. */
 export const prepareDecision = async (payload: Payload, t: Doc, need: Need, run: Doc | null): Promise<Decision> => {
   const o = { overrideAccess: true, depth: 0 } as const
   const [product, builds] = await Promise.all([
@@ -308,13 +291,11 @@ export const prepareDecision = async (payload: Payload, t: Doc, need: Need, run:
   return buildDecision(need, { urgentReason, ticket: t as DecisionFacts['ticket'], product: product as DecisionFacts['product'], run: run as DecisionFacts['run'], mrUrl, planTldr: t.planTldr, stagingTldr: t.stagingTldr, productionGate: productionGateOn(workflowFor(t.workspace), product), human: humanStage(t), previous: t.decision })
 }
 
-/** Stores the plan's parsed TL;DR (null when it has none) so pages and the sweep read it from the Ticket row. */
 export const storePlanTldr = (payload: Payload, ticket: number | string, plan: string, heading?: string): Promise<boolean> => {
   const json = JSON.stringify(parseTldr(plan, heading).tldr)
   return cas(payload, ticket, sql`"plan_tldr" = ${json}::jsonb`, sql`"plan_tldr" IS DISTINCT FROM ${json}::jsonb`)
 }
 
-/** The first two sections of a staging summary: what the owner gets and what was found on the way. */
 export const stagingTldrOf = (summary: string, headings = { whatYouGet: 'What you get', found: 'Found on the way' }): { whatYouGet: string; found: string } => ({ whatYouGet: section(summary, headings.whatYouGet), found: section(summary, headings.found) })
 
 export const storeStagingTldr = (payload: Payload, ticket: number | string, tldr: { whatYouGet: string; found: string }): Promise<boolean> => {
@@ -322,7 +303,6 @@ export const storeStagingTldr = (payload: Payload, ticket: number | string, tldr
   return cas(payload, ticket, sql`"staging_tldr" = ${json}::jsonb`, sql`"staging_tldr" IS DISTINCT FROM ${json}::jsonb`)
 }
 
-/** The decision as the markdown of the `decision` template: the Comment that notifies a person, and what the chat reads. */
 export const decisionMarkdown = (d: Decision, tpl: Tpl = packTemplate('decision'), proof?: string): string =>
   renderTemplate(tpl, {
     decision: d.ask,

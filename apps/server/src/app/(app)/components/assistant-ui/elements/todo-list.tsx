@@ -11,12 +11,9 @@ export interface TodoItem {
   text: string;
   status: TodoStatus;
   description?: string | undefined;
-  /** Shown at the end of the row (the checklist's "Change"). */
   action?: ReactNode;
 }
 
-// From `elements-todo-list`: the open points as a checklist. Kept from the registry: the status icons, the done/total count and the screen-reader status; replaced: the spinner
-// of an active item by a ring (the point is waiting for the person, nothing is running), the fold button by nothing (a Ticket has a handful of points), `action` is new.
 export function TodoList({
   items,
   title,

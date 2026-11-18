@@ -36,7 +36,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** A review Ticket (forge issue + Payload row) whose build Run opened an MR. */
 const reviewTicket = async (title: string, factory = false) => {
   const ts = fake.tickets(repo)
   const issue = await ts.create({ title, labels: ['bauherr:stage:review'] })
@@ -327,7 +326,6 @@ it('moves a Build Ticket whose factory MR merged during the Build to release, ca
   expect((await fake.tickets(repo).get(n)).labels).toContain('bauherr:stage:release')
   expect((await payload.findByID({ collection: 'runs', id: running.id, ...o })).status).toBe('cancelled')
 
-  // Sent back to Build after release: the old merge does not release it again.
   await payload.update({ collection: 'tickets', id: t.id, data: { stage: 'build' }, ...o })
   await release.watchRelease(payload)
   expect((await reload(t.id as number)).stage).toBe('build')
@@ -423,7 +421,6 @@ describe('staging on a descendant SHA', () => {
 
 describe('epic PR resolution', () => {
   const epicBranch = 'bauherr/900-epic'
-  /** A parent Ticket carrying `epic` (optionally with its PR) and a sub carrying `slice`, both in `stage`. */
   const epicPair = async (title: string, stage = 'review', withPr = true) => {
     const ts = fake.tickets(repo)
     const mk = async (name: string, extra: Record<string, unknown>) => {

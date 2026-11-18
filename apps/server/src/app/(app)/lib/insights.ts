@@ -23,7 +23,6 @@ export type Insights = {
   leadMedianSec: number | null
   leadP85Sec: number | null
   cycleMedianSec: number | null
-  /** Share of the done Tickets' time per phase, 0..1. */
   share: Record<PhaseKey, number>
   stages: StageTime[]
   bottleneck: { stage: string; title: string; phase: PhaseKey; sentence: string } | null
@@ -38,13 +37,11 @@ const quantile = (xs: number[], q: number): number | null => {
   return s[lo]! + (s[Math.ceil(at)]! - s[lo]!) * (at - lo)
 }
 
-/** What the slowest stage is slow at, in words. */
 export const bottleneckSentence = (stageTitle: string, phase: PhaseKey, sec: number): string => {
   const d = duration(sec)
   return { queued: `Tickets wait ${d} for a ${stageTitle} slot`, human: `Tickets wait ${d} for you in ${stageTitle}`, ci: `Tickets wait ${d} on CI in ${stageTitle}`, working: `${stageTitle} takes ${d} of work per Ticket` }[phase]
 }
 
-/** The flow metrics of the Tickets that started in the last `days` days (`flow()`), shaped for the Insights page. */
 export const loadInsights = async (payload: Payload, wf: Workflow, workspace: number, o: { days: number; product: number | null; now?: number }): Promise<Insights> => {
   const now = o.now ?? Date.now()
   const f: Flow = await flow(payload, workspace, { from: new Date(now - o.days * 864e5).toISOString(), to: new Date(now + 6e4).toISOString(), ...(o.product && { product: o.product }) })
@@ -76,7 +73,6 @@ export const loadInsights = async (payload: Payload, wf: Workflow, workspace: nu
 
 export type WipAge = { id: number; number: number; title: string; stage: string; since: string; seconds: number }
 
-/** The ten open Tickets that have waited longest in their current stage (since the newest stage-change event, else their last update). */
 export const wipAge = async (payload: Payload, wf: Workflow, workspace: number, product: number | null, now = Date.now()): Promise<WipAge[]> => {
   const rows = (await payload.db.drizzle.execute(sql`
     SELECT t."id", t."number", t."title", COALESCE(t."stage", ${board(wf)[0]}) AS "stage", COALESCE(e."at", t."updated_at") AS "since"
@@ -93,7 +89,6 @@ export type TeamTime = {
   sessions: { sessionId: string; label: string; role: string; roleTitle: string; seconds: number; connectedSeconds: number; utilisation: number | null; runs: number }[]
 }
 
-/** Per role and per session of the last `days` days: active time (`sessionTime`), Runs finished, and for sessions the share of their connected time spent on a Run (utilisation, 0..1). */
 export const loadTeamTime = async (payload: Payload, wf: Workflow, workspace: number, days: number, now = Date.now()): Promise<TeamTime> => {
   const since = new Date(now - days * 864e5)
   const [time, rows, byRole] = await Promise.all([

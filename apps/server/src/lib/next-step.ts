@@ -4,18 +4,12 @@ import { APPROVED_STAGING, type Need, reviewWord } from './needs-you'
 import { ciWait, ticketLive } from './ticket-live'
 import { is, liveStages, roleOfRun, title, type Workflow } from './workflow'
 
-/** The one button of the Ticket page: the owner's turn (`enabled`) or, disabled, who has the turn and why (`reason`, plain words). `links` has one entry per Ticket (`#N`) or Run (`Run N`) the reason names, `text` being the token as written. */
 export type NextStep = { label: string; enabled: boolean; reason: string; links: { text: string; href: string }[]; /** The button is a link (e.g. "Connect an agent") instead of a disabled button. */ href?: string }
 
 type StepTicket = { releaseChecksState?: string | null; state?: string | null; stage?: string | null; labels?: string[] | null; reviewState?: string | null; productionState?: string | null; waitingFor?: string | null; waitingReason?: string | null; parked?: boolean | null }
 
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1)
 
-/**
- * What the owner sees as the next step. `need` (from `needsYou`) wins and is enabled. Otherwise a disabled step whose reason names the
- * agent-side owner, first match: open blocker, live Run, waiting state (overlap, full column, checks), release/review wait, idle.
- * `waiting` is `waitingText` of a waiting Ticket; `admin` gates the Run number and link (Runs are an Admin view).
- */
 export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [], admin, connected = true, ci = null }: { wf: Workflow; ticket: StepTicket; need: Need | null; run: { id: number; stage: string; job?: string | null; status: string; escalation?: { step: number; reason: string } | null; /** Hotfix Ticket number this Run was paused for. */ preemptedFor?: number | null; /** Number of the Ticket whose session this expedite Run is pausing, while that session has not released yet. */ pausing?: number | null; /** First line of the latest Step when it is waiting_ci. */ waitingStep?: string | null } | null; waiting: string | null; blockers: { id: number; number: number }[]; /** Tickets named in an overlap hold, resolved by number. */ holders?: { id: number; number: number }[]; admin: boolean; /** Whether an agent of the Run's stage role is connected (matters for `awaiting_session` only). */ connected?: boolean; /** Pending counts of the stored check summary: a running Run whose Ticket waits on checks then reads as waiting for CI. */ ci?: CiCounts | null }): NextStep => {
   const runLink = run && admin ? [{ text: `Run ${run.id}`, href: `/runs/${run.id}` }] : []
   if (need) return { label: need, enabled: true, reason: '', links: [] }
@@ -49,7 +43,6 @@ export const nextStep = ({ wf, ticket, need, run, waiting, blockers, holders = [
   return { label: 'Queued', enabled: false, reason: 'The factory picks this up next.', links: [] }
 }
 
-/** What the owner's button does for a need, or null when the need has no direct action or its input is missing (`fallbackFor` then takes over). `label` overrides the gate verb. */
 export type Action = { kind: 'expedite' | 'approvePlan' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'backToBuild' | 'rerun' } | { kind: 'link'; href: string; label?: string; newTab?: boolean }
 export type ActionCtx = { run: number | null; open: number; product: number; releaseRunUrl?: string | null }
 
@@ -75,5 +68,4 @@ export const actionFor = (need: Need, { run, open, product, releaseRunUrl }: Act
   }
 }
 
-/** The button when `actionFor` has none, so the bar never shows zero buttons: the details section. No Run here, the newest Run is not necessarily the one the need is about. */
 export const fallbackFor = (need: Need): { label: string; href: string } => ({ label: `${need}: see details`, href: '#details' })

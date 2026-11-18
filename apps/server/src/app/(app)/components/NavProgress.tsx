@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 
 const GIVE_UP_MS = 10_000
 
-/** Thin bar at the top of the shell: active from the click on an internal link until the URL changed (also when the clicked link unmounts, like the avatar menu's). `app.css` styles `#nav-progress`. */
 export function NavProgress() {
   const [active, setActive] = useState(false)
   const path = usePathname()

@@ -5,7 +5,6 @@ import { preflight, withCors } from '../../../../../../lib/intake/embed'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Creates the Ticket (at Triage), or one per item of a confirmed split (`{ expect }` = the count the requester confirmed), from a ready, or question-capped, session. */
 export const OPTIONS = preflight
 export const POST = withCors(async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
   const a = await actor(req)

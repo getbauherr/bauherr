@@ -5,14 +5,12 @@ import { createThread, listThreads, ticketThread } from '../../../../lib/chat/th
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Own, non-archived threads of the current Workspace, latest 200 by last message (`?archived=1`: the archived ones). */
 export const GET = async (req: Request): Promise<Response> => {
   const w = await chatWho(req)
   if (w instanceof Response) return w
   return Response.json({ threads: await listThreads(w, { archived: new URL(req.url).searchParams.get('archived') === '1' }) })
 }
 
-/** Body `{ path? }`: the page the thread starts on; or `{ ticket }` (Ticket id): the person's one thread of that Ticket (created on first use, 404 for a Ticket of another Workspace), answered `200` */
 export const POST = async (req: Request): Promise<Response> => {
   const w = await chatWho(req)
   if (w instanceof Response) return w

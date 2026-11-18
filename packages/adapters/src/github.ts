@@ -21,7 +21,6 @@ export interface AppAuthOptions {
   baseUrl?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
-  /** Epoch ms; injectable for tests. */
   now?: () => number;
 }
 
@@ -120,7 +119,6 @@ export class Http {
     return (res.status === 204 ? undefined : await res.json()) as T;
   }
 
-  /** Follows `Link: rel="next"`; `pick` unwraps envelope objects (e.g. `check_runs`). */
   async paginate<T = any>(path: string, pick?: (page: any) => T[]): Promise<T[]> {
     const out: T[] = [];
     let next: string | undefined = path;
@@ -134,7 +132,6 @@ export class Http {
   }
 }
 
-/** GitHub wants UTC with trailing `Z`; anything else silently returns nothing. */
 const sinceParam = (iso: string): string => new Date(iso).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const enc = encodeURIComponent;
 
@@ -227,7 +224,6 @@ class GithubTickets implements TicketSource {
   }
   async claim(id: string, assignee: string) {
     const i = await this.h.json('POST', `${this.p}/issues/${id}/assignees`, { assignees: [assignee] });
-    // GitHub silently drops invalid logins (201): verify.
     if (!i.assignees.some((a: any) => a.login.toLowerCase() === assignee.toLowerCase())) throw Object.assign(new Error(`claim failed: ${assignee} not assigned to #${id}`), { status: 422 });
   }
   async release(id: string) {
@@ -249,7 +245,6 @@ class GithubTickets implements TicketSource {
       .map((e) => ({ label: e.label.name, action: e.event, actor: e.actor?.login ?? null, at: e.created_at }));
   }
   async whoami() {
-    // An App installation token has no user: the factory is then recognised by its `[bot]` actor.
     if (this.h.authKind === 'app') return null;
     return (await this.h.json('GET', '/user')).login;
   }
@@ -493,7 +488,6 @@ class GithubForge implements Forge {
   async getCommitDate(repo: RepoRef, sha: string) {
     return (await this.h.json('GET', `/repos/${repo}/commits/${sha}`)).commit.committer.date as string;
   }
-  /** Release with the commit its tag points at (one request); null when the tag is gone. */
   private async release(repo: RepoRef, r: any): Promise<Release | null> {
     try {
       const sha = (await this.h.json('GET', `/repos/${repo}/commits/${enc(r.tag_name)}`)).sha as string;
@@ -503,7 +497,6 @@ class GithubForge implements Forge {
       throw e;
     }
   }
-  /** One list request, then newest to oldest one compare each until a release no longer contains `sha`; the last one that did is the first to ship it. */
   async findRelease(repo: RepoRef, o: { sha: string }) {
     let found: Release | null = null;
     for (const r of (await this.h.json('GET', `/repos/${repo}/releases?per_page=30`)).filter((x: any) => !x.draft)) {
@@ -517,7 +510,6 @@ class GithubForge implements Forge {
     }
     return found;
   }
-  /** Published release of `tag` (one request for it, one for its commit), or null when there is none. */
   async releaseByTag(repo: RepoRef, tag: string) {
     try {
       const r = await this.h.json('GET', `/repos/${repo}/releases/tags/${enc(tag)}`);
@@ -539,7 +531,6 @@ class GithubForge implements Forge {
     return ['ahead', 'identical'].includes((await this.h.json('GET', `/repos/${repo}/compare/${enc(base)}...${enc(head)}?per_page=1`)).status);
   }
   async createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }) {
-    // drafts are not found by tag, only in the list: publish the one a workflow left instead of creating a second release
     const draft = (await this.h.json('GET', `/repos/${repo}/releases?per_page=100`)).find((x: any) => x.draft && x.tag_name === o.tag);
     const fields = { tag_name: o.tag, target_commitish: o.sha, name: o.name, body: o.body, prerelease: !!o.prerelease };
     const r = draft ? await this.h.json('PATCH', `/repos/${repo}/releases/${draft.id}`, { ...fields, draft: false }) : await this.h.json('POST', `/repos/${repo}/releases`, fields);
@@ -552,7 +543,6 @@ class GithubForge implements Forge {
     try {
       return (await this.h.json('GET', `/repos/${repo}/commits/${enc(tag)}`)).sha as string;
     } catch (e) {
-      // GitHub answers an unknown ref with 422 "No commit found for SHA", not 404.
       if (e instanceof GithubError && (e.status === 404 || e.status === 422)) return null;
       throw e;
     }

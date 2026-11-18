@@ -15,7 +15,6 @@ const chips: Record<string, [variant: Variant, text: string]> = {
   abandoned: ['muted', 'Abandoned'],
 }
 
-/** `label` replaces the text ('Building' for a running Run), `tone` the colour; `clock` adds the clock glyph of a wait. A derived state (Run page) passes all three; the spinner shows on the accent tone only. */
 export function StatusChip({ status, reason, label, tone, clock }: { status: string; reason?: string | null; label?: string; tone?: Variant; clock?: boolean }) {
   const [base, text] = chips[status] ?? chips.queued
   const variant = tone ?? base

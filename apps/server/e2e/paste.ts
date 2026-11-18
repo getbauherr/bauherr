@@ -2,7 +2,6 @@ import type { Locator } from '@playwright/test'
 
 export const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 
-/** Pastes (or drops) one file into the composer through synthetic events carrying a DataTransfer. */
 export const give = (input: Locator, how: 'paste' | 'drop', file: { name: string; type: string; base64?: string; size?: number }) =>
   input.evaluate(
     (el, { how, file }) => {

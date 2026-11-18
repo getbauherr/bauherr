@@ -5,7 +5,6 @@ import { LinkPending } from './LinkPending'
 import { settingsGroups } from './nav-items'
 import { SidebarMenu, SidebarMenuItem, SidebarMenuSubButton } from './ui/sidebar'
 
-/** Second-level Settings navigation by scope: a column with group headings beside the page (a scrolling row on phones) built from the sidebar's menu styles. */
 export function SettingsNav({ admin }: { admin: boolean }) {
   const path = usePathname()
   const current = (href: string) => path === href || (['/settings/products', '/settings/templates'].includes(href) && path.startsWith(`${href}/`))

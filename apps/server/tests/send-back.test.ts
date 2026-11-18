@@ -69,7 +69,6 @@ const eventsOf = async (id: number) => (await payload.find({ collection: 'ticket
 const poll = () => (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
 const factoryStage = async (id: number) => (await payload.db.drizzle.execute(sql`SELECT "factory_stage" AS s FROM "tickets" WHERE "id" = ${id}`)).rows[0]!.s
 
-/** A Ticket in `stage` (null = untriaged) on the fake forge with its stage label; `build` and `plan` get a claimed session Run, as in a live session. */
 const ticketIn = async (stage: string | null, opts: { product?: number; extraLabels?: string[]; state?: 'open' | 'closed'; claim?: boolean } = {}) => {
   const productId = opts.product ?? productA
   const r = productId === productA ? repo : 'acme/api'

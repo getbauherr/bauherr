@@ -30,7 +30,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** One Ticket that waited `queued` hours for a Build slot: 1 h triage queue, 1 h plan, queued, 2 h build, 1 h review, done. */
 const ticket = async (n: number, startDaysAgo: number, queued: number) => {
   const t = (await payload.create({ collection: 'tickets', data: { title: `t${n}`, externalId: `x${n}`, number: n, state: 'closed', stage: 'done', product, workspace: ws }, ...o })).id as number
   const start = now - startDaysAgo * 864e5

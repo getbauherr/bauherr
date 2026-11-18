@@ -22,27 +22,20 @@ export { ARTIFACT_KINDS, SELF_REVIEW_MIN_LINES, UI_PROOF_PAIRS, UI_PROOF_RULE, a
 export { DIFF_BUDGET_LINES, diffBudgetWarning, fakeGreenFindings } from './trust.js';
 export { cloneRepo, commitAndPush, git, mergeBase, patchId } from './clone.js';
 
-/** Only acceptance on staging closes a Ticket, so the MR references it and never uses a closing keyword. */
-/** `brief` is the agent's `## Approval brief` section, appended after the Evidence; `screenshots` is the before/after table (`screenshotTable`), last. */
 export const mrBody = (ticketUrl: string, evidence: string, brief = '', screenshots = ''): string => `Refs ${ticketUrl}\n\n${evidence}\n${brief.trim() ? `\n${brief.trim()}\n` : ''}${screenshots ? `\n${screenshots}\n` : ''}`;
 
 export const PLAN_MARKER = '<!-- bauherr:plan -->';
 export const WORKLOG_MARKER = '<!-- bauherr:worklog -->';
-/** Agent-verifiable Goal of a Plan Run; the Ticket's own Goal moves into the worklog. */
 const PLAN_GOAL = [`\`${PLAN_FILE}\` exists with the sections \`## Goal\` and \`## Steps\``, 'every Ticket acceptance criterion is covered by a step under `## Steps`'];
 
-/** Agent-verifiable Goal of an investigation Plan Run. */
 const INVESTIGATION_GOAL = [`\`${INVESTIGATION_FILE}\` exists with the cause and one decision (revise, fix-ticket or needs-human)`];
 
-/** Agent-verifiable Goal of a Triage Run. */
 const SCAN_GOAL = [`\`${FINDINGS_FILE}\` exists with the findings of the scan, one per root cause`];
 const DOCS_GOAL = [`\`${DOCS_FINDINGS_FILE}\` exists with the stale claims and missing features of the docs, each with its file and commit`];
 const TRIAGE_GOAL = [`\`${TRIAGE_FILE}\` exists with an outcome (plan, refine or skip) and a reason`];
 
-/** Agent-verifiable Goal of an Agent Run. */
 const AGENT_GOAL = [`\`${OUTCOME_FILE}\` exists with an outcome of the stage and a comment`];
 
-/** Agent-verifiable Goal of a Review Run. */
 const REVIEW_GOAL = [`\`${REVIEW_FILE}\` exists with a verdict, the findings and the review markdown`];
 
 const worklogBody = (statements: { text: string; done?: boolean }[], instructions: string) =>
@@ -68,7 +61,6 @@ function usageOf(state: AgentState): RunResult['usage'] {
   );
 }
 
-/** Upserts the epic worklog the agent edited to the parent Ticket. */
 async function syncEpicWorklog(ctx: RunCtx, dir: string): Promise<void> {
   try {
     const file = join(dir, EPIC_WORKLOG_FILE);
@@ -79,7 +71,6 @@ async function syncEpicWorklog(ctx: RunCtx, dir: string): Promise<void> {
   }
 }
 
-/** Runs one Triage, Plan, Build or Review stage end to end. Never throws; infrastructure errors become `failed`. */
 export async function runStage(ctx: RunCtx): Promise<RunResult> {
   const state: AgentState = { blockedOnce: false, toolCalls: [], steps: [], results: [], abort: new AbortController() };
   const artifacts: RunResult['artifacts'] = {};
@@ -153,7 +144,6 @@ export async function runStage(ctx: RunCtx): Promise<RunResult> {
       return finish('preempted', `stopped at a tool boundary for a hotfix${pushed ? `; branch ${clone.branch} pushed` : ''}`);
     }
     if (state.budgetExhausted) {
-      // A partial scan still hands over the findings written so far.
       if (ctx.run.kind === 'scan') try { artifacts.scan = JSON.parse(readFileSync(join(clone.dir, FINDINGS_FILE), 'utf8')); } catch { /* none written */ }
       return finish('budget_exhausted', 'gateway budget exceeded');
     }

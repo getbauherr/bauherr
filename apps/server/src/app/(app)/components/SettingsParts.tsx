@@ -7,10 +7,8 @@ import { Switch } from './ui/switch'
 
 const badge = { ok: 'ok', warn: 'warn', muted: 'muted' } as const
 
-/** Status word in its tone colour; the word carries the meaning, colour only supports it. */
 export const StatusWord = ({ tone, children }: { tone: Tone; children: ReactNode }) => <Badge variant={badge[tone]}>{children}</Badge>
 
-/** A switch with label and help; the On/Off word sits beside it. A disabled row can carry the reason. */
 export function ToggleRow({ name, label, help, defaultChecked, disabled, reason }: { name?: string; label: string; help: string; defaultChecked?: boolean; disabled?: boolean; reason?: string }) {
   return (
     <label data-slot="toggle-row" className="flex items-start justify-between gap-4 border-t border-border py-3">
@@ -28,7 +26,6 @@ export function ToggleRow({ name, label, help, defaultChecked, disabled, reason 
   )
 }
 
-/** Gate row without a control: name, help and the state word. */
 export const GateRow = ({ label, help, state }: { label: string; help: string; state: string }) => (
   <div data-slot="toggle-row" className="flex items-start justify-between gap-4 border-t border-border py-3">
     <span className="flex min-w-0 flex-col gap-1"><span className="font-medium text-foreground">{label}</span><span className="small text-muted-foreground">{help}</span></span>
@@ -36,7 +33,6 @@ export const GateRow = ({ label, help, state }: { label: string; help: string; s
   </div>
 )
 
-/** Radio group as cards; the checked card gets an accent ring. */
 export function RadioCards({ name, legend, value, disabled, options }: { name: string; legend: string; value: string; disabled?: boolean; options: { value: string; title: string; text: string }[] }) {
   return (
     <fieldset className="m-0 grid grid-cols-2 gap-3 border-0 p-0 max-sm:grid-cols-1" disabled={disabled}>
@@ -60,7 +56,6 @@ export const StatusCallout = ({ tone, lead, children }: { tone: Tone; lead: stri
   </p>
 )
 
-/** Numbered section card with an anchor, a purpose line and an optional Advanced disclosure. */
 export function SettingsSection({ id, n, title, purpose, children, advanced }: { id: string; n?: number; title: string; purpose?: string; children: ReactNode; advanced?: ReactNode }) {
   return (
     <Card asChild className="scroll-mt-4 gap-4 p-4">
@@ -94,7 +89,6 @@ export const SetupChecklist = ({ rows }: { rows: { id: string; label: string; wo
   </Card>
 )
 
-/** The human gates in flow order. The last row (production) is passed in: a switch on the Product page, a state word on the workflow editor. */
 export function GateLadder({ plan, staging, children }: { plan: boolean; staging: boolean; children: ReactNode }) {
   const word = (on: boolean) => (on ? 'On' : 'Off')
   return (

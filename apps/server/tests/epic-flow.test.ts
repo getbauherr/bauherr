@@ -33,7 +33,6 @@ const git = (cwd: string, ...a: string[]) =>
 const work = () => join(root, 'work')
 const realHead = (branch: string) => git(bare, 'rev-parse', `refs/heads/${branch}`)
 let edits = 0
-/** Puts `branch` into the bare repo with one commit, then moves main with one commit of its own. */
 const gitEpicBranch = (branch: string, mr: [string, string], main: [string, string]) => {
   const edit = ([file, text]: [string, string], msg: string) => {
     execFileSync('sh', ['-c', `printf '%s\\n' "$1" > "$2"`, 'sh', `${text}${++edits}`, join(work(), file)])
@@ -88,7 +87,6 @@ const kids = async (parent: number) => (await payload.find({ collection: 'ticket
 const mergeJobs = async () => (await payload.count({ collection: 'payload-jobs' as never, where: { taskSlug: { equals: 'merge-main' } } as never, ...o })).totalDocs
 const forgeIssue = async (n: number) => fake.tickets(repo).get(String(n))
 
-/** A plan Ticket with a posted `## Sub-tickets` plan, split into an epic by `spawnSubTickets`. */
 const split = async (items = ['One', 'Two', 'Three']) => {
   const issue = await fake.tickets(repo).create({ title: 'epic', labels: ['bauherr:stage:plan'] })
   await fake.tickets(repo).comment(String(issue.number), PLAN(items))
@@ -96,7 +94,6 @@ const split = async (items = ['One', 'Two', 'Three']) => {
   expect(await actions.spawnSubTickets(payload, row)).toBe(true)
   return reload(row.id)
 }
-/** Opens the epic PR on the epic branch (what slice 1's Run does) and records it on the parent. */
 const openEpicPr = async (parent: Doc) => {
   const branch = parent.epic.branch as string
   await fake.forge.createBranch(repo, branch)
@@ -106,7 +103,6 @@ const openEpicPr = async (parent: Doc) => {
   await actions.setEpicPr(payload, (await kids(parent.id))[0]!, pr.url)
   return pr
 }
-/** The current slice of `parent`, in review with the epic PR; `mergeGate` on its head. */
 const gate = async (sub: Doc) => {
   await payload.update({ collection: 'tickets', id: sub.id, data: { stage: 'review', reviewState: null }, ...o })
   const t = await reload(sub.id)
@@ -212,7 +208,6 @@ it('after the last slice the parent goes to epic review with the base merged fir
   expect(await actions.advanceEpics(payload)).toBe(0)
   expect(await mergeJobs()).toBe(before + 1)
   expect((await fake.forge.getPullRequest(repo, pr.number)).state).toBe('open')
-  // The epic review (a Review Run on the parent) ends in the normal merge gate on the epic PR.
   const t = await reload(parent.id)
   expect(await actions.mergeGate(payload, t, (await release.prOf(payload, t))!, pr.headSha)).toBe('merged')
   expect((await fake.forge.getPullRequest(repo, pr.number)).state).toBe('merged')
@@ -281,11 +276,9 @@ it('setEpicPr records the first PR only', async () => {
   expect((await reload(parent.id)).epic.pr).toBe('https://x/pull/1')
 })
 
-/** The earlier tests leave Tickets in the columns: lift the limits so the moves under test are not held. */
 const unlimited = () => payload.update({ collection: 'workspaces', id: ws, data: { wipLimits: { plan: 99, build: 99, review: 99 } }, ...o })
 const worklogOf = async (n: number) => (await fake.tickets(repo).listComments(String(n))).findLast((c) => c.body.startsWith('<!-- bauherr:worklog'))?.body ?? ''
 const commentsOf = async (n: number) => (await fake.tickets(repo).listComments(String(n))).map((c) => c.body)
-/** Builds slice 1 (passed) and puts slice 2 into Build; returns both. */
 const secondInBuild = async (items = ['One', 'Two', 'Three']) => {
   await unlimited()
   const parent = await split(items)
@@ -295,7 +288,6 @@ const secondInBuild = async (items = ['One', 'Two', 'Three']) => {
   await payload.update({ collection: 'tickets', id: second!.id, data: { stage: 'build' }, ...o })
   return { parent: await reload(parent.id), pr, first: first!, second: (await reload(second!.id)) }
 }
-/** The planner posts `plan` on the parent after a re-plan and its plan Run succeeded. */
 const replanned = async (parent: Doc, plan: string) => {
   await fake.tickets(repo).comment(String(parent.number), plan)
   await payload.create({ collection: 'runs', data: { ticket: parent.id, stage: 'plan', status: 'succeeded', mode: 'autonomous', workspace: ws }, ...o })
@@ -408,7 +400,6 @@ it('a parent that enters review later through pullWaiting (Review was full) stil
   expect(await mergeJobs()).toBe(before + 1)
 })
 
-/** Latest Run of `ticket`, or a fresh one when the test needs a live Run to cancel. */
 const liveRun = (ticket: Doc, stage: string, status = 'running') => payload.create({ collection: 'runs', data: { ticket: ticket.id, stage, status, mode: 'session', workspace: ws, kind: stage === 'plan' || stage === 'build' || stage === 'review' ? stage : undefined }, ...o })
 const runStatus = async (id: number | string) => (await payload.findByID({ collection: 'runs', id, depth: 0, ...o })).status
 
@@ -443,7 +434,6 @@ it('a parked epic is skipped by the poll sweep, the claim order and run starts; 
   await actions.parkEpic(payload, owner, { ticket: parent.id })
   expect(await wipCount(payload, ws, 'build')).toBe(before - 1)
   expect(await frontier()).not.toContain(first!.number)
-  // The slice passed while parked: the sweep does not create the next one.
   await payload.update({ collection: 'tickets', id: first!.id, data: { stage: 'done', slice: { ...first!.slice, head: 'abc', passed: true } }, ...o })
   expect(await actions.advanceEpics(payload)).toBe(0)
   expect(await actions.advanceEpic(payload, await reload(parent.id))).toBe(false)
@@ -466,7 +456,6 @@ it('resume continues where it stopped: the cancelled Build starts again, and a p
   expect(await worklogOf(parent.number)).toContain('Epic resumed')
   await expect(actions.resumeEpic(payload, owner, { ticket: parent.id })).rejects.toThrow('not parked')
 
-  // Parked while the slice passed: resuming creates the next slice.
   const other = await split()
   const [one] = await kids(other.id)
   await actions.parkEpic(payload, owner, { ticket: other.id })
@@ -486,7 +475,6 @@ it('stop at the review round cap parks an epic slice and an epic parent, but sti
   expect(await reload(parent.id)).toMatchObject({ parked: true, stage: 'parent' })
   expect((await commentsOf(first!.number)).join('\n')).toContain('The epic is parked')
 
-  // Epic review on the parent itself.
   const p2 = await split(['Only'])
   const pr = await openEpicPr(p2)
   await payload.update({ collection: 'tickets', id: p2.id, data: { stage: 'review', reviewState: 'needs_human', reviewRounds: 3 }, ...o })
@@ -494,7 +482,6 @@ it('stop at the review round cap parks an epic slice and an epic parent, but sti
   expect(await reload(p2.id)).toMatchObject({ parked: true, stage: 'review' })
   expect((await fake.forge.getPullRequest(repo, pr.number)).state).toBe('open')
 
-  // A ticket that is no epic keeps the old behaviour.
   const issue = await fake.tickets(repo).create({ title: 'plain', labels: ['bauherr:stage:review'] })
   const plain = await payload.create({ collection: 'tickets', data: { title: 'plain', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', labels: issue.labels, stage: 'review', reviewState: 'needs_human', reviewRounds: 3, product, workspace: ws }, ...o })
   const branch = `bauherr/${issue.number}-x`

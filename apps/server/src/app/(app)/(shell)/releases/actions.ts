@@ -8,7 +8,6 @@ import { currentWorkspace, payloadClient } from '../../lib/session'
 type Pick = { product: number; ids: number[] }
 type Last = { last: string | null }
 
-/** Version and notes for the Tickets ticked on the Releases page (no model call, no release list from the forge). */
 export async function previewRelease({ product, ids, last }: Pick & Last): Promise<{ version: string; notes: string } | { error: string }> {
   const { workspace } = await currentWorkspace()
   if (!workspace) notFound()
@@ -22,7 +21,6 @@ export async function previewRelease({ product, ids, last }: Pick & Last): Promi
   }
 }
 
-/** Admin only: the model-written summary for the ticked Tickets, when the Summarise button is clicked. */
 export async function summariseRelease({ product, ids }: Pick): Promise<{ summary: string } | { error: string }> {
   const { user, workspace } = await currentWorkspace()
   if (!workspace || !isAdmin(user)) notFound()
@@ -35,7 +33,6 @@ export async function summariseRelease({ product, ids }: Pick): Promise<{ summar
   }
 }
 
-/** Admin only (`shipSelected` refuses anyone else). Returns the refusal as text so it shows on the page. */
 export async function shipReleaseAction(a: Pick & { version: string; notes: string; summary: string }): Promise<{ tag: string; url: string } | { error: string }> {
   const { user, workspace } = await currentWorkspace()
   if (!workspace) notFound()
@@ -49,7 +46,6 @@ export async function shipReleaseAction(a: Pick & { version: string; notes: stri
   }
 }
 
-/** Admin only (`promoteSelected` refuses anyone else): tags the final version on the commit of the open release candidate. */
 export async function promoteReleaseAction(a: { product: number; rc: string }): Promise<{ tag: string; url: string } | { error: string }> {
   const { user, workspace } = await currentWorkspace()
   if (!workspace) notFound()

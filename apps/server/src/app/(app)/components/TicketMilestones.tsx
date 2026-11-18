@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import type { Milestone } from '../lib/ticket-live'
 
-/** New Run milestones of the Ticket as they happen (`/api/tickets/<id>/events`), appended without a page refresh; not announced per row. On a stream error it closes and the page's live poll takes over. */
 export function TicketMilestones({ ticket }: { ticket: number }) {
   const [rows, setRows] = useState<(Milestone & { key: string })[]>([])
   useEffect(() => {

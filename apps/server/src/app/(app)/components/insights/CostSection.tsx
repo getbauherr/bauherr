@@ -42,11 +42,9 @@ function Lines({ id, head, lines, total, extra }: { id: string; head: string; li
   )
 }
 
-/** Tokens and cost of the range: totals, breakdowns by model, role, session, stage and Ticket, cost per finished Ticket, and how many Runs the numbers cover. */
 export function CostSection({ cost, days, gateway }: { cost: Cost; days: number; gateway?: { status: Status; admin: boolean } }) {
   const sessions = cost.coverage.find((c) => c.label.startsWith('Session Runs'))
   const unmeasured = !!sessions && sessions.runs > 0 && sessions.covered / sessions.runs < 0.5
-  // Calls that reach the gateway without a session name are measured, but only for the Workspace: say that, not "not measured".
   const unnamed = cost.bySession.find((l) => l.label === UNNAMED_SESSION && l.tokens + l.cache > 0)
   const src = Object.entries(cost.sources).map(([k, v]) => `${k} ${usd(v)}`).join(' · ')
   return (

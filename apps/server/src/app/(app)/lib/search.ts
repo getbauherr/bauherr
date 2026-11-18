@@ -4,7 +4,6 @@ import { currentWorkspace, payloadClient } from './session'
 
 export type TicketHit = { id: number; number: number; title: string }
 
-/** Command palette: up to 8 Tickets of the selected Workspace whose number is `#123`/`123` or whose title contains `q`. Database only. */
 export async function searchTickets(q: string): Promise<TicketHit[]> {
   const { workspace } = await currentWorkspace()
   const term = q.trim().replace(/^#/, '')

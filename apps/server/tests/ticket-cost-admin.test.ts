@@ -3,7 +3,6 @@ import { renderToReadableStream } from 'react-dom/server'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/** The Ticket page's Cost block is for Admins: what a non-Admin's render carries has no cost number (the element tree of the page is what the RSC payload is made of). */
 const session = vi.hoisted(() => ({ cookie: '' }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ cookie: session.cookie }), cookies: async () => ({ get: () => undefined, set: () => {}, delete: () => {} }) }))
 vi.mock('next/navigation', async (orig) => ({ ...(await orig<typeof import('next/navigation')>()), useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }), usePathname: () => '/tickets/1', useSearchParams: () => new URLSearchParams() }))
@@ -48,7 +47,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** The page rendered to HTML with its async Suspense parts resolved (the client components render their first pass). */
 const html = async (as: string): Promise<string> => {
   session.cookie = as
   const page = (await import('../src/app/(app)/(shell)/tickets/[id]/page')).default

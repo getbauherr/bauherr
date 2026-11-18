@@ -1,6 +1,5 @@
 import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 
-/** Merges tickets sharing (product, external_id) into the lowest id (every FK to tickets.id is repointed), then enforces uniqueness. */
 export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
    DO $$

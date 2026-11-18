@@ -51,7 +51,6 @@ const openPr = async (number: number, suffix: string, base = 'main') => {
   fake.commit(repo, branch, `${suffix}.ts`, suffix)
   return fake.forge.openPullRequest(repo, { title: suffix, body: EVIDENCE, head: branch, base })
 }
-/** A Ticket in `stage` whose newest Build Run links `linked` (an MR of the fake forge). */
 const seed = async (stage: string, linked?: { url: string }) => {
   const issue = await fake.tickets(repo).create({ title: `t ${stage}`, labels: [`bauherr:stage:${stage}`] })
   const t = await payload.create({ collection: 'tickets', data: { title: 'x', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage, product, workspace: ws }, ...o })

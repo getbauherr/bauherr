@@ -43,7 +43,6 @@ it('keeps the logins an account holds (case ignored), moves the rest to unlinked
   const products = (await payload.find({ collection: 'products', ...o })).docs as Record<string, any>[]
   expect(products.map((p) => [p.slug, p.unlinkedGateOwners ?? null])).toEqual([['empty', null], ['matched', null], ['mixed', 'ghost,Dana'], ['never', null]])
   expect((await run(sql`SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'gate_owners'`)).rows[0].n).toBe(0)
-  // the matched logins stay on their accounts, untouched
   expect(((await payload.find({ collection: 'bauherren', ...o })).docs as Record<string, any>[]).map((u) => u.githubLogin ?? null).sort()).toEqual(['Alice', 'bob', null])
 
   await (await import('../src/migrations/20261112_170000_forge_channel')).down({ db: (payload.db as any).drizzle } as never)

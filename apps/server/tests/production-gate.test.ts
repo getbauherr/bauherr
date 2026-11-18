@@ -41,7 +41,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** A Ticket accepted on staging with the production gate: stage release, awaiting approval. */
 const accepted = async (title: string) => {
   const ts = fake.tickets(repo)
   const issue = await ts.create({ title, labels: ['bauherr:stage:release'] })

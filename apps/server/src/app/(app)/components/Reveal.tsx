@@ -2,7 +2,6 @@
 import { useState, type ReactNode } from 'react'
 import { Button } from './ui/button'
 
-/** A toggle that shows `children` below it (not a `<details>`: the Ticket page has exactly one). */
 export function Reveal({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false)
   return (

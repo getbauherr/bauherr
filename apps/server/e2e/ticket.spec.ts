@@ -18,7 +18,6 @@ const login = async (page: Page) => {
   await expect(page.locator('[data-testid=workflow]')).toBeVisible()
 }
 
-// [slug, Ticket title, primary verb].
 const STATES = [
   ['answer-decisions', 'Add a dark theme to the dashboard', 'Answer 2 questions'],
   ['answer-questions', 'Clarify the export scope', 'Answer 1 question'],
@@ -50,7 +49,6 @@ test('the action bar is the same single, visible bar in every state', async ({ p
       await page.evaluate(() => window.scrollTo(0, 0)) // the card click may leave the Board scroll offset behind
       const box = (await bar.boundingBox())!
       if (viewport.width > 640) {
-        // The Holding up work strip (data-driven, other specs' Tickets can raise it) pushes the whole page down; the bar is measured below it.
         const top = await page.evaluate(() => document.querySelector('[data-testid=action-bar]')!.getBoundingClientRect().top - (document.querySelector('[data-testid=holds-strip]')?.getBoundingClientRect().height ?? 0))
         y ??= top
         expect(top).toBe(y)
@@ -68,7 +66,6 @@ test('the action bar is the same single, visible bar in every state', async ({ p
   await page.setViewportSize({ width: 1280, height: 800 })
 })
 
-// Own seeded Tickets: #24, and its twin #42 for a retry (the first attempt answered and approved #24); approving their plan changes nothing the other tests or specs read.
 test('answer the critical decision, then approve the plan', async ({ page }, testInfo) => {
   const title = testInfo.retry ? 'Switch the dashboard to a light theme' : 'Add a light theme to the dashboard'
   await page.goto('/')
@@ -162,7 +159,6 @@ test('Details shows Budget, Model and Run ids to an Admin only', async ({ page }
   }
 })
 
-// Own seeded Tickets #25-#27: read-only, so no other spec's data is touched.
 const nextStepOf = async (page: Page, title: string) => {
   await login(page)
   await page.locator('.card', { hasText: title }).first().getByRole('link', { name: title }).click()
@@ -242,7 +238,6 @@ test('a Ticket that looped shows its rounds', async ({ page }) => {
   await expect(page.locator('[data-testid=visit][data-stage=build]')).toHaveCount(2)
 })
 
-// Own seeded Ticket (#2 on Acme Checks): failed release checks with no run link leave one details button in the bar.
 test('a failed release with no run link offers one details button', async ({ page }) => {
   await login(page)
   await page.locator('.card', { hasText: 'Release the CSV checks' }).first().getByRole('link', { name: 'Release the CSV checks' }).click()
@@ -284,7 +279,6 @@ test('a conditional step the Ticket passed is listed as skipped with the reason:
   await expect(steps.locator('[data-testid=visit][data-stage=e2e-security-review]')).toHaveCount(0)
 })
 
-// Own seeded Ticket #27 (read-only here): `/api/tickets/<id>/live` is stubbed and time is the page's fake clock, so no step waits on real time.
 test('the Ticket page refreshes within 5 s of a change, keeps the composer draft and scroll, and asks nothing while the tab is hidden', async ({ page }) => {
   let v = 1
   let asked = 0
@@ -318,7 +312,6 @@ test('the Ticket page refreshes within 5 s of a change, keeps the composer draft
   expect(asked).toBe(before)
 })
 
-// Own seeded Tickets #43 (fast lane, Build) and #44 (a review that needs the owner; sent back here), twins in `src/lib/fake-forge.ts`.
 test('a fast lane Ticket in Build asks nothing and lists its decisions as defaults taken', async ({ page }) => {
   await login(page)
   await openTicket(page, 43, 'Hotfix: fix the export header')
@@ -329,7 +322,6 @@ test('a fast lane Ticket in Build asks nothing and lists its decisions as defaul
   await expect(about).toContainText('D2 Follow the system setting: default taken (fast lane)')
 })
 
-// Ticket #581 of Acme CI (seed-e2e.ts, twin of ci-panel.spec.ts): waiting for checks, with a pull request.
 test('a Ticket in Build waiting for CI says so and offers the forge link', async ({ page }) => {
   await login(page)
   await openTicket(page, 581, 'Show CI on the ticket')

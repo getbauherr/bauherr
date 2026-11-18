@@ -58,7 +58,6 @@ const draft = (p: Partial<Draft> = {}): Draft => ({ problem: 'Export fails', con
 const req = (key: string | null, body: unknown = {}) =>
   new Request('http://x.test/intake', { method: 'POST', headers: { 'content-type': 'application/json', ...(key && { authorization: `bauherren API-Key ${key}` }) }, body: JSON.stringify(body) })
 const ctx = (id: number | string) => ({ params: Promise.resolve({ id: String(id) }) })
-/** Stub of the gateway's Messages API: answers each call with the next scripted turn. */
 const stubGateway = (turns: object[]) => {
   const bodies: any[] = []
   vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
@@ -180,7 +179,6 @@ it('parallel messages on one session keep the 40-message cap and lose no turns',
   })
   const results = await Promise.all(Array.from({ length: 44 }, async (_, i) => (await (await messages.POST(req(keyA, { text: `m${i}` }), ctx(id))).text()).split('\n')[0]))
   const doc = (await payload.findByID({ collection: 'intake_sessions', id, depth: 0, ...o })) as any
-  // the message cap (40) ends the session's input; nothing past it reaches the model, nothing before it is lost
   expect(calls).toBe(40)
   expect(results.filter((r) => r === 'event: turn')).toHaveLength(40)
   expect(doc.messages.filter((m: any) => m.role === 'user')).toHaveLength(40)

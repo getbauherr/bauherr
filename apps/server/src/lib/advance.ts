@@ -17,16 +17,8 @@ const o = { depth: 0, overrideAccess: true } as const
 export type Advanced = { stage: string | null; entered: 'moved' | 'waiting' | 'held' | 'backlog' | 'escalated' | 'unrouted' | 'parked' }
 export type AdvanceOpts = { by: string; run?: Doc; why?: string; note?: string }
 
-/**
- * Takes a Ticket out of its stage along `outcome`: enters the target the workflow names for it, by the TARGET's kind.
- * `escalate` is the escalation ladder of the finished `run`, `backlog` is the untriaged state. plan and build (from upstream) only move; their Runs start with the poller or the caller.
- * A plan target reached from a later stage (a replan) loses its approval label and gets a new plan Run. A build target reached from a later stage is a hand-back (same MR, `note` into the worklog, no review round); review enters through the WIP rule; an `agent` stage also gets its Run, a `human` stage needs the owner.
- * An outcome the stage does not map ends the `run` as `needs_human` (decision) and leaves the Ticket where it is.
- */
 export const advance = async (payload: Payload, ts: TicketSource | null, ticket: Doc, outcome: string, opts: AdvanceOpts): Promise<Advanced> => {
-  // A slice of an epic never goes back to plan itself: the epic's parent re-plans the unbuilt slices.
   if (outcome === 'replan' && ticket.slice) return replanEpic(payload, ticket, opts.note ?? 'the slice asked for a re-plan')
-  // A stop on an epic (parent or slice) parks the whole epic instead of leaving it on a Ticket that would be re-triaged alone.
   if (outcome === 'stop' && (ticket.epic || ticket.slice)) {
     await parkEpicNow(payload, ticket, { by: opts.by, executor: opts.by === 'factory' ? 'factory' : 'human', why: opts.note ?? 'a review stopped it' })
     return { stage: ticket.stage, entered: 'parked' }
@@ -71,7 +63,6 @@ export const advance = async (payload: Payload, ts: TicketSource | null, ticket:
   })
   if (entered === 'moved' && def.kind === 'review') await startReviewNow(payload, ticket.id)
   if (entered === 'moved' && replan) {
-    // A return to the plan stage plans again and needs a new approval: drop the old one, then start the Run `startMissingRuns` would skip (the stage already had one).
     await source.removeLabels(String(ticket.number), [APPROVED_PLAN])
     const labels = ((await payload.findByID({ collection: 'tickets', id: ticket.id, select: { labels: true }, ...o })) as Doc).labels as string[] | undefined
     await payload.update({ collection: 'tickets', id: ticket.id, data: { labels: (labels ?? []).filter((l) => l !== APPROVED_PLAN) }, ...o })

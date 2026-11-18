@@ -14,10 +14,6 @@ import { isBauherr } from '../../lib/people'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/**
- * Factory MCP server (Streamable HTTP, stateless). Auth: `Authorization: Bearer <key>`; every tool acts as the key's Bauherr within their Workspaces.
- * An agent key (`bha_...`) is an `agent` actor and cannot use gate tools; only the Bauherr's personal API key is `human`. Anything else is a 401.
- */
 const handle = async (req: Request): Promise<Response> => {
   const token = /^Bearer\s+(.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]
   const payload = await getPayload({ config })

@@ -8,7 +8,6 @@ import { Textarea } from '../ui/textarea'
 
 const DOCS = 'https://github.com/getbauherr/bauherr/blob/main/docs/spec/workflow.md'
 
-/** The same draft as text, and the workflow as code: download, upload, the command line and the boot file. */
 export function YamlTab({ yaml, setYaml, draft, slug }: { yaml: string; setYaml: (y: string) => void; draft: Draft; slug: string }) {
   const file = useRef<HTMLInputElement>(null)
   const dry = `bauherr apply -f factory.yaml --workspace ${slug} --dry-run`

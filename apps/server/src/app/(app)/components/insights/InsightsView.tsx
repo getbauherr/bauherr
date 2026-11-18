@@ -28,7 +28,6 @@ const Legend = () => (
   </p>
 )
 
-/** Time to market of the Tickets that started in the range: tiles, where time goes per stage, throughput and WIP age. Plain markup, no chart library. */
 export function InsightsView({ wf, data, wip, team, cost, trust, days, gateway }: { wf: Workflow; data: Insights; wip: WipAge[]; team?: TeamTime; cost?: Cost; trust?: ProductTrust[]; days: number; gateway?: ComponentProps<typeof CostSection>['gateway'] }) {
   const max = Math.max(1, ...data.stages.map((s) => s.total))
   const weeks = Math.max(1, ...data.throughput.map((w) => w.tickets))

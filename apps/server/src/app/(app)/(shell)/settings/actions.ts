@@ -37,7 +37,6 @@ import { archiveWorkspace, restoreWorkspace } from '../../../../lib/workspace-de
 
 type Form = (prev: FormState, fd: FormData) => Promise<FormState>
 
-/** Writes go through the local API as the signed-in Bauherr with access control on, so Payload's validation and access rules apply exactly as on /api. */
 async function ctx() {
   const { user, workspace } = await currentWorkspace()
   const payload = await payloadClient()
@@ -61,13 +60,11 @@ const inWorkspace = (c: { workspace: { id: number } | null }) => {
   return c.workspace.id
 }
 
-/** Settings > General: the Workspace name and the progress-comment switch. */
 export const saveGeneral = act({}, async ({ user, workspace, payload, w }, fd) => {
   only(user)
   await payload.update({ collection: 'workspaces', id: inWorkspace({ workspace }), data: { name: s(fd, 'name'), progressComments: fd.get('progressComments') === 'on' }, ...w } as never)
 })
 
-/** Settings > Models & budget (Admin only): budget unit, amount and auto share, model tiers and run modes. */
 export const saveModels = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d: 'budgetAmount', routerBudgetShare: 'routerBudgetShare' }, async ({ user, workspace, payload, w }, fd) => {
   only(user)
   const wsId = inWorkspace({ workspace })
@@ -78,7 +75,6 @@ export const saveModels = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d: '
   const { defaultModels: defaults, slugs } = await presetFor(wsId)
   const missing = (['cheap', 'standard', 'strong'] as const).filter((t) => !s(fd, `tier_${t}`) && !defaults)
   if (missing.length) throw Object.assign(new Error('Model tiers missing.'), { data: { errors: missing.map((t) => ({ path: `tier_${t}`, message: 'This provider has no default; set a model id' })) } })
-  // Tiers are `<connection>/<model>`; a bare model id goes to the first Connection.
   const qualify = (v: string) => (!slugs.length || slugs.some((c) => v.startsWith(`${c}/`)) ? v : `${slugs[0]}/${v}`)
   const tiers = Object.fromEntries((['cheap', 'standard', 'strong'] as const).map((t) => [t, qualify(s(fd, `tier_${t}`) || defaults![t])]))
   const stages = Object.fromEntries(modeStages(workflowFor(wsId)).map((t) => [t, s(fd, `mode_${t}`)]).filter(([, v]) => v))
@@ -86,7 +82,6 @@ export const saveModels = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d: '
   await payload.update({ collection: 'workspaces', id: wsId, data, ...w } as never)
 })
 
-/** Settings > Knowledge: the Connection and repository of the Knowledge repo. */
 export const saveKnowledge = act({}, async ({ user, workspace, payload, w }, fd) => {
   only(user)
   const wsId = inWorkspace({ workspace })
@@ -95,7 +90,6 @@ export const saveKnowledge = act({}, async ({ user, workspace, payload, w }, fd)
   await payload.update({ collection: 'workspaces', id: wsId, data: { knowledgeConnection: conn ?? null, knowledgeRepo: s(fd, 'knowledgeRepo') || null }, ...w } as never)
 })
 
-/** Paths that never hold a Build for overlap: the textarea (one glob per line) replaces the list; `add` appends one suggested path. */
 export const saveOverlapIgnore = act({ ignore: 'ignore' }, async (c, fd) => {
   only(c.user)
   const wsId = inWorkspace(c)
@@ -107,7 +101,6 @@ export const saveOverlapIgnore = act({ ignore: 'ignore' }, async (c, fd) => {
   await c.payload.update({ collection: 'products', id: product, data: { overlapIgnore: [...new Set(lines)] }, ...c.w } as never)
 })
 
-/** The Product's named path sets (conditional workflow steps refer to them): the textarea replaces them; `add` appends one suggested name with an empty list. */
 export const savePathSets = act({ sets: 'sets' }, async (c, fd) => {
   only(c.user)
   const product = id(fd)
@@ -122,7 +115,6 @@ export const savePathSets = act({ sets: 'sets' }, async (c, fd) => {
   await c.payload.update({ collection: 'products', id: product, data: { pathSets }, ...c.w } as never)
 })
 
-/** Reads the Product's last 100 merged pull requests from the forge (explicit action, never on render) and stores the suggested paths with the time on the Product. */
 export const suggestOverlapPaths = act({}, async (c, fd) => {
   only(c.user)
   const product = id(fd)
@@ -137,14 +129,12 @@ export const rotateWorkspaceKey = act({}, async ({ user, workspace, payload }) =
   await rotateKey(await createLocalReq({ user }, payload), inWorkspace({ workspace }))
 })
 
-/** Admin: a new session key for this Workspace (the old one stops working); shown once, never stored by Bauherr. */
 export const createSessionKey = act({}, async ({ user, workspace, payload }) => {
   only(user)
   if (!gatewayEnabled()) throw new Error('The gateway is off on this instance.')
   return rotateSessionKey(await createLocalReq({ user }, payload), inWorkspace({ workspace }))
 })
 
-/** Admin: fetches the price catalog now instead of waiting for the daily refresh; a refusal or failure is shown as the error. */
 export const updatePricesNow = act({}, async ({ user, payload }) => {
   only(user)
   const status = await refreshPrices(payload, { force: true })
@@ -154,7 +144,6 @@ export const updatePricesNow = act({}, async ({ user, payload }) => {
 
 const inWs = (c: Awaited<ReturnType<typeof ctx>>, collection: string, ...ids: (number | undefined)[]) => assertInWorkspace(c.payload, collection, ids, inWorkspace(c))
 
-/** Creates the Product (short name derived from the name when empty) and returns its id. */
 const makeProduct = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => {
   const name = s(fd, 'name')
   const slug = s(fd, 'slug') || slugOf(name)
@@ -164,10 +153,6 @@ const makeProduct = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => 
 
 const TEXT_FIELDS = ['stagingUrl', 'deployMode', 'deployWebhookUrl', 'deployChecks', 'productionWebhookUrl', 'productionChecks', 'releaseMode'] as const
 
-/**
- * Saves the fields of one Product tab (`section`: deploy, approvals, checks or releases); only the fields the form posted are written, so a tab never resets another one.
- * Without `section` (step 3 of /setup) it saves the Deploy and Approvals fields.
- */
 export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
@@ -202,7 +187,6 @@ export const saveDeploy = act({}, async (c, fd) => {
   await c.payload.update({ collection: 'products', id: id(fd), data, ...c.w } as never)
 })
 
-/** Merge mode of a Product. Switching to `queue` or `train` re-runs the repo preflight and refuses while it has problems. */
 export const saveMergeMode = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
@@ -216,7 +200,6 @@ export const saveMergeMode = act({}, async (c, fd) => {
   await c.payload.update({ collection: 'products', id: id(fd), data: { mergeMode: mode }, ...c.w } as never)
 })
 
-/** "Re-detect": asks the forge again and stores the detected mode with its preflight. */
 export const saveSecurityScan = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
@@ -235,7 +218,6 @@ export const startScan = act({}, async (c, fd) => {
   await startSecurityScan(c.payload, id(fd))
 })
 
-/** Settings > Product > Docs (Admin only): the docs path globs, one per line; at least one. */
 export const saveDocsCheck = act({ paths: 'paths' }, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
@@ -257,7 +239,6 @@ export const redetectMerge = act({}, async (c, fd) => {
   await redetectMergeMode(c.payload, id(fd))
 })
 
-/** Adds a repository to a Product; "Read tickets" also adds its ticket source (the repository is removed again if that fails). */
 const makeRepository = async (c: Awaited<ReturnType<typeof ctx>>, product: number, fd: FormData) => {
   const connection = Number(s(fd, 'connection')) || undefined
   const fullName = s(fd, 'fullName')
@@ -277,7 +258,6 @@ export const addRepository = act({}, async (c, fd) => {
   await makeRepository(c, id(fd), fd)
 })
 
-/** Repositories of a Connection for the Repository select; null when the forge does not answer in time. Admin only. */
 export async function repositoriesOf(connection: number): Promise<string[] | null> {
   const c = await ctx()
   only(c.user)
@@ -287,7 +267,6 @@ export async function repositoriesOf(connection: number): Promise<string[] | nul
 
 const fieldError = (path: string, message: string) => Object.assign(new Error(message), { data: { errors: [{ path, message }] } })
 
-/** Product, repository and ticket source in one go; what was created is deleted again when a later create fails. `open=1` continues to the new Product's Staging section. */
 export const createProductWithRepo = act({}, async (c, fd) => {
   only(c.user)
   const slug = s(fd, 'slug') || slugOf(s(fd, 'name'))
@@ -307,7 +286,6 @@ export const createProductWithRepo = act({}, async (c, fd) => {
   if (fd.get('open') === '1') redirect(`/settings/products/${product}?tab=deploy#staging`)
 })
 
-/** The token is shown once as the ready-made script tag; only its hash is stored. */
 export const mintEmbedToken = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
@@ -359,14 +337,12 @@ export const saveConnection = act({}, async (c, fd) => {
   } else await c.payload.create({ collection: 'connections', data: { ...data, workspace: inWorkspace(c) }, ...c.w } as never)
 })
 
-/** Monitoring Connections are instance-wide (one per service): the target is looked up by id and kind, not by Workspace. Admin only here and in the collection's hooks. */
 const monitoringRow = async (c: Awaited<ReturnType<typeof ctx>>, rowId: number) => {
   const row = (await monitoringRows(c.payload)).find((r) => Number(r.id) === rowId)
   if (!row) throw new Error('Not found.')
   return row
 }
 
-/** Settings > Connections > Monitoring: saves Traces (OTLP) or Grafana. An empty secret keeps the stored one; `clearSecret` removes it. Any save clears the last test. */
 export const saveMonitoring = act({}, async (c, fd) => {
   only(c.user)
   const service = s(fd, 'service') as Service
@@ -383,13 +359,11 @@ export const saveMonitoring = act({}, async (c, fd) => {
   return notice
 })
 
-/** The snippet names where Prometheus reaches this Bauherr: the address this request came in on. */
 const snippetFor = async (token: string): Promise<string> => {
   const h = await headers()
   return `Scrape token, shown once. Paste into Prometheus:\n${scrapeSnippet(scrapeOrigin({ forwardedHost: h.get('x-forwarded-host'), forwardedProto: h.get('x-forwarded-proto'), host: h.get('host') }), token)}`
 }
 
-/** Mints a new scrape token for the saved Prometheus Connection; the old one stops working at once. Shown once. */
 export const rotateScrapeToken = act({}, async (c, fd) => {
   only(c.user)
   const row = await monitoringRow(c, id(fd))
@@ -400,14 +374,12 @@ export const rotateScrapeToken = act({}, async (c, fd) => {
   return notice
 })
 
-/** Deletes the Connection; removing Traces puts the bundled tracing back (the collection's afterDelete hook). */
 export const removeMonitoring = act({}, async (c, fd) => {
   only(c.user)
   await monitoringRow(c, id(fd))
   await c.payload.delete({ collection: 'connections', id: id(fd), ...c.w } as never)
 })
 
-/** Tests the saved Connection (5 s) and stores `verifiedAt` or `lastError`; the plain-word result is the notice or the error. */
 export const testMonitoringAction = act({}, async (c, fd) => {
   only(c.user)
   const row = await monitoringRow(c, id(fd))
@@ -418,7 +390,6 @@ export const testMonitoringAction = act({}, async (c, fd) => {
   return result.message
 })
 
-/** LLM providers: re-saves unchanged, the afterChange hook verifies the provider again. Forges: asks the forge who the token belongs to and stores the outcome in `capabilities`. */
 export const verifyConnection = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'connections', id(fd))
@@ -451,7 +422,6 @@ export const createBauherr = act({}, async (c, fd) => {
   return `Temporary password (shown once): ${password}`
 })
 
-/** Whether the Workspace's first GitHub Connection knows `login`; true when there is none to ask or GitHub cannot answer. */
 const githubKnows = async (c: Awaited<ReturnType<typeof ctx>>, login: string): Promise<boolean> => {
   const first = (await c.payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: inWorkspace(c) } }, { kind: { equals: 'github' } }] }, sort: 'id', limit: 1, depth: 0, overrideAccess: true } as never)).docs[0]
   if (!first) return true
@@ -462,7 +432,6 @@ const githubKnows = async (c: Awaited<ReturnType<typeof ctx>>, login: string): P
   }
 }
 
-/** One assignment row from the Workspace, scope and Products fields of the form. */
 const assignmentFrom = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => {
   const workspace = Number(s(fd, 'workspace'))
   await known(c, [workspace])
@@ -470,7 +439,6 @@ const assignmentFrom = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) 
   return { workspace, scope, products: scope === 'products' ? [...new Set(fd.getAll('products').map(Number))] : [] }
 }
 
-/** A Product owner: login plus an assignment, nothing else. The temporary password is shown once, as for a Bauherr. */
 export const createProductOwner = act({}, async (c, fd) => {
   only(c.user)
   const assignment = await assignmentFrom(c, fd)
@@ -479,7 +447,6 @@ export const createProductOwner = act({}, async (c, fd) => {
   return `Temporary password (shown once): ${password}`
 })
 
-/** Sets, replaces or (`scope=none`) removes the Product owner's assignment in one Workspace; their other assignments stay. */
 export const saveAssignment = act({}, async (c, fd) => {
   only(c.user)
   const target = await c.payload.findByID({ collection: 'bauherren', id: id(fd), depth: 0, overrideAccess: true })
@@ -490,14 +457,12 @@ export const saveAssignment = act({}, async (c, fd) => {
   await withLoginLock(target.email, () => c.payload.update({ collection: 'bauherren', id: id(fd), data: { assignments }, ...c.w } as never))
 })
 
-/** Bauherr <-> Product owner. Never your own account, never the last Admin; the assignments are cleared on the way out and a new Product owner starts with none. */
 export const changeRole = act({}, async (c, fd) => {
   only(c.user)
   const role = s(fd, 'role')
   if (role !== 'bauherr' && role !== 'product-owner') throw new Error('Choose Bauherr or Product owner.')
   if (id(fd) === c.user.id) throw new Error('You cannot change your own role.')
   const target = await c.payload.findByID({ collection: 'bauherren', id: id(fd), depth: 0, overrideAccess: true })
-  // The form names the role it was rendered for: a stale tab or a double submit cannot change the account back.
   if (target.role !== s(fd, 'from')) throw new Error('This account changed meanwhile. Reload the page.')
   if (target.role === 'admin') await assertAnotherAdmin(c.payload, id(fd))
   if (target.role !== role) await withLoginLock(target.email, () => c.payload.update({ collection: 'bauherren', id: id(fd), data: { role }, ...c.w } as never))
@@ -519,14 +484,12 @@ export const saveBauherr = act({}, async (c, fd) => {
   )
 })
 
-/** Ends a failed-login lockout; the Bauherr can sign in again at once. */
 export const unlockBauherr = act({}, async (c, fd) => {
   only(c.user)
   const target = await c.payload.findByID({ collection: 'bauherren', id: id(fd), depth: 0, overrideAccess: true })
   await withLoginLock(target.email, () => c.payload.update({ collection: 'bauherren', id: id(fd), data: { lockUntil: null, loginAttempts: 0 }, overrideAccess: true } as never))
 })
 
-/** The creating Admin joins the new Workspace's tenants. */
 export const createWorkspace = act({}, async (c, fd) => {
   only(c.user)
   const name = s(fd, 'name')
@@ -539,7 +502,6 @@ export const createWorkspace = act({}, async (c, fd) => {
   await withLoginLock(me.email, () => c.payload.update({ collection: 'bauherren', id: me.id, data: { tenants: [...have, { tenant: ws.id as number }] }, overrideAccess: true } as never))
 })
 
-/** Admin: archives the current Workspace (stops its work, revokes its keys, restorable for 14 days); the typed name must match. */
 export const deleteWorkspace = act({}, async ({ user, workspace, payload }, fd) => {
   only(user)
   const id = inWorkspace({ workspace })
@@ -547,7 +509,6 @@ export const deleteWorkspace = act({}, async ({ user, workspace, payload }, fd) 
   await archiveWorkspace(payload, user, id)
 })
 
-/** Admin: brings an archived Workspace back before its purge date. */
 export const restoreWorkspaceAction = act({}, async ({ user, payload }, fd) => {
   only(user)
   await restoreWorkspace(payload, user, id(fd))
@@ -555,17 +516,14 @@ export const restoreWorkspaceAction = act({}, async ({ user, payload }, fd) => {
 
 const mcpAdd = (key: string) => `claude mcp add --transport http bauherr ${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/mcp --header "Authorization: Bearer ${key}"`
 
-/** Own record only: the target is always the signed-in Bauherr, never a form value. The key appears once, as the ready-made `claude mcp add` line. */
 export const mintOwnAgentKey = act({}, async ({ user, payload }, fd) => mcpAdd(await mintAgentKey(payload, user, s(fd, 'label'))))
 
 export const revokeOwnAgentKey = act({}, async ({ user, payload }, fd) => revokeAgentKey(payload, user, id(fd)))
 
-/** The personal (human) key: for scripted owner use only, it can approve gates. */
 export const rotateOwnKey = act({}, async ({ user, payload }) => mcpAdd(await rotateApiKey(payload, user)))
 
 export const revokeOwnKey = act({}, async ({ user, payload }) => revokeApiKey(payload, user))
 
-/** Admin: saves the Workspace's version of a template; refused while the linter finds an error (the factory depends on those parts). */
 export const saveTemplate = act({}, async ({ user, workspace, payload }, fd) => {
   const wsId = inWorkspace({ workspace })
   only(user)
@@ -579,7 +537,6 @@ export const saveTemplate = act({}, async ({ user, workspace, payload }, fd) => 
   else await payload.create({ collection: 'templates', data: { name, body, updatedBy: user.email, workspace: wsId } as never, overrideAccess: true })
 })
 
-/** Admin: drops the Workspace's version, so the pack's default applies again. */
 export const resetTemplate = act({}, async ({ user, workspace, payload }, fd) => {
   const wsId = inWorkspace({ workspace })
   only(user)

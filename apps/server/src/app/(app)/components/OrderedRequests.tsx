@@ -5,13 +5,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { orderRequests } from '../lib/actions'
 
-/** `ticket`/`product` identify the row for the order; `movable`: the viewer's own request (others' rows stay where the board puts them). */
 export type OrderedItem = { session: number; ticket: number | null; product: number; movable: boolean; node: ReactNode; title: string }
 
-/**
- * "In the factory": the person's own requests can be ordered by drag or with Move up / Move down (the keyboard path). The order is their priority among their own requests of one Product:
- * the list saves the new order of that Product's own rows, and `orderOwnRequests` lets their Tickets trade places only; nothing else on the board moves.
- */
 export function OrderedRequests({ items }: { items: OrderedItem[] }) {
   const router = useRouter()
   const [order, setOrder] = useState(items)

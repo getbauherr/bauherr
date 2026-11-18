@@ -2,10 +2,6 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/**
- * What a Product owner sees (people slice 2): everything is filtered by the assignment in `lib/people.ts`, and what is not theirs answers as if it did not exist.
- * Workspace a has products a1 (assigned) and a2; Workspace b has b1.
- */
 const session = vi.hoisted(() => ({ cookie: '' }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ cookie: session.cookie }), cookies: async () => ({ get: () => undefined, set: () => {}, delete: () => {} }) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))

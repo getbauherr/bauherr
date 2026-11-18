@@ -10,21 +10,17 @@ export type Bar = { label: string; spent: number | null; limit: number }
 export type CostRow = { label: string; costUsd: number; estimate: boolean; unpriced: number; number?: number; id?: number }
 export type Usage = {
   unit: 'usd' | 'tokens'
-  /** One bar for the Workspace key, or Direct + Auto while a router Connection exists. */
   bars: Bar[]
   providers: { name: string; preset: string; secret: 'set' | 'not set' | 'not needed' }[]
   tiers: { tier: string; model: string }[]
   costs: { product: CostRow[]; ticket: CostRow[]; stage: CostRow[] }
-  /** Workspace slug whose USD spend `loadSpendUsd` reads from the gateway; null when there is none to read (token mode, no gateway). */
   spendOf: string | null
 }
 
 const TIERS = ['cheap', 'standard', 'strong'] as const
 
-/** The Workspace key's USD spend of the last 30 days from the gateway database; null when it cannot be read within 3 s. The only external read of the page: stream it. */
 export const loadSpendUsd = (slug: string): Promise<number | null> => within(budgetStatus(slug), FORGE_TIMEOUT_MS).then((b) => b.spentUsd, () => null)
 
-/** Everything the AI usage page shows from the database; secrets only ever reach this function as a boolean. */
 export async function loadUsage(workspace: number): Promise<Usage> {
   const payload = await payloadClient()
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { gatewayKey: false }, ...o } as never)) as unknown as Record<string, any>

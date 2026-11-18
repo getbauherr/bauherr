@@ -10,13 +10,11 @@ const FIELD_PATTERNS: Partial<Record<(typeof PRESET_FIELDS)[number], RegExp>> = 
   azureClient: GUID,
 }
 
-/** Names of preset fields whose value is set but malformed; they end up in the gateway baseUrl and auth config. */
 export const invalidFields = (config: Cfg | null | undefined): string[] =>
   Object.entries(FIELD_PATTERNS).filter(([k, re]) => config?.[k] != null && config[k] !== '' && !re.test(config[k] as string)).map(([k]) => k)
 
 export type IamSecret = { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
 
-/** Parses a bedrock-iam secret; null when malformed. Never surfaces the parser message (it embeds input). */
 export const parseIamSecret = (secret: string): IamSecret | null => {
   try {
     const v = JSON.parse(secret)
@@ -31,18 +29,14 @@ export const parseIamSecret = (secret: string): IamSecret | null => {
 const custom = (type: 'messages' | 'completions', providerOverride?: string) => ({ custom: { formats: [{ type }], ...(providerOverride && { providerOverride }) } })
 
 type Def = {
-  /** `file`: secret in a 0600 file next to the config; `inline`: secret rendered into config.yaml; `ambient`: no secret, the gateway's own cloud identity. */
   auth: 'file' | 'inline' | 'ambient'
   required: string[]
   secret: { ext: 'key' | 'json'; hint: string }
-  /** Ships a USD price catalog; otherwise the Workspace budget is in tokens. */
   catalog: boolean
   defaultModels: Record<Tier, string> | null
-  /** `slug` is `<workspace>/<connection>` (entry `ws-<workspace>/<connection>/*`); `secret` is the decrypted secret, passed for `inline` presets only. */
   render: (slug: string, cfg: Cfg, file: string, secret?: string) => Record<string, unknown>
 }
 
-/** Headers a gateway key can arrive in; every model entry removes them so the key never reaches a provider. */
 export const KEY_HEADERS = ['x-agw-key', 'x-api-key', 'x-goog-api-key']
 
 const entry = (slug: string, provider: unknown, params: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({

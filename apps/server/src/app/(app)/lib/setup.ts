@@ -8,7 +8,6 @@ export * from './setup-steps'
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true, pagination: false } as const
 
-/** Database-only facts of a Workspace's setup, a handful of small queries: the page and the sidebar chip both use it. */
 export async function loadSetup(workspace: number) {
   const payload = await payloadClient()
   const where = { workspace: { equals: workspace } }

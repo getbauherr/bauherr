@@ -47,18 +47,15 @@ import { kindOfRun } from '../lib/stage-text'
 import { byKind, is, nameOf, roleOfRun, stage as stageDef, type Kind, type Workflow } from '../lib/workflow'
 
 export const ACTIVE = ['queued', 'awaiting_session', 'running']
-/** The lease of a session Run lasts this long after its last heartbeat. */
 export const SESSION_TIMEOUT_MS = 30 * 60_000
 export { stageOf }
 
-/** Decision D2. Fallback only: pack/factory.yaml (`exclude_labels` of the triage stage) is the source; a pack that yields none must not open Triage to these kinds. */
 const D2_EXCLUDED = ['wayfinder:map', 'wayfinder:grilling', 'wayfinder:research', 'bauherr:security-scan', DOCS_CHECK_LABEL]
 export const excludedLabels = (wf: Workflow, stages: { name?: string; kind?: string; exclude_labels?: string[] }[] = packed(wf)): string[] => {
   const list = stages.find((s) => s.kind === 'triage')?.exclude_labels
   return list?.length ? list : D2_EXCLUDED
 }
 
-/** Whether Triage covers the Ticket: open, unassigned, no stage label, not on hold, none of the `exclude_labels` of the triage stage in pack/factory.yaml. */
 export const triageable = (wf: Workflow, t: { state: string; labels: string[]; assignee?: string | null }, exclude = excludedLabels(wf)): boolean =>
   t.state === 'open' && !t.assignee && !stageOf(wf, t.labels) && !t.labels.includes(NEEDS_REFINEMENT) && !t.labels.some((l) => exclude.includes(l))
 
@@ -75,17 +72,12 @@ const findLlmProvider = async (payload: Payload, workspace: unknown) =>
     })
   ).docs[0]
 
-/**
- * `startRunIfNeeded` for a Ticket that may be parked in `stage` (the owner's Retry of its stopped Run): it takes its slot back first (`rejoin`). With the column full it waits for it,
- * no Run starts and the result is null; `pullWaiting` starts the Run when a slot frees.
- */
 export const startRunOrRejoin = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string, extra: Record<string, unknown> = {}) => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket.id, depth: 0, overrideAccess: true })) as Record<string, any>
   if (t.parkedNeed && t.stage === stage && (await rejoin(payload, t)) === 'waiting') return null
   return startRunIfNeeded(payload, ticket, stage, extra)
 }
 
-/** Queues a Run for the Ticket unless one is already active for that stage (then returns it, `created: false`). Atomic via the `runs_active_per_ticket_stage` index: Payload surfaces its 23505 as a ValidationError, so a failed create with an active Run now present means a concurrent start won. */
 export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | string; workspace?: unknown }, stage: string, extra: Record<string, unknown> = {}, req?: Partial<PayloadRequest>) => {
   const findActive = async () =>
     (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: ticket.id } }, { stage: { equals: stage } }, { job: extra.job ? { equals: extra.job } : { exists: false } }, { status: { in: ACTIVE } }] }, limit: 1, depth: 0, overrideAccess: true, req })).docs[0]
@@ -110,15 +102,11 @@ export const startRunIfNeeded = async (payload: Payload, ticket: { id: number | 
   return { run, created: true }
 }
 
-/** New Triage Runs per Workspace per poll; the rest wait for the next poll. */
 export const TRIAGE_PER_POLL = 5
-/** Triage attempts (failed, invalid or expired included) per Ticket state before Bauherr stops and says so. */
 export const MAX_TRIAGE_ATTEMPTS = 3
 
-/** Forgets what Triage covered, so the next poll triages the Ticket again. */
 export const untriage = (payload: Payload, ticket: number | string) => payload.update({ collection: 'tickets', id: ticket, data: { triagedAt: null }, overrideAccess: true })
 
-/** `untriage` for the end of a Run: a failure is logged and never masks the Run's own outcome. */
 const untriageLogged = async (payload: Payload, ticket: number | string) => {
   try {
     await untriage(payload, ticket)
@@ -127,7 +115,6 @@ const untriageLogged = async (payload: Payload, ticket: number | string) => {
   }
 }
 
-/** After MAX_TRIAGE_ATTEMPTS: one Comment, then the Ticket counts as covered until it changes (the Comment's own `updatedAt` is recorded). */
 const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
   try {
     const { tickets: ts } = await forgeOf(payload, id(t.product))
@@ -140,12 +127,6 @@ const giveUpTriage = async (payload: Payload, t: Record<string, any>) => {
   }
 }
 
-/**
- * Starts a Triage Run (at most TRIAGE_PER_POLL per Workspace) for each open Ticket that is triageable and not yet covered at its current `sourceUpdatedAt`;
- * a skipped or held Ticket is triaged again only when it changes. Candidates are ordered by last attempt (never tried first), so a backlog rotates;
- * each new Run counts as an attempt, reset when the Ticket changes. Works from the stored Tickets, so a capped or untriaged Ticket is picked up by the next poll.
- */
-/** Returns how many Tickets it acted on (Runs started plus Tickets given up on). */
 export const triageSweep = async (payload: Payload): Promise<number> => {
   const open = await payload.find({ collection: 'tickets', where: { and: [{ state: { equals: 'open' } }, { stage: { exists: false } }, await inLiveWorkspace(payload)] }, sort: 'createdAt', pagination: false, depth: 0, overrideAccess: true })
   const last = (t: Record<string, any>) => (t.triageAttemptAt ? new Date(t.triageAttemptAt).getTime() : 0)
@@ -175,17 +156,11 @@ export const triageSweep = async (payload: Payload): Promise<number> => {
   return started
 }
 
-/** A fix round granted at the review round cap is reviewed on the strong tier too. */
 export const reviewExtra = async (payload: Payload, t: Record<string, any>): Promise<Record<string, unknown>> => {
   const build = (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { kind: { equals: 'build' } }] }, sort: '-id', limit: 1, depth: 0, overrideAccess: true })).docs[0]
   return build?.escalation?.reason === REVIEW_CAP_REASON ? { escalation: build.escalation } : {}
 }
 
-/**
- * Starts the review of a Ticket in review that has an open factory MR and no review verdict state yet.
- * A review stage without Jobs starts its Review Run. With Jobs: the head moved since the visit's own Review Run concluded, so a new visit starts and all Jobs run again;
- * else an own Run that exists in the visit runs again alone (invalid output, a restart), else the Jobs that are ready start.
- */
 export const startReviewIfReady = async (payload: Payload, t: Record<string, any>): Promise<{ created: boolean; run?: Record<string, any> } | null> => {
   const wf = workflowFor(t.workspace)
   if (!is(wf, t.stage, 'review') || t.state !== 'open' || t.parked || t.reviewState || t.waitingFor) return null
@@ -210,15 +185,8 @@ export const startReviewIfReady = async (payload: Payload, t: Record<string, any
   return { created: await startReadyJobs(payload, t) }
 }
 
-/** Reason prefix of a human force-release; such a predecessor does not count toward the 2x escalation. */
 export const RELEASED_BY = 'released by '
 
-/**
- * Ends a leased session Run, or a Runner Run that stopped for a hotfix, as `abandoned` and queues a successor Run (same Ticket, stage, mode, Workspace; `previousRun` set; a Runner successor also gets its `run-stage` job), in one transaction.
- * With `escalate`, a Run whose predecessor was also abandoned (not by a human release) goes `needs_human` instead (no successor, Ticket Comment).
- * The end is a conditional UPDATE (running, and with `staleBefore` still stale), so a heartbeat or finish that won the race keeps the Run.
- * Returns the new status, or null if the Run was not (stale and) running.
- */
 export const abandonRun = async (
   payload: Payload,
   run: Record<string, any>,
@@ -227,7 +195,6 @@ export const abandonRun = async (
   const prev = o.escalate && !o.preempted && run.previousRun ? await payload.findByID({ collection: 'runs', id: id(run.previousRun), depth: 0, overrideAccess: true }) : null
   const status = prev?.status === 'abandoned' && prev.reasonKind !== 'preempted' && !String(prev.error ?? '').startsWith(RELEASED_BY) ? 'needs_human' : 'abandoned'
   const error = status === 'needs_human' ? 'session lease expired twice in a row' : o.reason
-  // The successor is the strong retry (ladder step 2); an investigation Run stays one. A preempted Run's successor keeps the tier it had.
   const escalation = run.escalation ?? (o.preempted || run.investigation || ['triage', 'scan', 'docs'].includes(kindOfRun(workflowFor(run.workspace), run) ?? '') ? null : { step: 2, reason: o.reason, previousRuns: [run.id] })
   const reasonKind = status === 'needs_human' ? 'stuck' : o.preempted ? 'preempted' : null
   const stale = o.staleBefore ? sql` AND "heartbeat_at" < ${o.staleBefore}` : sql``
@@ -237,7 +204,6 @@ export const abandonRun = async (
       sql`UPDATE "runs" SET "status" = ${status}, "error" = ${error}, "reason_kind" = ${reasonKind}::"enum_runs_reason_kind", "finished_at" = now(), "lease_hash" = NULL, "session_owner_id" = NULL, "updated_at" = now() WHERE "id" = ${run.id} AND "status" = 'running'${stale} RETURNING "id"`,
     )
     if (!done.rows.length) return false
-    // The ended Run left the active set, so the `runs_active_per_ticket_stage` index admits the successor.
     if (status === 'abandoned') {
       const inserted = await tx.execute(
         sql`INSERT INTO "runs" ("ticket_id", "stage", "job", "role", "mode", "status", "workspace_id", "previous_run_id", "kind", "escalation", "investigation", "preempted_by", "preempted_for") VALUES (${id(run.ticket)}, ${run.stage}, ${run.job ?? null}, ${run.job ? run.role ?? null : null}, ${run.mode}, ${run.mode === 'session' ? 'awaiting_session' : 'queued'}, ${id(run.workspace)}, ${run.id}, ${kindOfRun(workflowFor(run.workspace), run) ?? null}, ${escalation ? JSON.stringify(escalation) : null}::jsonb, ${run.investigation ? JSON.stringify(run.investigation) : null}::jsonb, ${o.preempted ? run.preemptedBy ?? null : null}, ${o.preempted ? run.preemptedFor ?? null : null}) RETURNING "id"`,
@@ -269,15 +235,11 @@ export const abandonRun = async (
   return status
 }
 
-/** Above the longest legitimate tick: forge back-off waits up to MAX_WAIT_MS x 3 retries per call (15 min) and a reclaimed job keeps running, so an earlier reclaim would let a second instance duplicate side effects. */
 export const STALE_JOB_MS = 60 * 60_000
 
-/** Scheduled poller tasks, derived from `TASKS`; agent Runs (`run-stage`, `reconcile-costs`) have no schedule and are never listed. */
 export const scheduledSlugs = (): string[] => TASKS.filter((t) => t.schedule?.length).map((t) => t.slug)
-/** Every scheduled task with its cron line (seconds first). */
 export const scheduledTasks = (): { slug: string; cron: string }[] => TASKS.flatMap((t) => (t.schedule?.[0] ? [{ slug: t.slug, cron: t.schedule[0].cron }] : []))
 
-/** Adds every task slug to the two Payload job enums (idempotent), so a new task needs no `ALTER TYPE` migration. Runs on init; skips an enum that does not exist yet (schema not migrated, the migrations create it). */
 export const syncJobEnums = async (payload: Payload, slugs = TASKS.map((t) => t.slug)): Promise<void> => {
   for (const type of ['enum_payload_jobs_task_slug', 'enum_payload_jobs_log_task_slug']) {
     if (!(await payload.db.drizzle.execute(sql`SELECT to_regtype(${`public.${type}`}) AS t`)).rows[0]?.t) continue
@@ -285,7 +247,6 @@ export const syncJobEnums = async (payload: Payload, slugs = TASKS.map((t) => t.
   }
 }
 
-/** A scheduled job left `processing` with no update for `maxAgeMs` (default STALE_JOB_MS; killed worker, hung fetch; 0 at poller start, when no live process owns one) blocks its concurrency key forever: mark it failed so the schedule resumes. */
 export const reclaimStaleJobs = async (payload: Payload, now = Date.now(), maxAgeMs = STALE_JOB_MS): Promise<number> => {
   const rows = (
     await payload.db.drizzle.execute(
@@ -296,14 +257,8 @@ export const reclaimStaleJobs = async (payload: Payload, now = Date.now(), maxAg
   return rows.length
 }
 
-/** A running session Build Run is checked for a push once its heartbeat is this old, i.e. while its lease is still valid. */
 const PUSH_CHECK_AFTER_MS = (SESSION_TIMEOUT_MS * 2) / 3
 
-/**
- * A pushed branch is a sign of life. For running session Build Runs whose heartbeat is older than `PUSH_CHECK_AFTER_MS` but not expired yet, the head of the Run's branch (`bauherr/<ticket>-<run>`, else the head of the MR the Run carries in `artifacts.prUrl`) is compared with `last_seen_sha`; a different head renews the lease.
- * An expired lease is never revived here (a late owner still gets `lease lost`), and a forge error skips the Run for this sweep. A session that pushed once and then died gets one extra lease.
- * Returns how many leases were renewed.
- */
 const renewOnPushes = async (payload: Payload, now: number): Promise<number> => {
   const expired = new Date(now - SESSION_TIMEOUT_MS).toISOString()
   const checkBefore = new Date(now - PUSH_CHECK_AFTER_MS).toISOString()
@@ -332,7 +287,6 @@ const renewOnPushes = async (payload: Payload, now: number): Promise<number> => 
   return renewed
 }
 
-/** Session Runs: running ones without a heartbeat for SESSION_TIMEOUT_MS are abandoned (see `abandonRun`); unclaimed ones, Triage included, wait indefinitely (an expiring Triage Run used up the Ticket's triage attempts and dropped it from Triage). A Build Run that pushed to its branch is renewed before it expires (`renewOnPushes`). Returns how many were abandoned. */
 export const expireStaleSessions = async (payload: Payload, now = Date.now()): Promise<number> => {
   await renewOnPushes(payload, now)
   await preemptSweep(payload)
@@ -357,10 +311,6 @@ export const expireStaleSessions = async (payload: Payload, now = Date.now()): P
   return handled + (await forcePreempted(payload, now))
 }
 
-/**
- * Marked Runs that did not release within PREEMPT_GRACE_MS are ended as `preempted` (abandoned, successor, never escalated), but only while the hotfix still waits for a session and its Ticket is still expediting;
- * otherwise the mark is cleared and the victim keeps working. Returns how many it ended.
- */
 const forcePreempted = async (payload: Payload, now: number): Promise<number> => {
   const due = await payload.find({ collection: 'runs', where: { and: [{ mode: { equals: 'session' } }, { status: { equals: 'running' } }, { preemptAt: { less_than_equal: new Date(now - PREEMPT_GRACE_MS).toISOString() } }] }, pagination: false, depth: 0, overrideAccess: true })
   let ended = 0
@@ -380,7 +330,6 @@ const forcePreempted = async (payload: Payload, now: number): Promise<number> =>
   return ended
 }
 
-/** Second reclaimer: `expire-sessions` and this task reclaim each other, so a poller kill mid-run of either cannot leave a row `processing` forever. */
 export const reclaimJobs: TaskConfig<{ input: Record<string, never>; output: { reclaimed: number } }> = {
   slug: 'reclaim-jobs',
   schedule: scheduled('0 * * * * *'),
@@ -402,7 +351,6 @@ export const expireSessions: TaskConfig<{ input: Record<string, never>; output: 
   },
 }
 
-/** One scheduled task per watcher: separate DB jobs and concurrency keys, so a hung or failing watcher blocks no other. */
 const watcher = (slug: string, run: (payload: Payload) => Promise<unknown>): TaskConfig<{ input: Record<string, never>; output: Record<string, never> }> => ({
   slug,
   schedule: scheduled('0 * * * * *'),
@@ -429,7 +377,6 @@ export const resumeReviewsTask = watcher('resume-reviews', async (p) => {
 })
 export const watchReleaseTask = watcher('watch-release', (p) => watchRelease(p))
 
-/** Every 5 minutes: repairs Tickets that have no live Run, no wait and no need for the owner (see `lib/liveness.ts`). */
 export const watchLivenessTask: TaskConfig<{ input: Record<string, never>; output: { repaired: number } }> = {
   slug: 'watch-liveness',
   schedule: scheduled('0 */5 * * * *'),
@@ -442,7 +389,6 @@ export const watchLivenessTask: TaskConfig<{ input: Record<string, never>; outpu
   },
 }
 
-/** Every 30 seconds: stores the checks of each open factory MR on its Ticket (`lib/ci-summary.ts`). */
 export const storeCiSummaryTask: TaskConfig<{ input: Record<string, never>; output: { stored: number } }> = {
   slug: 'store-ci-summary',
   schedule: scheduled('*/30 * * * * *'),
@@ -467,7 +413,6 @@ export const publishReleaseTask: TaskConfig<{ input: Record<string, never>; outp
   },
 }
 
-/** Writes the progress Comment of one Ticket right after its state changed (queued by `record`); the only writer of a first Comment. The every-minute `notify-gates` sweep heals existing ones. */
 export const syncProgressTask: TaskConfig<{ input: { ticketId: number }; output: Record<string, never> }> = {
   slug: 'sync-progress',
   retries: 3,
@@ -511,10 +456,8 @@ export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output:
   },
 }
 
-/** Polls in which a Ticket's unverifiable gate label is retried before it waits for the next label change. */
 const MAX_GATE_ATTEMPTS = 30
 
-/** Plan gate off (or an expedite Ticket): advances every open Ticket in `plan` whose plan Run has succeeded; a failing Ticket does not stop the others. */
 const advancePlans = async (payload: Payload): Promise<void> => {
   const or: Where[] = (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.flatMap((w) => {
     const wf = workflowFor(w.id)
@@ -526,10 +469,8 @@ const advancePlans = async (payload: Payload): Promise<void> => {
   for (const t of tickets.docs) await advancePlan(payload, t).catch((e) => payload.logger.error({ err: e, ticket: t.id }, 'advancePlan failed'))
 }
 
-/** True while a blocker (loaded at depth 1) is not closed. */
 const hasOpenBlocker = (t: Record<string, any>): boolean => ((t.blockedBy as { state?: string }[] | undefined) ?? []).some((b) => b.state !== 'closed')
 
-/** Starts one Run for every open `plan`/`build` Ticket that never had a Run in its stage, has no open blocker and is assigned only to its gate assignees. Never re-runs a stage that already had a Run. */
 const startMissingRuns = async (payload: Payload): Promise<void> => {
   const or: Where[] = (await payload.find({ collection: 'workspaces', where: live, select: {}, pagination: false, depth: 0, overrideAccess: true })).docs.map((w) => {
     const wf = workflowFor(w.id)
@@ -584,7 +525,6 @@ export const watchKnowledgePrsTask: TaskConfig<{ input: Record<string, never>; o
   },
 }
 
-/** The forge is the truth for dependencies: the full `blockedBy` set (Ticket ids of the Product; a blocker not polled yet is ignored). A Ticket naming itself is ignored. Empty object on a read error, which keeps the stored set (the Ticket is read again the next time it changes on the forge). */
 const forgeBlockers = async (payload: Payload, forge: TicketSource, product: number | string, number: number): Promise<{ blockedBy?: (number | string)[] }> => {
   try {
     const blockedBy = (await forge.get(String(number))).blockedBy.filter((n) => n !== String(number))
@@ -612,7 +552,6 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
         const at = (n: string | null | undefined, ...k: Kind[]) => !!n && is(wf, n, ...k)
         const conn = await connectionInput(payload, src.connection)
         const { changes, next } = await backendFor(conn).tickets(src.repo).poll(src.cursor ?? null)
-        // Tickets whose gate label could not be verified yet are re-read on every poll, a bounded number of times.
         const stuck = await payload.find({
           collection: 'tickets',
           where: { and: [{ product: { equals: id(src.product) } }, { gatePendingAttempts: { greater_than: 0 } }, { gatePendingAttempts: { less_than: MAX_GATE_ATTEMPTS } }, { number: { not_in: changes.map((c) => c.number) } }] },
@@ -685,7 +624,6 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
             payload.logger.warn({ ticket: t.number, stage }, 'stage label restored from DB')
             try { await setStage(backendFor(conn).tickets(src.repo), String(t.number), prev.stage) } catch (e) { payload.logger.warn({ ticket: t.number, err: String(e) }, 'stage label repair failed') }
           }
-          // Stage guard (#196): a forward move the factory did not record is reverted to the DB stage; backward moves and first sight are accepted.
           let clearFactoryStage = false
           if (prev && stage && stage !== (prev.stage ?? triage)) {
             clearFactoryStage = true
@@ -710,7 +648,6 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
               }
             }
           }
-          // Derived event (spec §3): approval label + stage plan advances the Ticket to build, or to `parent` when its plan lists Sub-tickets.
           if (at(stage, 'plan') && t.state === 'open' && labels.includes(APPROVED_PLAN) && !(await holdsRefine(payload, { ...(prev ?? base), stage }, backendFor(conn).tickets(src.repo)))) {
             prev ??= await upsertTicket(payload, { ...base, sourceUpdatedAt: null, stage, rank: await lastRankAfter(payload, id(src.workspace)) }, null)
             if (await spawnSubTickets(payload, prev)) stage = ((await payload.findByID({ collection: 'tickets', id: prev.id, depth: 0, overrideAccess: true })) as Record<string, any>).stage
@@ -719,7 +656,6 @@ export const pollTickets: TaskConfig<{ input: Record<string, never>; output: { p
               if (moved.entered === 'moved') stage = moved.stage!
             }
           }
-          // Guard: unchanged pointers are not rewritten.
           if (!base.gatePendingAttempts && !prev?.gatePendingAttempts && prev && prev.sourceUpdatedAt && new Date(prev.sourceUpdatedAt).getTime() === new Date(t.updatedAt).getTime()) continue
           if (prev?.factoryStage && stage === prev.factoryStage) clearFactoryStage = true
           const data = {
@@ -796,7 +732,6 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       const { proof, ...stored } = ran.artifacts
       const r = { ...ran, artifacts: stored }
       await payload.db.drizzle.execute(sql`UPDATE "steps" SET "finished_at" = now() WHERE "run_id" = ${run.id} AND "finished_at" IS NULL`)
-      // Ended while it ran (sendBack, cancel): its result is dropped, the Run keeps the status it was given.
       const now = (await payload.findByID({ collection: 'runs', id: run.id, ...opts })).status as string
       if (now !== 'running') return { output: { status: now } }
       if (r.status === 'preempted') {
@@ -821,12 +756,10 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       }
       const replanned = kind === 'build' && r.status === 'succeeded' && (r.artifacts.agentOutcome as { outcome?: unknown } | undefined)?.outcome === 'replan' ? (r.artifacts.agentOutcome as { comment?: unknown }) : null
       let triage = null
-      // The Ticket is untriaged only after the Run's terminal update, so the next poll cannot start a Triage Run while this one is still active.
       let untriageAfter = kind === 'triage' && r.status === 'failed' && !!r.reason?.includes('triage.json')
       if (kind === 'triage' && r.status === 'succeeded') {
         triage = normalizeTriage(r.artifacts.triage)
       }
-      // A stopped Triage Run posts no Ticket Comment (it would bump the Ticket and reset the attempt count): the sweep retries it up to MAX_TRIAGE_ATTEMPTS.
       if (kind === 'triage' && (r.status === 'needs_human' || r.status === 'budget_exhausted')) untriageAfter = true
       else if (r.status === 'needs_human') {
         await backendFor(github).tickets(src.repo).comment(String(ticket.number), `Bauherr needs a human: ${r.reason ?? 'unmet Goal'}`)
@@ -872,7 +805,6 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
       if (kind === 'build' && r.status !== 'succeeded' && r.artifacts.mergeConflict && ticket.slice?.prev && !ticket.slice.head) await noteMergeFailure(payload, ticket).catch((e) => payload.logger.error({ err: e, ticket: ticket.id }, 'counting the merge failure failed'))
       if (kind === 'build' && r.status === 'succeeded' && ticket.epic) await tagFixes(payload, ticket, r.artifacts.pushedSha).catch((e) => payload.logger.warn({ err: e, ticket: ticket.id }, 'tagging epic fixes failed'))
       if (kind === 'build' && r.status === 'succeeded' && r.artifacts.prUrl) {
-        // The Runner moved the stage label already; the poller has not yet moved the Ticket, so do it here and start the review now.
         try {
           const reviewing = await payload.findByID({ collection: 'tickets', id: ticket.id, ...opts })
           if (!(await rebindReview(payload, reviewing))) await startReviewIfReady(payload, reviewing)
@@ -896,7 +828,6 @@ export const runStage: TaskConfig<{ input: { runId: number | string }; output: {
   },
 }
 
-/** An autonomous investigation Run ends with its `.bauherr/investigation.json`: record it; a question for the owner ends the Run `needs_human`. A bad file fails the Run. */
 export const concludeInvestigation = async (payload: Payload, ticket: Record<string, any>, run: Record<string, any>, input: unknown, model?: string) => {
   const fail = (error: string) => payload.update({ collection: 'runs', id: run.id, data: { status: 'failed', error }, overrideAccess: true })
   try {
@@ -962,7 +893,6 @@ export const pruneRequestLogsTask: TaskConfig<{ input: Record<string, never>; ou
   },
 }
 
-/** Every minute: probes the gateway (stored for the pages), attributes the session key's calls to sessions and Runs, prices what had no price. */
 export const watchGatewayTask: TaskConfig<{ input: Record<string, never>; output: { calls: number } }> = {
   slug: 'watch-gateway',
   schedule: scheduled('0 * * * * *'),
@@ -974,7 +904,6 @@ export const watchGatewayTask: TaskConfig<{ input: Record<string, never>; output
   },
 }
 
-/** Hourly check; fetches the price catalog at most once a day (a failed fetch is retried after an hour). */
 export const refreshPricesTask: TaskConfig<{ input: Record<string, never>; output: { models: number } }> = {
   slug: 'refresh-prices',
   schedule: scheduled('0 7 * * * *'),
@@ -996,7 +925,6 @@ export const pruneCommentMediaTask: TaskConfig<{ input: Record<string, never>; o
   },
 }
 
-/** Daily: hard-deletes every archived Workspace past its `purgeAt` (see `purgeWorkspace`); a failure is logged and retried the next day. */
 export const purgeWorkspacesTask: TaskConfig<{ input: Record<string, never>; output: { purged: number } }> = {
   slug: 'purge-workspaces',
   schedule: scheduled('0 0 4 * * *'),
@@ -1008,10 +936,8 @@ export const purgeWorkspacesTask: TaskConfig<{ input: Record<string, never>; out
   },
 }
 
-/** Products scanned per tick; the rest wait for the next hour. */
 export const SCANS_PER_TICK = 5
 
-/** Starts a scan Run for up to SCANS_PER_TICK enabled Products whose `securityScan.cron` fired since `lastScanAt` (or creation), oldest scan first; a Product whose Workspace budget is spent is skipped with a warning, and one whose start throws is logged and backed off (`lastScanAt` set). Returns the Runs created. */
 export const securityScanSweep = async (payload: Payload, now = new Date()): Promise<number> => {
   const products = (await payload.find({ collection: 'products', where: { and: [{ 'securityScan.enabled': { equals: true } }, await inLiveWorkspace(payload)] }, pagination: false, depth: 0, overrideAccess: true })).docs as Record<string, any>[]
   const since = (p: Record<string, any>) => new Date(p.securityScan?.lastScanAt ?? p.createdAt)
@@ -1036,7 +962,6 @@ export const securityScanSweep = async (payload: Payload, now = new Date()): Pro
       }
       if ((await startSecurityScan(payload, p.id)).created) started++
     } catch (e) {
-      // Back off: a Product that cannot start counts as scanned now, so it neither starves the others nor retries every hour.
       payload.logger.error({ err: e, product: p.id }, 'security scan start failed')
       await payload.update({ collection: 'products', id: p.id, data: { securityScan: { ...p.securityScan, lastScanAt: now.toISOString() } }, overrideAccess: true }).catch((err) => payload.logger.error({ err, product: p.id }, 'security scan back-off failed'))
     }

@@ -11,7 +11,6 @@ import { Button } from './ui/button'
 import { Separator } from './ui/separator'
 import { SidebarTrigger } from './ui/sidebar'
 
-/** Slim row above the page: sidebar trigger, breadcrumb, then the two actions that are the same on every page. */
 export function ShellHeader({ items, admin, setup, minimal, logout }: { items: Pick<NavItem, 'href' | 'label'>[]; admin: boolean; setup?: { complete: boolean }; minimal?: boolean; logout: () => Promise<void> }) {
   const path = usePathname()
   return (

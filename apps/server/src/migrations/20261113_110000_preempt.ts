@@ -1,6 +1,5 @@
 import { MigrateDownArgs, MigrateUpArgs, sql } from '@payloadcms/db-postgres'
 
-/** A hotfix pauses one busy session: `runs.preempted_by/_for/preempt_at`, reason kind `preempted`, `workspaces.preempt_for_hotfix`. */
 export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
   ALTER TYPE "public"."enum_runs_reason_kind" ADD VALUE IF NOT EXISTS 'preempted';

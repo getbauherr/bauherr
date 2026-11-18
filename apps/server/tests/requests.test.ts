@@ -73,7 +73,6 @@ describe('loadWorkbench', () => {
     expect((await requests.loadWorkbench(ws, admin(me))).needs.map((r) => r.ticket?.number).sort()).toEqual([41, 42])
     expect(mine.done.find((r) => r.ticket?.number === 44)?.status).toBe('Declined: Already possible with the export button')
     expect(mine.done.find((r) => r.ticket?.number === 43)).toMatchObject({ status: 'Done' })
-    // someone else's request: the requester's steps wait for "the requester", not "You"
     const other = Number((await payload.create({ collection: 'bauherren', data: { email: 'wb-other@example.com', password: 'x-pass-123', role: 'bauherr' }, ...o } as never)).id)
     await mkTicket(45, { stage: 'triage', needsYou: 'Answer questions', labels: [] })
     await mkSession(45, { user: other })

@@ -10,7 +10,6 @@ import { currentWorkspace, payloadClient } from '../../lib/session'
 import { isAdmin } from '../../lib/settings'
 import { withRoleSettings } from '../../lib/team'
 
-/** Admin: changes a role's model and agent cap by rewriting the Workspace's factory file and applying it (version note "Team: <role> model/agents"), so the file stays the single source. Lint findings come back as the error text. */
 export const saveRole = async (roleId: string, settings: RoleSettings): Promise<SaveResult> => {
   const { user, workspace } = await currentWorkspace()
   if (!isAdmin(user)) return { error: 'Only an Admin can change a role.' }
@@ -33,7 +32,6 @@ export const saveRole = async (roleId: string, settings: RoleSettings): Promise<
   }
 }
 
-/** The Admin's session of the selected Workspace by public id; null for anyone else or a foreign id. */
 const adminSession = async (publicId: string) => {
   const { user, workspace } = await currentWorkspace()
   if (!isAdmin(user) || !workspace) return null
@@ -42,7 +40,6 @@ const adminSession = async (publicId: string) => {
   return session ? { payload, user, workspace, session: session as Record<string, any> } : null
 }
 
-/** Admin: ends the session; the Runs it holds go back to the queue. */
 export const disconnectSession = async (publicId: string): Promise<SaveResult> => {
   const a = await adminSession(publicId)
   if (!a) return { error: 'Only an Admin can disconnect an agent.' }
@@ -53,7 +50,6 @@ export const disconnectSession = async (publicId: string): Promise<SaveResult> =
   revalidatePath('/team')
 }
 
-/** Admin: force-releases the lock of the session's running Run (the session is gone or silent). */
 export const releaseSessionLock = async (publicId: string): Promise<SaveResult> => {
   const a = await adminSession(publicId)
   if (!a) return { error: 'Only an Admin can release a lock.' }

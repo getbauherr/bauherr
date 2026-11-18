@@ -17,7 +17,6 @@ const load = () =>
     engine: createJavaScriptRegexEngine(),
   }))
 
-/** One fenced block (its grammar is fetched on first use, from the small set in `LANGS`), tokenised with one light and one dark theme (colours switch by CSS variable, see `shikiCss`). Loaded only when a message contains a code block. */
 const Highlight: FC<{ code: string; language: string }> = ({ code, language }) => {
   const [html, setHtml] = useState<string | null>(null)
   const lang = LANGS.find((l) => l === language) ?? ALIASES[language]

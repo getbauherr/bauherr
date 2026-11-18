@@ -7,8 +7,6 @@ import { test } from 'node:test';
 import { UI_PROOF_RULE, runStage, withProofDefaults } from '../src/index.js';
 import { makeBareRepo, makeCtx, startStubGateway, type StubTool } from './helpers.js';
 
-// Drives the real bundled Claude Code binary against a stub gateway (no LLM). The stub never edits
-// goal.json, so the Stop hook must block once and then end the Run needs_human.
 test('runStage via proxy: key injected upstream, Stop hook blocks once then needs_human', { timeout: 120_000 }, async () => {
   const gw = await startStubGateway('I am done.');
   const ctx = makeCtx({ gatewayUrl: gw.url, gitBaseUrl: makeBareRepo(), stage: 'plan' });
@@ -75,7 +73,6 @@ test('runStage build with mergeBase: a clean merge of main is pushed with no age
 
 const bare = (ctx: { connection: { gitBaseUrl?: string } }) => `${ctx.connection.gitBaseUrl!.replace('file://', '')}/o/n.git`;
 
-/** A build whose scripted agent writes `lines` lines to src/a.ts; the self-review pass reports `findings`; a fix pass writes src/fixed.ts. */
 const buildRun = async (lines: number, findings: object[], reviewChecks?: object, onBuild?: (cwd: string) => void) => {
   const writes = (path: string, content: string): StubTool => ({ name: 'Write', input: { file_path: path, content } });
   const gw = await startStubGateway('done', 0, false, (model, prompt, cwd) =>
@@ -238,7 +235,6 @@ test('runStage build: a base that moved past the shallow fetch still diffs again
   }
 });
 
-/** An investigation Plan Run whose scripted agent runs `command` in the clone (the Stop hook needs the Goal verified, so each script writes goal.json too). */
 const investigationRun = async (files: { investigation?: string; plan?: string }) => {
   const goal = `printf '%s' '[{"text":"g","status":"verified","evidence":"e"}]' > .bauherr/goal.json`;
   const put = (name: string, body: string) => `printf '%s' '${body}' > ${name}`;
@@ -316,7 +312,6 @@ test('runStage build: a rule whose command makes no proof ends needs_human namin
   }
 });
 
-/** A build whose scripted agent writes src/a.ts and, host side, `epicWorklog` into the clone's .bauherr/epic-worklog.md. */
 const epicBuild = async (epicWorklog: string) => {
   const gw = await startStubGateway('done', 0, false, (_m, prompt, cwd) => {
     if (!prompt.includes('Build Run')) return undefined;

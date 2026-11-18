@@ -11,9 +11,7 @@ import { byKind, heldStages, title, wipStages } from './workflow'
 type Doc = Record<string, any>
 const o = { depth: 1, overrideAccess: true, pagination: false } as const
 
-/** A Ticket as a hold names it: where it is, and the link to it. */
 export type HoldTicket = { id: number; number: number; href: string }
-/** A shared hold of a Workspace: what is held, who or what holds it, who waits, and a link to the cause. `href` is the Ticket, the Board filtered to the stage, or the Agent team page with the role preselected. */
 export type Hold = { text: string; waiting: HoldTicket[]; href: string } & (
   | { kind: 'fast-lane'; holder: HoldTicket }
   | { kind: 'wip'; stage: string; count: number; limit: number }
@@ -25,10 +23,6 @@ export type Hold = { text: string; waiting: HoldTicket[]; href: string } & (
 const ref = (t: Doc): HoldTicket => ({ id: t.id, number: t.number, href: `/tickets/${t.id}` })
 const OVERLAP = /^overlaps #(\d+)$/
 
-/**
- * The shared holds that stop work in `workspace`, derived from current state (nothing is stored): the fast lane held by an expedite Ticket, a full WIP column,
- * Tickets parked on a need outside an approval (a column's open Tickets that wait for the owner and take no slot), a Build held for shared paths, and a role with Runs waiting and no connected agent. A hold with nobody waiting for it is not listed.
- */
 export const holdsOf = async (payload: Payload, workspace: number | string): Promise<Hold[]> => {
   const wf = workflowFor(workspace)
   const holds: Hold[] = []

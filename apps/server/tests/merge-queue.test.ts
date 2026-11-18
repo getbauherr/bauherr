@@ -43,14 +43,12 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** Every test starts with an empty queue and no queued Ticket of an earlier test. */
 beforeEach(async () => {
   for (const p of await fake.forge.listPullRequests(repo, 'all')) await fake.forge.dequeuePullRequest(repo, p.number)
   await payload.db.drizzle.execute((await import('@payloadcms/db-postgres')).sql`UPDATE "tickets" SET "review_state" = NULL, "state" = 'closed' WHERE "review_state" = 'queued'`)
 })
 
 const reload = async (id: number) => (await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>
-/** A review Ticket with an open factory MR, green checks and a succeeded Review Run on the MR head. */
 const seed = async () => {
   const issue = await fake.tickets(repo).create({ title: 'queue me', labels: ['bauherr:stage:review'] })
   const t = await payload.create({ collection: 'tickets', data: { title: 'queue me', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'review', product: queueProduct, workspace: ws }, ...o })
@@ -99,7 +97,6 @@ it('a merge by the queue moves the Ticket to release with the merge sha of the P
   expect(fake.advanceQueue(repo)).toBe(pr.number)
   expect(await actions.watchQueued(payload)).toBe(1)
   expect((await reload(id)).reviewState).toBe('merged')
-  // a queue merge queues the skill distillation like the direct gate's merge (#41)
   expect(await payload.count({ collection: 'payload-jobs' as never, where: { concurrencyKey: { equals: `distill:${id}` } } as never, overrideAccess: true })).toMatchObject({ totalDocs: 1 })
   expect(await release.watchRelease(payload)).toMatchObject({ released: 1 })
   expect(await reload(id)).toMatchObject({ stage: 'release', mergeSha: (await fake.forge.getPullRequest(repo, pr.number)).mergeSha })

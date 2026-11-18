@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { give, PNG } from './paste'
 import { email } from './user'
+import { pickRow } from './inbox-row'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -40,12 +41,11 @@ const shoot = async (page: Page, name: string, viewports = [{ width: 1440, heigh
   await page.setViewportSize(viewports[0]!)
 }
 
-// Own seeded Ticket (#41, Triage hold with one question).
 test('the Inbox card opens the conversation; the recommended answer resolves the question, sending it on drops the card and the Inbox count', async ({ page }) => {
   await login(page)
   await page.goto('/inbox')
   const before = await badge(page)
-  await page.getByTestId('inbox-row').filter({ hasText: 'Name the export file' }).click()
+  await pickRow(page, 'Name the export file')
   const card = page.locator('article[data-decision]').filter({ hasText: 'Name the export file' })
   await card.getByRole('link', { name: 'Answer questions' }).click()
   await expect(dock(page)).toBeHidden()

@@ -25,7 +25,6 @@ export async function up({ db, payload }: MigrateUpArgs): Promise<void> {
   WHERE s.workspace_id = w.id AND NOT (coalesce(w."model_by_tier", '{}'::jsonb) ?& ARRAY['cheap','standard','strong']);
   CREATE UNIQUE INDEX IF NOT EXISTS "workspace_slug_idx" ON "connections" ("workspace_id", "slug");`)
   if (!gatewayEnabled()) return
-  // Provider files are now per Connection (`ws-<workspace>.<connection>.<ext>`). Frozen SQL: only columns that exist at this migration.
   const { rows } = await db.execute(sql`SELECT c.slug, c.secret, c.config, w.slug AS ws FROM connections c JOIN workspaces w ON w.id = c.workspace_id WHERE c.kind = 'llm-provider'`)
   try {
     for (const c of rows as { slug: string | null; secret: string | null; config: never; ws: string | null }[]) {
@@ -37,9 +36,6 @@ export async function up({ db, payload }: MigrateUpArgs): Promise<void> {
   } catch (e) {
     payload.logger.error(`connection_slugs: provider files not rewritten (${(e as Error).message}); save any llm-provider Connection to rewrite them`)
   }
-  // No renderModels here: it runs today's app code, which reads later columns, and a failed Payload query rolls back the migration's
-  // transaction (`killTransaction`); with its own request it would wait on this migration's table locks. Every install past v0.2.0 ran this
-  // already and a fresh one has no Connection to render; saving an llm-provider Connection renders the gateway config.
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {

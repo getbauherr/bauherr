@@ -5,7 +5,6 @@ import { email } from './user'
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-// Read-only: no key is created and no price refresh is started (that would call the internet).
 
 const signIn = async (page: Page, who = email) => {
   await page.goto('/login')

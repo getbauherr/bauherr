@@ -10,7 +10,6 @@ let startedAt = ''
 const o = { overrideAccess: true } as const
 const DAY = 86_400_000
 const ago = (d: number) => new Date(Date.now() - d * DAY).toISOString()
-/** Fires every minute, so any scan older than a minute is due. */
 const EVERY_MINUTE = '0 * * * * *'
 const NEVER_SOON = '0 0 0 1 1 *'
 

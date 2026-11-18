@@ -31,7 +31,6 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   CREATE INDEX "bauherren_rels_products_id_idx" ON "bauherren_rels" USING btree ("products_id");`)
 }
 
-/** Product owner accounts cannot exist without their role value: they are removed (the safe direction), then the enum is rebuilt without it. */
 export async function down({ db }: MigrateDownArgs): Promise<void> {
   await db.execute(sql`
   DELETE FROM "bauherren" WHERE "role" = 'product-owner';

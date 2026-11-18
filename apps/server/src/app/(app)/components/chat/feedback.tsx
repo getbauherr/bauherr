@@ -9,7 +9,6 @@ import { ThumbsDown, ThumbsUp } from './icons'
 export const REASONS = ['Wrong', 'Incomplete', 'Too long', 'Did not do what I asked', 'Other']
 const btn = 'inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground'
 
-/** Thumbs up sends at once; thumbs down opens reason chips and a note. Both go through the runtime's FeedbackAdapter. */
 export const FeedbackButtons: FC = () => {
   const aui = useAui()
   const rated = useAuiState((s) => s.message.metadata.submittedFeedback?.type)

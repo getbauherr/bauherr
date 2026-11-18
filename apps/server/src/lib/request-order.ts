@@ -4,11 +4,6 @@ import type { Payload } from 'payload'
 type Doc = Record<string, any>
 const idOf = (v: unknown): number => Number(v && typeof v === 'object' ? (v as Doc).id : v)
 
-/**
- * The person's priority among their own open requests of one Product: `ticketIds` is the order they want. Their Tickets keep the set of rank values they already hold and only trade places,
- * so no other Ticket moves and a Bauherr's order of everything else stays as it is; a Bauherr who drags a Ticket on the Workflow list afterwards simply writes a newer rank, so the Bauherr's last word wins.
- * Throws when a Ticket is not an open one of the person's own sent requests in this Workspace, the Tickets are of different Products, or one has no rank yet.
- */
 export const orderOwnRequests = async (payload: Payload, user: { id: number | string }, workspace: number, ticketIds: number[]): Promise<void> => {
   if (new Set(ticketIds).size !== ticketIds.length || ticketIds.length < 2) return
   const o = { overrideAccess: true, depth: 0, pagination: false } as const

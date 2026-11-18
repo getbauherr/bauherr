@@ -2,11 +2,9 @@ import { personOf } from '../../../lib/person'
 import { getBauherr, payloadClient, WS_COOKIE } from './session'
 import { cookies } from 'next/headers'
 
-/** Request headers that cross the proxy; everything else (Cookie, Authorization, session and forwarding headers) stays behind. */
 const FORWARD = ['accept', 'accept-language', 'content-type', 'range', 'if-none-match', 'if-modified-since']
 const DROP_RESPONSE = ['set-cookie', 'content-encoding', 'content-length', 'transfer-encoding', 'connection']
 const HEADERS_TIMEOUT_MS = 10_000
-/** Proxied pages run as an opaque origin (no `allow-same-origin`): a script injected upstream cannot read Bauherr cookies or call Bauherr's API as the Admin (#469). Appended, so an upstream CSP still applies too. */
 export const SANDBOX = 'sandbox allow-scripts allow-forms'
 const isolate = (h: Headers): Headers => {
   h.append('content-security-policy', SANDBOX)
@@ -22,7 +20,6 @@ type Target = { name: string; url: string | undefined; hint: string; writes: boo
 const SECRETISH = /key|secret|token|passw|authoriz|credential/i
 const MASK = '[hidden]'
 
-/** Hides what must not reach the browser: every value of a `requestHeaderModifier` set/add map (the saved OTLP auth header lives there) and every string whose key looks like a secret. */
 export const redactSecrets = (v: unknown, at: 'top' | 'modifier' | 'headers' = 'top'): unknown => {
   if (Array.isArray(v)) return v.map((x) => redactSecrets(x, at))
   if (!v || typeof v !== 'object') return v
@@ -34,10 +31,6 @@ export const redactSecrets = (v: unknown, at: 'top' | 'modifier' | 'headers' = '
   )
 }
 
-/**
- * Admin-only reverse proxy to a native UI. Anyone but an Admin gets a plain 404 (the route's existence stays hidden).
- * Only GET and HEAD pass unless `target.writes`; a write that passes is recorded in `human_touches` first, and refused when it cannot be recorded.
- */
 export async function proxyAdmin(req: Request, target: Target, path: string[] = []): Promise<Response> {
   const user = await getBauherr()
   if (user?.role !== 'admin') return new Response('Not found', { status: 404 })
@@ -79,7 +72,6 @@ export async function proxyAdmin(req: Request, target: Target, path: string[] = 
 
 let probe: { at: number; up: boolean } | undefined
 
-/** Whether Jaeger answers (the `observability` profile is on); a HEAD probe cached for 60 s. */
 export async function tracesUp(base = process.env.JAEGER_URL ?? JAEGER_DEFAULT): Promise<boolean> {
   if (probe && Date.now() - probe.at < 60_000) return probe.up
   const up = await fetch(new URL(`${TRACES_PREFIX}/`, base), { method: 'HEAD', signal: AbortSignal.timeout(2000) }).then((r) => r.ok, () => false)
@@ -89,5 +81,4 @@ export async function tracesUp(base = process.env.JAEGER_URL ?? JAEGER_DEFAULT):
 
 export const JAEGER_DEFAULT = 'http://jaeger:16686'
 export const TRACES_PREFIX = '/-/traces'
-/** The traces UI Settings > Connections saved (`saved`), else Jaeger's own loopback origin: its UI cannot run inside the sandboxed proxy (assets load cross-origin from `null`), so the link opens it there (#469). */
 export const tracesUrl = (saved?: string): string => saved || process.env.JAEGER_PUBLIC_URL || `http://127.0.0.1:16686${TRACES_PREFIX}/`

@@ -1,4 +1,3 @@
-/** Mean and median `reviewRounds` of merged Tickets, before and after a cutoff date: `tsx scripts/review-rounds.ts --since 2026-11-05`. Merged = has a `mergeSha`; dated by `releaseAt`. */
 export type RoundRow = { reviewRounds: number | null; releaseAt: string | null }
 
 const stats = (rows: RoundRow[]) => {

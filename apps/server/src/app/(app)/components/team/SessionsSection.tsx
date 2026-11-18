@@ -5,7 +5,6 @@ import { LIST_SCROLL } from './AgentNav'
 
 const KEY = 'bauherr:team-show-disconnected'
 
-/** The Sessions list: `rows` are always shown, `disconnected` only behind the toggle (its state survives the 5 s refresh and, in `sessionStorage`, a visit to an agent page and Back). */
 export function SessionsSection({ workspaceId, rows, disconnected, count }: { workspaceId: number | string; rows: ReactNode[]; disconnected: ReactNode[]; count: number }) {
   const key = `${KEY}:${workspaceId}`
   const [show, setShow] = useState(false)

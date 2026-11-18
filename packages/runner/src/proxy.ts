@@ -4,7 +4,6 @@ import type { AddressInfo } from 'node:net';
 
 export type Proxy = { url: string; close(): Promise<void> };
 
-/** Localhost forwarder to the gateway that injects the key; bodies are piped untouched. */
 export async function startProxy(o: { gatewayUrl: string; gatewayKey: string; runId: string; stage: string; product?: string; ticket?: string; onBudgetExceeded?: () => void }): Promise<Proxy> {
   const target = new URL(o.gatewayUrl);
   const send = target.protocol === 'https:' ? httpsRequest : httpRequest;

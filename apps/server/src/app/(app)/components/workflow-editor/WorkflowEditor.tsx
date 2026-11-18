@@ -35,7 +35,6 @@ const safe = <T,>(fn: () => T): T | undefined => {
   }
 }
 
-/** The workflow editor: one draft (the factory file as text) shown as a flow or as YAML; nothing is live until Review changes, Apply. */
 export function WorkflowEditor({ data, initialTab }: { data: EditorData; initialTab: Tab }) {
   const router = useRouter()
   const [yaml, setYaml] = useState(data.base)

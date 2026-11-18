@@ -19,7 +19,6 @@ export const fail = (error: string, status: number): Response => Response.json({
 const cookie = (req: Request, name: string): string | undefined =>
   req.headers.get('cookie')?.split(/;\s*/).map((c) => c.split('=')).find(([k]) => k === name)?.slice(1).join('=')
 
-/** The signed-in person and their current Workspace (the `bauherr-ws` cookie, checked against their memberships; the first one without it), or a 401/404 Response. `owner`: a Product owner may call it too, in a Workspace they are assigned in (only the refinement turn route opens it). */
 export const chatWho = async (req: Request, opts: { owner?: boolean } = {}): Promise<Who | Response> => {
   const payload = await getPayload({ config })
   await loadWorkflows(payload)
@@ -34,7 +33,6 @@ export const chatWho = async (req: Request, opts: { owner?: boolean } = {}): Pro
   return w ? { payload, user: u, workspace: w.id } : fail('no workspace', 404)
 }
 
-/** One JSON object per line; a client abort closes the generator. */
 export const ndjson = (events: AsyncGenerator<ChatEvent>): Response => {
   const enc = new TextEncoder()
   return new Response(

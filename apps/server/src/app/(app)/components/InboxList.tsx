@@ -7,7 +7,6 @@ import { Zap } from './icons'
 
 const exact = (iso: string) => `${new Date(iso).toISOString().slice(0, 16).replace('T', ' ')} UTC`
 
-/** One decision: two lines, one link. Unread dot (with text for screen readers), #number, title, waiting; checkpoint, ask and the tags. */
 function Row({ i, selected, href, products, unseen }: { i: InboxItem; selected: boolean; href: string; products: boolean; unseen: boolean }) {
   return (
     <Link href={href} aria-current={selected ? 'true' : undefined} data-testid="inbox-row" className="flex h-16 min-w-0 items-center gap-2 overflow-hidden rounded-md border border-transparent px-3 hover:bg-muted aria-[current=true]:border-border aria-[current=true]:bg-muted">
@@ -30,7 +29,6 @@ function Row({ i, selected, href, products, unseen }: { i: InboxItem; selected: 
   )
 }
 
-/** The Inbox rows by checkpoint, 25 per group; the selected row (`?t=`) is marked. A decided row leaves at once (`gone`, the server refresh follows). */
 export function InboxList({ groups, selected, gone, local, filters, workflowHref, products }: { groups: InboxGroup[]; selected?: number; gone: number[]; local: Record<number, boolean>; filters: InboxFilters; workflowHref: Record<string, string>; products: boolean }) {
   const [expanded, setExpanded] = useState<string[]>([])
   return (

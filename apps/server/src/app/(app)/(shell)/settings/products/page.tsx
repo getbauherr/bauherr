@@ -8,7 +8,6 @@ import { currentWorkspace } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
 
-/** At 640px and below each row becomes a block, the header row goes and a cell with `data-label` prints it before its value. */
 const PHONE_CARDS = "max-sm:[&_thead]:hidden max-sm:[&_tbody]:block max-sm:[&_tr]:block max-sm:[&_tr]:border-t max-sm:[&_tr]:border-border max-sm:[&_tr]:px-4 max-sm:[&_tr]:py-3 max-sm:[&_td]:block max-sm:[&_td]:border-0! max-sm:[&_td]:px-0! max-sm:[&_td]:py-1! max-sm:[&_td[data-label]]:before:text-muted-foreground max-sm:[&_td[data-label]]:before:content-[attr(data-label)_':_']"
 
 export default async function ProductList() {

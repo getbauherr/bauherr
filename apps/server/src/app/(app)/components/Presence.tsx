@@ -7,10 +7,8 @@ export type Presence = { working: number; idle: number }
 const Ctx = createContext<Presence>({ working: 0, idle: 0 })
 export const usePresence = () => useContext(Ctx)
 
-/** Words for the indicators: "2 working, 1 idle", "2 working", "1 idle", or "No agents connected". */
 export const presenceText = ({ working, idle }: Presence, sep = ', ') => [working && `${working} working`, idle && `${idle} idle`].filter(Boolean).join(sep) || 'No agents connected'
 
-/** Holds the Workspace's agent presence for the shell: the layout's first read, then `/api/presence` every `ms` while the tab is visible. */
 export function PresenceProvider({ initial, ms = 5000, off, children }: { initial: Presence; ms?: number; off?: boolean; children: ReactNode }) {
   const [p, setP] = useState(initial)
   useEffect(() => {
@@ -23,7 +21,6 @@ export function PresenceProvider({ initial, ms = 5000, off, children }: { initia
         const next = (await res.json()) as Presence
         setP((cur) => (cur.working === next.working && cur.idle === next.idle ? cur : next))
       } catch {
-        // offline or restarting: the next tick tries again
       }
     }
     const id = setInterval(poll, ms)
@@ -36,7 +33,6 @@ export function PresenceProvider({ initial, ms = 5000, off, children }: { initia
   return <Ctx.Provider value={p}>{children}</Ctx.Provider>
 }
 
-/** Header pill; goes to the Agent team page. Hidden on narrow screens, the sidebar dot stays. */
 export function PresencePill() {
   const p = usePresence()
   const none = !p.working && !p.idle
@@ -54,7 +50,6 @@ export function PresencePill() {
   )
 }
 
-/** Sidebar marker of the Agent team item: green dot and the number working, grey dot when only idle, nothing when nobody is connected. On the icon rail only the dot remains. */
 export function PresenceDot() {
   const p = usePresence()
   if (!p.working && !p.idle) return null

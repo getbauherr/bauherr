@@ -77,7 +77,6 @@ import { connectedOfRole } from '../../../../../lib/presence'
 
 export const dynamic = 'force-dynamic'
 
-/** The forge-backed part of the page (live labels, comments, MR checks) is streamed; past this it shows what the database has and says so. */
 const LIVE_MS = 5000
 
 type Doc = Record<string, any>
@@ -92,10 +91,8 @@ const strip = (body: string, marker: string) => body.slice(marker.length).trim()
 
 const Pulse = ({ h }: { h: string }) => <div className={`${h} animate-pulse rounded-sm bg-secondary`} aria-hidden />
 
-/** DB data of the page, passed to the streamed parts. */
 type Page = { wf: Workflow; ticket: Doc; product: Doc; ws: Doc; runs: Doc[]; blockers: Doc[]; blocks: Doc[]; shots: Doc[]; admin: boolean; sendBack: SendBackTarget[]; sentBack: string | null; forgeLink: { href: string; label: string } | null }
 
-/** Everything derived from the forge comments and labels of the Ticket. */
 async function derive(payload: Awaited<ReturnType<typeof payloadClient>>, P: Page) {
   const { wf, ticket, product, runs, blockers, admin } = P
   const live = await within(
@@ -151,7 +148,6 @@ async function Top({ P, d }: { P: Page; d: Promise<Derived> }) {
   return <ActionBar change={changeOf(ticket.stagingTldr, ticket.title)} ticket={ticket.id} product={product.id as number} need={x.todo} stage={runs[0]?.stage ?? stageOf(P.wf, ticket)} missing={x.missing.map((m) => m.id)} open={x.view.open} run={runs[0]?.id ?? null} reason={x.reason} idle={P.sentBack && !x.todo ? { ...x.idle, reason: `${P.sentBack} ${x.idle.reason}` } : x.idle} releaseRunUrl={ticket.releaseRunUrl} stagingUrl={product.stagingUrl} ask={P.ticket.decision?.need === x.todo ? P.ticket.decision.ask : null} canExpedite={canExpediteOf(P)} forge={P.forgeLink} />
 }
 
-/** The forge link in the CI panel header, only when the action bar's one secondary slot is taken. */
 async function PanelForge({ P, d, at }: { P: Page; d: Promise<Derived>; at: 'panel' | 'links' }) {
   const x = await d
   return P.forgeLink && forgeLinkSpot({ need: x.todo, canExpedite: canExpediteOf(P), ciPanel: at === 'panel' }) === at ? <div><ForgeLink {...P.forgeLink} /></div> : null
@@ -169,7 +165,6 @@ async function Live({ P, d }: { P: Page; d: Promise<Derived> }) {
   )
 }
 
-/** The proof table of the Ticket: its request's acceptance criteria, else the plan's Goal statements. */
 async function Proof({ P, d }: { P: Page; d: Promise<Derived> }) {
   const { plan } = await d
   const proof = (await loadProof(await payloadClient(), [P.ticket], new Map([[P.product.id as number, P.product]]), () => bullets(summarySection(plan ?? '', 'Goal')))).get(P.ticket.id)
@@ -201,7 +196,6 @@ const Section = ({ id, title, children }: { id: string; title: string; children:
   </section>
 )
 
-/** The documents of the Plan tab (`plan`) and the History tab (`history`). */
 async function Sections({ d, of }: { d: Promise<Derived>; of: 'plan' | 'history' }) {
   const x = await d
   return of === 'plan' ? (
@@ -218,7 +212,6 @@ async function Sections({ d, of }: { d: Promise<Derived>; of: 'plan' | 'history'
   )
 }
 
-/** What the latest review noted but did not send back (read from the stored review Run). */
 const Noted = ({ items }: { items: OpenItem[] }) =>
   items.length > 0 ? (
     <Section id="noted" title="Noted, not sent back">

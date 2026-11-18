@@ -10,7 +10,6 @@ const fail = (error: string, status: number) => Response.json({ error }, { statu
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/webm': 'webm', 'video/mp4': 'mp4' }
 const SAFE = { 'x-content-type-options': 'nosniff', 'content-security-policy': "sandbox; default-src 'none'", 'cache-control': 'private, max-age=3600' }
 
-/** The file or text of one review artifact, for a signed-in member of the Ticket's Workspace (and Admins) and a Product owner assigned to the Ticket's Product; 404 for anything else. Images and recordings are served inline under their sniffed type, text as an attachment; there is no public link. */
 export const GET = async (req: Request, { params }: { params: Promise<{ id: string; artifactId: string }> }): Promise<Response> => {
   const a = await viewer(req)
   if (a instanceof Response) return a

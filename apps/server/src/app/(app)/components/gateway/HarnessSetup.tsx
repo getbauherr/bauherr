@@ -6,10 +6,6 @@ import { SettingsForm } from '../SettingsForm'
 import { HARNESSES, LEVEL_TEXT, ROUTE_LABEL, harnessOf, sessionName, type GatewaySetup, type Route } from '../../lib/harnesses'
 import { createSessionKey } from '../../(shell)/settings/actions'
 
-/**
- * Copy-pasteable setup per coding tool, with the session name, role and addresses filled in.
- * `role` fixed: the Agent team page (one step connects the session and routes it through the gateway); else the person picks one of `roles`.
- */
 export function HarnessSetup({ setup, roles, role }: { setup: GatewaySetup; roles?: { id: string; title: string }[]; role?: string }) {
   const [picked, setPicked] = useState(roles?.[0]?.id ?? 'engineer')
   const [id, setId] = useState(HARNESSES[0]!.id)

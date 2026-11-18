@@ -29,7 +29,6 @@ const Ask = ({ label, on, onChange, disabled }: { label: string; on: boolean; on
   </label>
 )
 
-/** Everything about the selected step, in the order an owner thinks about it. */
 export function StepPanel({ yaml, doc, findings, name, roles, skills, pathSets, mutate, onBack }: Props) {
   const stages = stagesOf(doc)
   const s = stages.find((x) => x.name === name)

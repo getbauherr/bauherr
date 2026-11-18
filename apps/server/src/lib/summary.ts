@@ -4,23 +4,16 @@ export const SUMMARY_MARKER = '<!-- bauherr:staging-summary -->'
 
 export interface SummaryInput {
   ticket: { number: number; title: string; url: string }
-  /** Plan Comment body (with `## Steps`), if any. */
   plan: string | null
-  /** Worklog markdown (Goal, Decisions, Unfinished work). */
   worklog: string | null
   mrs: { number: number; url: string; title: string; body: string }[]
-  /** Evidence of the latest build Run. */
   evidence: string | null
   stagingUrl: string | null
-  /** Merge commit; makes a re-release (after requested changes) a new summary. */
   mergeSha: string | null
-  /** The review artifacts as markdown (`proofMarkdown`), when the Ticket has any. */
   proof?: string
-  /** The frozen approval brief as markdown (`approvalBriefMarkdown`). */
   brief?: string
 }
 
-/** Body of a `## Name` heading or a `**Name**` line, up to the next one. */
 export const section = (md: string, name: string): string => {
   const rows = md.split('\n')
   const head = (l: string) => /^##\s+(.+?)\s*$/.exec(l)?.[1] ?? /^\*\*(.+)\*\*\s*$/.exec(l.trim())?.[1]
@@ -30,7 +23,6 @@ export const section = (md: string, name: string): string => {
   return rows.slice(start + 1, end < 0 ? undefined : end).filter((l) => !l.startsWith('🤖')).join('\n').trim()
 }
 
-/** Bullets of a section, or its prose as one item when it has none. */
 const items = (md: string): string[] => (bullets(md).length ? bullets(md) : md ? [md.replace(/\s*\n\s*/g, ' ')] : [])
 
 export const bullets = (md: string): string[] =>
@@ -38,7 +30,6 @@ export const bullets = (md: string): string[] =>
 
 const list = (items: string[], empty: string): string => (items.length ? items.map((i) => `- ${i}`).join('\n') : empty)
 
-/** Markdown staging summary from structured data; no model call. Starts with {@link SUMMARY_MARKER}. */
 export const buildStagingSummary = ({ ticket, plan, worklog, mrs, evidence, stagingUrl, mergeSha, proof: proofText, brief }: SummaryInput, tpl: Tpl = packTemplate('staging-summary')): string => {
   const outcomes = bullets(section(plan ?? '', 'Goal'))
   const goals = bullets(section(worklog ?? '', 'Goal')).map((g) => g.replace(/^\[( |x)\]\s*/i, (_, m) => (m === ' ' ? '(open) ' : '(done) ')).trim())

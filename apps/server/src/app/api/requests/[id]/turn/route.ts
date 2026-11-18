@@ -5,13 +5,8 @@ import { ownsRequest, requestTurn, type RequestView } from '../../../../../lib/r
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** What the stream carries: the reply as far as written, then the whole conversation state, or the reason the turn changed nothing. */
 export type TurnEvent = { type: 'reply'; text: string } | { type: 'done'; view: RequestView | null } | { type: 'error'; message: string }
 
-/**
- * Body `{ text, images? }` (`images`: ids from `api/requests/media`); streams NDJSON `TurnEvent`s. The author of an open request only: a Bauherr, an Admin or a Product owner of its Product.
- * A client abort aborts the model call; nothing is stored then, nor when the result is invalid.
- */
 export const POST = async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
   const w = await chatWho(req, { owner: true })
   if (w instanceof Response) return w

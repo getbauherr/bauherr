@@ -5,7 +5,6 @@ import { email } from './user'
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-// Read-only: the seeded sessions of team.spec.ts (ses_e2e_working holds a Run on #128, ses_e2e_offline is disconnected).
 
 const signIn = async (page: Page) => {
   await page.goto('/login')

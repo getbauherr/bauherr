@@ -40,5 +40,4 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
    ALTER TABLE "payload_locked_documents_rels" DROP COLUMN "skill_proposals_id";
   DROP TABLE "skill_proposals";
   DROP TYPE "public"."enum_skill_proposals_status";`)
-  // The enum values 'distill' (runs stage) and 'distill-skill' (job slugs) stay: Postgres cannot drop an enum value.
 }

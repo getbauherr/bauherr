@@ -7,10 +7,6 @@ const UNITS = [
 
 const tenths = (value: number) => Math.round(value * 10) / 10;
 
-/**
- * `tokens` to one decimal in the first unit that keeps it under a thousand, so
- * `999_950` reads `1M` rather than `1000k`.
- */
 export function formatTokenCount(tokens: number): string {
   if (!(tokens >= 1_000)) return `${tokens}`;
   let label = "";

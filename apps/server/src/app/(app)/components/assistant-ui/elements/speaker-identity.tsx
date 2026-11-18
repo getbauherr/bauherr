@@ -4,8 +4,6 @@ import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { mono } from "./surfaces";
 
-// From `elements-speaker-identity`, one turn at a time: the registry's icon square is the role's avatar (`avatar`), and the text is the message body (`children`, so a
-// streaming reply keeps its own rendering). `name` is the role, `detail` its real executor.
 export function SpeakerTurn({
   avatar,
   name,

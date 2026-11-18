@@ -15,7 +15,6 @@ import { TIERS, type Tier } from '../../../../lib/refine/model'
 const LABEL: Record<Tier, string> = { cheap: 'Cheap', standard: 'Standard', strong: 'Strong' }
 export const usd = (v: number): string => `$${v < 0.01 ? v.toFixed(4) : v.toFixed(2)}`
 
-/** A pasted or dropped screenshot in the composer: its thumbnail (the upload already ran) and a remove button. */
 const Thumb: FC = () => {
   const src = useAuiState((s) => {
     const part = s.attachment.content?.find((p) => p.type === 'image')
@@ -32,7 +31,6 @@ const Thumb: FC = () => {
   )
 }
 
-/** Tokens and cost of the conversation so far; a click opens the breakdown per turn. "unpriced" when a turn's model has no catalog price. */
 const CostChip: FC<{ cost: View['cost'] }> = ({ cost }) => {
   const label = cost.usd === null ? 'unpriced' : usd(cost.usd)
   const total = cost.turns.reduce((n, t) => n + (t.usd ?? 0), 0)
@@ -58,7 +56,6 @@ const CostChip: FC<{ cost: View['cost'] }> = ({ cost }) => {
   )
 }
 
-/** The composer: attach (images, also pasted or dropped), the model of this conversation (a choice with `onModel`, a read-only label without), the cost chip (`cost` null: none), send or stop. */
 export const Composer: FC<{ models: View['models']; tier: Tier; cost: View['cost'] | null; placeholder: string; streaming: boolean; onStop(): void; onModel?(tier: Tier): void; /** The input's accessible name. */ label?: string }> = ({ models, tier, cost, placeholder, streaming, onStop, onModel, label = 'Your answer' }) => {
   const current = models.find((m) => m.tier === tier)?.model ?? '' // no models (a Product owner in the refinement): no label, no choice
   return (

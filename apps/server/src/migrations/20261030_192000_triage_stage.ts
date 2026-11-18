@@ -8,5 +8,4 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {
   await db.execute(sql`ALTER TABLE "tickets" DROP COLUMN "triaged_at";`)
-  // The enum value 'triage' of enum_runs_stage stays: Postgres cannot drop an enum value.
 }

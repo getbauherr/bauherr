@@ -28,13 +28,7 @@ export type ModelOption = {
   description?: string;
   icon?: ReactNode;
   disabled?: boolean;
-  /** Extra terms matched by ModelSelector.Search, in addition to id and name. */
   keywords?: readonly string[];
-  /**
-   * Reasoning effort levels the model supports. Pass `true` for the default
-   * low/medium/high levels, or a custom list. Omit for models without
-   * configurable reasoning.
-   */
   efforts?: boolean | readonly ModelSelectorEffortOption[];
 };
 
@@ -53,11 +47,6 @@ export function resolveEffort(
   return efforts?.some((e) => e.id === effort) ? effort : undefined;
 }
 
-/**
- * Returns the effort id if the given model supports it, otherwise undefined.
- * Effort selection is kept sticky across model switches; this resolves what
- * actually applies to the current model.
- */
 export function resolveModelEffort(
   models: readonly ModelOption[],
   modelId: string | undefined,
@@ -81,8 +70,6 @@ export function useControllableState<T>({
   const [internal, setInternal] = useState(defaultProp);
   const isControlled = prop !== undefined;
   const value = isControlled ? prop : internal;
-  // Read onChange through a ref so inline callbacks don't recreate the setter
-  // (and with it the memoized context value) every render.
   const onChangeRef = useRef(onChange);
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -101,11 +88,8 @@ type ModelSelectorContextValue = {
   models: readonly ModelOption[];
   value: string | undefined;
   setValue: (value: string) => void;
-  /** The model matching `value`, derived once for all sub-components. */
   selectedModel: ModelOption | undefined;
-  /** The selected model's effort levels, undefined when not configurable. */
   efforts: readonly ModelSelectorEffortOption[] | undefined;
-  /** Effort resolved against the selected model's supported levels. */
   effort: string | undefined;
   setEffort: (effort: string) => void;
   open: boolean;
@@ -197,12 +181,6 @@ export function useModelSelectorContext() {
   return ctx;
 }
 
-/**
- * The selected model's effort levels and the active selection. Use it to build
- * a custom effort UI inside ModelSelector.Content (e.g. a slider or a shadcn
- * DropdownMenu) when the built-in ModelSelector.Effort layout doesn't fit.
- * `efforts` is undefined for models without configurable reasoning.
- */
 export function useModelSelectorEfforts(): {
   efforts: readonly ModelSelectorEffortOption[] | undefined;
   effort: string | undefined;
@@ -212,17 +190,6 @@ export function useModelSelectorEfforts(): {
   return { efforts, effort, setEffort };
 }
 
-// The popover re-evaluates collision flipping whenever the popup resizes, so
-// filtering the list down flips the popup back to the preferred side
-// mid-interaction. Base UI only exposes lazy flipping on the Combobox
-// positioner, so adopt the side the popup first flips to as the preferred side
-// for the rest of the open. Adopting every change can alternate between sides
-// without end: after a preference change the popup can render on the opposite
-// side even when both sides fit.
-//
-// A force-mounted popup keeps its node and position while closed. Pass `open`
-// and the `preferred` side for one, so the side resets on close and a reopen
-// adopts a side the popup already flipped to.
 export function useLazyFlipSide<TSide extends string>(
   open = true,
   preferred?: TSide,

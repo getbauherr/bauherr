@@ -8,7 +8,6 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
 `)
 }
 
-// Postgres cannot drop an enum value; leftovers are harmless.
 export async function down({ db }: MigrateDownArgs): Promise<void> {
   await db.execute(sql`ALTER TABLE "tickets" DROP COLUMN "ci_summary";`)
 }

@@ -9,7 +9,6 @@ const Confirm = () => {
   return <Button type="submit" disabled={pending}>Release lock</Button>
 }
 
-/** Admin only, secondary: the page renders it for a stuck or gone session. `action` is `releaseRunLock` bound to the Run. */
 export function ReleaseLock({ runId, why, action }: { runId: number; why: string; action: () => Promise<void> }) {
   const [open, setOpen] = useState(false)
   return (

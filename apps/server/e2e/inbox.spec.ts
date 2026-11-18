@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { pickRow } from './inbox-row'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -14,15 +15,13 @@ const login = async (page: Page, as = email) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 const card = (page: Page, title: string) => page.locator('article[data-decision]').filter({ hasText: title })
-// `data-wide` is set once the page has hydrated (the split measures itself): a click before that is lost
-const pick = async (page: Page, title: string) => { await expect(page.getByTestId('inbox-split')).toHaveAttribute('data-wide', 'true'); await page.getByTestId('inbox-row').filter({ hasText: title }).click(); await expect(page.getByTestId('inbox-pane')).toContainText(title) }
+const pick = async (page: Page, title: string) => { await pickRow(page, title); await expect(page.getByTestId('inbox-pane')).toContainText(title) }
 const badge = async (page: Page) => Number((await page.getByRole('navigation', { name: 'Main' }).getByLabel(/need you/).textContent()) ?? 0)
 
 test('every decision that is the owner\'s is a card with the ask, the recommendation, the facts and the real options', async ({ page }) => {
   await login(page)
   await page.goto('/inbox')
   await expect(page.getByRole('heading', { name: 'Inbox', level: 1 })).toBeVisible()
-  // The plan and staging gates are off in the default workflow: their cards exist only with the gated pack (the fake-forge job).
   const gated = !!process.env.E2E_GATED_PACK
   if (gated) {
     await pick(page, 'Rename the sign-in button')
@@ -43,7 +42,6 @@ test('every decision that is the owner\'s is a card with the ask, the recommenda
     const staging = card(page, 'Check the new header on staging')
     await expect(staging.getByRole('button', { name: 'Accept on staging' })).toBeVisible()
     await expect(staging.getByRole('link', { name: 'Staging', exact: true })).toBeVisible()
-    // The groups follow the workflow: Approve plan before Review before Accept on staging.
     const heads = await page.locator('nav[aria-label=Decisions] section[aria-label] > h2').allTextContents()
     const at = (c: string) => heads.findIndex((h) => h.startsWith(c))
     expect(at('Approve plan')).toBeLessThan(at('Review'))
@@ -101,12 +99,10 @@ test('approving the plan on its pane removes the row, selects the next and annou
   await expect(page.getByTestId('inbox-announce')).toHaveAttribute('role', 'status')
   const next = await page.getByTestId('inbox-row').and(page.locator('[aria-current=true]')).textContent()
   expect(next).not.toContain('Rename the sign-in button')
-  // other specs decide their own cards meanwhile (the count only ever drops here), so "one less" is not exact
   await expect.poll(() => badge(page)).toBeLessThan(before)
   await page.reload()
   await expect(card(page, 'Rename the sign-in button')).toHaveCount(0)
   expect(await badge(page)).toBeLessThan(before)
-  // the second tab still shows the decision that is taken now
   await stale.locator('article[data-decision]').filter({ hasText: 'Rename the sign-in button' }).getByRole('button', { name: 'Approve plan' }).click()
   await expect(stale.getByTestId('decision-error')).toContainText('This decision changed')
   await expect(stale.getByTestId('inbox-pane')).toContainText('Rename the sign-in button')
@@ -292,7 +288,7 @@ test('e takes the single primary and r opens the send-back dialog, without a nat
   await expect(page.getByTestId('inbox-pane')).toContainText('Check the new header on staging')
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
-  await pick(page, 'Name the export file')
+  await pick(page, 'Clarify the export scope')
   await page.keyboard.press('e')
   await expect(page).toHaveURL(/\/tickets\/\d+\?view=conversation$/)
   expect(native).toEqual([])

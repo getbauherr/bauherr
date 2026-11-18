@@ -6,7 +6,6 @@ import { Field, SettingsForm } from './SettingsForm'
 
 type Listing = string[] | null | 'loading'
 
-/** `/settings/products/new`: Name, Connection, Repository (listed from the forge, "Other..." for a typed one) and the Advanced short name, derived from the name until edited. */
 export function NewProductForm({ connections }: { connections: { id: number; name: string }[] }) {
   const [connection, setConnection] = useState(connections[0]!.id)
   const [listing, setListing] = useState<Listing>('loading')

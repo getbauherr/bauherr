@@ -1,7 +1,6 @@
 import { planStepCount, UI_PROOF_RULE, type ProofItem } from './pre-review.js';
 import type { GoalStatement, ToolCallRecord } from './types.js';
 
-/** `## Evidence` section (pack/rules/evidence.md) assembled from recorded Bash calls and the final Goal file. */
 export function buildEvidence(goal: GoalStatement[], calls: ToolCallRecord[], plan = '', extra: string[] = []): string {
   const cmds = calls.filter((c) => c.tool === 'Bash');
   const cell = (s: string) => s.replace(/\|/g, '\\|').replace(/\n/g, ' ');
@@ -29,7 +28,6 @@ export function buildEvidence(goal: GoalStatement[], calls: ToolCallRecord[], pl
   ].join('\n');
 }
 
-/** The before/after table of the MR body: one row per view and variant of the UI proof rule (titles `<theme>-<size>: <view>`, parsed as loosely as the gate), before left, after right; empty without a pair. A cell is the image link when the proof has a URL, else the file name; the first image of a cell wins. */
 export function screenshotTable(proof: ProofItem[]): string {
   const rows = new Map<string, { view: string; theme: string; size: string; before?: string; after?: string }>();
   const md = (s: string) => s.replace(/[\[\]|\\]/g, '\\$&').replace(/\s+/g, ' ');

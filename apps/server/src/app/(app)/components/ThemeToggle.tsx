@@ -29,7 +29,6 @@ export const setTheme = (id: string) => {
 
 export const toggleTheme = () => setTheme((document.documentElement.dataset.theme ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')) === 'dark' ? 'light' : 'dark')
 
-/** One row of three theme buttons for the avatar menu; picking keeps the menu open. */
 export function ThemeRow() {
   const [mode, setMode] = useState<string>('system')
   useEffect(() => setMode(storedTheme()), [])
@@ -49,7 +48,6 @@ export function ThemeRow() {
   )
 }
 
-/** The theme as three buttons on a page (Settings > Profile); stored in this browser only. */
 export function ThemePicker() {
   const [mode, setMode] = useState<string>('system')
   useEffect(() => setMode(storedTheme()), [])

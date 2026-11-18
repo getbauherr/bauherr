@@ -9,7 +9,6 @@ const TOLERANCE = 0.1
 
 export const retentionDays = (): number => Number(process.env.BAUHERR_REQUEST_LOG_RETENTION_DAYS) || 180
 
-/** Runs `fn` against the gateway database (`request_logs`). */
 const withGateway = async <T>(fn: (db: pg.Client) => Promise<T>): Promise<T> => {
   const db = new pg.Client({ connectionString: process.env.GATEWAY_DATABASE_URL })
   await db.connect()
@@ -22,7 +21,6 @@ const withGateway = async <T>(fn: (db: pg.Client) => Promise<T>): Promise<T> => 
 
 export const gatewayDbEnabled = (): boolean => !!process.env.GATEWAY_DATABASE_URL
 
-/** Queues `reconcile-costs` for a finished Run, `delayMs` from now, on the `poll` queue. */
 export const queueReconcile = (payload: Payload, runId: number | string, attempt = 1, delayMs = RECONCILE_DELAY_MS) =>
   payload.jobs.queue({
     task: 'reconcile-costs',
@@ -31,7 +29,6 @@ export const queueReconcile = (payload: Payload, runId: number | string, attempt
     waitUntil: new Date(Date.now() + delayMs),
   })
 
-/** True when a requested model (`[ws-<workspace>/]<connection>/<model>`) belongs to a Connection whose preset ships no price catalog. */
 const unpriced = async (payload: Payload, workspace: number | { id: number }, models: string[]): Promise<boolean> => {
   const conns = (
     await payload.find({
@@ -49,11 +46,6 @@ const unpriced = async (payload: Payload, workspace: number | { id: number }, mo
   })
 }
 
-/**
- * Sums the gateway `request_logs` of a Run and writes the money fields. Gateway cost wins; a delta above 10 % of it is flagged `mismatch`.
- * 0 USD with tokens on a `catalog:false` preset is `unpriced`: the estimate stays, `gatewayCostUsd` is not written.
- * No rows: `pending` and one retry on attempt 1, `unavailable` (cost stays `sdk-estimate`) on attempt 2.
- */
 export const reconcileRun = async (payload: Payload, runId: number | string, attempt: number): Promise<string> => {
   const o = { overrideAccess: true, depth: 0 } as const
   const { row, byModel } = await withGateway(async (db) => ({
@@ -106,6 +98,5 @@ export const reconcileRun = async (payload: Payload, runId: number | string, att
   return reconcileStatus
 }
 
-/** Deletes gateway `request_logs` older than the retention window; returns the count. */
 export const pruneRequestLogs = (days = retentionDays()): Promise<number> =>
   withGateway(async (db) => (await db.query(`DELETE FROM request_logs WHERE started_at < now() - make_interval(days => $1)`, [days])).rowCount ?? 0)

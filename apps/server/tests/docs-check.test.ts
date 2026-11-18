@@ -37,7 +37,6 @@ afterAll(async () => {
 
 const prod = async () => (await payload.findByID({ collection: 'products', id: product, ...o })) as Record<string, any>
 
-/** A Ticket of the Product that entered the release stage `days` ago with a merge commit. */
 const merged = async (number: number, days: number, mergeSha: string | null = sha(number)) => {
   const t = await payload.create({ collection: 'tickets', data: { title: `Ticket ${number}`, externalId: `m${number}`, number, url: `https://x/${number}`, state: 'open', stage: 'release', product, workspace: ws, ...(mergeSha && { mergeSha }) } as never, ...o })
   await payload.create({ collection: 'ticket_events', data: { ticket: t.id, workspace: ws, at: ago(days), stage: 'release', stageKind: 'release', phase: 'human', cause: 'test' } as never, ...o })

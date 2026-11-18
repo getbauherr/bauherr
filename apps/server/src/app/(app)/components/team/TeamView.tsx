@@ -10,7 +10,6 @@ import type { ModelOption, RoleSettings, SaveResult, TeamRole, TeamSession } fro
 
 type Props = {
   workspaceId: number | string
-  /** The role chosen on load (`/team?role=`). */
   initialRole?: string
   roles: TeamRole[]
   orphans: (TeamSession & { role: string })[]

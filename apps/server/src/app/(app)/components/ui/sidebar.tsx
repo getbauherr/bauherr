@@ -57,7 +57,6 @@ export function SidebarProvider({ defaultOpen = true, className, style, children
   )
 }
 
-/** Left sidebar that collapses to an icon rail; a Sheet below 768px. */
 export function Sidebar({ className, children, ...props }: ComponentProps<'div'>) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
   if (isMobile) {
@@ -108,7 +107,6 @@ const menuButton = cva(
   { variants: { size: { default: 'h-9', lg: 'h-12 group-data-[collapsible=icon]:p-0!' } }, defaultVariants: { size: 'default' } },
 )
 
-/** `tooltip` shows only on the collapsed rail. */
 export function SidebarMenuButton({ asChild, isActive, tooltip, size, className, ...props }: ComponentProps<'button'> & { asChild?: boolean; isActive?: boolean; tooltip?: string } & VariantProps<typeof menuButton>) {
   const Comp = asChild ? Slot : 'button'
   const { isMobile, state } = useSidebar()

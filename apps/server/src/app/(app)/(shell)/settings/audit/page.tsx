@@ -11,7 +11,6 @@ import { currentWorkspace } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
 
-/** GET-form filter input with its own error line (the shared `Field` takes errors from a server-action form). */
 function FilterField({ name, label, hint, defaultValue, error }: { name: string; label: string; hint?: string; defaultValue: string; error?: string }) {
   return (
     <div className="flex flex-col gap-1">

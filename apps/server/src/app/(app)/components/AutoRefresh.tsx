@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useTransition } from 'react'
 
-/** Polls `src` (default `/api/changes`) and refreshes the page only when something of the Workspace changed (or the tab was hidden when the page mounted); idle while the tab is hidden or a refresh is in flight, and held back (the change stays pending) while a person is clicking or typing or a navigation runs, since a refresh would cancel it. */
 export function AutoRefresh({ ms = 5000, src = '/api/changes' }: { ms?: number; src?: string }) {
   const router = useRouter()
   const [pending, start] = useTransition()
@@ -28,7 +27,6 @@ export function AutoRefresh({ ms = 5000, src = '/api/changes' }: { ms?: number; 
         seen.current = v
         if (changed) start(() => router.refresh())
       } catch {
-        // offline or restarting: the next tick tries again
       }
     }
     poll()

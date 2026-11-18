@@ -6,10 +6,8 @@ import { cardColumns, changedFields, nextTurn, type CardField, type Session, typ
 import { mediaBytes } from './media'
 
 type Doc = Record<string, any>
-/** `changed`: the card fields this turn changed (the request conversation marks them). */
 export type TurnOut = { question: string; options?: { label: string; recommended?: boolean }[]; draft: unknown; split?: unknown; ready: boolean; exhausted: boolean; missing: string[]; changed: CardField[] }
 
-/** One interview turn of an open session the caller already owns (and holds the `intake:<id>` lock for); stores the new state and returns the turn. Throws on an unknown or already sent screenshot or a refused message. */
 export const advance = async (payload: Payload, s: Doc, text: string, images: unknown[], hooks: TurnHooks = {}): Promise<TurnOut> => {
   const state: Session = { messages: s.messages ?? [], draft: s.draft ?? null, split: s.split ?? undefined, screenshots: s.screenshots, edited: s.edited ?? undefined }
   const sent = new Set(state.messages.flatMap((m) => m.images ?? []).map(String))
@@ -23,7 +21,6 @@ export const advance = async (payload: Payload, s: Doc, text: string, images: un
   return out
 }
 
-/** One interview turn of an open session of the caller's (`images`: ids of this session's screenshots not yet sent). Throws on an unknown session. */
 export const advanceIntake = (payload: Payload, who: Who, id: string, text: string, images: unknown[], hooks: TurnHooks = {}): Promise<TurnOut> =>
   exclusive(`intake:${id}`, async () => {
     const s = await ownSession(payload, who, id)

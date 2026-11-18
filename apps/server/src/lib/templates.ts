@@ -5,7 +5,6 @@ import { type Section, type TemplateName, TEMPLATE_NAMES, forAgent, parseSection
 
 export * from './template-text'
 
-/** Skills whose text carries these templates for the agent (`load_skill`, and the Runner's materialised skills). */
 export const SKILL_TEMPLATES: Record<string, TemplateName[]> = { 'run-contract': ['plan', 'worklog'], review: ['review'], triage: ['triage-questions'], intake: ['request'] }
 
 export type Tpl = { name: TemplateName; title: string; usedBy: string; description: string; body: string; source: 'pack' | 'workspace'; sections: string[]; parsed: Section[]; layout: 'tight' | 'normal'; /** Heading of every id in the pack's own template, for a section the Workspace's template dropped. */ fallback: Record<string, { heading: string; level: number }> }
@@ -19,7 +18,6 @@ const packFile = (name: string): string => {
   throw new Error(`no pack template ${name}`)
 }
 
-/** Front matter (`key: value` lines) and the body after it. */
 const split = (md: string): { meta: Record<string, string>; body: string } => {
   const m = /^---\n([\s\S]*?)\n---\n?/.exec(md)
   if (!m) return { meta: {}, body: md }
@@ -36,23 +34,18 @@ const build = (name: TemplateName, body: string, source: Tpl['source']): Tpl => 
   }
 }
 
-/** The pack's own template (no Workspace override). */
 export const packTemplate = (name: TemplateName): Tpl => build(name, split(packFile(name)).body, 'pack')
 
-/** The Workspace's template, else the pack's. */
 export const template = async (payload: Payload, workspace: number | string, name: TemplateName): Promise<Tpl> => {
   const row = (await payload.find({ collection: 'templates', where: { workspace: { equals: workspace }, name: { equals: name } }, limit: 1, depth: 0, overrideAccess: true })).docs[0] as { body?: string } | undefined
   return row?.body ? build(name, row.body, 'workspace') : packTemplate(name)
 }
 
-/** Names of the pack's templates that exist as files. */
 export const packNames = (): string[] => {
   const dir = [process.env.BAUHERR_PACK_DIR, defaultDir()].map((d) => d && resolve(d, 'templates')).find((d) => d && existsSync(d))
   return dir ? readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)) : []
 }
 
-/** The Workspace's staging-summary and release-note templates, which `collectItem` and `renderNotes` read together. */
 export const noteTemplates = async (payload: Payload, workspace: number | string): Promise<{ summary: Tpl; note: Tpl }> => ({ summary: await template(payload, workspace, 'staging-summary'), note: await template(payload, workspace, 'release-note') })
 
-/** A template as the end of a skill's text: the Workspace's structure with its guidance. */
 export const templateBlock = (t: Pick<Tpl, 'title' | 'body'>): string => `## Template: ${t.title}\n\n\`\`\`\`markdown\n${forAgent(t.body).trim()}\n\`\`\`\``

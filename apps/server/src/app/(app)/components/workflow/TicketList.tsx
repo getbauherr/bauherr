@@ -21,7 +21,6 @@ const EpicTag = ({ t }: { t: TicketRow }) =>
     <Link className="epic-tag small inline-block max-w-full truncate rounded-sm border border-(--tint)/40 bg-[color-mix(in_oklch,var(--tint)_14%,var(--card))] px-2 text-[color-mix(in_oklch,var(--tint)_65%,var(--foreground))] hover:underline" style={{ '--tint': `oklch(60% .16 ${epicHue(t.parent.id)})` } as CSSProperties} href={`/tickets/${t.parent.id}`} title={`Epic #${t.parent.number} ${t.parent.title}`}>{epicShortTitle(t.parent.title)}</Link>
   ) : null
 
-/** One card per epic: the slices passed of the plan, and "Epic review" in the review stage (while a slice is built the status column says "Slice i/n"). */
 const EpicCard = ({ wf, t }: { wf: Workflow; t: TicketRow }) =>
   t.epic ? (
     <span className="epic-card flex flex-wrap items-center gap-2" data-testid="epic-card">
@@ -34,13 +33,10 @@ const EpicCard = ({ wf, t }: { wf: Workflow; t: TicketRow }) =>
 
 export type Group = { stage: string; rows: TicketRow[] }
 
-/** The Tickets of the Workflow view, one ranked table per stage in workflow order. */
-/** `collapsed`: the stage whose rows hide behind a "Show N done" link to `expandHref`; `sticky`: headings stay under the shell header while their group is on screen. */
 export function TicketList({ wf, groups, showProduct, admin, wip, now, collapsed, expandHref, sticky, executors }: { wf: Workflow; groups: Group[]; /** Who executes each stage (Workflow view): its `waits` text fills the Who cell of a Ticket stuck there. */ executors?: Map<string, Executor> | null; showProduct: boolean; admin: boolean; wip: Record<string, { count: number; parked: number; limit: number | null }>; now: number; collapsed?: string; expandHref?: string; sticky?: boolean }) {
   return (
     <div className="@container flex flex-col gap-6" data-testid="ticket-list">
       {groups.map(({ stage, rows }, g) => {
-        // The list shows the owner's rank, not the pull order: a row never jumps because it is blocked or in progress (the status says so). Only the Hotfix lane sorts first.
         const sorted = rows.map((t) => ({ ...t, expediting: t.expedite })).sort(executionOrder)
         const limit = wip[stage]?.limit
         const state = limit != null && wip[stage]!.count > limit ? 'over' : limit != null && wip[stage]!.count === limit ? 'full' : undefined

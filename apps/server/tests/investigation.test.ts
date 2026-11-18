@@ -53,7 +53,6 @@ const reload = async (id: number) => (await payload.findByID({ collection: 'tick
 const runs = async (id: number, stage: string) => (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: stage } }] }, sort: 'id', depth: 0, ...o })).docs as Record<string, any>[]
 const comment = async (n: string) => (await fake.tickets(repo).listComments(n)).map((c) => c.body).find((b) => b.startsWith(MARKER)) ?? ''
 
-/** A Build Ticket whose latest Build Run failed after a first failure: one sweep from the second failure. */
 const seedTwiceFailed = async () => {
   const issue = await fake.tickets(repo).create({ title: 'stuck', labels: ['bauherr:stage:build'] })
   const t = await payload.create({ collection: 'tickets', data: { title: 'stuck', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'build', product, workspace: ws }, ...o })
@@ -62,7 +61,6 @@ const seedTwiceFailed = async () => {
   return { id: t.id as number, n: String(issue.number), first, second }
 }
 
-/** Claims the investigation Plan Run as a session and returns its lease. */
 const claim = async (id: number) => {
   const r = (await runs(id, 'plan'))[0]!
   await payload.update({ collection: 'runs', where: { and: [{ status: { equals: 'awaiting_session' } }, { id: { not_equals: r.id } }] }, data: { status: 'cancelled' }, ...o })
@@ -185,7 +183,6 @@ it('a forge error after the Run is created is finished by the next pass: still o
   expect((await comment(n)).match(/Investigation Run #/g)).toHaveLength(1)
 })
 
-/** The Runner's `.bauherr/investigation.json` reaches the server as `artifacts.investigation`; the job concludes it. */
 const conclude = async (input: unknown) => {
   const { id, n } = await seedTwiceFailed()
   await fake.tickets(repo).addLabels(n, ['bauherr:approved:plan'])

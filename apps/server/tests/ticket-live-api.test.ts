@@ -4,7 +4,6 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/** `/api/tickets/<id>/live` and `/events` read the DB only and are scoped to one Ticket; the decision rows are frozen at plan approval. */
 const session = vi.hoisted(() => ({ cookie: '' }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ cookie: session.cookie }), cookies: async () => ({ get: () => undefined, set: () => {}, delete: () => {} }) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))

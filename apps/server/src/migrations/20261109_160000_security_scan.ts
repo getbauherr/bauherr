@@ -17,5 +17,4 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
    ALTER TABLE "products" DROP COLUMN "security_scan_max_budget_usd";
    ALTER TABLE "products" DROP COLUMN "security_scan_cron";
    ALTER TABLE "products" DROP COLUMN "security_scan_enabled";`)
-  // The enum value 'scan' of enum_runs_stage stays: Postgres cannot drop an enum value.
 }

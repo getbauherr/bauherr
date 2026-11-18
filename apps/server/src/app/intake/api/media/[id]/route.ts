@@ -6,7 +6,6 @@ import { mediaBytes } from '../../../../../lib/intake/media'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** A stored screenshot or comment image, for members of its Workspace (and Admins), the widget token of its session, and a Product owner when it belongs to a Product assigned to them (anything else is a 404). */
 export const GET = async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
   const a = await viewer(req)
   if (a instanceof Response) return a

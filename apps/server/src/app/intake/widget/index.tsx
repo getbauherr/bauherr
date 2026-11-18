@@ -1,7 +1,3 @@
-/**
- * Embeddable Intake chat, built to public/intake/widget.js (scripts/build-widget.ts).
- * Usage: `<script src="https://HOST/intake/widget.js" data-token="bemb_..."></script>`.
- */
 import { AssistantRuntimeProvider, useLocalRuntime } from '@assistant-ui/react'
 import css from 'widget:css'
 import { useEffect, useState } from 'react'
@@ -12,7 +8,6 @@ import { Button } from '@/components/ui/button'
 
 type Saved = { id: string; messages: { role: string; content: string }[]; turn: Turn | null }
 
-/** The session id lives in localStorage per token, so an open interview survives a page load. */
 const slot = (token: string) => `bauherr-intake:${token.slice(0, 16)}`
 const keep = (token: string, id: string | null) => {
   try {
@@ -63,7 +58,6 @@ function Widget({ base, token, saved }: { base: string; token: string; saved: Sa
   )
 }
 
-/** Loads the open session, if any, before the chat mounts (the runtime takes its messages at creation). */
 function Loader(props: { base: string; token: string }) {
   const [saved, setSaved] = useState<Saved | null | undefined>()
   useEffect(() => {
@@ -86,7 +80,6 @@ function Loader(props: { base: string; token: string }) {
 const script = document.currentScript as HTMLScriptElement | null
 const token = script?.dataset.token
 if (script && token) {
-  // Tailwind's @property rules only register in the document, not in a shadow root.
   const style = (text: string) => Object.assign(document.createElement('style'), { textContent: text })
   document.head.append(style((css.match(/@property[^{]+\{[^}]*\}/g) ?? []).join('')))
   const host = document.createElement('div')

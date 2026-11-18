@@ -17,10 +17,6 @@ const List = ({ items }: { items: string[] }) => (
   <ul className="small m-0 flex list-disc flex-col gap-1 pl-5">{items.map((x, i) => <li key={i}>{x}</li>)}</ul>
 )
 
-/**
- * The approval brief of the change at Accept on staging and Approve production, read from the stored `approvalBrief` (no forge call): what changes for whom, before/after proof, what is not included, risk and rollback, checks, links.
- * With no `visible` change it says "No visible change" and why.
- */
 export function ApprovalBrief({ brief, admin = true }: { brief: Brief; admin?: boolean }) {
   const reason = noVisibleReason(brief)
   const checks = [brief.checks.ci ?? 'CI: unknown', brief.checks.testsAdded == null ? 'Tests added: unknown' : `Tests added: ${brief.checks.testsAdded}`, ...brief.checks.noProof.map((p) => `No proof for ${p.rule}: ${p.reason || 'no reason given'}`)]

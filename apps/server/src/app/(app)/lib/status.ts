@@ -15,7 +15,6 @@ export type StatusRun = {
   error?: string | null
   mode: string
   executor?: string | null
-  /** Role id the Run was claimed for (`runs.role`). */
   role?: string | null
   sessionLabel?: string | null
   clientName?: string | null
@@ -26,45 +25,33 @@ export type StatusRun = {
   createdAt: string
   investigation?: unknown
   escalation?: { step: number; reason: string } | null
-  /** Number of the hotfix Ticket this Run was paused for (`runs.preemptedFor`). */
   preemptedFor?: number | null
-  /** First line of the latest Step when the agent reported it as waiting_ci (`waitingStepOf`). */
   waitingStep?: string | null
 }
-/** Ticket fields that say what the factory waits for between Runs. */
 export type Track = { waitingFor?: string | null; reviewState?: string | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; releaseError?: string | null }
 export type StatusRow = {
   open: boolean
   stage: string
   needsYou: string | null
   blockedBy: { number: number }[]
-  /** Why the Ticket waits for a free slot ("Build is full (2/2)"), else null. */
   queuedWhy: string | null
   run: StatusRun | null
-  /** Email local-part of the session owner of the Run. */
   owner: string | null
   forge: 'github' | 'gitlab' | null
   gate: { people: string[] } | null
   track: Track
-  /** Sub-tickets of a split Ticket (stage of kind container). */
   children?: { total: number; done: number } | null
-  /** Pending counts of the stored check summary (`pendingCounts`); read from the database, never the forge. */
   ci?: CiCounts | null
-  /** The slice an epic parent is building: its number, the epic's size and the stage of its sub-ticket. */
   slicing?: { index: number; total: number; stage: string | null } | null
-  /** A parked epic (or one of its open slices): stopped, holds no WIP. */
   parked?: boolean
-  /** The reason a Ticket parked on a need holds no WIP slot (`parkedWhyOf`); null = not parked that way. */
   parkedWhy?: string | null
 }
 
-/** Why a Ticket holds no slot while it waits for the owner (`tickets.parkedNeed`): the prepared Decision's ask, else the need; null when it is not parked that way. */
 export const parkedWhyOf = (t: { parkedNeed?: string | null; decision?: { ask?: string } | null }): string | null => (t.parkedNeed ? (t.decision?.ask ?? t.parkedNeed) : null)
 
 const first = (s: string | null | undefined) => s?.split('\n')[0]?.trim().slice(0, 120) || null
 const RUN_PROBLEMS = ['Cancelled', 'Run failed', 'Run needs you']
 
-/** Who runs a Run: the session (label or owner, role, client, model) or the runner (model); "Runner" or "CI" with the role title when the Run has a role. */
 export const runWho = (r: Pick<StatusRun, 'mode' | 'executor' | 'sessionLabel' | 'clientName' | 'clientVersion' | 'model'>, owner: string | null, roleTitle?: string | null): string => {
   const session = r.mode === 'session' || r.executor === 'session'
   const client = [r.clientName, r.clientVersion].filter(Boolean).join(' ')
@@ -88,14 +75,9 @@ const ci = (wf: Workflow, r: StatusRow): { label: string; detail: string } | nul
   return null
 }
 
-/**
- * The one status of a Ticket, shown identically on the Workflow view, the Ticket page, Epics and the chat. First match: Done; a Run of the Ticket's own stage
- * (running = In progress, queued or waiting for a session = Queued); Waiting for you; Waiting for CI / merge queue / deploy; Blocked; Failed; else Queued.
- */
 export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): TicketStatus => {
   const run = r.run && r.run.stage === r.stage ? r.run : null
   if (!r.open) return { phase: 'done', label: 'Done', detail: null, who: null, tone: 'ok' }
-  // Still open on the forge in the done stage: awaiting close or archive.
   if (is(wf, r.stage, 'done')) return { phase: 'done', label: 'Done', detail: 'closing', who: null, tone: 'ok' }
   if (r.parked) return { phase: 'blocked', label: 'Parked', detail: 'stopped; resume or discard it', who: null, tone: 'muted' }
   if (r.parkedWhy) return { phase: 'human', label: `Parked: ${WAITING_FOR_YOU.toLowerCase()} (${r.parkedWhy})`, detail: r.needsYou, who: r.gate?.people.length ? r.gate.people.map((p) => `@${p}`).join(' ') : null, tone: 'warn' }
@@ -127,12 +109,10 @@ export const ticketStatus = (wf: Workflow, r: StatusRow, now = Date.now()): Tick
   return { phase: 'queued', label: 'Queued', detail: r.queuedWhy ?? 'next in line', who: null, tone: 'muted' }
 }
 
-/** `ticketStatus` against the current workflow, as one line: "In progress: building for 4 min". */
 export const statusLine = (wf: Workflow, r: StatusRow): string => {
   const s = ticketStatus(wf, r)
   return s.detail ? (s.detail.startsWith(s.label.replace(/ \d+\/\d+$/, '')) ? s.detail : `${s.label}: ${s.detail}`) : s.label
 }
 
-/** The status label of a history phase (`ticket_events.phase`) in the stage of kind `stageKind`. */
 export const phaseLabel = (phase: string, stageKind?: string | null): string =>
   ({ working: 'In progress', queued: 'Queued', human: WAITING_FOR_YOU, closed: 'Done', ci: stageKind === 'release' ? 'Waiting on deploy' : 'Waiting for CI' })[phase] ?? phase

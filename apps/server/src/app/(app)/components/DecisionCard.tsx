@@ -22,10 +22,6 @@ const sendsBack = (o: DecisionOption) => o.action === 'requestChanges' || o.acti
 
 const external = (url: string) => /^https?:\/\//.test(url)
 
-/**
- * One human checkpoint, prepared the same way everywhere: the ask first, one recommendation line, at most three facts, then the buttons.
- * `compact` (Ticket page) leaves the buttons to the next-step bar; the full card (Inbox) runs the option's existing action in place and leaves the list.
- */
 export function DecisionCard({ item, compact, admin = true, onDecided, onSucceeded, onFailed }: { item: DecisionView; compact?: boolean; admin?: boolean; onDecided?: (id: number, option: DecisionOption) => void; onSucceeded?: (id: number, option: DecisionOption) => void; onFailed?: (id: number, error: string) => void }) {
   const d = item.decision
   const router = useRouter()

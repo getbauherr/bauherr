@@ -27,7 +27,6 @@ beforeAll(async () => {
   process.env.ENCRYPTION_KEY ??= 'test-key'
   process.env.BAUHERR_E2E_FAKE_FORGE = '1'
   delete process.env.GATEWAY_ADMIN_URL
-  // The plan gate is on in the default pack; these Tickets go from plan to build without an approval.
   process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL('./fixtures/bare-pack', import.meta.url))
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
@@ -63,7 +62,6 @@ const runs = async (id: number, stage: string) => (await payload.find({ collecti
 
 const plan = (files?: string[]) => `## Goal\n- Ship it\n\n## Steps\n1. Do it${files ? `\n\n## Files\n${files.map((f) => `- ${f}`).join('\n')}` : ''}`
 
-/** An open Ticket in `stage` with a plan declaring `files` (none: no `## Files`); a plan Ticket gets a succeeded plan Run, a build Ticket a plain plan Comment. */
 const ticket = async (title: string, stage: 'plan' | 'build' | 'review', files?: string[], extra: Record<string, unknown> = {}, run: 'queued' | 'running' | 'needs_human' | 'none' = 'queued') => {
   const labels = [`bauherr:stage:${stage}`, ...(extra.bug ? ['type:bug'] : [])]
   delete extra.bug
@@ -74,13 +72,11 @@ const ticket = async (title: string, stage: 'plan' | 'build' | 'review', files?:
     await actions.submitPlan(payload, user, { ticket: t.id as number, markdown: plan(files) })
   } else {
     await fake.tickets(repo).comment(String(issue.number), `${PLAN_MARKER}\n${plan(files)}`)
-    // A Ticket in Build or Review has work in flight unless a test says otherwise.
     if (run !== 'none') await payload.create({ collection: 'runs', data: { ticket: t.id, stage, status: run, mode: 'autonomous', workspace: ws }, ...o })
   }
   return { id: t.id as number, n: issue.number }
 }
 
-/** A factory PR for the Ticket changing `files`, linked through a build Run. */
 const withPr = async (t: { id: number; n: number }, files: string[], status: 'open' | 'merged' = 'open') => {
   const branch = `bauherr/${t.n}-x`
   await fake.forge.createBranch(repo, branch)

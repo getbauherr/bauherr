@@ -44,7 +44,6 @@ beforeAll(async () => {
   const product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
   await payload.create({ collection: 'ticket_sources', data: { repo: 'acme/web', product, connection, workspace: ws }, ...o })
-  // #1 of the fake forge carries the open decision rows D1 and D2 (D2 critical).
   ticket = await payload.create({ collection: 'tickets', data: { title: 'Remember the theme choice', externalId: 'e2e-1', number: 1, url: 'https://x/1', state: 'open', labels: [], stage: 'plan', product, workspace: ws }, ...o })
   const pB = (await payload.create({ collection: 'products', data: { name: 'other', slug: 'other', workspace: other }, ...o })).id as number
   foreign = await payload.create({ collection: 'tickets', data: { title: 'Secret of B', externalId: '900', number: 900, state: 'open', stage: 'plan', product: pB, workspace: other }, ...o })

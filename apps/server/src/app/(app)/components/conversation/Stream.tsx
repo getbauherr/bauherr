@@ -17,11 +17,9 @@ const REASONS = ['Wrong', 'Incomplete', 'Too long', 'Did not do what I asked', '
 export const when = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 type Custom = { speaker?: Speaker; feedback?: 'up' | 'down' | null; images?: Image[]; settled?: string[] }
-/** `thread`: the chat thread that stores the ratings (null: the conversation has none, so no thumbs). */
 type Ctx = { thread: number | null; /** Whether each message names its executor (false: the partner is the executor, as the Factory assistant is in request drafting). */ executor?: boolean; locked: boolean; points: Point[]; busy: boolean; tail: ReactNode; onChange(id: string): void }
 const StreamCtx = createContext<Ctx>(null as never)
 
-/** Who speaks, the way the participant header says it: the session that asked (with presence), or the Factory assistant that replied. Never the session for a server-side reply. */
 const Executor: FC<{ s: Speaker }> = ({ s }) =>
   s.session ? (
     <span data-testid="speaker-executor" className="inline-flex items-center gap-1.5">
@@ -32,7 +30,6 @@ const Executor: FC<{ s: Speaker }> = ({ s }) =>
     <span data-testid="speaker-executor">Factory assistant</span>
   )
 
-/** Thumbs (down opens the feedback dialog element; both go to the existing chat feedback store) and copy. */
 const Actions: FC = () => {
   const { thread } = useContext(StreamCtx)
   const id = useAuiState((m) => m.message.id)
@@ -66,7 +63,6 @@ const Actions: FC = () => {
   )
 }
 
-/** A settled point as a compact chip: what was asked, the answer, and "Change" (reopens only that point). */
 const Chip: FC<{ p: Point }> = ({ p }) => {
   const { locked, busy, onChange } = useContext(StreamCtx)
   return (
@@ -110,7 +106,6 @@ const AssistantMessage: FC = () => {
   )
 }
 
-/** The stream of a conversation: assistant-ui's thread of messages, with the open question as a card at the end of the last agent message. */
 export const Stream: FC<Ctx & { earlier: { role: string; text: string }[]; working: boolean; /** The test id of the scrolling thread. */ name?: string; children?: ReactNode }> = ({ earlier, working, name = 'refine-thread', children, ...ctx }) => {
   const [showEarlier, setShowEarlier] = useState(false)
   return (

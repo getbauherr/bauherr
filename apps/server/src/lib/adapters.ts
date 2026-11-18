@@ -6,10 +6,6 @@ const fake = process.env.BAUHERR_E2E_FAKE_FORGE === '1'
 assertFakeAllowed('BAUHERR_E2E_FAKE_FORGE')
 const fakeForge = fake ? (await import('./fake-forge')).fakeForge : null
 
-/**
- * Backend of a forge Connection. GitHub: `config.apiUrl` overrides the API base (GitHub Enterprise, test stubs). GitLab: `config.baseUrl`.
- * `BAUHERR_E2E_FAKE_FORGE=1` (never in production) swaps in an in-memory forge for the Playwright run.
- */
 export const backendFor = (connection: ConnectionInput, limits: { maxRetries?: number; timeoutMs?: number } = {}): Backend => {
   if (fakeForge) return fakeForge()
   if (!connection.secret) throw new Error(`connection ${connection.id} has no secret`)

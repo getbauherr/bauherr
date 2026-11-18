@@ -102,7 +102,6 @@ const Runtime: FC<{ initial: string | undefined; userKey: string; onClose(): voi
   )
 }
 
-/** The chat itself, loaded on first open: the last open thread (if it still exists) is reopened. */
 export default function ChatPanel({ userKey, onClose }: { userKey: string; onClose(): void }) {
   const [initial, setInitial] = useState<string | null | undefined>(undefined)
   const checked = useRef(false)

@@ -5,7 +5,6 @@ export type StepRecord = {
   messageId: string;
   model: string;
   inputTokens: number;
-  /** Placeholder per step (message_start value); exact totals are in RunResult.usage. */
   outputTokens: number;
   cacheRead: number;
   cacheWrite: number;
@@ -17,67 +16,48 @@ export type ToolCallRecord = {
   tool: string;
   input: unknown;
   ok: boolean;
-  /** Bash only: 0 on success, parsed from the failure text otherwise. */
   exitCode?: number;
   durationMs?: number;
 };
 
 export type RunCtx = {
-  /** Stage names the Runner moves a Ticket to: the review stage after a Build Run pushed (absent when the workflow has none). */
   stageNames: { review?: string };
   run: {
     id: string;
-    /** The Run's stage name in the workflow (display, gateway header); behaviour follows `kind`. */
     stage: string;
     kind: 'triage' | 'plan' | 'build' | 'review' | 'scan' | 'docs' | 'agent';
     goal: { statements: string[] };
     maxTurns: number;
     maxBudgetUsd: number;
     tier: 'cheap' | 'standard' | 'strong' | 'auto';
-    /** Gateway model id of a role that pins provider and model; wins over `tier`. */
     model?: string;
   };
-  /** Agent Run: the workflow stage, its skill, the role profile and the outcome keys the agent may report. */
   agent?: { stage: string; title: string; skill: string; roleProfile: string; outcomes: string[]; /** A Job of a review stage: also reports `findings` and `open` in the outcome file. */ findings?: boolean };
-  /** Review stage Runs: the findings and open items the Jobs they need reported, as candidates to verify or rank. Written to `.bauherr/candidates.json`. */
-  /** Release stage Jobs (the staging walk): where staging runs and the merge commit it must run. */
   staging?: { url: string | null; sha: string | null };
   candidates?: { job: string; findings: unknown[]; open: unknown[] }[];
   ticket: { id?: string; number: number; url: string; title: string; body: string; worklog?: string; plan?: string; investigation?: string };
   product: { id?: string; repo: string; defaultBranch: string; reviewChecks?: ReviewChecks | null; /** Scan Run: the Product's SECURITY-CONTEXT.md from the Knowledge repo; absent when missing. */ securityContext?: string; /** Review Run: `REVIEW.md` of the base branch (untrusted, capped at 20 KB). */ reviewMd?: string; /** Docs Run: the Product's docs path globs and the Tickets merged since the last check. */ docs?: { paths: string[]; merged: { number: number; title: string; mergeSha: string }[] } };
-  /** Review Run after a conflict return: the SHA the previous review covered; review only the diff from it to the new head (the merge resolution). */
   conflictBase?: string;
-  /** Review Run: the review round (1 = first), and from round 2 the head the previous review covered; review only the diff from it to the new head (the fix). */
   reviewRound?: number;
   fixBase?: string;
-  /** Build Run on an existing MR: the Runner merges the base branch in before the agent (and skips the agent when the merge is clean). */
   mergeBase?: boolean;
-  /** Branch the Run creates instead of `bauherr/<number>-<run>` (an epic's integration branch). */
   branch?: string;
-  /** Title of the MR a Build Run opens instead of `<title> (#<number>)`. */
   prTitle?: string;
-  /** Slice of an epic: `prev` is the epic branch head the previous slice passed with (null for the first); `mergeMain` makes a Build Run merge the base branch into the branch before the agent. A Review Run reviews only the range after `prev`. */
   slice?: { prev: string | null; mergeMain: boolean };
-  /** Epic the Run belongs to: the parent Ticket's number and URL (the epic PR refs it), its worklog (materialised as `.bauherr/epic-worklog.md`, upserted back after the Run) and the slices so far (written to `.bauherr/slices.md` for the epic review). */
   epic?: { parent: number; parentUrl: string; worklog: string; slices: { number: number; title: string; prev: string | null; head: string | null; fixes: { sha: string; finding: string }[] }[] };
-  /** The Ticket's open factory MR: a Build Run pushes to its branch (no new MR); a Review Run reads it. */
   existingPr?: { number: number; url: string; branch: string; title: string; body: string };
   connection: {
     gatewayUrl: string;
     gatewayKey: string;
     gitToken: string;
     modelByTier: Record<string, string>;
-    /** Forge base URL the repo path is appended to. Default `https://github.com`. */
     gitBaseUrl?: string;
-    /** Basic-auth username for the clone token. Default `x-access-token` (GitHub); GitLab uses `oauth2`. */
     gitUser?: string;
   };
   forge: {
     openPullRequest(p: { repo: string; head: string; base: string; title: string; body: string }): Promise<{ url: string }>;
     comment(ticketNumber: number, body: string): Promise<void>;
-    /** Creates or updates the Ticket's `<!-- bauherr:worklog -->` Comment. */
     upsertWorklog(ticketNumber: number, body: string): Promise<void>;
-    /** Replaces the Ticket's `bauherr:stage:*` Label. */
     setStage(ticketNumber: number, stage: string): Promise<void>;
   };
   recorder: {
@@ -85,18 +65,14 @@ export type RunCtx = {
     toolCall(d: ToolCallRecord): Promise<void>;
     log(msg: string): void;
   };
-  /** The Workspace's effective templates by skill name (`SKILL_TEMPLATES`): each is appended to that skill's text under `## Template: <title>`. */
   templates?: Record<string, { title: string; body: string }[]>;
-  /** Path to the core pack (`pack/`). */
   packDir: string;
-  /** Polled after each tool of the Run's own agent turn: true stops the agent there, pushes a Build Run's branch and ends the Run `preempted`. */
   shouldStop?: () => Promise<boolean>;
 };
 
 export type RunResult = {
   status: 'succeeded' | 'failed' | 'needs_human' | 'budget_exhausted' | 'preempted';
   reason?: string;
-  /** Why a `needs_human` Run stopped: decision and access reach the owner, stuck escalates to a stronger model. */
   reasonKind?: ReasonKind;
   artifacts: { prUrl?: string; commentUrl?: string; evidence?: string; review?: unknown; triage?: unknown; scan?: unknown; docs?: unknown; agentOutcome?: unknown; investigation?: unknown; reviewedSha?: string; patchId?: string; pushedSha?: string; uptodate?: boolean; reviewedPatchId?: string; mergeConflict?: boolean; /** Build Run: the proof the Product's artifact rules asked for, with file bytes; the server stores it and drops the field from the Run. */ proof?: ProofItem[] };
   usage: { inputTokens: number; outputTokens: number; cacheRead: number; cacheWrite: number; costEstimateUsd: number };
