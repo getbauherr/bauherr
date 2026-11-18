@@ -24,6 +24,14 @@ export const missingSuggestions = (sets: PathSets): string[] => SUGGESTED_SETS.f
 
 export const neverRuns = (wf: Pick<Workflow, 'stages'>, sets: PathSets): { stage: string; title: string; names: string[] }[] =>
   wf.stages.flatMap((s) => {
-    const names = asList(s.when?.touches)
-    return names.length && !names.some((n) => sets[n]?.length) ? [{ stage: s.name, title: stageTitle(s), names }] : []
+    const never = (when: typeof s.when) => {
+      const names = asList(when?.touches)
+      return names.length && !names.some((n) => sets[n]?.length) ? names : null
+    }
+    const own = never(s.when)
+    const jobs = (s.jobs ?? []).flatMap((j) => {
+      const names = never(j.when)
+      return names ? [{ stage: `${s.name}.${j.id}`, title: `${stageTitle(s)}: ${j.id} Job`, names }] : []
+    })
+    return own ? [{ stage: s.name, title: stageTitle(s), names: own }, ...jobs] : jobs
   })

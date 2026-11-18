@@ -109,6 +109,17 @@ it('entering review starts the finds in parallel; a find whose when does not mat
   expect(await byJob(id, null)).toHaveLength(0)
 })
 
+it('a second move into review keeps the stage visit, so the running finds still lead to verify', async () => {
+  const { id } = await reviewing('twice', ['src/app/page.tsx'])
+  const since = async () => ((await payload.db.drizzle.execute(sql`SELECT "stage_since"::text AS s FROM "tickets" WHERE "id" = ${id}`)).rows[0] as { s: string }).s
+  const before = await since()
+  await advance(payload, null, { ...(await get('tickets', id)), stage: 'build' }, 'done', { by: 'factory', why: 'request_review' })
+  expect(await since()).toBe(before)
+  await finish(id, 'ux')
+  expect(await statuses(id)).toEqual({ ux: 'succeeded', verify: 'awaiting_session' })
+  expect(await byJob(id, 'ux')).toHaveLength(1)
+})
+
 it('a bug touching security and ui starts all three finds at once', async () => {
   const { id } = await reviewing('all', ['src/app/page.tsx', 'src/auth/login.ts'], { labels: ['bauherr:type:bug'] })
   expect(Object.keys(await statuses(id)).sort()).toEqual(['security', 'test', 'ux'])

@@ -16,7 +16,7 @@ export const stageOf = (wf: Workflow, labels: string[]) => {
 }
 
 export const moveStage = async (payload: Payload, ts: TicketSource, t: Record<string, any>, name: string, why = ''): Promise<void> => {
-  const row = (await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = ${name}, "stage_since" = now() WHERE "product_id" = ${idOf(t.product)} AND "number" = ${t.number} RETURNING "id"`)).rows[0] as { id: number } | undefined
+  const row = (await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "factory_stage" = ${name}, "stage_since" = CASE WHEN "factory_stage" IS DISTINCT FROM ${name} THEN now() ELSE "stage_since" END WHERE "product_id" = ${idOf(t.product)} AND "number" = ${t.number} RETURNING "id"`)).rows[0] as { id: number } | undefined
   await setStage(ts, String(t.number), name)
   if (row) await record(payload, row.id, { stage: name, cause: why ? `moveStage:${why}` : 'moveStage' })
 }
