@@ -19,6 +19,7 @@ const ticket = async (extra: Doc = {}) => {
   ++n
   return (await payload.create({ collection: 'tickets', data: { number: n, externalId: String(n), title: `t${n}`, state: 'open', product, workspace: ws, ...extra } as any, ...o })) as Doc
 }
+const shared = async () => (await holdsOf(payload, ws)).filter((h) => h.kind !== 'cannot-run')
 const link = (t: Doc) => ({ id: t.id, number: t.number, href: `/tickets/${t.id}` })
 
 beforeAll(async () => {
@@ -46,13 +47,13 @@ beforeEach(async () => {
 describe('holdsOf', () => {
   it('lists nothing for a Workspace without holds', async () => {
     await ticket({ stage: 'build' })
-    expect(await holdsOf(payload, ws)).toEqual([])
+    expect(await shared()).toEqual([])
   })
 
   it('names the fast-lane holder for a queued second expedite Ticket, with the shared text', async () => {
     const holder = await ticket({ stage: 'build', expedite: true })
     const second = await ticket({ expedite: true })
-    expect(await holdsOf(payload, ws)).toEqual([{ kind: 'fast-lane', text: fastLaneText(holder.number), holder: link(holder), waiting: [link(second)], href: `/tickets/${holder.id}` }])
+    expect(await shared()).toEqual([{ kind: 'fast-lane', text: fastLaneText(holder.number), holder: link(holder), waiting: [link(second)], href: `/tickets/${holder.id}` }])
     expect(fastLaneText(471)).toBe('Waiting for the fast lane: #471 holds it.')
   })
 
@@ -60,10 +61,10 @@ describe('holdsOf', () => {
     const holder = await ticket({ stage: 'build', expedite: true })
     const second = await ticket({ expedite: true })
     await payload.update({ collection: 'tickets', id: holder.id, data: { expediteYieldedTo: second.id }, ...o })
-    expect(await holdsOf(payload, ws)).toEqual([])
+    expect(await shared()).toEqual([])
     await payload.update({ collection: 'tickets', id: holder.id, data: { expediteYieldedTo: null }, ...o })
     await payload.update({ collection: 'workspaces', id: ws, data: { expediteLane: false }, ...o })
-    expect(await holdsOf(payload, ws)).toEqual([])
+    expect(await shared()).toEqual([])
   })
 
   it('lists a full WIP column with its waiting Tickets, not a blocked one', async () => {
@@ -72,25 +73,53 @@ describe('holdsOf', () => {
     const waiting = await ticket({ stage: 'plan', waitingFor: 'build' })
     const blocker = await ticket({ stage: 'plan' })
     await ticket({ stage: 'plan', waitingFor: 'build', blockedBy: [blocker.id] })
-    expect(await holdsOf(payload, ws)).toEqual([{ kind: 'wip', text: 'Build is full (1/1)', stage: 'build', count: 1, limit: 1, waiting: [link(waiting)], href: '/?stage=build' }])
+    expect(await shared()).toEqual([{ kind: 'wip', text: 'Build is full (1/1)', stage: 'build', count: 1, limit: 1, waiting: [link(waiting)], href: '/?stage=build' }])
   })
 
   it('lists an overlap hold naming the Ticket that changes the same files', async () => {
     const holder = await ticket({ stage: 'build' })
     const waiting = await ticket({ stage: 'plan', waitingFor: 'build', waitingReason: `overlaps #${holder.number}` })
-    expect(await holdsOf(payload, ws)).toEqual([{ kind: 'overlap', text: overlapText('Build', holder.number), stage: 'build', holder: link(holder), waiting: [link(waiting)], href: `/tickets/${holder.id}` }])
+    expect(await shared()).toEqual([{ kind: 'overlap', text: overlapText('Build', holder.number), stage: 'build', holder: link(holder), waiting: [link(waiting)], href: `/tickets/${holder.id}` }])
     expect(overlapText('Build', 356)).toBe('Queued for Build: waits for #356, which changes the same files.')
   })
 
   it('lists a role with waiting Runs and no connected agent, linking the Agent team page with the role', async () => {
     const t = await ticket({ stage: 'build' })
     await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'build', status: 'awaiting_session', role: 'engineer', workspace: ws } as any, ...o })
-    const [hold] = await holdsOf(payload, ws)
+    const [hold] = await shared()
     expect(hold).toMatchObject({ kind: 'no-agent', role: 'engineer', waiting: [link(t)], href: '/team?role=engineer' })
     expect(hold.text).toBe('No Software engineer agent is connected, 1 Run waits')
 
     await payload.create({ collection: 'agent_sessions', data: { publicId: 'ses_h1', role: 'engineer', label: 'a', connectedAt: ago(10), lastSeenAt: ago(0), workspace: ws } as any, ...o })
-    expect(await holdsOf(payload, ws)).toEqual([])
+    expect(await shared()).toEqual([])
+  })
+
+  describe('stages that cannot run', () => {
+    const cannotRun = async () => (await holdsOf(payload, ws)).filter((h) => h.kind === 'cannot-run')
+    const engineer = () => payload.create({ collection: 'agent_sessions', data: { publicId: 'ses_cr1', role: 'engineer', label: 'a', connectedAt: ago(10), lastSeenAt: ago(0), workspace: ws } as any, ...o })
+
+    it('an idle stage without a session is healthy: no Tickets waiting, no hold', async () => {
+      expect(await cannotRun()).toEqual([])
+    })
+
+    it('one stage with a waiting Ticket and no executor reads "1 stage cannot run", with its cause and action', async () => {
+      const t = await ticket({ stage: 'build' })
+      expect(await cannotRun()).toEqual([{ kind: 'cannot-run', stages: ['build'], text: '1 stage cannot run', waiting: [link(t)], href: '/', causes: [{ stage: 'Build', line: 'Software engineer · none connected', action: { label: 'Connect a Software engineer', href: '/team?role=engineer' } }] }])
+    })
+
+    it('counts every such stage: plural', async () => {
+      await ticket({ stage: 'build' })
+      await ticket({ stage: 'review' })
+      expect(await cannotRun()).toMatchObject([{ text: '2 stages cannot run', stages: ['build', 'review'] }])
+    })
+
+    it('a connected session, a Ticket waiting for the owner or a parked Ticket does not count', async () => {
+      await engineer()
+      await ticket({ stage: 'build' })
+      await ticket({ stage: 'review', needsYou: 'Needs you' })
+      await ticket({ stage: 'plan', parkedNeed: 'Answer questions' })
+      expect(await cannotRun()).toEqual([])
+    })
   })
 
   it('matches the fast-lane holder by Ticket, not by number, across Products', async () => {
@@ -99,7 +128,7 @@ describe('holdsOf', () => {
     const holder = await ticket({ number, externalId: 'a', stage: 'build', expedite: true })
     const twin = await ticket({ number, externalId: 'b', product: other, stage: 'plan' })
     const second = await ticket({ expedite: true })
-    const holds = await holdsOf(payload, ws)
+    const holds = await shared()
     expect(holds).toHaveLength(1)
     expect(holds[0]).toMatchObject({ kind: 'fast-lane', holder: link(holder), waiting: [link(second)] })
     expect(holds[0]).not.toMatchObject({ holder: link(twin) })
