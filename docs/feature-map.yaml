@@ -2178,15 +2178,16 @@ features:
   - id: setup-wizard
     area: Administration
     title: Setup wizard
-    summary: "Five steps: connect your forge, pick a repository as Product, pick a team preset (Solo, Standard, Careful), connect a session or the Runner, send a first request (open issue or new)"
+    summary: "Six steps: connect your forge, pick a repository as Product, pick a team preset (Solo, Standard, Careful), connect a session or the Runner, send a first request (open issue or new), then generate the verification: one `verify-create` Ticket for the AX role, skippable and also startable on the Product page"
     status: live
     page: /setup
-    reach: '`/setup`; an Admin of a Workspace without a Product is sent there from `/`; sidebar chip "Setup n/5"; palette "Set up" / "Setup checklist"'
+    reach: '`/setup`; an Admin of a Workspace without a Product is sent there from `/`; sidebar chip "Setup n/6"; palette "Set up" / "Setup checklist"'
     mcp: []
     source:
       - apps/server/src/app/(app)/(shell)/setup/page.tsx
       - apps/server/src/app/(app)/lib/setup.ts
       - apps/server/src/lib/presets.ts
+      - apps/server/src/lib/verify-create.ts
       - apps/server/src/app/(app)/components/setup/StepCard.tsx
     tests:
       - apps/server/tests/setup-wizard.test.ts

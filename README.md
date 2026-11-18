@@ -119,7 +119,7 @@ Requires Docker with Compose and Node 22.14+. No clone, no build:
 npx bauherr init
 ```
 
-It asks for the install directory, port and public URL (`--yes` takes the defaults; `--dir`, `--port`, `--url` set them), writes `compose.yaml` and a mode-600 `.env` with generated secrets, starts the stack and opens the UI. It checks first that Docker is reachable and the port is free. Re-running `init` keeps the secrets; upgrade with `npx bauherr@latest init`. Other commands: `up`, `down` (`--volumes` deletes the data), `status`, `seed`, `eval`. A localhost public URL means polling mode, a public URL enables webhooks. Then sign in: the setup wizard takes you through five steps (connect your forge, pick a product, pick your team, connect a session, first request).
+It asks for the install directory, port and public URL (`--yes` takes the defaults; `--dir`, `--port`, `--url` set them), writes `compose.yaml` and a mode-600 `.env` with generated secrets, starts the stack and opens the UI. It checks first that Docker is reachable and the port is free. Re-running `init` keeps the secrets; upgrade with `npx bauherr@latest init`. Other commands: `up`, `down` (`--volumes` deletes the data), `status`, `seed`, `eval`. A localhost public URL means polling mode, a public URL enables webhooks. Then sign in: the setup wizard takes you through six steps (connect your forge, pick a product, pick your team, connect a session, first request, generate verification).
 
 From a source checkout (Node 24 and pnpm 10 for local development):
 

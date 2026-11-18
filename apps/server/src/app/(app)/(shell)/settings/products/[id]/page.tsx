@@ -11,12 +11,12 @@ import { Tab, Tabs } from '../../../../components/ui/tabs'
 import { RadioCards, SettingsSection, SetupChecklist, ToggleRow } from '../../../../components/SettingsParts'
 import { isAdmin, loadProduct } from '../../../../lib/settings'
 import { currentWorkspace } from '../../../../lib/session'
-import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedToken, saveDeploy, saveDocsCheck, saveMergeMode, saveOverlapIgnore, savePathSets, saveSecurityScan, startDocsCheckAction, startScan, suggestOverlapPaths } from '../../actions'
+import { addRepository, mintEmbedToken, redetectMerge, removeDoc, revokeEmbedToken, saveDeploy, saveDocsCheck, saveMergeMode, saveOverlapIgnore, savePathSets, saveSecurityScan, startDocsCheckAction, startScan, startVerifyCreateAction, suggestOverlapPaths } from '../../actions'
 
 export const dynamic = 'force-dynamic'
 
 const TABS = [['repository', 'Repository'], ['deploy', 'Deploy'], ['approvals', 'Approvals'], ['checks', 'Checks & merging'], ['releases', 'Releases'], ['security', 'Security scan'], ['docs', 'Docs'], ['widget', 'Widget'], ['danger', 'Danger zone']] as const
-const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', approvals: 'approvals', 'pre-review': 'checks', proof: 'checks', merging: 'checks', overlap: 'checks', 'path-sets': 'checks', release: 'releases', security: 'security', docs: 'docs', widget: 'widget', danger: 'danger' }
+const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', approvals: 'approvals', 'pre-review': 'checks', proof: 'checks', merging: 'checks', overlap: 'checks', verification: 'checks', 'path-sets': 'checks', release: 'releases', security: 'security', docs: 'docs', widget: 'widget', danger: 'danger' }
 
 const when = (iso: string) => iso.slice(0, 16).replace('T', ' ')
 
@@ -32,7 +32,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const data = await loadProduct(workspace.id, Number((await params).id), isAdmin(user))
   if (!data) notFound()
-  const { product: p, connections, scan, docsInfo } = data
+  const { product: p, connections, scan, docsInfo, verify } = data
   const admin = isAdmin(user)
   const d = p.deploy
   const base = `/settings/products/${p.id}`
@@ -138,6 +138,16 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
               </>
             )}
           </SettingsSection>
+          {!verify.skill && (
+            <SettingsSection id="verification" title="Verification" purpose="The AX role writes the skill that shows a change working in this Product, plus its feature map. It files one Ticket and works it like any other.">
+              {verify.ticket && <p className="small text-muted-foreground">Ticket <Link href={`/tickets/${verify.ticket.id}`}>#{verify.ticket.number}</Link> is open.</p>}
+              {admin && !verify.ticket && (
+                <SettingsForm action={startVerifyCreateAction} submit="Generate verification" inline>
+                  <input type="hidden" name="id" value={p.id} />
+                </SettingsForm>
+              )}
+            </SettingsSection>
+          )}
           <SettingsSection id="overlap" title="Paths that never hold a Build" purpose="A Build does not start while an earlier Ticket in Build or Review changes the same paths (from the plan's Files section, then the pull request). Paths listed here never hold anything.">
             {admin ? (
               <>

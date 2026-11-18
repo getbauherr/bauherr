@@ -21,7 +21,7 @@ import { loadTeam } from '../../../../lib/sessions'
 import { PRESETS, PRESET_TEXT, presetFacts, presetWorkflow, rosterOf } from '../../../../lib/presets'
 import { Suspense } from 'react'
 import { mintOwnAgentKey } from '../settings/actions'
-import { skipSession } from './actions'
+import { generateVerification, skipSession, skipVerify } from './actions'
 import { verifyConnection } from '../settings/actions'
 
 export const dynamic = 'force-dynamic'
@@ -81,6 +81,12 @@ export default async function Setup({ searchParams }: { searchParams: Promise<{ 
               <Button asChild className="self-start"><Link href="/requests/new" prefetch={false}>Start the request</Link></Button>
             </div>
           ) : <IssuePick product={setup.product.id} />}
+        </StepCard>
+      )}
+      {shown === 'verify' && setup.product && (
+        <StepCard id="verify" n={n} title="Generate verification" purpose={`The AX role writes the skill that shows a change working in ${setup.product.name}, plus its feature map. It files one Ticket and works it like any other.`} later={{ text: 'Start it later on the Product page under', href: `/settings/products/${setup.product.id}?tab=checks#verification`, label: 'Settings › Workspace › Products' }}>
+          <SettingsForm action={generateVerification} submit="Generate verification" primary />
+          <SettingsForm action={skipVerify} submit="Skip for now" />
         </StepCard>
       )}
     </>

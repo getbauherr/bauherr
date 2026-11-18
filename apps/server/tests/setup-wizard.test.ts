@@ -132,6 +132,36 @@ it('the team step is Done by an applied preset, the session step by a skip, and 
   expect(await payload.count({ collection: 'human_touches', where: { and: [{ workspace: { equals: ws } }, { kind: { equals: 'setup:skip-session' } }] }, ...o })).toMatchObject({ totalDocs: 1 })
 })
 
+const verifyTickets = async (product: number) =>
+  (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { labels: { equals: 'bauherr:verify-create' } }] }, depth: 0, pagination: false, ...o })).docs as Record<string, any>[]
+
+it('Generate verification files one Ticket for the AX role and verify-create, and a second start while it is open files none', async () => {
+  const { ws, product } = await workspace('verify')
+  expect(await done(ws)).toMatchObject({ verify: false })
+  as(ws)
+  expect(await actions.generateVerification({}, form({}))).toMatchObject({ saved: true })
+  expect(await actions.generateVerification({}, form({}))).toMatchObject({ saved: true })
+  const tickets = await verifyTickets(product)
+  expect(tickets).toHaveLength(1)
+  const issue = await fake.tickets('acme/verify').get(String(tickets[0]!.number))
+  expect(issue.body).toContain('AX role (`ax`)')
+  expect(issue.body).toContain('`verify-create`')
+  expect(issue.labels).toContain('bauherr:verify-create')
+  expect(tickets[0]).toMatchObject({ stage: wf.nameOf(factory.workflowFor(ws), 'plan'), state: 'open' })
+  expect(await done(ws)).toMatchObject({ verify: true })
+})
+
+it('skipping Generate verification files no Ticket and completes the step; a Member cannot start or skip it', async () => {
+  const { ws, product } = await workspace('verify-skip')
+  as(ws, member)
+  expect(await actions.generateVerification({}, form({}))).toEqual({ error: 'Only an Admin can change this.' })
+  expect(await actions.skipVerify({}, form({}))).toEqual({ error: 'Only an Admin can change this.' })
+  as(ws)
+  expect(await actions.skipVerify({}, form({}))).toMatchObject({ saved: true })
+  expect(await verifyTickets(product)).toHaveLength(0)
+  expect(await done(ws)).toMatchObject({ verify: true })
+})
+
 it('an open issue becomes an untriaged Ticket once; closed and unknown issues are refused', async () => {
   const { ws, product } = await workspace('issues', REPO)
   const open = await fake.tickets(REPO).create({ title: 'Add an export' })

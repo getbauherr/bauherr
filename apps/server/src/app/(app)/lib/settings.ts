@@ -16,6 +16,7 @@ import { connectionInput } from '../../../lib/connection'
 import { forgeOf } from '../../../lib/release'
 import { gateOwnersOf, logins } from '../../../lib/forge-channel'
 import { DEFAULT_DOCS_PATHS, DOCS_LABEL } from '../../../lib/docs-check'
+import { hasVerifySkill, VERIFY_CREATE_LABEL } from '../../../lib/verify-create'
 import { setupOf } from './product-setup'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
 
@@ -136,15 +137,18 @@ export async function loadProduct(workspace: number, id: number, viewerIsAdmin =
   const all = (docs as unknown as Record<string, any>[]).filter((b) => b.githubLogin).map((b) => ({ email: b.email as string, login: b.githubLogin as string, admin: b.role === 'admin' }))
   const members = viewerIsAdmin ? all : all.filter((m) => !m.admin)
   const payload = await payloadClient()
-  const [lastRun, findings, lastDocsRun, docsTickets] = await Promise.all([
+  const [lastRun, findings, lastDocsRun, docsTickets, verifyTicket, verifySkill] = await Promise.all([
     payload.find({ collection: 'runs', where: { and: [{ stage: { equals: 'scan' } }, { 'ticket.product': { equals: id } }] }, sort: '-id', limit: 1, select: { status: true }, ...o } as never),
     payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: 'bauherr:security' } }] }, sort: '-number', limit: 5, select: { number: true }, ...o } as never),
     payload.find({ collection: 'runs', where: { and: [{ stage: { equals: 'docs' } }, { 'ticket.product': { equals: id } }] }, sort: '-id', limit: 1, select: { status: true }, ...o } as never),
     payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: DOCS_LABEL } }] }, sort: '-number', limit: 3, select: { number: true }, ...o } as never),
+    payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: VERIFY_CREATE_LABEL } }, { state: { equals: 'open' } }] }, limit: 1, select: { number: true }, ...o } as never),
+    hasVerifySkill(payload, workspace, product.slug),
   ])
   const scan = { run: ((lastRun.docs[0] as unknown as { id: number; status: string } | undefined) ?? null), tickets: (findings.docs as unknown as { id: number; number: number }[]).map((t) => ({ id: t.id, number: t.number })) }
   const docsInfo = { run: ((lastDocsRun.docs[0] as unknown as { id: number; status: string } | undefined) ?? null), tickets: (docsTickets.docs as unknown as { id: number; number: number }[]).map((t) => ({ id: t.id, number: t.number })) }
-  return { product, scan, docsInfo, connections, members, hasApprover: all.length > 0, workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release'), /** The workflow asks the Product owner to accept on staging, decided per Product by its switch. */ stagingOwner: gates(wf).staging && !gateOn(wf, 'release') } }
+  const verify = { skill: verifySkill, ticket: (verifyTicket.docs[0] as unknown as { id: number; number: number } | undefined) ?? null }
+  return { product, scan, docsInfo, verify, connections, members, hasApprover: all.length > 0, workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release'), /** The workflow asks the Product owner to accept on staging, decided per Product by its switch. */ stagingOwner: gates(wf).staging && !gateOn(wf, 'release') } }
 }
 
 export type RecentCheck = { name: string; seen: number; of: number; lastConclusion: string }
