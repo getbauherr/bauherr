@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { pickRow } from './inbox-row'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -46,7 +47,7 @@ const closePanel = async (page: Page) => {
 
 const open = async (page: Page, title: string) => {
   await page.goto('/inbox')
-  await page.getByTestId('inbox-row').filter({ hasText: title }).click()
+  await pickRow(page, title)
   const card = page.locator('article[data-decision]').filter({ hasText: title })
   await expect(card).toHaveCount(1)
   hrefs[title] = (await card.getByRole('link', { name: new RegExp(title) }).getAttribute('href'))!
@@ -71,7 +72,7 @@ test('the owner refines a Ticket in the conversation shell: question card, check
   await signIn(page, admin)
   await page.goto('/inbox')
   for (const t of ['Export the invoices', 'Name the export file']) {
-    await page.getByTestId('inbox-row').filter({ hasText: t }).click()
+    await pickRow(page, t)
     hrefs[t] = (await page.locator('article[data-decision]').filter({ hasText: t }).getByRole('link', { name: new RegExp(t) }).getAttribute('href'))!
   }
   await open(page, 'Docs Agent')
@@ -188,7 +189,7 @@ test('the Inbox card stays short and opens the shell; the info popover holds the
   await page.setViewportSize({ width: 1280, height: 800 })
   await signIn(page, admin)
   await page.goto('/inbox')
-  await page.getByTestId('inbox-row').filter({ hasText: 'Export the invoices' }).click()
+  await pickRow(page, 'Export the invoices')
   const card = page.locator('article[data-decision]').filter({ hasText: 'Export the invoices' })
   await expect(card.getByTestId('refine-panel')).toHaveCount(0)
   await expect(card.getByRole('button', { name: 'Answer questions' })).toHaveCount(0)

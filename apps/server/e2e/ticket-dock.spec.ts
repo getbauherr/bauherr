@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { give, PNG } from './paste'
 import { email } from './user'
+import { pickRow } from './inbox-row'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -44,7 +45,7 @@ test('the Inbox card opens the conversation; the recommended answer resolves the
   await login(page)
   await page.goto('/inbox')
   const before = await badge(page)
-  await page.getByTestId('inbox-row').filter({ hasText: 'Name the export file' }).click()
+  await pickRow(page, 'Name the export file')
   const card = page.locator('article[data-decision]').filter({ hasText: 'Name the export file' })
   await card.getByRole('link', { name: 'Answer questions' }).click()
   await expect(dock(page)).toBeHidden()

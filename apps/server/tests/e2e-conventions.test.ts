@@ -25,3 +25,7 @@ it('no /api call goes through page.request unless its line says allow-page-reque
 it('no fixed wait: waitForTimeout only where its line says allow-wait', () => {
   expect(lines(sources, /waitForTimeout\(/, 'allow-wait')).toEqual([])
 })
+
+it('an Inbox row is picked with pickRow (e2e/inbox-row.ts), which waits for hydration: a click before it is lost', () => {
+  expect(lines(sources, /inbox-row.*\.click\(/, 'allow-raw-row-click')).toEqual([])
+})

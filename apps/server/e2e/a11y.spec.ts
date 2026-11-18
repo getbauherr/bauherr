@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { pickRow } from './inbox-row'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -266,7 +267,7 @@ test('Inbox: list, detail and the keys dialog at 1280 and 390 px, light and dark
     const page = await (await browser.newContext({ storageState: session, viewport: { width, height: width > 640 ? 800 : 844 } })).newPage()
     await page.goto('/inbox')
     await expect(page.getByTestId('inbox-row').first()).toBeVisible()
-    await page.getByTestId('inbox-row').first().click()
+    await pickRow(page)
     await expect(page.getByTestId('inbox-pane')).toBeVisible()
     for (const t of ['light', 'dark'] as const) {
       await setTheme(page, t)

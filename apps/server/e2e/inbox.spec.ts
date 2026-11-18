@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { pickRow } from './inbox-row'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -14,7 +15,7 @@ const login = async (page: Page, as = email) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 const card = (page: Page, title: string) => page.locator('article[data-decision]').filter({ hasText: title })
-const pick = async (page: Page, title: string) => { await expect(page.getByTestId('inbox-split')).toHaveAttribute('data-wide', 'true'); await page.getByTestId('inbox-row').filter({ hasText: title }).click(); await expect(page.getByTestId('inbox-pane')).toContainText(title) }
+const pick = async (page: Page, title: string) => { await pickRow(page, title); await expect(page.getByTestId('inbox-pane')).toContainText(title) }
 const badge = async (page: Page) => Number((await page.getByRole('navigation', { name: 'Main' }).getByLabel(/need you/).textContent()) ?? 0)
 
 test('every decision that is the owner\'s is a card with the ask, the recommendation, the facts and the real options', async ({ page }) => {
@@ -287,7 +288,7 @@ test('e takes the single primary and r opens the send-back dialog, without a nat
   await expect(page.getByTestId('inbox-pane')).toContainText('Check the new header on staging')
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
-  await pick(page, 'Name the export file')
+  await pick(page, 'Clarify the export scope')
   await page.keyboard.press('e')
   await expect(page).toHaveURL(/\/tickets\/\d+\?view=conversation$/)
   expect(native).toEqual([])

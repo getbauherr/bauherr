@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { pickRow } from './inbox-row'
 
 const shots = process.env.SHOTS_DIR
 
@@ -81,8 +82,7 @@ test('the accept card in the Inbox carries the same proof', async ({ page }) => 
   test.skip(!process.env.E2E_GATED_PACK, 'the staging checkpoint exists with the gated pack')
   await signIn(page)
   await page.goto('/inbox')
-  await expect(page.getByTestId('inbox-split')).toHaveAttribute('data-wide', 'true')
-  await page.getByTestId('inbox-row').filter({ hasText: 'Ship the proof export' }).click()
+  await pickRow(page, 'Ship the proof export')
   const card = page.locator('article[data-decision]').filter({ hasText: 'Ship the proof export' })
   await expect(card.getByRole('button', { name: 'Accept on staging' })).toBeVisible()
   await expect(card.getByTestId('proof-row')).toHaveCount(3)
