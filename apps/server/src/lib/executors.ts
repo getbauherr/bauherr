@@ -57,7 +57,7 @@ export const executorsOf = async (payload: Payload, workspace: number | string, 
   for (const s of stages) {
     const role = s.role ? roles.find((r) => r.id === s.role) : undefined
     const e = executorOf(s, {
-      role: role && { id: role.id, title: role.title, working: role.sessions.filter((x) => x.status === 'working' && x.ticket?.stage === s.name).length, idle: role.sessions.filter((x) => x.status === 'idle').length, connected: role.sessions.filter((x) => x.status !== 'offline').length },
+      role: role && { id: role.id, title: role.title, working: role.sessions.filter((x) => x.status === 'working' && x.ticket?.stage === s.name).length + role.autonomous.filter((x) => x.ticket.stage === s.name).length, idle: role.sessions.filter((x) => x.status === 'idle').length, connected: role.sessions.filter((x) => x.status !== 'offline').length },
       waiting: waiting.filter((r) => r.stage === s.name).length,
       deploy,
       now,

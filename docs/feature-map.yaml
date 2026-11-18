@@ -151,12 +151,16 @@ features:
     source:
       - apps/server/src/lib/overlap.ts
       - apps/server/src/lib/holds.ts
+      - apps/server/src/lib/executors.ts
+      - apps/server/src/lib/sessions.ts
       - apps/server/src/app/(app)/components/HoldsStrip.tsx
       - apps/server/src/app/(app)/(shell)/settings/workflow/page.tsx
     tests:
       - apps/server/tests/overlap.test.ts
       - apps/server/tests/holds.test.ts
       - apps/server/tests/holds-strip.test.ts
+      - apps/server/e2e/a11y.spec.ts
+      - apps/server/e2e/workflow.spec.ts
     drive: pnpm verify overlap-hold
     proof: screenshot
     gotchas: []

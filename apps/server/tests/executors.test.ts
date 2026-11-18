@@ -10,6 +10,9 @@ describe('executorOf', () => {
   it('a stage with a role and connected sessions says who works and who is idle', () => {
     expect(executorOf({ name: 'build', kind: 'build', role: 'engineer' }, facts({ role: role({ working: 2, idle: 1, connected: 3 }) }))).toEqual({ line: 'Software engineer · 2 working · 1 idle', action: null, cannotRun: false })
   })
+  it('a stage the Runner works counts its autonomous Runs as working and can run', () => {
+    expect(executorOf({ name: 'build', kind: 'build', role: 'engineer' }, facts({ role: role({ working: 1 }) }))).toEqual({ line: 'Software engineer · 1 working', action: null, cannotRun: false })
+  })
   it('a stage with a role and no session names the waiting Runs and offers to connect one', () => {
     expect(executorOf({ name: 'build', kind: 'build', role: 'engineer' }, facts({ role: role(), waiting: 3 }))).toEqual({ line: 'Software engineer · none connected, 3 Runs waiting', action: { label: 'Connect a Software engineer', href: '/team?role=engineer' }, cannotRun: true, waits: 'Waiting for a Software engineer session' })
     expect(executorOf({ name: 'build', kind: 'build', role: 'engineer' }, facts({ role: role(), waiting: 1 }))?.line).toBe('Software engineer · none connected, 1 Run waiting')

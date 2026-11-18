@@ -107,6 +107,12 @@ describe('holdsOf', () => {
       expect(await cannotRun()).toEqual([{ kind: 'cannot-run', stages: ['build'], text: '1 stage cannot run', waiting: [link(t)], href: '/', causes: [{ stage: 'Build', line: 'Software engineer · none connected', action: { label: 'Connect a Software engineer', href: '/team?role=engineer' } }] }])
     })
 
+    it('a stage with a running autonomous Run does not cannot-run', async () => {
+      const t = await ticket({ stage: 'build' })
+      await payload.create({ collection: 'runs', data: { ticket: t.id, stage: 'build', role: 'engineer', status: 'running', mode: 'autonomous', executor: 'runner', workspace: ws, startedAt: ago(5) } as any, ...o })
+      expect(await cannotRun()).toEqual([])
+    })
+
     it('counts every such stage: plural', async () => {
       await ticket({ stage: 'build' })
       await ticket({ stage: 'review' })
