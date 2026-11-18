@@ -42,6 +42,12 @@ The default pack runs three Job kinds:
 - `verify`, role `verifier`, skill [verify-findings](https://github.com/getbauherr/bauherr/blob/main/pack/skills/verify-findings/SKILL.md). It keeps only findings with `file:line` and a scenario. Correctness classes need a failing test. The rest goes to `open`.
 - The stage's own Job, role `reviewer`, skill [review-rank](https://github.com/getbauherr/bauherr/blob/main/pack/skills/review-rank/SKILL.md). It dedupes, ranks and submits the verdict.
 
+A review stage may also hold a `kind: human` Job. It takes `by`, `needs` and `when`, and no role, skill or outcomes. It waits in the Inbox until a person marks it done.
+
+- The reserved path set `red` marks risk zones. The Careful preset ships `owner-review` with `when: {touches: red}` and `needs: [verify]`.
+- A change that touches `red` gets the Inbox decision "Owner review" with the action "Mark reviewed". Otherwise the Job is skipped.
+- The stage's concluding Job waits for it. The review concludes only after the owner marks it reviewed.
+
 A conditional Job whose `when` does not match is skipped. That includes a Product that declares no such path set. Only the `types` Job needs no path set.
 
 The Run posts one `<!-- bauherr:review -->` comment on the MR: verdict, findings with severity, file:line, defect and scenario, Open, the failing tests, and "Noted, not sent back". The verdict is `changes` if and only if a finding that counts exists.
@@ -65,6 +71,7 @@ Review prompts exclude the MR title and body. Ticket, plan, worklog and diff tex
 - Round is `reviewRounds` plus 1. From round 2 only `security`, `correctness`, `wrong-results` and `data-loss` count. `rule` and `plan` findings go to Open. The reviewer gets the diff since the previous `changes` review, `reviewedSha` to head.
 - A session's `submit_review` is refused for a correctness-type finding without `test` and for an out-of-round finding. The autonomous path moves such a finding to `open` and derives the verdict from the rest.
 - `rule` and `plan` send the Ticket back in round 1 only.
+- Each Important finding is also an inline thread on the MR. A later round resolves the thread when it re-checks the finding's class and no longer reports the finding. Identity is label plus message. The class comes from the findings stored on earlier review Runs. A thread whose class the round does not re-check stays open.
 - The output must include `checked`: correctness, over-engineering, spec-vs-plan and evidence, each with a justification. Otherwise the Ticket goes to `ready_for_human` and is never merged.
 - A failure while concluding sets `needs_human` with a comment. A verdict held while the Ticket is still in `review` with no `reviewState` is concluded again by `watch-release` after 2 minutes, without a second comment.
 - `changes` appends blocking findings to the worklog's Unfinished work and low findings to Open, moves the stage to `build` and starts a Build Run on the same MR branch.
