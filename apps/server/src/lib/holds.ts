@@ -2,8 +2,10 @@ import type { Payload, Where } from 'payload'
 import { workflowFor } from './factory'
 import { fastLaneHolderDoc, laneOn } from './expedite'
 import { fastLaneText, overlapText } from './hold-text'
+import { executorsOf } from './executors'
 import { connectedOfRole } from './presence'
 import { id } from './release'
+import { loadTeam } from './sessions'
 import { wipCount } from './wip'
 import { wipLimit } from './wip-limits'
 import { byKind, heldStages, title, wipStages } from './workflow'
@@ -12,12 +14,13 @@ type Doc = Record<string, any>
 const o = { depth: 1, overrideAccess: true, pagination: false } as const
 
 export type HoldTicket = { id: number; number: number; href: string }
-export type Hold = { text: string; waiting: HoldTicket[]; href: string } & (
+export type Hold = { text: string; waiting: HoldTicket[]; href: string; causes?: { stage: string; line: string; action: { label: string; href: string } | null }[] } & (
   | { kind: 'fast-lane'; holder: HoldTicket }
   | { kind: 'wip'; stage: string; count: number; limit: number }
   | { kind: 'parked'; stage: string }
   | { kind: 'overlap'; holder: HoldTicket; stage: string }
   | { kind: 'no-agent'; role: string }
+  | { kind: 'cannot-run'; stages: string[] }
 )
 
 const ref = (t: Doc): HoldTicket => ({ id: t.id, number: t.number, href: `/tickets/${t.id}` })
@@ -78,6 +81,14 @@ export const holdsOf = async (payload: Payload, workspace: number | string): Pro
     const tickets = (await payload.find({ collection: 'tickets', where: { id: { in: runs.map((r) => id(r.ticket)) } }, ...o })).docs as Doc[]
     const name = wf.roles.find((r) => r.id === role)?.title ?? role
     holds.push({ kind: 'no-agent', role, text: `No ${name} agent is connected, ${runs.length} ${runs.length === 1 ? 'Run waits' : 'Runs wait'}`, waiting: tickets.map(ref), href: `/team?role=${encodeURIComponent(role)}` })
+  }
+
+  const executors = await executorsOf(payload, workspace, wf.stages, (await loadTeam(payload, workspace)).roles)
+  const stuck = [...executors].filter(([, e]) => e.cannotRun).map(([stage]) => stage)
+  const idle = stuck.length ? ((await payload.find({ collection: 'tickets', where: { and: [...open, { stage: { in: stuck } }, { needsYou: { exists: false } }, { parkedNeed: { exists: false } }] }, sort: 'id', ...o })).docs as Doc[]) : []
+  const cannot = stuck.filter((stage) => idle.some((t) => t.stage === stage))
+  if (cannot.length) {
+    holds.push({ kind: 'cannot-run', stages: cannot, text: `${cannot.length} stage${cannot.length === 1 ? '' : 's'} cannot run`, waiting: idle.map(ref), href: '/', causes: cannot.map((stage) => ({ stage: title(wf, stage), line: executors.get(stage)!.line, action: executors.get(stage)!.action })) })
   }
   return holds
 }

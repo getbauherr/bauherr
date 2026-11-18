@@ -226,6 +226,26 @@ test.describe('Run page: axe in each state at 1280 and 390 px', () => {
   }
 })
 
+test('axe on the Workflow view with "N stage(s) cannot run" in the holds strip, light and dark (#605)', async ({ browser }) => {
+  test.setTimeout(120_000)
+  const page = await (await browser.newContext()).newPage()
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'editor', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
+  await page.goto('/login')
+  await page.getByLabel('Email').fill('editor-admin@example.com')
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('banner')).toBeVisible()
+  await page.goto('/')
+  const strip = page.getByTestId('holds-strip')
+  await expect(strip).toContainText(/\d+ stages? cannot run/)
+  await expect(strip.getByRole('link', { name: /cannot run/ })).toHaveAttribute('href', '/')
+  for (const t of ['light', 'dark'] as const) {
+    await setTheme(page, t)
+    expect(await scan(page), `/ with strip (${t})`).toEqual([])
+  }
+  await page.context().close()
+})
+
 test.describe('axe on the Agent team pages at 375 px, light and dark', () => {
   let session: Awaited<ReturnType<BrowserContext['storageState']>>
   test.beforeAll(async ({ browser }) => {

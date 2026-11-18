@@ -26,7 +26,7 @@ test('Agent team is in the sidebar after Workflow, not in Settings; /team lists 
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: /^Agent team/ }).click()
   await expect(page.getByRole('heading', { name: 'Agent team', level: 1 })).toBeVisible()
   await expect(page.getByTestId('team-summary')).toHaveText(/^1 working · 1 idle( · \d+ roles? needs? an agent)?$/)
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Connect a session', 'Sessions', 'Roles'])
+  await expect(page.getByRole('heading', { level: 2 }).and(page.locator(':not(#holds-title)'))).toHaveText(['Connect a session', 'Sessions', 'Roles'])
   await expect(page.getByRole('radiogroup', { name: 'Roles' })).toHaveCount(0)
   await expect(page.getByText('No session connected', { exact: true })).toHaveCount(0)
   await expect(page.getByTestId('connect')).toHaveCount(0)

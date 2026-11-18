@@ -132,3 +132,12 @@ test('the done group is collapsed behind a link and opens with it', async ({ pag
   await expect(page).toHaveURL(/stage=done/)
   await expect(page.locator('.col[data-stage=done] .card').first()).toBeVisible()
 })
+
+test('the executor line of a stage fits its column: truncated, the full text in the title', async ({ page }) => {
+  const line = page.locator('[data-testid=stage-node][data-stage=release] [data-testid=stage-executor]')
+  await expect(line).toBeVisible()
+  const m = await line.evaluate((el) => ({ width: el.getBoundingClientRect().width, ellipsis: getComputedStyle(el).textOverflow, title: el.getAttribute('title'), text: el.textContent }))
+  expect(m.width).toBeLessThanOrEqual(132)
+  expect(m.ellipsis).toBe('ellipsis')
+  expect(m.title).toBe(m.text)
+})

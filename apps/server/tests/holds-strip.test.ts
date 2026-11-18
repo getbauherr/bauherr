@@ -53,11 +53,23 @@ describe('Holding up work strip', () => {
   })
 
   it('renders nothing without holds, and never says Blocked', async () => {
-    await ticket({ stage: 'build' })
+    await ticket({ stage: 'build', needsYou: 'Needs you' })
     expect(await strip()).toBe('')
     const html = renderToStaticMarkup(createElement(HoldsStrip, { holds: [{ text: 'Build is full (1/1)', href: '/?stage=build', waiting: [{ id: 1, number: 1, href: '/tickets/1' }] }] }))
     expect(html).toContain('href="/?stage=build"')
     expect(html).not.toMatch(/blocked/i)
+  })
+})
+
+describe('Factory health in the strip', () => {
+  it('names the stage that cannot run, its cause and action, linking the Workflow view; a healthy factory shows nothing', async () => {
+    expect(await strip()).toBe('')
+    await ticket({ stage: 'build' })
+    const html = await strip()
+    expect(html).toContain('1 stage cannot run')
+    expect(html).toContain('href="/"')
+    expect(html).toContain('Build: Software engineer · none connected.')
+    expect(html).toContain('href="/team?role=engineer">Connect a Software engineer</a>')
   })
 })
 
