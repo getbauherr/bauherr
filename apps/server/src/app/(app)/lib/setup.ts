@@ -1,7 +1,8 @@
 import { activeVersion } from '../../../lib/factory'
+import { VERIFY_CREATE_LABEL } from '../../../lib/verify-create'
 import { loadConnections } from './settings'
 import { payloadClient } from './session'
-import { SKIP_SESSION, stepsOf, type SetupFacts } from './setup-steps'
+import { SKIP_SESSION, SKIP_VERIFY, stepsOf, type SetupFacts } from './setup-steps'
 
 export * from './setup-steps'
 
@@ -13,13 +14,15 @@ export async function loadSetup(workspace: number) {
   const where = { workspace: { equals: workspace } }
   const find = async (collection: string, extra: object) => (await payload.find({ collection, where, ...o, ...extra } as never)).docs as unknown as Doc[]
   const count = async (collection: string, w: object) => (await payload.count({ collection, where: w, overrideAccess: true } as never)).totalDocs
-  const [connections, products, repositories, sources, sessions, skips, version] = await Promise.all([
+  const [connections, products, repositories, sources, sessions, skips, verifySkips, verifyTickets, version] = await Promise.all([
     loadConnections(workspace),
     find('products', { select: { name: true } }),
     find('repositories', { select: { product: true } }),
     find('ticket_sources', { select: { product: true } }),
     count('agent_sessions', where),
     count('human_touches', { and: [where, { kind: { equals: SKIP_SESSION } }] }),
+    count('human_touches', { and: [where, { kind: { equals: SKIP_VERIFY } }] }),
+    count('tickets', { and: [where, { labels: { equals: VERIFY_CREATE_LABEL } }] }),
     activeVersion(payload, workspace),
   ])
   const ref = (v: unknown) => (v && typeof v === 'object' ? (v as Doc).id : v)
@@ -34,6 +37,7 @@ export async function loadSetup(workspace: number) {
     llmConnection: connections.some((c) => c.kind === 'llm-provider'),
     sessionSkipped: skips > 0,
     ticket: requested,
+    verifyAsked: verifySkips + verifyTickets > 0,
   }
   return { facts, ...stepsOf(facts), connections, forges, product: ready ? { id: ready.id as number, name: ready.name as string } : undefined, products: products.length }
 }

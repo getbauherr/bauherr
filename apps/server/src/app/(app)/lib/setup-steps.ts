@@ -4,12 +4,14 @@ export const SETUP_STEPS = [
   ['team', 'Pick your team'],
   ['session', 'Connect a session'],
   ['request', 'First request'],
+  ['verify', 'Generate verification'],
 ] as const
 export type SetupStepId = (typeof SETUP_STEPS)[number][0]
 
 export const REQUIRED: readonly SetupStepId[] = ['forge', 'product', 'request']
 
 export const SKIP_SESSION = 'setup:skip-session'
+export const SKIP_VERIFY = 'setup:skip-verify'
 
 export type SetupFacts = {
   forgeConnected: boolean
@@ -19,10 +21,11 @@ export type SetupFacts = {
   llmConnection: boolean
   sessionSkipped: boolean
   ticket: boolean
+  verifyAsked: boolean
 }
 
 export const stepsOf = (f: SetupFacts) => {
-  const done: Record<SetupStepId, boolean> = { forge: f.forgeConnected, product: f.product, team: f.teamApplied, session: f.sessionEver || f.llmConnection || f.sessionSkipped, request: f.ticket }
+  const done: Record<SetupStepId, boolean> = { forge: f.forgeConnected, product: f.product, team: f.teamApplied, session: f.sessionEver || f.llmConnection || f.sessionSkipped, request: f.ticket, verify: f.verifyAsked }
   const steps = SETUP_STEPS.map(([id, label]) => ({ id, label, done: done[id], required: REQUIRED.includes(id) }))
   return { steps, count: steps.filter((s) => s.done).length, complete: steps.filter((s) => s.required).every((s) => s.done) }
 }

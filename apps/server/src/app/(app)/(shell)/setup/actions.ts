@@ -7,8 +7,9 @@ import { record } from '../../../../lib/history'
 import { personOf } from '../../../../lib/person'
 import { isPreset, presetSource, PRESET_TEXT } from '../../../../lib/presets'
 import { stageOf } from '../../../../lib/stage-move'
+import { startVerifyCreate } from '../../../../lib/verify-create'
 import { currentWorkspace, payloadClient } from '../../lib/session'
-import { loadSetup, SKIP_SESSION } from '../../lib/setup'
+import { loadSetup, SKIP_SESSION, SKIP_VERIFY } from '../../lib/setup'
 import { only, run, type FormState } from '../../lib/settings'
 
 type Form = (prev: FormState, fd: FormData) => Promise<FormState>
@@ -37,6 +38,16 @@ export const applyPreset = act(async ({ user, workspace, payload }, fd) => {
 
 export const skipSession = act(async ({ user, workspace, payload }) => {
   await payload.create({ collection: 'human_touches', data: { kind: SKIP_SESSION, workspace, actor: personOf(user), at: new Date().toISOString() }, overrideAccess: true })
+})
+
+export const skipVerify = act(async ({ user, workspace, payload }) => {
+  await payload.create({ collection: 'human_touches', data: { kind: SKIP_VERIFY, workspace, actor: personOf(user), at: new Date().toISOString() }, overrideAccess: true })
+})
+
+export const generateVerification = act(async ({ workspace, payload }) => {
+  const { product } = await loadSetup(workspace)
+  if (!product) throw new Error('Pick a product first.')
+  await startVerifyCreate(payload, product.id)
 })
 
 export const importIssue = act(async ({ workspace, payload }, fd) => {

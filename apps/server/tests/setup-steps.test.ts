@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import { needsSetup, shownStep, stepsOf, type SetupFacts } from '../src/app/(app)/lib/setup-steps'
 
-const none: SetupFacts = { forgeConnected: false, product: false, teamApplied: false, sessionEver: false, llmConnection: false, sessionSkipped: false, ticket: false }
+const none: SetupFacts = { forgeConnected: false, product: false, teamApplied: false, sessionEver: false, llmConnection: false, sessionSkipped: false, ticket: false, verifyAsked: false }
 const done = (f: Partial<SetupFacts>) => stepsOf({ ...none, ...f }).steps.filter((s) => s.done).map((s) => s.id)
 
 it('a fresh Workspace has nothing done; the forge step needs a verified or in-use Connection', () => {
@@ -14,6 +14,7 @@ it('each fact completes exactly its step', () => {
   expect(done({ product: true })).toEqual(['product'])
   expect(done({ teamApplied: true })).toEqual(['team'])
   expect(done({ ticket: true })).toEqual(['request'])
+  expect(done({ verifyAsked: true })).toEqual(['verify'])
 })
 
 it('the session step is met by a session, a Runner (LLM Connection) or a skip, and by nothing else', () => {
@@ -37,7 +38,7 @@ it('a reload resumes at the first undone step; done steps can be revisited, late
   expect(shownStep(steps, 'team')).toBe('team')
   expect(shownStep(steps, 'request')).toBe('team')
   expect(shownStep(steps, 'nope')).toBe('team')
-  const all = stepsOf({ forgeConnected: true, product: true, teamApplied: true, sessionEver: true, llmConnection: false, sessionSkipped: false, ticket: true }).steps
+  const all = stepsOf({ forgeConnected: true, product: true, teamApplied: true, sessionEver: true, llmConnection: false, sessionSkipped: false, ticket: true, verifyAsked: true }).steps
   expect(shownStep(all, undefined)).toBeUndefined()
   expect(shownStep(all, 'session')).toBe('session')
 })

@@ -31,7 +31,7 @@ const shoot = async (page: Page, name: string, sizes: [number, number][] = [[128
 }
 const step = (page: Page, name: string) => expect(page.getByRole('heading', { name, level: 2 })).toBeVisible()
 const rail = (page: Page, label: string) => page.getByRole('list', { name: 'Setup' }).getByRole('listitem').filter({ hasText: label })
-const chip = (page: Page) => page.getByRole('link', { name: /^Setup \d\/5/ })
+const chip = (page: Page) => page.getByRole('link', { name: /^Setup \d\/6/ })
 
 test('a Member who is not Admin is asked to get an Admin', async ({ page }) => {
   await signIn(page, 'setup-member@example.com')
@@ -46,15 +46,15 @@ test('an Admin of a Workspace without a Product is sent from / to the wizard', a
   await page.goto('/')
   await expect(page).toHaveURL(/\/setup$/)
   await step(page, 'Connect your forge')
-  await expect(chip(page)).toContainText('Setup 0/5')
-  for (const l of ['Connect your forge', 'Pick a product', 'Pick your team', 'Connect a session', 'First request']) await expect(rail(page, l)).toBeVisible()
+  await expect(chip(page)).toContainText('Setup 0/6')
+  for (const l of ['Connect your forge', 'Pick a product', 'Pick your team', 'Connect a session', 'First request', 'Generate verification']) await expect(rail(page, l)).toBeVisible()
   await expect(rail(page, 'Connect your forge')).toContainText('To do')
   await expect(rail(page, 'Pick your team')).toContainText('Optional')
   await page.goto('/requests/new')
   await expect(page.getByRole('link', { name: 'Set up your Workspace' })).toBeVisible()
 })
 
-test('the five steps end to end: forge, repository, Careful team, agent key, an open issue, finish', async ({ page }) => {
+test('the six steps end to end: forge, repository, Careful team, agent key, an open issue, verification, finish', async ({ page }) => {
   await signIn(page)
   await page.goto('/setup')
 
@@ -80,7 +80,7 @@ test('the five steps end to end: forge, repository, Careful team, agent key, an 
 
   await step(page, 'Pick your team')
   await expect(rail(page, 'Pick a product')).toContainText('Done')
-  await expect(chip(page)).toContainText('Setup 2/5')
+  await expect(chip(page)).toContainText('Setup 2/6')
   await page.reload()
   await step(page, 'Pick your team')
   const cards = page.getByRole('radiogroup', { name: 'Team' }).getByRole('radio')
@@ -122,6 +122,10 @@ test('the five steps end to end: forge, repository, Careful team, agent key, an 
   await shoot(page, 'wizard/5-request')
   await page.getByRole('button', { name: 'Send to Triage' }).click()
 
+  await step(page, 'Generate verification')
+  await expect(page.getByRole('button', { name: 'Generate verification' })).toBeVisible()
+  await page.getByRole('button', { name: 'Skip for now' }).click()
+
   await expect(page.getByRole('status').filter({ hasText: 'Your factory is set up.' })).toBeVisible()
   await expect(page.getByText('Nothing will pick up work yet')).toBeVisible()
   await expect(chip(page)).toHaveCount(0)
@@ -131,7 +135,7 @@ test('the five steps end to end: forge, repository, Careful team, agent key, an 
 
   await page.reload()
   await expect(page.getByRole('status').filter({ hasText: 'Your factory is set up.' })).toBeVisible()
-  for (const l of ['Connect your forge', 'Pick a product', 'Pick your team', 'Connect a session', 'First request']) await expect(rail(page, l)).toContainText('Done')
+  for (const l of ['Connect your forge', 'Pick a product', 'Pick your team', 'Connect a session', 'First request', 'Generate verification']) await expect(rail(page, l)).toContainText('Done')
   await page.goto('/setup?step=team')
   await step(page, 'Pick your team')
   await page.getByRole('button', { name: 'Command palette' }).click()

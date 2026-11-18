@@ -16,6 +16,7 @@ import { forgeOf } from '../../../../lib/release'
 import { gatewayEnabled, rotateKey, rotateSessionKey } from '../../../../lib/gateway'
 import { refreshPrices } from '../../../../lib/prices'
 import { SCAN_MAX_BUDGET_USD } from '../../../../lib/investigation'
+import { startVerifyCreate } from '../../../../lib/verify-create'
 import { startSecurityScan } from '../../../../lib/security-scan'
 import { DEFAULT_DOCS_PATHS, startDocsCheck } from '../../../../lib/docs-check'
 import { MERGE_MODES } from '../../../../lib/merge-mode'
@@ -231,6 +232,12 @@ export const startDocsCheckAction = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
   await startDocsCheck(c.payload, id(fd))
+})
+
+export const startVerifyCreateAction = act({}, async (c, fd) => {
+  only(c.user)
+  await inWs(c, 'products', id(fd))
+  await startVerifyCreate(c.payload, id(fd))
 })
 
 export const redetectMerge = act({}, async (c, fd) => {
