@@ -42,6 +42,12 @@ The default pack runs three Job kinds:
 - `verify`, role `verifier`, skill [verify-findings](https://github.com/getbauherr/bauherr/blob/main/pack/skills/verify-findings/SKILL.md). It keeps only findings with `file:line` and a scenario. Correctness classes need a failing test. The rest goes to `open`.
 - The stage's own Job, role `reviewer`, skill [review-rank](https://github.com/getbauherr/bauherr/blob/main/pack/skills/review-rank/SKILL.md). It dedupes, ranks and submits the verdict.
 
+A review stage may also hold a `kind: human` Job. It takes `by`, `needs` and `when`, and no role, skill or outcomes. It waits in the Inbox until a person marks it done.
+
+- The reserved path set `red` marks risk zones. The Careful preset ships `owner-review` with `when: {touches: red}` and `needs: [verify]`.
+- A change that touches `red` gets the Inbox decision "Owner review" with the action "Mark reviewed". Otherwise the Job is skipped.
+- The stage's concluding Job waits for it. The review concludes only after the owner marks it reviewed.
+
 A conditional Job whose `when` does not match is skipped. That includes a Product that declares no such path set. Only the `types` Job needs no path set.
 
 The Run posts one `<!-- bauherr:review -->` comment on the MR: verdict, findings with severity, file:line, defect and scenario, Open, the failing tests, and "Noted, not sent back". The verdict is `changes` if and only if a finding that counts exists.
