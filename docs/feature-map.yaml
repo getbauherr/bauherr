@@ -1249,7 +1249,7 @@ features:
   - id: review-stage
     area: Quality and security
     title: Review stage
-    summary: "Find, verify, conclude as stage Jobs, five find Jobs report candidate findings in parallel, a verifier re-checks each against the code, a reviewer without memory of the change ranks them into one verdict as Important, Nit or Pre-existing, calibrated by the Product's REVIEW.md from the base branch; Important findings are posted as inline comments on the MR lines"
+    summary: "Find, verify, conclude as stage Jobs, five find Jobs report candidate findings in parallel, a verifier re-checks each against the code, a reviewer without memory of the change ranks them into one verdict as Important, Nit or Pre-existing, calibrated by the Product's REVIEW.md from the base branch; Important findings are posted as inline comments on the MR lines and the thread of one the next review round no longer reports is resolved"
     status: live
     page: /tickets/[id]
     reach: "`/tickets/[id]`"

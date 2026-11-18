@@ -344,6 +344,13 @@ class GitlabForge implements Forge {
     }
     return this.commentOnPullRequest(repo, n, r.body);
   }
+  async listReviewThreads(repo: RepoRef, n: number) {
+    const all = await this.h.paginate(`/projects/${enc(repo)}/merge_requests/${n}/discussions?per_page=100`);
+    return all.filter((d) => d.notes?.[0]?.position && d.notes[0].resolvable).map((d) => ({ id: String(d.id), body: String(d.notes[0].body ?? ''), resolved: d.notes.every((x: { resolvable: boolean; resolved: boolean }) => !x.resolvable || x.resolved) }));
+  }
+  async resolveReviewThread(repo: RepoRef, n: number, threadId: string) {
+    await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${n}/discussions/${threadId}?resolved=true`);
+  }
   async listPullRequestComments(repo: RepoRef, n: number) {
     return (await this.h.paginate(`/projects/${enc(repo)}/merge_requests/${n}/notes?sort=asc&order_by=created_at&per_page=100`)).filter((m) => !m.system).map(note);
   }

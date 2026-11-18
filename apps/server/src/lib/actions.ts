@@ -1207,6 +1207,7 @@ export type OpenItem = { text: string; reason: (typeof OPEN_REASONS)[number] }
 export type Review = { verdict: 'clean' | 'changes'; findings: Finding[]; markdown: string; open: OpenItem[]; problem?: string }
 export type ReviewOutcome = 'merged' | 'queued' | 'waiting_checks' | 'ready_for_human' | 'build' | 'needs_human' | 'review_restarted' | 'slice_passed' | 'noop'
 
+const inlineBody = (f: Finding): string => `${severityLabel(f)}: ${f.msg}\n\nScenario: ${f.scenario}`
 const counts = (f: Finding) => f.class !== 'low' && f.class !== 'pre-existing'
 
 export const severityLabel = (f: Pick<Finding, 'class'>): string => (f.class === 'low' ? '🟡 Nit' : f.class === 'pre-existing' ? '🟣 Pre-existing' : '🔴 Important')
@@ -1641,6 +1642,16 @@ export const mergeGate = async (payload: Payload, t: Doc, mr: Mr, reviewedSha: s
   return 'merged'
 }
 
+const resolveFixedThreads = async (payload: Payload, ticket: TicketId, mr: Mr, review: Review): Promise<void> => {
+  try {
+    const reported = review.findings.filter(counts).map((f) => `${inlineBody(f).split('\n')[0]}\n`)
+    const fixed = (await mr.backend.forge.listReviewThreads(mr.repo, mr.pr.number)).filter((th) => !th.resolved && th.body.startsWith(`${severityLabel({ class: 'security' })}: `) && !reported.some((r) => th.body.startsWith(r)))
+    for (const th of fixed) await mr.backend.forge.resolveReviewThread(mr.repo, mr.pr.number, th.id)
+  } catch (e) {
+    payload.logger.warn({ err: e, ticket }, 'resolving the threads of fixed findings failed')
+  }
+}
+
 export const concludeReview = async (payload: Payload, ticket: TicketId, review: Review, reviewedSha: string | null, resume = false): Promise<{ outcome: ReviewOutcome }> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket, depth: 0, overrideAccess: true })) as Doc & { id: number | string }
   if (t.parked) return { outcome: 'noop' }
@@ -1649,10 +1660,11 @@ export const concludeReview = async (payload: Payload, ticket: TicketId, review:
     if (!mr || mr.pr.state !== 'open') throw new Error('the Ticket has no open factory MR')
     const body = `${REVIEW_MARKER}\n${reviewComment(review)}`
     if (!resume || !(await mr.backend.forge.listPullRequestComments(mr.repo, mr.pr.number)).some((c) => c.body === body)) {
-      const comments = review.findings.filter(counts).map((f) => ({ path: f.file, line: f.line, body: `${severityLabel(f)}: ${f.msg}\n\nScenario: ${f.scenario}` }))
+      const comments = review.findings.filter(counts).map((f) => ({ path: f.file, line: f.line, body: inlineBody(f) }))
       const inline = comments.length ? await mr.backend.forge.reviewPullRequest(mr.repo, mr.pr.number, { body, comments }).catch((e) => (payload.logger.warn({ err: e, ticket: t.id }, 'posting the review inline failed; posting one comment'), null)) : null
       if (!inline) await mr.backend.forge.commentOnPullRequest(mr.repo, mr.pr.number, body)
     }
+    if (!review.problem) await resolveFixedThreads(payload, t.id, mr, review)
     await payload.db.drizzle.execute(sql`UPDATE "tickets" SET "conflict_return_base" = NULL WHERE "id" = ${t.id}`)
     const pre = review.findings.filter((f) => f.class === 'pre-existing').map(({ file, line, msg, scenario }) => ({ file, line, msg, scenario }))
     if (pre.length) {

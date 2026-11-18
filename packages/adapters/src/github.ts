@@ -370,6 +370,15 @@ class GithubForge implements Forge {
     });
     return { id: String(x.id), author: x.user?.login ?? '', body: x.body ?? '', createdAt: x.submitted_at ?? '' };
   }
+  async listReviewThreads(repo: RepoRef, n: number) {
+    const [owner, name] = repo.split('/');
+    const d = await this.graphql<{ repository: { pullRequest: { reviewThreads: { nodes: { id: string; isResolved: boolean; comments: { nodes: { body: string }[] } }[] } } } }>(
+      'query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{body}}}}}}}', { o: owner, n: name, p: n });
+    return d.repository.pullRequest.reviewThreads.nodes.map((x) => ({ id: x.id, body: x.comments.nodes[0]?.body ?? '', resolved: x.isResolved }));
+  }
+  async resolveReviewThread(_repo: RepoRef, _n: number, threadId: string) {
+    await this.graphql('mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id}}}', { id: threadId });
+  }
   async listPullRequestComments(repo: RepoRef, n: number) {
     const reviews = (await this.h.paginate(`/repos/${repo}/pulls/${n}/reviews?per_page=100`)).filter((x) => x.body);
     return [

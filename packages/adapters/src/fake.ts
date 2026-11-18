@@ -19,6 +19,7 @@ interface FakeRepo {
   rerunChecks: Map<string, Check[]>;
   reruns: Check[][];
   reviews: { number: number; body: string; comments: InlineComment[] }[];
+  resolvedThreads: Set<string>;
   commitDates: Map<string, string>;
   releases: Release[];
   tags: string[];
@@ -174,7 +175,7 @@ export class FakeBackend implements Backend {
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], reviews: [], commitDates: new Map(), releases: [], tags: [], tagShas: new Map(), contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [], snapshots: new Map() };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], reviews: [], resolvedThreads: new Set(), commitDates: new Map(), releases: [], tags: [], tagShas: new Map(), contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [], snapshots: new Map() };
       r.snapshots.set(r.branches.get('main')!.sha, new Map());
       this.repos.set(name, r);
     }
@@ -238,6 +239,15 @@ export class FakeBackend implements Backend {
       reviewPullRequest: async (repo, n, review) => {
         this.repo(repo).reviews.push({ number: n, ...review });
         return post(repo, n, review.body);
+      },
+      listReviewThreads: async (repo, n) => {
+        find(repo, n);
+        const r = this.repo(repo);
+        return r.reviews.flatMap((x, i) => (x.number === n ? x.comments.map((c, j) => ({ id: `${i}.${j}`, body: c.body, resolved: r.resolvedThreads.has(`${i}.${j}`) })) : []));
+      },
+      resolveReviewThread: async (repo, n, threadId) => {
+        find(repo, n);
+        this.repo(repo).resolvedThreads.add(threadId);
       },
       listPullRequestComments: async (repo, n) => {
         find(repo, n);
