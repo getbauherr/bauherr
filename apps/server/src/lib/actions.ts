@@ -30,7 +30,7 @@ import { canSeeProduct, decidingAs, isBauherr, mayDecide } from './people'
 import type { Addressee } from './workflow-rules'
 import { preReviewFailures } from './pre-review'
 import { advance } from './advance'
-import { jobsOpen } from './stage-jobs'
+import { finishHumanJob, jobsOpen } from './stage-jobs'
 import { enterStage, startAfterPull, wipCount } from './wip'
 import { wipLimit } from './wip-limits'
 import { NoRoom, evenRanks, rankBetween } from './frontier'
@@ -1030,6 +1030,17 @@ export const decide = async (payload: Payload, user: Doc, a: { ticket: TicketId;
   if (note) await ts.comment(n, `${def.title}: ${a.outcome} by ${user.email}.\n\n${note}`)
   const moved = await advance(payload, ts, t, a.outcome, { by: personOf(user), note })
   return { stage: moved.stage, entered: moved.entered }
+}
+
+export const completeOwnerReview = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {
+  const t0 = (await payload.findByID({ collection: 'tickets', id: a.ticket, depth: 0, overrideAccess: true }).catch(() => null)) as Doc | null
+  const def = t0 && stageDef(workflowFor(t0.workspace), t0.stage ?? '')
+  const job = def?.kind === 'review' ? def.jobs?.find((j) => j.kind === 'human') : undefined
+  const t = await loadGate(payload, user, a, 'human', job?.by ?? 'bauherr')
+  if (!job || t.state === 'closed' || !(await jobsOpen(payload, t))) throw new Error('the Ticket is not waiting for an owner review')
+  await touch(payload, user, t, `review:${job.id}`, job.by ?? 'bauherr')
+  await finishHumanJob(payload, t, job.id)
+  return { job: job.id }
 }
 
 export const approveProduction = async (payload: Payload, user: Doc, a: { ticket: TicketId; workspaceId?: TicketId }) => {

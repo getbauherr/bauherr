@@ -19,7 +19,7 @@ const facts = {
   productionGate: true,
   now: '2026-11-10T10:00:00.000Z',
 }
-const REAL = new Set<DecisionAction>(['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'grantRound', 'stopReview', 'backToBuild', 'backToBacklog', 'rerun', 'expedite', 'releaseLane', 'open'])
+const REAL = new Set<DecisionAction>(['approvePlan', 'requestChanges', 'acceptStaging', 'approveProduction', 'grantRound', 'completeReview', 'stopReview', 'backToBuild', 'backToBacklog', 'rerun', 'expedite', 'releaseLane', 'open'])
 const JARGON = /\b(Run|MR|WIP|sha|lease|stage label)\b/
 
 describe('buildDecision', () => {

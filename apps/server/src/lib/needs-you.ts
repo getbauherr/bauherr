@@ -6,7 +6,7 @@ export type Stage = string
 
 export const APPROVED_PLAN = 'bauherr:approved:plan'
 export const APPROVED_STAGING = 'bauherr:approved:staging'
-export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Release failed', 'Round cap reached', 'Decision needed', 'Needs you', 'Run needs you', 'Cancelled', 'Run failed', 'Expedite?', 'Fast lane held'] as const
+export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Release failed', 'Round cap reached', 'Decision needed', 'Owner review', 'Needs you', 'Run needs you', 'Cancelled', 'Run failed', 'Expedite?', 'Fast lane held'] as const
 export type Need = (typeof NEEDS)[number]
 export const GATE_NAMES: Record<HumanGate, string> = { refine: 'Refine', plan: 'Approve plan', staging: 'Accept on staging', production: 'Approve production' }
 export const NEEDS_REFINEMENT = 'bauherr:needs-refinement'
@@ -41,6 +41,7 @@ export const needsYou = (
   if (at('plan') && gates.includes('plan') && !ticket.expedite && !ticket.labels.includes(APPROVED_PLAN) && !ticket.jobsOpen && planRun && run?.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
   if (at('triage') && ticket.labels.includes(NEEDS_REFINEMENT)) return ticket.waitingFor ? null : 'Answer questions'
   if (at('human')) return 'Decision needed'
+  if (at('review') && ticket.jobsOpen) return 'Owner review'
   if (at('review') && ticket.reviewState === 'needs_human' && (ticket.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'Round cap reached'
   if (at('review') && ticket.reviewState === 'needs_human') return 'Needs you'
   if (run?.status === 'needs_human' && !(at('release') && run.stage !== stage) && !runIs('triage') && run.reasonKind !== 'stuck') return 'Run needs you'

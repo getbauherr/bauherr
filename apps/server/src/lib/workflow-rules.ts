@@ -56,7 +56,7 @@ const lintJobs = (n: string, k: Kind, s: Record<string, any>, stageOutcomes: str
     const at = `stage "${n}" job "${id}"`
     const own = (plan && i === 0) || (k === 'review' && i === last && id === n)
     const kind = j.kind ?? 'agent'
-    const human = plan && kind === 'human'
+    const human = (plan || k === 'review') && kind === 'human'
     if (own) {
       if (plan && id !== n) out.push(`stage "${n}": the first job of a plan stage must be the stage itself (id "${n}")`)
       for (const key of ['kind', 'role', 'skill', 'by', 'when', 'blocking', 'outcomes']) if (j[key] !== undefined) out.push(`${at}: the stage's own job takes no ${key}`)
@@ -68,11 +68,11 @@ const lintJobs = (n: string, k: Kind, s: Record<string, any>, stageOutcomes: str
       else for (const x of j.needs ?? []) if (!seen.includes(x)) out.push(`${at}: needs "${x}", which is not an earlier job of the stage`)
     }
     if (!own) {
-      if (kind !== 'agent' && !human) out.push(`${at}: kind ${JSON.stringify(kind)} is not supported yet (only agent${plan ? ' and human' : ''})`)
+      if (kind !== 'agent' && !human) out.push(`${at}: kind ${JSON.stringify(kind)} is not supported yet (only agent${plan || k === 'review' ? ' and human' : ''})`)
       if (human) {
-        if (i !== s.jobs.length - 1) out.push(`${at}: the human job must be the last job`)
+        if (plan && i !== s.jobs.length - 1) out.push(`${at}: the human job must be the last job`)
         if (j.by !== undefined && !addressee(j.by)) out.push(`${at}: by must be bauherr or product-owner`)
-        for (const key of ['role', 'skill', 'when', 'blocking', 'outcomes']) if (j[key] !== undefined) out.push(`${at}: a human job takes no ${key}`)
+        for (const key of plan ? ['role', 'skill', 'when', 'blocking', 'outcomes'] : ['role', 'skill', 'blocking', 'outcomes']) if (j[key] !== undefined) out.push(`${at}: a human job takes no ${key}`)
       } else {
         if (!j.role || !(j.role in roles)) out.push(`${at}: role ${j.role ? `"${j.role}" is not in team.roles` : 'is required'}`)
         if (typeof j.skill !== 'string' || !j.skill) out.push(`${at}: skill is required`)
@@ -80,7 +80,7 @@ const lintJobs = (n: string, k: Kind, s: Record<string, any>, stageOutcomes: str
       }
       if (j.needs !== undefined && !(Array.isArray(j.needs) && j.needs.every((x: unknown) => typeof x === 'string'))) out.push(`${at}: needs must be a list of job ids`)
       else for (const x of j.needs ?? []) if (!seen.includes(x)) out.push(`${at}: needs "${x}", which is not an earlier job of the stage`)
-      if (!human && j.when !== undefined) out.push(...lintWhen(at, j.when))
+      if ((!human || !plan) && j.when !== undefined) out.push(...lintWhen(at, j.when))
       if (!human && j.blocking !== undefined && typeof j.blocking !== 'boolean') out.push(`${at}: blocking must be true or false`)
       if (!human && j.outcomes !== undefined) {
         const o = obj(j.outcomes)

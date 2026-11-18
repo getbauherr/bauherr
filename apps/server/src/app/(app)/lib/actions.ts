@@ -3,7 +3,7 @@ import { cookies, headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
-import { NotInWorkspace, NotReleasable, RunHealthy, decide, acceptStaging, approvePlan, expedite, backToBacklog, releaseLane, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, parkEpic, resumeEpic, discardEpic, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat, sendBack } from '../../../lib/actions'
+import { NotInWorkspace, NotReleasable, RunHealthy, completeOwnerReview, decide, acceptStaging, approvePlan, expedite, backToBacklog, releaseLane, backToBuild, approveProduction, approveSkillProposal, approveSkillProposalOf, rejectSkillProposal, grantReviewRound, stopReview, parkEpic, resumeEpic, discardEpic, rankTicket, rankFirst, releaseLock, repairTicket, relinkRunMr, NotAdmin, type Repair, requestChanges, personOf, CommentRefused, postCommentFromChat, sendBack } from '../../../lib/actions'
 import { discardRequest, loadRequestView, requestEdit, requestFile, type CardPatch, type RequestView } from '../../../lib/request-conversation'
 import { orderOwnRequests } from '../../../lib/request-order'
 import { startRunOrRejoin } from '../../../jobs'
@@ -340,6 +340,7 @@ export async function decideAction(ticket: number, need: string, action: Decisio
     else if (action === 'requestChanges') await requestChanges(payload, user, { ...a, note })
     else if (action === 'acceptStaging') await acceptStaging(payload, user, a)
     else if (action === 'approveProduction') await approveProduction(payload, user, a)
+    else if (action === 'completeReview') await completeOwnerReview(payload, user, a)
     else if (action === 'grantRound') await grantReviewRound(payload, user, a)
     else if (action === 'stopReview') await stopReview(payload, user, { ...a, note })
     else if (action === 'backToBuild') await backToBuild(payload, user, { ...a, note })

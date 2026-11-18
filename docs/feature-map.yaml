@@ -1270,6 +1270,27 @@ features:
     gotchas: []
     guards: []
     debt: []
+  - id: risk-zones
+    area: Quality and security
+    title: Risk zones
+    summary: A Product marks paths as the path set `red`; a change that touches them gets a human `owner-review` Job in the review stage that the owner marks reviewed in the Inbox before the review concludes
+    status: live
+    page: /inbox
+    reach: Product › Checks & merging › Path sets (set `red`), then the Inbox decision "Owner review"
+    mcp: []
+    source:
+      - pack/factory.yaml
+      - apps/server/src/lib/stage-jobs.ts
+      - apps/server/src/lib/workflow-rules.ts
+      - apps/server/src/lib/decision.ts
+    tests:
+      - apps/server/tests/review-jobs.test.ts
+      - apps/server/tests/workflow.test.ts
+    drive: pnpm verify risk-zones
+    proof: tests
+    gotchas: []
+    guards: []
+    debt: []
   - id: fake-green-diff-budget-spin-guards
     area: Quality and security
     title: Fake-green, diff-size and spin guards

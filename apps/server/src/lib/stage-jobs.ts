@@ -5,7 +5,7 @@ import { advance } from './advance'
 import type { Finding, OpenItem } from './actions'
 import { workflowFor } from './factory'
 import { matches } from './glob'
-import { jobEvent, SKIP_CAUSE, skipEvent } from './history'
+import { jobEvent, JOB_CAUSE, SKIP_CAUSE, skipEvent } from './history'
 import { cas } from './release'
 import { factsOf } from './route'
 import { OWN_VERDICT, jobOf, stage as stageDef } from './workflow'
@@ -31,7 +31,10 @@ const visitOf = async (payload: Payload, ticket: number | string, stage: string)
   const since = ((await db.execute(sql`SELECT "stage_since"::text AS since FROM "tickets" WHERE "id" = ${ticket}`)).rows[0] as { since: string | null }).since
   const runs = (await db.execute(sql`SELECT "id", "job", "status", "outcome" FROM "runs" WHERE "ticket_id" = ${ticket} AND "stage" = ${stage} AND (${since}::timestamptz IS NULL OR "created_at" >= ${since}::timestamptz) ORDER BY "id"`)).rows as { id: number; job: string | null; status: string; outcome: string | null }[]
   const skipped = new Set(((await db.execute(sql`SELECT "job" FROM "ticket_events" WHERE "ticket_id" = ${ticket} AND "cause" = ${SKIP_CAUSE + stage} AND "job" IS NOT NULL AND (${since}::timestamptz IS NULL OR "at" >= ${since}::timestamptz)`)).rows as { job: string }[]).map((r) => r.job))
-  return { since, runs, skipped }
+  const marks = (await db.execute(sql`SELECT "job", "cause" FROM "ticket_events" WHERE "ticket_id" = ${ticket} AND "cause" LIKE ${JOB_CAUSE + '%'} AND "run_id" IS NULL AND (${since}::timestamptz IS NULL OR "at" >= ${since}::timestamptz)`)).rows as { job: string; cause: string }[]
+  const humanQueued = new Set(marks.filter((m) => m.cause.endsWith(':queued')).map((m) => m.job))
+  const humanDone = new Set(marks.filter((m) => m.cause.endsWith(':finished')).map((m) => m.job))
+  return { since, runs, skipped, humanQueued, humanDone }
 }
 
 export const visitWorst = (t: Doc, runs: Doc[]): Doc | undefined => worstRun(runs.filter((r) => r.stage === t.stage && (!t.stageSince || r.createdAt >= t.stageSince)))
@@ -83,8 +86,10 @@ const blockedClaim = (stage: string, run: number) => sql`"stage" = ${stage} AND 
 
 export const jobsOpen = async (payload: Payload, t: Doc): Promise<boolean> => {
   const def = stageDef(workflowFor(t.workspace), t.stage)
-  if ((def?.kind !== 'plan' && def?.kind !== 'release') || !def.jobs) return false
-  const { runs, skipped } = await visitOf(payload, t.id, t.stage)
+  if (!def?.jobs) return false
+  const { runs, skipped, humanQueued, humanDone } = await visitOf(payload, t.id, t.stage)
+  if (def.kind === 'review') return def.jobs.some((j) => j.kind === 'human' && humanQueued.has(j.id) && !humanDone.has(j.id))
+  if (def.kind !== 'plan' && def.kind !== 'release') return false
   return def.jobs.some((j) => j.id !== def.name && !skipped.has(j.id) && !runs.some((r) => r.job === j.id && r.status === 'succeeded' && r.outcome))
 }
 
@@ -94,7 +99,7 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<boo
   if (!def?.jobs || t.state !== 'open') return false
   if (def.kind === 'release' && (t.releaseState !== 'on_staging' || t.productionState)) return false
   if (def.kind === 'review' && (t.reviewState || t.parked || t.waitingFor)) return false
-  const { since, runs, skipped } = await visitOf(payload, t.id, t.stage)
+  const { since, runs, skipped, humanQueued, humanDone } = await visitOf(payload, t.id, t.stage)
   const own = def.kind === 'review' ? def.jobs.find((j) => j.id === def.name) : undefined
   const done = new Set<string>()
   let facts
@@ -102,6 +107,20 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<boo
   for (const j of def.jobs) {
     if (j === own) continue
     const mine = runs.filter((r) => (r.job ?? def.name) === j.id)
+    if (j.kind === 'human') {
+      if (humanDone.has(j.id) || skipped.has(j.id)) done.add(j.id)
+      else if (j.needs.every((n) => done.has(n)) && !humanQueued.has(j.id)) {
+        const verdict = j.when ? evalWhen(j.when, (facts ??= await factsOf(payload, t)), matches) : null
+        if (verdict && !verdict.match) {
+          await skipEvent(payload, t, { stage: def, reason: verdict.reason }, { from: t.stage, by: 'factory', job: j.id })
+          done.add(j.id)
+        } else {
+          await jobEvent(payload, t, { stage: t.stage, job: j.id, what: 'queued' })
+          started = true
+        }
+      }
+      continue
+    }
     if (j.id === def.name) {
       if (mine.some((r) => r.status === 'succeeded')) done.add(j.id)
       continue
@@ -135,6 +154,11 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<boo
   const claim = sql`"stage" = ${t.stage} AND "stage_since" IS NOT DISTINCT FROM ${since}::timestamptz`
   await closeAndAdvance(payload, t, def.outcomeOrder![0]!, claim, { run: last && ((await payload.findByID({ collection: 'runs', id: last.id, ...o })) as Doc) })
   return started
+}
+
+export const finishHumanJob = async (payload: Payload, ticket: Doc, job: string): Promise<void> => {
+  await jobEvent(payload, ticket, { stage: ticket.stage, job, what: 'finished' })
+  await startReadyJobs(payload, ticket)
 }
 
 export const finishJob = async (payload: Payload, run: Doc, ticket: Doc, outcome: string, note?: string): Promise<void> => {

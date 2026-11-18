@@ -50,6 +50,7 @@ export const actionFor = (need: Need, { run, open, product, releaseRunUrl }: Act
   switch (need) {
     case 'Expedite?': return { kind: 'expedite' }
     case 'Decision needed':
+    case 'Owner review':
     case 'Fast lane held': return null
     case 'Approve plan': return { kind: 'approvePlan' }
     case 'Accept on staging':
