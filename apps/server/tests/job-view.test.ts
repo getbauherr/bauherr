@@ -31,7 +31,7 @@ describe('jobTickets', () => {
   })
 
   it('covers only stages with explicit Jobs unless one is asked for', () => {
-    expect([...jobTickets(wf, rows, live).keys()]).toEqual(['plan'])
+    expect([...jobTickets(wf, rows, live).keys()]).toEqual(['plan', 'review', 'release'])
     expect([...jobTickets(wf, rows, live, 'build').get('build')!]).toEqual([['build', [5]]])
   })
 
