@@ -89,7 +89,7 @@ it('Standard is the pack default workflow: review Jobs, staging walk, the approv
   expect(wf.order(w)).toEqual(['triage', 'plan', 'parent', 'build', 'review', 'release', 'done'])
   expect(wf.gates(w)).toEqual({ plan: true, staging: true, production: true })
   expect(w.roles.map((r) => r.id)).toEqual(['orchestrator', 'engineer', 'reviewer', 'security', 'ux', 'test', 'docs', 'ax', 'verifier'])
-  expect(wf.stage(w, 'review')!.jobs?.map((j) => j.id)).toEqual(['correctness', 'security', 'ux', 'test', 'ax', 'verify', 'owner-review', 'review'])
+  expect(wf.stage(w, 'review')!.jobs?.map((j) => j.id)).toEqual(['correctness', 'security', 'ux', 'test', 'ax', 'verify', 'review'])
   expect(wf.stage(w, 'release')!.jobs?.map((j) => j.id)).toEqual(['staging-walk'])
 })
 

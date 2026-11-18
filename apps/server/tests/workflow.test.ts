@@ -162,7 +162,7 @@ it('graph of the default file', () => {
       { id: 'plan:gate', title: 'Approve plan', kind: 'human', checkpoint: true },
       { id: 'parent', title: 'Split', kind: 'container', checkpoint: false },
       { id: 'build', title: 'Build', kind: 'build', role: 'engineer', checkpoint: false },
-      { id: 'review', title: 'Review', kind: 'review', role: 'reviewer', checkpoint: false, jobs: [{ id: 'correctness', kind: 'agent', role: 'reviewer', blocking: true, needs: [] }, { id: 'security', kind: 'agent', role: 'security', blocking: true, needs: [] }, { id: 'ux', kind: 'agent', role: 'ux', blocking: true, needs: [] }, { id: 'test', kind: 'agent', role: 'test', blocking: true, needs: [] }, { id: 'ax', kind: 'agent', role: 'ax', blocking: true, needs: [] }, { id: 'verify', kind: 'agent', role: 'verifier', blocking: true, needs: ['correctness', 'security', 'ux', 'test', 'ax'] }, { id: 'owner-review', kind: 'human', blocking: true, needs: ['verify'] }, { id: 'review', kind: 'agent', role: 'reviewer', blocking: true, needs: ['verify', 'owner-review'] }] },
+      { id: 'review', title: 'Review', kind: 'review', role: 'reviewer', checkpoint: false, jobs: [{ id: 'correctness', kind: 'agent', role: 'reviewer', blocking: true, needs: [] }, { id: 'security', kind: 'agent', role: 'security', blocking: true, needs: [] }, { id: 'ux', kind: 'agent', role: 'ux', blocking: true, needs: [] }, { id: 'test', kind: 'agent', role: 'test', blocking: true, needs: [] }, { id: 'ax', kind: 'agent', role: 'ax', blocking: true, needs: [] }, { id: 'verify', kind: 'agent', role: 'verifier', blocking: true, needs: ['correctness', 'security', 'ux', 'test', 'ax'] }, { id: 'review', kind: 'agent', role: 'reviewer', blocking: true, needs: ['verify'] }] },
       { id: 'release', title: 'Staging', kind: 'release', checkpoint: false, jobs: [{ id: 'staging-walk', kind: 'agent', role: 'ax', blocking: true, needs: [] }] },
       { id: 'release:gate', title: 'Accept on staging', kind: 'human', checkpoint: true },
       { id: 'release:production', title: 'Approve production', kind: 'human', checkpoint: true },
@@ -195,9 +195,9 @@ it('files without jobs keep their hash; the shipped factory, standard and carefu
   const root = fileURLToPath(new URL('../../..', import.meta.url))
   const fixtures = fileURLToPath(new URL('./fixtures', import.meta.url))
   const expected: Record<string, string> = {
-    [`${root}pack/factory.yaml`]: '44589f211d1997a74f685bca1e358f1463d8eac243a5cf394be05a6d12bb8778',
+    [`${root}pack/factory.yaml`]: 'b8bbaa404077659f2751b69a848e50768f39d8937090af30d86e3681005d6fb2',
     [`${root}pack/presets/solo.yaml`]: '454b110bd5170fce5f0133a90dee014f587aa2ff8b69df837b3ccce5be3bca10',
-    [`${root}pack/presets/standard.yaml`]: '44589f211d1997a74f685bca1e358f1463d8eac243a5cf394be05a6d12bb8778',
+    [`${root}pack/presets/standard.yaml`]: 'b8bbaa404077659f2751b69a848e50768f39d8937090af30d86e3681005d6fb2',
     [`${root}pack/presets/careful.yaml`]: '86ae892433eb7b2c18d807df5c064c91a88f7eb357f34e5f2d077c9566501f10',
     [`${fixtures}/bare-pack/factory.yaml`]: '4dd0536b8bfd0ec5a131fa8517d8e04e1b7db170e311d736820c65a7e000fb30',
     [`${fixtures}/custom-pack/factory.yaml`]: '3e5b636c36941e08c0b3270a4516320c781e3b6ecf94a48f3208c2fd73d18de0',

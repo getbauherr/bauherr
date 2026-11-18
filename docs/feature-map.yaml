@@ -1273,7 +1273,7 @@ features:
   - id: risk-zones
     area: Quality and security
     title: Risk zones
-    summary: A Product marks paths as the path set `red`; a change that touches them gets a human `owner-review` Job in the review stage that the owner marks reviewed in the Inbox before the review concludes
+    summary: A Product marks paths as the path set `red`; a change that touches them gets a human `owner-review` Job in the review stage that the owner marks reviewed in the Inbox before the review concludes; on in the Careful preset, add the Job to opt in elsewhere
     status: live
     page: /inbox
     reach: Product › Checks & merging › Path sets (set `red`), then the Inbox decision "Owner review"
