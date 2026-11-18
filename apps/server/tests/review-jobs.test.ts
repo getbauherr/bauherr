@@ -47,7 +47,7 @@ beforeAll(async () => {
   const { callTool } = await import('../src/lib/mcp-tools')
   fake = (await import('../src/lib/fake-forge')).fakeForge()
   ws = (await payload.create({ collection: 'workspaces', data: { name: 'acme', slug: 'acme', defaultMode: 'session' }, ...o })).id as number
-  product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws, pathSets: { ui: ['src/app/**'], security: ['src/auth/**'] } }, ...o })).id as number
+  product = (await payload.create({ collection: 'products', data: { name: 'web', slug: 'web', workspace: ws, pathSets: { ui: ['src/app/**'], security: ['src/auth/**'], red: ['src/billing/**'] } }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws }, ...o })).id as number
   member = await payload.create({ collection: 'bauherren', data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws }] }, ...o })
   call = (name, input = {}) => callTool({ payload, user: member, actor: { kind: 'human' } }, name, input)
@@ -302,4 +302,34 @@ it('a small candidate list drops only the patch and is not marked truncated', as
   await finish(id, 'ux', { findings: [{ ...finding, class: 'correctness', test: { command: 'c', failure: 'f', patch: 'p' } }] })
   const verify = await claim('reviewer')
   expect(verify.candidates).toEqual([{ job: 'ux', findings: [{ ...finding, class: 'correctness', test: { command: 'c', failure: 'f' } }], open: [] }])
+})
+
+it('a change touching a red path waits for the owner review Job; the review Run cannot start until it is completed', async () => {
+  const { id } = await reviewing('red', ['src/billing/invoice.ts'])
+  await finish(id, 'verify')
+  expect(await statuses(id)).toEqual({ verify: 'succeeded' })
+  expect(await stageJobs.jobsOpen(payload, await get('tickets', id))).toBe(true)
+  expect((await events(id)).filter((e) => e.cause === 'job:owner-review:queued')).toHaveLength(1)
+  await stageJobs.startReadyJobs(payload, await get('tickets', id))
+  expect(await statuses(id)).toEqual({ verify: 'succeeded' })
+  expect((await events(id)).filter((e) => e.cause === 'job:owner-review:queued')).toHaveLength(1)
+  expect((await payload.findByID({ collection: 'tickets', id, depth: 0, ...o }))).toMatchObject({ stage: 'review' })
+
+  await actions.completeOwnerReview(payload, member, { ticket: id })
+  expect(await stageJobs.jobsOpen(payload, await get('tickets', id))).toBe(false)
+  expect(await statuses(id)).toEqual({ verify: 'succeeded', review: 'awaiting_session' })
+})
+
+it('a change touching no red path skips the owner review Job and the review Run starts after verify', async () => {
+  const { id } = await reviewing('plain', ['src/app/page.tsx'])
+  await finish(id, 'ux')
+  await finish(id, 'verify')
+  expect((await events(id)).filter((e) => e.cause === 'skip:review').map((e) => e.job)).toContain('owner-review')
+  expect(await stageJobs.jobsOpen(payload, await get('tickets', id))).toBe(false)
+  expect(await statuses(id)).toEqual({ ux: 'succeeded', verify: 'succeeded', review: 'awaiting_session' })
+})
+
+it('completing an owner review that is not open is refused', async () => {
+  const { id } = await reviewing('not yet', ['src/billing/x.ts'])
+  await expect(actions.completeOwnerReview(payload, member, { ticket: id })).rejects.toThrow('not waiting for an owner review')
 })

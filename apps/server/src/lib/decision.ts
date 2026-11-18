@@ -12,7 +12,7 @@ import { parseTldr, type PlanTldr } from './tldr'
 
 export const PROOF_NEEDS: readonly string[] = ['Accept on staging', 'Staging not confirmed', 'Approve production', 'Production deploy failed']
 
-export type DecisionAction = 'approvePlan' | 'requestChanges' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'stopReview' | 'backToBuild' | 'backToBacklog' | 'rerun' | 'expedite' | 'releaseLane' | 'decide' | 'approveSkill' | 'rejectSkill' | 'open'
+export type DecisionAction = 'approvePlan' | 'requestChanges' | 'acceptStaging' | 'approveProduction' | 'grantRound' | 'completeReview' | 'stopReview' | 'backToBuild' | 'backToBacklog' | 'rerun' | 'expedite' | 'releaseLane' | 'decide' | 'approveSkill' | 'rejectSkill' | 'open'
 export type DecisionOption = { label: string; action: DecisionAction; primary?: boolean; destructive?: boolean; /** The option takes a one-line note first. */ note?: 'required' | 'optional'; /** `open` only: where it is done. */ href?: string; /** `decide` only: the outcome of the `human` stage it takes. */ outcome?: string; effect: string }
 export type Decision = {
   need: Need | typeof SKILL_NEED
@@ -151,6 +151,14 @@ export const buildDecision = (need: Need | typeof SKILL_NEED, f: DecisionFacts):
           why: ['The image or npm workflow failed or did not finish'],
           options: [open('Open workflow run', t.releaseRunUrl || `/tickets/${tid}#details`, 'Opens the workflow run on the forge; re-run it there.')],
           next: 'Once the workflow passes, the release is recorded.',
+        }
+      case 'Owner review':
+        return {
+          ask: sentence('Review the change of', t.title, ' yourself'),
+          recommendation: 'Read the diff of the red paths, then mark it reviewed.',
+          why: ['The change touches a path this Product marks red', 'The automated review and its verification are done', 'The review concludes after you'],
+          options: [...(f.mrUrl ? [open('Open the change', f.mrUrl, 'Opens the change on the forge.', false)] : []), { label: 'Mark reviewed', action: 'completeReview', primary: true, effect: 'The review concludes.' }],
+          next: 'The review concludes and the change moves on.',
         }
       case 'Round cap reached': {
         const counts = SEVERITY.slice(0, 2).map((v) => [v, findings.filter((x) => x.severity === v).length] as const).filter(([, n]) => n)

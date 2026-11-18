@@ -198,7 +198,7 @@ it('files without jobs keep their hash; the shipped factory, standard and carefu
     [`${root}pack/factory.yaml`]: 'b8bbaa404077659f2751b69a848e50768f39d8937090af30d86e3681005d6fb2',
     [`${root}pack/presets/solo.yaml`]: '454b110bd5170fce5f0133a90dee014f587aa2ff8b69df837b3ccce5be3bca10',
     [`${root}pack/presets/standard.yaml`]: 'b8bbaa404077659f2751b69a848e50768f39d8937090af30d86e3681005d6fb2',
-    [`${root}pack/presets/careful.yaml`]: '8c3fa904b8f7dbec04ddd7d3a4b60e0129cd34cbcaa4fcbad4e1fa2be8c3ef46',
+    [`${root}pack/presets/careful.yaml`]: '86ae892433eb7b2c18d807df5c064c91a88f7eb357f34e5f2d077c9566501f10',
     [`${fixtures}/bare-pack/factory.yaml`]: '4dd0536b8bfd0ec5a131fa8517d8e04e1b7db170e311d736820c65a7e000fb30',
     [`${fixtures}/custom-pack/factory.yaml`]: '3e5b636c36941e08c0b3270a4516320c781e3b6ecf94a48f3208c2fd73d18de0',
     [`${fixtures}/gated-pack/factory.yaml`]: 'c7c1856377b135e59f3afc3bb505c955153ac0b32eb9909e81007a9530834afa',
@@ -359,6 +359,17 @@ describe('jobs on review and release stages', () => {
     const { d, r } = reviewDoc()
     r.jobs[2].needs = ['ux']
     expect(w.stage(w.compile(d), 'review')!.jobs![2]!.needs).toEqual(['ux'])
+  })
+  it('compiles a human Job of a review stage with its addressee and when', () => {
+    const { d, r } = reviewDoc()
+    r.jobs.splice(2, 0, { id: 'owner-review', kind: 'human', by: 'product-owner', when: { touches: 'red' }, needs: ['ux'] })
+    r.jobs[3].needs = ['owner-review']
+    expect(w.stage(w.compile(d), 'review')!.jobs![2]).toEqual({ id: 'owner-review', kind: 'human', by: 'product-owner', needs: ['ux'], when: { touches: 'red' }, blocking: true, outcomes: { done: 'done' }, outcomeOrder: ['done'] })
+  })
+  it('refuses a human Job of a review stage with a role or outcomes', () => {
+    const { d, r } = reviewDoc()
+    r.jobs.splice(2, 0, { id: 'owner-review', kind: 'human', role: 'reviewer', needs: ['ux'] })
+    expect(() => w.compile(d)).toThrow('a human job takes no role')
   })
   it('compiles release Jobs as given', () => {
     const s = w.stage(w.compile(releaseDoc().d), 'release')!

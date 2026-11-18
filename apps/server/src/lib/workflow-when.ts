@@ -2,7 +2,7 @@ export const REQUEST_TYPES = ['bug', 'feature', 'change', 'question'] as const
 export type RequestType = (typeof REQUEST_TYPES)[number]
 export const TYPE_LABEL = 'bauherr:type:'
 export const SET_NAME = /^[a-z][a-z0-9-]*$/
-export const SUGGESTED_SETS = ['security', 'ui'] as const
+export const SUGGESTED_SETS = ['security', 'ui', 'red'] as const
 export const WHEN_KEYS = ['touches', 'paths', 'labels', 'types'] as const
 
 export type When = { touches?: string | string[]; paths?: string[]; labels?: string[]; types?: string[] }

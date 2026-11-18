@@ -24,6 +24,7 @@ export const GATES: Record<Need, GateConfig> = {
   'Production deploy failed': { kind: 'production', title: 'Production deploy failed', sentence: () => 'The production deploy failed or was not reported; approving retries it.', verb: () => 'Approve again' },
   'Release failed': { kind: 'release-failed', title: 'Release failed', sentence: () => 'The release workflow (image or npm) failed or did not finish; re-run it.', verb: () => 'Open workflow run' },
   'Round cap reached': { kind: 'review-cap', title: 'Round cap reached', sentence: () => 'The review sent this back too often; grant one more round or stop.', verb: () => 'Grant one more round', secondary: 'Stop' },
+  'Owner review': { kind: 'decision', title: 'Owner review', sentence: () => 'The change touches a red path; review it yourself so the review can conclude.', verb: () => 'Mark reviewed' },
   'Needs you': { kind: 'back-to-build', title: 'Needs you', sentence: (c) => c.reason || 'The factory could not conclude this review and needs a decision from you.', verb: () => 'Back to build' },
   Cancelled: { kind: 'cancelled', title: 'Cancelled', sentence: (c) => `The ${c.stage} Run was cancelled${c.reason ? `: ${c.reason}` : '.'}`, verb: rerun, secondary: 'Back to backlog' },
   'Run needs you': { kind: 'rerun', title: 'Run needs you', sentence: (c) => `The ${c.stage} Run needs you${c.reason ? `: ${c.reason}` : '.'}`, verb: rerun },

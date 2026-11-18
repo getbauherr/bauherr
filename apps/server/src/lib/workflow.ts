@@ -7,9 +7,9 @@ export * from './workflow-rules'
 
 export type Graph = { nodes: { id: string; title: string; kind: Kind; role?: string; checkpoint: boolean; jobs?: { id: string; kind: 'agent' | 'human'; role?: string; blocking: boolean; needs: string[] }[] }[]; edges: { from: string; to: string; outcome: string; back: boolean }[] }
 
-const job = ({ id, kind, role, skill, needs, when, blocking, outcomes }: Record<string, any>, stageOutcomes: string[], review = false): JobDef => {
+const job = ({ id, kind, role, skill, by, needs, when, blocking, outcomes }: Record<string, any>, stageOutcomes: string[], review = false): JobDef => {
   const o: Record<string, string> = outcomes ?? (review ? { done: 'done' } : Object.fromEntries(stageOutcomes.map((k, i) => [k, i ? k : 'done'])))
-  return { id, kind: kind ?? 'agent', role, skill, needs: needs ?? [], ...(when && { when }), blocking: blocking ?? true, outcomes: o, outcomeOrder: Object.keys(o) }
+  return { id, kind: kind ?? 'agent', role, skill, ...(by && { by }), needs: needs ?? [], ...(when && { when }), blocking: blocking ?? true, outcomes: o, outcomeOrder: Object.keys(o) }
 }
 
 const ownReviewJob = (j: Record<string, any>, s: Record<string, any>, earlier: string[]): JobDef => {

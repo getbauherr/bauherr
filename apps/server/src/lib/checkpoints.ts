@@ -25,5 +25,5 @@ export const checkpointOfNeed = (need: Need | typeof SKILL_NEED): string => {
   const n = NEED_NODE[need]
   if (n) return TITLE[`${n[0]}:${n[1]}`]!
   if (need === 'Decision needed') return 'Decision'
-  return need === 'Expedite?' ? 'Triage' : need === 'Round cap reached' || need === 'Needs you' ? 'Review' : 'Stuck'
+  return need === 'Expedite?' ? 'Triage' : need === 'Round cap reached' || need === 'Needs you' || need === 'Owner review' ? 'Review' : 'Stuck'
 }

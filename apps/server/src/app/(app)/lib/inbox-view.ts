@@ -73,7 +73,7 @@ export const pinSelection = (shown: number | null, ids: number[], server: number
 
 export const newRows = (known: number[], now: number[]): number[] => now.filter((id) => !known.includes(id))
 
-const PAST: Partial<Record<DecisionOption['action'], string>> = { approvePlan: 'Plan approved', acceptStaging: 'Accepted on staging', approveProduction: 'Production approved', grantRound: 'One more round given', stopReview: 'Review stopped', backToBuild: 'Sent back to build', backToBacklog: 'Sent back to the backlog', requestChanges: 'Changes requested', expedite: 'Put on the fast lane', releaseLane: 'Fast lane released', rerun: 'Re-run started', approveSkill: 'Skill proposal approved', rejectSkill: 'Skill proposal rejected' }
+const PAST: Partial<Record<DecisionOption['action'], string>> = { approvePlan: 'Plan approved', acceptStaging: 'Accepted on staging', approveProduction: 'Production approved', grantRound: 'One more round given', completeReview: 'Marked reviewed', stopReview: 'Review stopped', backToBuild: 'Sent back to build', backToBacklog: 'Sent back to the backlog', requestChanges: 'Changes requested', expedite: 'Put on the fast lane', releaseLane: 'Fast lane released', rerun: 'Re-run started', approveSkill: 'Skill proposal approved', rejectSkill: 'Skill proposal rejected' }
 
 export const announcement = (o: DecisionOption, number: number, next?: number): string =>
   `${PAST[o.action] ?? `${o.label} done`} for #${number}.${next ? ` Next: #${next}.` : ''}`
