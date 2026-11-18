@@ -135,4 +135,10 @@ describe('path sets', () => {
     expect(neverRuns(wf, {}).map((x) => [x.title, x.names])).toEqual([['Security review', ['security']], ['UX review', ['ui']]])
     expect(neverRuns(wf, { security: ['a/**'], ui: [] }).map((x) => x.stage)).toEqual(['ux-review'])
   })
+
+  it('names the Jobs that never run for a Product', () => {
+    const wf = { stages: e.stagesOf(doc(base)) } as never
+    expect(neverRuns(wf, {}).map((x) => [x.title, x.names])).toEqual([['Review: security Job', ['security']], ['Review: ux Job', ['ui']]])
+    expect(neverRuns(wf, { security: ['a/**'], ui: ['b/**'] })).toEqual([])
+  })
 })
