@@ -3,7 +3,6 @@ import { ago } from '../../lib/format'
 import type { Prices } from '../../lib/gateway-setup'
 import { updatePricesNow } from '../../(shell)/settings/actions'
 
-/** "Prices updated <date> from <source>, N models", the last error of the daily refresh, and for an Admin "Update now". */
 export function PricesStatus({ prices, admin }: { prices: Prices; admin: boolean }) {
   const s = prices.status
   return (

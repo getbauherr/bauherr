@@ -49,7 +49,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** Creates a Ticket whose labels were set by a gate owner (the factory's own label would need a recorded approval). */
 const createAsOwner = async (ts: Awaited<ReturnType<typeof forge>>, t: Parameters<typeof ts.create>[0]) => {
   const fake = (await import('../src/lib/fake-forge')).fakeForge()
   fake.actingAs = 'owner'
@@ -166,7 +165,6 @@ it('a manually approved child is not recorded as inherited', async () => {
   expect(row.stage).toBe('build')
 })
 
-/** A sub-issue the parent already has: spawning then takes the old per-item path (a parent with children and no `epic`). */
 const legacyChild = async (ts: Awaited<ReturnType<typeof forge>>, parent: number, title: string) => {
   const c = await ts.create({ title, body: `Parent: #${parent}`, labels: ['bauherr:stage:plan'] })
   await ts.addSubTicket(String(parent), String(c.number))

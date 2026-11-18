@@ -27,5 +27,4 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
   ALTER TABLE "products" DROP COLUMN "auto_merge";
   DROP TYPE "public"."enum_runs_verdict";
   DROP TYPE "public"."enum_tickets_review_state";`)
-  // The enum value 'review' of enum_runs_stage stays: Postgres cannot drop an enum value.
 }

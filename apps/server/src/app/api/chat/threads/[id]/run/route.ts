@@ -6,7 +6,6 @@ import { ownThread, recentRuns } from '../../../../../../lib/chat/threads'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** The history as the client holds it, text and images only; null when it breaks a cap. */
 const parse = (raw: unknown): ChatInput[] | null => {
   if (!Array.isArray(raw) || !raw.length || raw.length > MAX_MESSAGES) return null
   const out: ChatInput[] = []
@@ -24,7 +23,6 @@ const parse = (raw: unknown): ChatInput[] | null => {
   return out.at(-1)!.role === 'user' ? out : null
 }
 
-/** Body `{ messages: [{ role, content: [{ type: 'text', text } | { type: 'image', mediaId }] }], context: { path } }`; streams the turn as NDJSON. */
 export const POST = async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
   const w = await chatWho(req)
   if (w instanceof Response) return w

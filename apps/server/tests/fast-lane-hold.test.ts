@@ -51,7 +51,6 @@ beforeEach(async () => {
 const reload = async (id: number) => (await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>
 const comments = async (n: number) => (await fake.tickets(repo).listComments(String(n))).map((c) => c.body)
 
-/** A flagged Ticket; `stage` puts it in flight (a clean review waiting for a human merge for an hour when 'review'). */
 const flagged = async (title: string, stage?: 'review') => {
   const i = await fake.tickets(repo).create({ title, labels: [EXPEDITE_LABEL, ...(stage ? [`bauherr:stage:${stage}`] : [])] })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(i.number), number: i.number, url: i.url, state: 'open', labels: [EXPEDITE_LABEL], expedite: true, product, workspace: ws, rank: title, ...(stage && { stage, reviewState: 'ready_for_human', reviewWaitingSince: new Date(Date.now() - 3600_000).toISOString() }) }, ...o })

@@ -3,7 +3,6 @@ import { useRouter } from 'next/navigation'
 import { inboxHref, type InboxFilters } from '../lib/inbox-view'
 import { NativeSelect } from './ui/native-select'
 
-/** The Checkpoint select (with counts) and, with 2+ Products, the Product select. Each change is a navigation, so the filters live in the URL. */
 export function InboxFilterBar({ filters, checkpoints, products }: { filters: InboxFilters; checkpoints: { name: string; count: number }[]; products: { id: number; name: string }[] }) {
   const router = useRouter()
   return (

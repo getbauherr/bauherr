@@ -9,7 +9,6 @@ const API = 'https://gitlab.test/api/v4';
 const P = '/projects/g%2Fp';
 
 type Call = { method: string; path: string; body: any; token: string | null };
-/** Stub fetch: `handler(method, path, body)` returns a body or a Response; every call is recorded. */
 const setup = (handler: (method: string, path: string, body: any) => unknown, sleeps: number[] = []) => {
   const calls: Call[] = [];
   const b = new GitlabBackend({

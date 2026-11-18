@@ -10,7 +10,6 @@ import { RoleAvatar } from '../team/RoleAvatar'
 import { JOB_ROW, layoutFlow, type Edge, type Layout, type Variant } from './layout'
 
 export type FlowStats = { stages: Map<string, NodeStats>; checkpoints: Map<string, number>; jobs?: Map<string, JobChip[]>; agents?: Map<string, StageAgents>; executors?: Map<string, Executor> }
-/** What one Ticket did: visits per stage, the current stage, and how often each transition `from>to` was taken. */
 export type TicketPath = { visits: Map<string, number>; current: string; taken: Map<string, number> }
 
 const BAR: Record<keyof NodeStats['bar'], { label: string; cls: string }> = {
@@ -46,7 +45,6 @@ function StageCard({ id, name, stats, agent, executor, href, selected, terminals
   const total = Math.max(1, bar.working + bar.human + bar.ci + bar.queued)
   const full = stats.limit != null && stats.count >= stats.limit
   const median = stats.medianSec != null ? `median ${duration(stats.medianSec)} in stage` : 'no data'
-  // The compact card drops the median and the executors from view; the tooltip keeps them.
   const tip = [name, median, executor?.line, agent?.text && `${agent.role.title}: ${agent.text}`, ...stats.execs.map((e) => e.tip)].filter(Boolean).join('\n')
   return (
     <Link href={href} scroll={false} title={tip} aria-current={selected ? 'true' : undefined} data-testid="stage-node" data-stage={id} data-state={stats.state} style={chips ? ({ '--jp': `${chips * JOB_ROW + 4}px` } as CSSProperties) : undefined} className={cn('@min-[560px]:pb-[var(--jp,0px)] flex h-full flex-col gap-1.5 overflow-hidden rounded-md border border-border border-t-4 bg-card p-1.5 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring @min-[900px]:p-2 aria-[current]:bg-accent aria-[current]:ring-2 aria-[current]:ring-primary [&>*]:shrink-0', TOP[stats.state])}>
@@ -81,7 +79,6 @@ function StageCard({ id, name, stats, agent, executor, href, selected, terminals
   )
 }
 
-/** The Jobs of a stage in order, each with the Tickets in it, linking to the stage drill-down; a sibling of the card link (links do not nest), laid over the card's bottom. */
 function JobChips({ stage, name, jobs }: { stage: string; name: string; jobs: JobChip[] }) {
   return (
     <ol className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0 @min-[560px]:absolute @min-[560px]:inset-x-1 @min-[560px]:bottom-1 @min-[560px]:mt-0" aria-label={`Jobs of ${name}`} data-testid="job-chips" data-stage={stage}>
@@ -120,13 +117,11 @@ function PathCard({ name, visits, current, checkpoint }: { name: string; visits:
 const strong = (e: Edge, path?: TicketPath) => !!path && !e.dotted && (path.taken.get(`${e.from}>${e.to}`) ?? 0) > 0
 const edgeColor = (e: Edge, path?: TicketPath) => (strong(e, path) ? 'text-primary' : path ? 'text-border' : 'text-muted-foreground')
 
-/** Arrowhead as a CSS triangle at layout coordinates (x in percent of the width, y in pixels), so stretching the edge SVG never distorts it. */
 function Arrow({ at, cls, W }: { at: NonNullable<Edge['end']>; cls: string; W: number }) {
   const shape = { down: 'border-x-[4px] border-t-[7px] border-x-transparent border-t-current -translate-x-1/2 -translate-y-full', up: 'border-x-[4px] border-b-[7px] border-x-transparent border-b-current -translate-x-1/2', right: 'border-y-[4px] border-l-[7px] border-y-transparent border-l-current -translate-x-full -translate-y-1/2' }[at.dir]
   return <i className={cn('pointer-events-none absolute size-0', shape, cls)} style={{ left: `${(at.x / W) * 100}%`, top: at.y }} />
 }
 
-/** The edge SVG (stretched, non-scaling strokes) and the HTML arrowheads and labels of one layout. `main` carries the test hooks; the other layout is the same drawing for narrower containers. */
 function Edges({ L, variant, path, main, className }: { L: Layout; variant: Variant; path?: TicketPath; main: boolean; className: string }) {
   const font = variant === 'full' ? 11 : 10
   const pct = (x: number) => `${(x / L.width) * 100}%`
@@ -153,13 +148,6 @@ function Edges({ L, variant, path, main, className }: { L: Layout; variant: Vari
   )
 }
 
-/**
- * The workflow as a graph: one card per stage, a pill per human checkpoint, outcome edges between them (backward ones dashed). Server-rendered from the node order and fluid:
- * nodes sit at percentages of the width, the edge SVG stretches with it (non-scaling strokes), arrowheads and labels are HTML at the same coordinates.
- * CSS container queries on the wrapper (the chat dock changes the width, not the viewport) pick one of two layouts computed for different natural widths: from 900 px full cards,
- * from 560 px compact cards (median and executors move into the tooltip, checkpoints shrink to a flag and a count), below it a column of the same cards with the transitions as text.
- * `full` carries live numbers per stage and links to `?stage=`; `path` is the compact variant of one Ticket's route.
- */
 export function WorkflowGraph({ wf, variant, hrefOf, selected, stats, path }: { wf: Workflow; variant: Variant; hrefOf?: (id: string) => string; selected?: string; stats?: FlowStats; path?: TicketPath }) {
   const g = graph(wf)
   const rows = variant === 'full' ? Math.max(0, ...[...(stats?.jobs?.values() ?? [])].map((j) => j.length)) : 0

@@ -4,7 +4,6 @@ import { setFeedback } from '../../../../../../lib/chat/threads'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Body `{ messageId, value: 'up' | 'down' | null, reasons?: string[], note?: string }`; null withdraws the rating. */
 export const POST = async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
   const w = await chatWho(req)
   if (w instanceof Response) return w

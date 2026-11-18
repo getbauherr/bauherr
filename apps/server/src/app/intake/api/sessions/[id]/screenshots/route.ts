@@ -8,7 +8,6 @@ export const dynamic = 'force-dynamic'
 
 const fail = (error: string, status: number) => Response.json({ error }, { status })
 
-/** Stores one screenshot of an open session. Multipart field `file`: png, jpeg or webp within `mediaLimits()` (default 5 MB, 5 per session). Answers `{ id }`. */
 export const OPTIONS = preflight
 export const POST = withCors(async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
   const a = await actor(req)

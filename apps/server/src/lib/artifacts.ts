@@ -6,22 +6,18 @@ import { forgeOf, id, isFactoryPr } from './release'
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
 
-/** Size limits per kind (bytes): images 5 MB, recordings 25 MB, text 200 KB. */
 export const ARTIFACT_LIMITS = { image: 5 * 1024 * 1024, recording: 25 * 1024 * 1024, text: 200 * 1024 } as const
 export const TEXT_KINDS: readonly ArtifactKind[] = ['transcript', 'sample', 'report']
 
-/** What an agent or the Runner hands in: exactly one of `url` (preview), `text` or `file` (base64) matching the kind. */
 export type ProofInput = { kind: ArtifactKind; title: string; criterion?: string; rule?: string; pair?: 'before' | 'after'; url?: string; text?: string; file?: { name?: string; base64: string } }
 
 export class ArtifactRejected extends Error {}
 
 const startsWith = (b: Uint8Array, at: number, s: string) => [...s].every((c, i) => b[at + i] === c.charCodeAt(0))
 
-/** The recording type by magic bytes (webm: EBML header, mp4: `ftyp` box); the claimed type and the file name are never trusted. */
 export const sniffRecording = (b: Uint8Array): 'video/webm' | 'video/mp4' | null =>
   b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3 ? 'video/webm' : startsWith(b, 4, 'ftyp') ? 'video/mp4' : null
 
-/** The bytes as UTF-8 text, or null when they are binary or not valid UTF-8. */
 export const asText = (b: Uint8Array): string | null => {
   if (b.includes(0)) return null
   try {
@@ -31,7 +27,6 @@ export const asText = (b: Uint8Array): string | null => {
   }
 }
 
-/** The URL when it is http(s) and short, else null. */
 export const webUrl = (v: unknown): string | null => {
   if (typeof v !== 'string' || v.length > 2048) return null
   try {
@@ -46,7 +41,6 @@ const bytesOf = (b64: unknown): Uint8Array => {
   return new Uint8Array(Buffer.from(b64, 'base64'))
 }
 
-/** Checks one proof against its kind (by content) and returns the row data without ticket, run and sha. */
 export const checkProof = async (payload: Payload, workspace: number | string, product: number | string, p: ProofInput): Promise<Partial<Doc>> => {
   if (!(ARTIFACT_KINDS as readonly unknown[]).includes(p.kind)) throw new ArtifactRejected(`kind must be ${ARTIFACT_KINDS.join('|')}`)
   const title = typeof p.title === 'string' ? p.title.trim().slice(0, 200) : ''
@@ -87,7 +81,6 @@ export const checkProof = async (payload: Payload, workspace: number | string, p
   return { ...base, media: media.id }
 }
 
-/** The open factory MR's head commit of the Ticket; throws when there is none (push first). */
 export const headShaOf = async (payload: Payload, t: Doc): Promise<string> => {
   const { backend, repo } = await forgeOf(payload, id(t.product))
   const pr = (await backend.forge.listPullRequests(repo, 'open')).find((p) => isFactoryPr(p, repo, t))
@@ -95,7 +88,6 @@ export const headShaOf = async (payload: Payload, t: Doc): Promise<string> => {
   return pr.headSha
 }
 
-/** Stores one proof of a Ticket on `sha`; idempotent per (run, rule or title, pair, sha): the same call again returns the first row. */
 export const attachProof = async (payload: Payload, t: Doc, a: { run?: number | string; sha: string; item: ProofInput }): Promise<{ id: number | string; created: boolean }> => {
   const title: Where = { title: { equals: String(a.item.title ?? '').trim().slice(0, 200) } }
   const key: Where = a.item.rule?.trim() ? { and: [{ rule: { equals: a.item.rule.trim().slice(0, 60) } }, ...(a.item.pair ? [title] : [])] } : title
@@ -106,15 +98,12 @@ export const attachProof = async (payload: Payload, t: Doc, a: { run?: number | 
   return { id: row.id, created: true }
 }
 
-/** Names of the rules that have proof (not a waiver) of this Ticket on `sha`. */
 export const ruleNamesWithProof = async (payload: Payload, ticket: number | string, sha: string): Promise<string[]> =>
   [...new Set((await payload.find({ collection: 'artifacts', where: { and: [{ ticket: { equals: ticket } }, { sha: { equals: sha } }, { waived: { not_equals: true } }, { rule: { exists: true } }] }, pagination: false, select: { rule: true }, ...o })).docs.flatMap((d) => (d.rule ? [d.rule as string] : [])))]
 
-/** The images with a `pair` (not waivers) of this Ticket on `sha`, for rules that need a before/after pair. */
 export const pairedImages = async (payload: Payload, ticket: number | string, sha: string): Promise<{ rule?: string; title: string; pair?: string }[]> =>
   (await payload.find({ collection: 'artifacts', where: { and: [{ ticket: { equals: ticket } }, { sha: { equals: sha } }, { kind: { equals: 'image' } }, { pair: { exists: true } }, { waived: { not_equals: true } }] }, pagination: false, select: { rule: true, title: true, pair: true }, ...o })).docs.map((d) => ({ rule: (d.rule ?? undefined) as string | undefined, title: d.title as string, pair: (d.pair ?? undefined) as string | undefined }))
 
-/** Stores the `No artifact: <rule>: <reason>` Evidence lines for the rules of the Product, once per (rule, sha), so the human sees "No proof for <rule>: <reason>". */
 export const recordWaivers = async (payload: Payload, t: Doc, a: { run?: number | string; sha: string; evidence: string; config: ReviewChecks | null | undefined }): Promise<void> => {
   const names = new Set((a.config?.artifacts ?? []).map((r) => r.name))
   for (const [rule, reason] of artifactWaivers(a.evidence, [...names])) {
@@ -124,7 +113,6 @@ export const recordWaivers = async (payload: Payload, t: Doc, a: { run?: number 
   }
 }
 
-/** Stores what the Runner collected for a Build Run (proof with file bytes) and the waivers of its Evidence; one bad item is skipped and logged, never fails the Run. */
 export const ingestProof = async (payload: Payload, t: Doc, a: { run: number | string; sha: string; items: ProofInput[]; evidence?: string; config: ReviewChecks | null | undefined }): Promise<void> => {
   for (const item of a.items) {
     try {
@@ -136,7 +124,6 @@ export const ingestProof = async (payload: Payload, t: Doc, a: { run: number | s
   if (a.evidence) await recordWaivers(payload, t, { run: a.run, sha: a.sha, evidence: a.evidence, config: a.config })
 }
 
-/** The stored bytes of an artifact's file with the content type to serve. */
 export const artifactFile = async (payload: Payload, a: Doc): Promise<{ bytes: Uint8Array; type: string } | null> => {
   if (!a.media) return null
   const m = (await payload.findByID({ collection: 'media', id: id(a.media), ...o }).catch(() => null)) as Doc | null
@@ -146,7 +133,6 @@ export const artifactFile = async (payload: Payload, a: Doc): Promise<{ bytes: U
   return type ? { bytes, type } : null
 }
 
-/** The proof of a Ticket on its newest commit as markdown for a forge Comment: titles only (images would need public links), a link to the Ticket page in the factory (sign-in required), and waived rules; undefined when there is none. */
 export const proofMarkdown = async (payload: Payload, t: Doc, pageUrl: string): Promise<string | undefined> => {
   const docs = (await payload.find({ collection: 'artifacts', where: { ticket: { equals: t.id } }, sort: '-createdAt', pagination: false, select: { title: true, kind: true, sha: true, waived: true, rule: true, text: true, criterion: true }, ...o })).docs as Doc[]
   const mine = docs.filter((d) => d.sha === docs[0]?.sha).reverse()

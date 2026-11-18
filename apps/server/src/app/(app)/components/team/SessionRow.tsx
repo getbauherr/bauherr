@@ -18,7 +18,6 @@ const Ticket = ({ number, title }: { number: number; title: string }) => (
 const Since = ({ at, label }: { at: string | null; label?: string }) =>
   at ? <time className="small w-24 shrink-0 text-muted-foreground" dateTime={at} title={new Date(at).toLocaleString('en-GB')}>{label}{ago(at)}</time> : <span className="w-24 shrink-0" />
 
-/** One live line: avatar, name, activity chip or "Idle", Ticket, since, cost today. */
 export function SessionRow({ row, costs }: { row: Exclude<ListRow, { kind: 'needs' }>; costs?: TeamCost['sessions'] }) {
   if (row.kind === 'autonomous') {
     const { role, run } = row
@@ -46,7 +45,6 @@ export function SessionRow({ row, costs }: { row: Exclude<ListRow, { kind: 'need
   )
 }
 
-/** `href`: the agent page of a session; the name is its link. */
 function Name({ avatar, animate, name, role, muted, href }: { avatar?: string; animate: boolean; name: string; role?: string; muted?: boolean; href?: string }) {
   return (
     <span className="flex min-w-0 flex-1 items-center gap-3">

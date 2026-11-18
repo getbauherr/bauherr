@@ -113,7 +113,6 @@ test('by default /admin redirects to /settings, also for an Admin, and /api stay
   expect((await page.request.get('/api/bauherren/me')).status()).toBe(200) // allow-page-request: only that /api answers; the anonymous answer is 200 too
 })
 
-// Needs a dev server started with BAUHERR_ENABLE_ADMIN=1; run with E2E_ADMIN_ENABLED=1.
 test('with BAUHERR_ENABLE_ADMIN=1 an Admin reaches Payload and a non-Admin does not', async ({ page }) => {
   test.skip(process.env.E2E_ADMIN_ENABLED !== '1', 'needs a server with BAUHERR_ENABLE_ADMIN=1')
   await signIn(page, email)
@@ -225,7 +224,6 @@ test('AI usage: an Admin sees the page and the gateway link, a non-Admin sees th
     await expect(page.getByRole('link', { name: 'Open gateway config' })).toHaveCount(visible ? 1 : 0)
     await expect(page.getByText('Open traces')).toHaveCount(visible ? 1 : 0)
     if (process.env.SHOTS_DIR && visible) await page.screenshot({ path: `${process.env.SHOTS_DIR}/usage-${page.viewportSize()!.width}.png`, fullPage: true })
-    // In-page fetch: Payload accepts the session cookie only for same-origin requests. A configured gateway upstream may answer 404 itself; the hidden route answers exactly 'Not found'.
     const gw = await page.evaluate(async () => { const r = await fetch('/-/gateway/config_dump', { redirect: 'manual' }); return [r.status, await r.text()] as const })
     expect(gw[1] === 'Not found').toBe(!visible)
     await page.context().clearCookies()

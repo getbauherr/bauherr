@@ -24,7 +24,6 @@ const PRICE: [number, number] = [3, 15]
 
 export type DistillOutcome = 'exists' | 'ineligible' | 'skipped' | 'rejected' | 'replayed' | 'failed'
 
-/** Fix Tickets of the same Product that came later and name this one in the title (`Fixes #N`, `Refs #N`). Tickets keep no body. */
 const fixedLater = async (payload: Payload, t: Doc): Promise<boolean> => {
   if (t.number == null) return false
   const later = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id(t.product) } }, { number: { greater_than: t.number } }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
@@ -32,7 +31,6 @@ const fixedLater = async (payload: Payload, t: Doc): Promise<boolean> => {
   return later.some((x) => ((x.labels ?? []) as string[]).some((l) => l === 'bug' || l === 'type:bug') && ref.test(x.title ?? ''))
 }
 
-/** DB only: the lesson of a merged Ticket is worth distilling when review sent it back or a later fix names it. */
 export const eligible = async (payload: Payload, t: Doc): Promise<boolean> => (t.reviewRounds ?? 0) >= 1 || (await fixedLater(payload, t))
 
 const SYSTEM = `You distil one reusable skill from a merged Ticket. A skill is a SKILL.md (frontmatter with name and description, then at most 40 lines) that would have prevented the review findings below. It must be generic to the Product, not to this Ticket.
@@ -55,7 +53,6 @@ const TOOLS = [
 type Block = { type: string; id?: string; name?: string; text?: string; input?: any }
 type Proposal = { skip?: boolean; reason?: string; name?: string; skill?: string; cases?: EvalCase[] }
 
-/** One Messages call as the Workspace; the usage is priced at the conservative default rate. */
 const message = async (gw: { url: string; key: string }, model: string, user: Doc[], run: string) => {
   const res = await fetch(`${gw.url.replace(/\/$/, '')}/v1/messages`, {
     method: 'POST',
@@ -70,7 +67,6 @@ const message = async (gw: { url: string; key: string }, model: string, user: Do
 
 const validName = (n: unknown): n is string => typeof n === 'string' && /^[a-z0-9][a-z0-9-]{0,60}$/.test(n)
 
-/** The proposal when it is a well-formed skill with 2 to 5 cases; otherwise the reason it is not. */
 const check = (p: Proposal): string | null => {
   if (!validName(p.name)) return 'invalid skill name'
   if (typeof p.skill !== 'string' || !/^---\n[\s\S]*?\n---\n/.test(p.skill) || p.skill.split('\n').length > MAX_SKILL_LINES) return 'skill needs frontmatter and at most 40 lines'
@@ -120,11 +116,6 @@ const evidence = (name: string, base: EvalResult, withSkill: EvalResult, cost: n
     `Cost $${cost.toFixed(4)} in ${calls} eval calls (caps: $${MAX_USD}, ${MAX_EVAL_CALLS} calls per suite). A human approves; the factory never merges this PR.`,
   ].join('\n')
 
-/**
- * Distils a skill proposal from a merged Ticket: eligibility (DB only), daily cap, Run and proposal row, one extraction call,
- * baseline and with-skill eval, then a Knowledge-repo PR on `bauherr/<run-id>`. A proposal that fails the thresholds is closed with a comment.
- * Never merges anything; a second call for the same Ticket does nothing.
- */
 export const distillSkill = async (payload: Payload, ticketId: number | string): Promise<DistillOutcome> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticketId, ...o })) as Doc
   if ((await payload.count({ collection: 'skill_proposals', where: { ticket: { equals: t.id } }, ...o })).totalDocs) return 'exists'
@@ -222,7 +213,6 @@ export const distillSkill = async (payload: Payload, ticketId: number | string):
 
 const stringifyCases = (cases: EvalCase[]): string => `${JSON.stringify(cases, null, 2)}\n`
 
-/** Queues the distillation of a merged Ticket (idempotent: one pending job per Ticket, one proposal row per Ticket). Never throws: a failed queue call must not block the merge. */
 export const queueDistill = async (payload: Payload, t: Doc): Promise<void> => {
   try {
     if ((await payload.count({ collection: 'skill_proposals', where: { ticket: { equals: t.id } }, ...o })).totalDocs) return

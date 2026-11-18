@@ -3,13 +3,8 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } f
 import { useFormStatus } from 'react-dom'
 import { Button } from './ui/button'
 
-/**
- * The one button of the bar: `onClick`, `href` or the `id` of a form to submit. `disabled` keeps it visible and gives `reason` as tooltip and
- * description. `confirm` makes it two clicks (the first arms it, a Cancel button appears).
- */
 export type NextStepPrimary = { label: string; disabled?: boolean; reason?: string; onClick?: () => void; href?: string; newTab?: boolean; form?: string; confirm?: string }
 
-/** `reason` with each `#N` / `Run N` token that has an entry in `links` rendered as that link; other tokens stay text. */
 export function LinkedReason({ reason, links }: { reason: string; links: { text: string; href: string }[] }) {
   return reason.split(/(#\d+|Run \d+)/).map((part, i) => {
     const link = links.find((l) => l.text === part)
@@ -17,7 +12,6 @@ export function LinkedReason({ reason, links }: { reason: string; links: { text:
   })
 }
 
-/** Put inside a form that a primary submits with `form`: tells the bar while the server action runs, so the button is disabled at once. */
 export function FormPending() {
   const { pending } = useFormStatus()
   const ref = useRef<HTMLSpanElement>(null)
@@ -27,7 +21,6 @@ export function FormPending() {
   return <span ref={ref} hidden />
 }
 
-/** The frame of the one place the owner acts on a page: sentence left, `children` then the primary button right, sticky at the top on desktop, fixed to the bottom at 640px and below. `main` pads for it (`--next-step-h`). */
 export function NextStepBar({ sentence, primary, children, live }: { sentence: ReactNode; primary?: NextStepPrimary; children?: ReactNode; /** The sentence is a live status (the Ticket page's state), announced when it changes; off for static hints like "Unsaved changes". */ live?: boolean }) {
   const uid = useId()
   const [armed, setArmed] = useState(false)

@@ -1,7 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
-// Own Workspace (slug `stagelab`, the shipped factory) and own Admin (seed-e2e.ts): four Plan Tickets, one per state of the ax-scan Job.
 const email = 'stage-admin@example.com'
 
 test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')

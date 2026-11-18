@@ -65,7 +65,6 @@ test('shipping marks the Tickets Released in the version', async ({ page }, test
   await expect(page.getByRole('navigation', { name: 'Product' }).getByRole('link', { name: 'Acme Reship' })).toHaveAttribute('aria-current', 'page')
   const bar = page.getByTestId('action-bar')
   const shipped = page.getByText('Every done Ticket is in a release.')
-  // Only a retry may find the Tickets shipped by an earlier attempt; a first attempt always ships and fails loudly if it cannot.
   const alreadyShipped = testInfo.retry > 0 && (await shipped.isVisible())
   if (!alreadyShipped) {
     await expect(page.getByLabel('Release notes')).toContainText('Reship the invoice filter')

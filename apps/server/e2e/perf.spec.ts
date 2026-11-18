@@ -5,10 +5,8 @@ import { email } from './user'
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-// Timings need a quiet server on a production build (`next start`); the sharded fake-forge job runs 3 workers at once.
 test.skip(!!process.env.E2E_FAKE_FORGE, 'perf budget runs in the plain e2e job')
 
-/** After a click, something pending (link pending state, progress bar, skeleton) or the content must be visible within PENDING_MS, the content within CONTENT_MS. Timestamps come from a MutationObserver in the page, not from Playwright polling. */
 const PENDING_MS = 100
 const CONTENT_MS = 400
 
@@ -23,13 +21,11 @@ const signIn = async (page: Page) => {
 const main = (page: Page) => page.getByRole('navigation', { name: 'Main' })
 const settings = (page: Page) => page.getByRole('navigation', { name: 'Settings' })
 
-/** `content`: CSS selector plus the text its element must have (RegExp source) once the URL changed. */
 type Content = { sel: string; text?: string }
 type Target = { route: string; from: string; click: (page: Page) => Promise<void>; content: Content }
 const h1 = (text: string): Content => ({ sel: 'h1.title', text: `^${text}$` })
 const h2 = (text: string): Content => ({ sel: 'h2.heading', text: `^${text}$` })
 
-/** Clicks run from `from`, so each one is a client-side navigation like a user's. */
 const targets: Target[] = [
   { route: '/requests', from: '/', click: (p) => main(p).getByRole('link', { name: /^Requests/ }).click(), content: h1('Requests') },
   { route: '/inbox', from: '/', click: (p) => main(p).getByRole('link', { name: /^Inbox/ }).click(), content: h1('Inbox') },
@@ -60,7 +56,6 @@ const targets: Target[] = [
   { route: '/runs/[id]', from: '/runs', click: (p) => p.locator('main a[href^="/runs/"]').first().click(), content: { sel: 'h1.title', text: '^#\\d+ ' } },
 ]
 
-/** Records (ms since the last click) when something pending first shows and when the content shows on the new URL. */
 const observe = (c: Content) => {
   const w = window as unknown as { __perf: { t0: number | null; pending: number | null; content: number | null } }
   const perf = (w.__perf = { t0: null as number | null, pending: null, content: null })

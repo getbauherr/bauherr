@@ -5,7 +5,6 @@ import { expect, it } from 'vitest'
 
 const root = fileURLToPath(new URL('../../..', import.meta.url))
 const roots = [join(root, 'apps/server/src'), ...readdirSync(join(root, 'packages')).map((p) => join(root, 'packages', p, 'src'))]
-/** Files allowed to list stage names, each with the reason. */
 const ALLOWED: Record<string, string> = {
   'apps/server/src/lib/workflow.ts': 'the one module that derives every stage list',
   'apps/server/src/lib/workflow-rules.ts': 'the browser-safe half of workflow.ts: the kind names and the rules for them',

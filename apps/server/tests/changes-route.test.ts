@@ -2,7 +2,6 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/** `/api/changes` moves when something the Ticket page shows changes: proof artifacts and human touches, not only Tickets, Runs and sessions. */
 const session = vi.hoisted(() => ({ cookie: '' }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ cookie: session.cookie }), cookies: async () => ({ get: () => undefined, set: () => {}, delete: () => {} }) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))

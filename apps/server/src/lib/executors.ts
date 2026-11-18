@@ -3,14 +3,10 @@ import type { TeamRole } from './sessions'
 
 type Doc = Record<string, any>
 
-/** The part of a workflow stage that decides who executes it. */
 export type ExecutorStage = { name: string; kind: string; role?: string; gate?: string }
 export type ExecutorFacts = {
-  /** The stage's role, with its sessions: `working` on a Ticket in this stage, `idle`, and all not offline. */
   role?: { id: string; title: string; working: number; idle: number; connected: number }
-  /** Tickets of the stage with a Run that waits for a session. */
   waiting: number
-  /** The Product's CI deploy report: any deploy check configured, when the last deploy was reported, the CI's name and the settings page. */
   deploy: { configured: boolean; lastAt: string | null; ci: string; href: string }
   now: number
 }
@@ -18,7 +14,6 @@ export type Executor = { line: string; action: { label: string; href: string } |
 
 export const DEPLOY_WAIT = "Waiting for the Product's deploy check"
 
-/** "a Software engineer", "an Orchestrator". */
 const article = (title: string): string => `${/^[aeiou]/i.test(title) ? 'an' : 'a'} ${title}`
 
 const minutes = (ms: number): string => {
@@ -26,10 +21,6 @@ const minutes = (ms: number): string => {
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`
 }
 
-/**
- * Who executes `stage`, as one true line with the one action that fixes it: a role with connected sessions, a role with none, the Product's CI (the release stage has no role by design),
- * the owner at a human gate, or no one. Null for stages that run nothing (done, container).
- */
 export const executorOf = (stage: ExecutorStage, f: ExecutorFacts): Executor | null => {
   if (stage.kind === 'done' || stage.kind === 'container') return null
   if (stage.role && f.role) {
@@ -46,26 +37,19 @@ export const executorOf = (stage: ExecutorStage, f: ExecutorFacts): Executor | n
   return { line: 'No one assigned', action: { label: 'Edit workflow', href: '/workflow/edit' }, cannotRun: true }
 }
 
-/**
- * The Who cell of a Ticket row: why an open, not working Ticket waits when its stage cannot run, or, in the release stage, when staging never reported back
- * (`releaseState: timed_out`, the "Staging not confirmed" need, which still fires); otherwise the status's own `who`.
- */
 export const waitingWho = (stageKind: string | undefined, e: Executor | undefined, t: { open: boolean; track: { releaseState?: string | null } }, s: { phase: string; who: string | null }): string | null => {
   if (!t.open || s.phase === 'working' || s.phase === 'done') return s.who
   if (stageKind === 'release' && t.track.releaseState === 'timed_out') return DEPLOY_WAIT
-  // The turn is a person's (a gate): name them, not the missing agent.
   if (s.phase === 'human') return s.who
   return e?.waits ?? s.who
 }
 
-/** Facts for every stage of a Workspace's workflow, from the database only (sessions by role, queued Runs, the Product's deploy settings and last release). */
 export const executorsOf = async (payload: Payload, workspace: number | string, stages: ExecutorStage[], roles: TeamRole[], now = Date.now()): Promise<Map<string, Executor>> => {
   const o = { depth: 0, overrideAccess: true, pagination: false } as const
   const products = (await payload.find({ collection: 'products', where: { workspace: { equals: workspace } }, ...o })).docs as Doc[]
   const kind = ((await payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: workspace } }, { kind: { in: ['github', 'gitlab'] } }] }, limit: 1, ...o })).docs[0] as Doc | undefined)?.kind
   const last = (await payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { releasedAt: { exists: true } }] }, sort: '-releasedAt', limit: 1, ...o })).docs[0] as Doc | undefined
   const waiting = (await payload.find({ collection: 'runs', where: { and: [{ workspace: { equals: workspace } }, { status: { equals: 'awaiting_session' } }] }, select: { stage: true }, ...o })).docs as Doc[]
-  /** Observing CI with no names watches every check of the commit, so only a webhook Product without a URL has nothing configured. */
   const configured = (p: Doc) => !!String(p.deployChecks ?? '').trim() || !!p.deployWebhookUrl || p.deployMode !== 'webhook'
   const target = products.find((p) => !configured(p)) ?? products[0]
   const deploy = { configured: products.length > 0 && products.every(configured), lastAt: (last?.releasedAt as string | undefined) ?? null, ci: kind === 'gitlab' ? 'GitLab CI' : kind === 'github' ? 'GitHub Actions' : 'Product CI', href: target ? `/settings/products/${target.id}` : '/settings' }

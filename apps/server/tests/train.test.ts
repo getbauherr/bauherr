@@ -40,7 +40,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** Every test starts without a running train and without Tickets of an earlier test in the queue. */
 beforeEach(async () => {
   const { sql } = await import('@payloadcms/db-postgres')
   await payload.db.drizzle.execute(sql`UPDATE "products" SET "train_state" = NULL WHERE "id" = ${product}`)
@@ -49,7 +48,6 @@ beforeEach(async () => {
 
 const reload = async (id: number) => (await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>
 const state = async () => ((await payload.findByID({ collection: 'products', id: product, depth: 0, ...o })) as Record<string, any>).trainState as import('../src/lib/train').TrainState | null
-/** A queued review Ticket whose factory MR adds `file`; the merge gate marks it queued without calling the forge. */
 const seed = async (file: string, content = 'x') => {
   const issue = await fake.tickets(repo).create({ title: `train ${file}`, labels: ['bauherr:stage:review'] })
   const t = await payload.create({ collection: 'tickets', data: { title: `train ${file}`, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'review', product, workspace: ws }, ...o })
@@ -90,7 +88,6 @@ it('3 green PRs are tested together and merge in order, each pinned to its head'
     await run()
     expect(merges).toEqual(s.map((x) => [x.pr.number, x.pr.headSha]))
     expect(await state()).toBeNull()
-    // a train merge queues the skill distillation of each member, before the watcher sees the merge (#465)
     for (const x of s) expect(await payload.count({ collection: 'payload-jobs' as never, where: { concurrencyKey: { equals: `distill:${x.id}` } } as never, overrideAccess: true })).toMatchObject({ totalDocs: 1 })
     expect(await actions.watchQueued(payload)).toBe(3)
     for (const x of s) expect(await reload(x.id)).toMatchObject({ reviewState: 'merged' })

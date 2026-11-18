@@ -2,15 +2,12 @@ import { lineDiff, type DiffLine, type Point } from './model'
 
 const MARKER = /<!--\s*bauherr:[^>]*-->\n?/g
 
-/** One section of the refined Ticket. A placeholder (`point` set) stands for an open point the text has no section for yet. */
 export type Section = { key: string; heading: string; text: string; changed: boolean; point?: { id: string; now: boolean } }
 export type Hunk = { id: string; range: string; lines: DiffLine[] }
-/** What the artifact panel shows: the Ticket as it will be sent, which sections the conversation changed, and the diff of those. */
 export type Artifact = { title: string; titleChanged: boolean; sections: Section[]; hunks: Hunk[]; changes: number; version: { n: number; at: string | null } }
 
 type Part = { key: string; heading: string; text: string }
 
-/** The `#`/`##`/`###` sections of a Ticket text (bauherr markers hidden); text before the first heading is "Summary". Repeated headings get a counter in their key. */
 export const sectionsOf = (body: string): Part[] => {
   const parts: { heading: string; lines: string[] }[] = [{ heading: 'Summary', lines: [] }]
   for (const l of body.replace(/\r\n/g, '\n').replace(MARKER, '').split('\n')) {
@@ -30,10 +27,6 @@ export const sectionsOf = (body: string): Part[] => {
     })
 }
 
-/**
- * The artifact of a conversation: the sections of `pending` (the Ticket text plus the conversation's edits), those that differ from `current` marked as changed, one diff hunk
- * per changed or removed section, and a placeholder for every open point before the acceptance criteria (the first of them is the one being asked now).
- */
 export const buildArtifact = (a: { title: string; currentTitle: string; current: string; pending: string; points: Point[]; version: { n: number; at: string | null } }): Artifact => {
   const [cur, pen] = [sectionsOf(a.current), sectionsOf(a.pending)]
   const was = new Map(cur.map((s) => [s.key, s.text]))

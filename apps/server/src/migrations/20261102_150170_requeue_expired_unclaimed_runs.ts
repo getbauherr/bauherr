@@ -1,6 +1,5 @@
 import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 
-/** Unclaimed session Runs no longer expire; requeue the ones that ended `needs_human` that way (latest per Ticket + stage, none active). */
 export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
    WITH latest AS (

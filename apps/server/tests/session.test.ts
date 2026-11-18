@@ -13,7 +13,6 @@ beforeAll(async () => {
   process.env.ENCRYPTION_KEY ??= 'test-key'
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
-  // Schema comes from push; the partial unique index lives only in the migration.
   await (await import('../src/migrations/20261030_140000_active_run_unique')).up({ db: payload.db.drizzle } as never)
 })
 

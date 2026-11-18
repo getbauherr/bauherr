@@ -6,7 +6,6 @@ import { ownThread } from '../../../../../../lib/chat/threads'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Body `{ toolCallId, approved, reason? }`: the person's answer to the card; continues the turn as NDJSON. 409 when nothing matching awaits confirmation (wrong id or already answered). */
 export const POST = async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
   const w = await chatWho(req)
   if (w instanceof Response) return w

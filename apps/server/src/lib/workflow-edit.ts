@@ -3,12 +3,9 @@ import { askedBy, lint, NEEDS_ROLE, RESERVED, WIP, type Addressee, type Kind } f
 import type { CheckpointKey } from './workflow-labels'
 import type { When } from './workflow-when'
 
-// Browser-safe. The workflow editor's document operations: each takes the factory file as text and returns the edited text (comments and layout kept); the result is not linted, callers run `lint`.
-
 export type Doc = Record<string, any>
 export type Draft = { ok: true; doc: Doc; findings: string[] } | { ok: false; error: string; line?: number }
 
-/** The draft as data with the rule findings, or why the text is not YAML. */
 export const readDraft = (yaml: string): Draft => {
   const d = parseDocument(yaml)
   if (d.errors.length) return { ok: false, error: d.errors[0]!.message.split('\n')[0]!, line: d.errors[0]!.linePos?.[0]?.line }
@@ -19,14 +16,12 @@ export const readDraft = (yaml: string): Draft => {
 const FORWARD: Partial<Record<Kind, string>> = { triage: 'plan', plan: 'done', build: 'done', review: 'clean', release: 'accepted', container: 'children_done' }
 export const stagesOf = (doc: Doc): Doc[] => (Array.isArray(doc?.workflow?.stages) ? doc.workflow.stages : [])
 export const kindStage = (doc: Doc, kind: Kind): Doc | undefined => stagesOf(doc).find((s) => s.kind === kind)
-/** The path a ticket normally takes out of the stage: the one a new step is spliced into. */
 export const forwardKey = (s: Doc): string | undefined => FORWARD[s.kind as Kind] ?? Object.keys(s.outcomes ?? {})[0]
 export const forwardTarget = (s: Doc): string | undefined => (forwardKey(s) ? s.outcomes?.[forwardKey(s)!] : undefined)
 export const isCustom = (s: Doc): boolean => s.kind === 'agent' || s.kind === 'human'
 export const takesRole = (kind: Kind): boolean => NEEDS_ROLE.includes(kind)
 export const hasLimit = (kind: Kind): boolean => WIP.includes(kind)
 
-/** Name of a new stage or outcome: the slug of its title, not in `taken`. */
 export const slugOf = (title: string, taken: Iterable<string>, fallback = 'step'): string => {
   const base = title.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^(?=[^a-z])/, fallback + '-').replace(/-+$/, '') || fallback
   const used = new Set(taken)
@@ -57,7 +52,6 @@ const stageNode = (d: Document, obj: Doc) => {
   if (isMap(o)) o.flow = true
   return n
 }
-/** Points every path that leads to `from` (all of them, or only forward ones) at `to`. */
 const retarget = (d: Document, from: string, to: string, only: (s: Doc, key: string) => boolean = () => true) => {
   stagesOf(d.toJS()).forEach((s, i) => {
     for (const [key, t] of Object.entries(s.outcomes ?? {})) if (t === from && only(s, key)) d.setIn(['workflow', 'stages', i, 'outcomes', key], to)
@@ -70,7 +64,6 @@ const edit = (yaml: string, fn: (d: Document) => void): string => {
   return text(d)
 }
 
-/** Sets one field of a stage; `undefined` removes it. */
 export const setStageField = (yaml: string, stage: string, key: string, value: unknown): string =>
   edit(yaml, (d) => {
     const path = ['workflow', 'stages', at(d, stage), key]
@@ -78,7 +71,6 @@ export const setStageField = (yaml: string, stage: string, key: string, value: u
     else d.setIn(path, value)
   })
 
-/** Sets the condition of a step (it runs only when the change matches); `undefined` or an empty one makes it run for every ticket. */
 export const setWhen = (yaml: string, stage: string, when: When | undefined): string =>
   edit(yaml, (d) => {
     const path = ['workflow', 'stages', at(d, stage), 'when']
@@ -91,7 +83,6 @@ export const setWhen = (yaml: string, stage: string, when: When | undefined): st
 export const setTitle = (yaml: string, stage: string, title: string): string => setStageField(yaml, stage, 'title', title.trim() || undefined)
 
 const GATE: Record<Exclude<CheckpointKey, 'refine'>, [Kind, 'gate' | 'production_gate']> = { plan: ['plan', 'gate'], staging: ['release', 'gate'], production: ['release', 'production_gate'] }
-/** Switches a checkpoint of the plan or release stage (found by kind). */
 export const setCheckpoint = (yaml: string, which: Exclude<CheckpointKey, 'refine'>, on: boolean): string => {
   const [kind, key] = GATE[which]
   const s = kindStage(open(yaml).toJS(), kind)
@@ -104,11 +95,9 @@ export const setCheckpoint = (yaml: string, which: Exclude<CheckpointKey, 'refin
 const humanJob = (s: Doc | undefined): Doc | undefined => (Array.isArray(s?.jobs) ? s.jobs.find((j: Doc) => j?.kind === 'human') : undefined)
 export const checkpointOn = (s: Doc | undefined, which: Exclude<CheckpointKey, 'refine'>): boolean => askedBy(s?.[GATE[which][1]]) !== undefined || (which === 'plan' && !!humanJob(s))
 
-/** Who a checkpoint asks in the file: `gate: {by}`, `production_gate: {by}`, `refine: {by}` of the triage stage or `by` of a human stage; the Bauherr when the file does not say. */
 export const askedOf = (s: Doc | undefined, which: CheckpointKey | 'human'): Addressee =>
   (which === 'refine' ? askedBy(s?.refine) : which === 'human' ? askedBy({ by: s?.by }) : which === 'plan' && humanJob(s) ? askedBy({ by: humanJob(s)!.by }) : askedBy(s?.[GATE[which][1]])) ?? 'bauherr'
 
-/** Sets whom a checkpoint asks: the Bauherr is the plain `human` (nothing for refine and human steps), the Product owner a `{by: product-owner}` map. `stage` is the step that carries it. */
 export const setAsked = (yaml: string, which: CheckpointKey | 'human', stage: string, by: Addressee): string =>
   edit(yaml, (d) => {
     const stageDoc = stagesOf(d.toJS())[at(d, stage)]!
@@ -132,7 +121,6 @@ export const setPath = (yaml: string, stage: string, outcome: string, target: st
 
 export const removePath = (yaml: string, stage: string, outcome: string): string => edit(yaml, (d) => void d.deleteIn(['workflow', 'stages', at(d, stage), 'outcomes', outcome]))
 
-/** Renames a path of an agent or decision step, keeping its place in the list. */
 export const renamePath = (yaml: string, stage: string, from: string, to: string): string =>
   edit(yaml, (d) => {
     const i = at(d, stage)
@@ -142,7 +130,6 @@ export const renamePath = (yaml: string, stage: string, from: string, to: string
 
 export type NewStep = { after: string; kind: 'agent' | 'human'; title: string; role?: string; skill?: string; choices?: string[]; when?: When }
 
-/** Splices a step in after `after`: that step's forward path leads to it and it leads on to the old target. Returns the new text and the step's name. */
 export const addStep = (yaml: string, s: NewStep): { yaml: string; name: string } => {
   const d = open(yaml)
   const doc = d.toJS() as Doc
@@ -166,7 +153,6 @@ export const addStep = (yaml: string, s: NewStep): { yaml: string; name: string 
   return { yaml: text(d), name }
 }
 
-/** Removes a step; paths that led to it lead to its forward target. */
 export const removeStep = (yaml: string, name: string): string =>
   edit(yaml, (d) => {
     const i = at(d, name)
@@ -176,7 +162,6 @@ export const removeStep = (yaml: string, name: string): string =>
     seq(d).items.splice(i, 1)
   })
 
-/** Swaps a step with the next one in the flow (the stage after it in the file, containers skipped); the paths between them follow. */
 export const swapWithNext = (yaml: string, name: string): string =>
   edit(yaml, (d) => {
     const doc = d.toJS() as Doc
@@ -197,7 +182,6 @@ export const swapWithNext = (yaml: string, name: string): string =>
     items.splice(i, 0, moved!)
   })
 
-/** The next step of the flow in the file (containers skipped), or undefined. */
 export const neighbour = (doc: Doc, name: string, dir: 1 | -1): Doc | undefined => {
   const stages = stagesOf(doc)
   let j = stages.findIndex((s) => s.name === name) + dir
@@ -205,7 +189,6 @@ export const neighbour = (doc: Doc, name: string, dir: 1 | -1): Doc | undefined 
   return stages[j]
 }
 
-/** Moves a custom step one place: down is a swap with the next step, up a swap of the previous step with it. */
 export const moveStep = (yaml: string, name: string, dir: 1 | -1): string => {
   if (dir === 1) return swapWithNext(yaml, name)
   const before = neighbour(open(yaml).toJS(), name, -1)
@@ -213,7 +196,6 @@ export const moveStep = (yaml: string, name: string, dir: 1 | -1): string => {
   return swapWithNext(yaml, before.name)
 }
 
-/** Large tickets can be split: the plan's split path together with the container stage. */
 export const setSplit = (yaml: string, on: boolean): string =>
   edit(yaml, (d) => {
     const doc = d.toJS() as Doc
@@ -233,7 +215,6 @@ export const setSplit = (yaml: string, on: boolean): string =>
     }
   })
 
-/** `workflow.migrate`: where the tickets of a removed step go; `undefined` clears it. */
 export const setMigrate = (yaml: string, from: string, to: string | undefined): string =>
   edit(yaml, (d) => {
     const path = ['workflow', 'migrate']
@@ -245,7 +226,6 @@ export const setMigrate = (yaml: string, from: string, to: string | undefined): 
     }
   })
 
-/** Folds the Workspace's old WIP overrides into the stages' `wip`, so the limits in force are the ones the file shows. */
 export const foldWip = (yaml: string, limits: Record<string, number> | null | undefined): string => {
   if (!limits) return yaml
   return edit(yaml, (d) => {
@@ -260,7 +240,6 @@ export const foldWip = (yaml: string, limits: Record<string, number> | null | un
 
 export type Checkpoint = { key: CheckpointKey | 'human'; stage: string; on: boolean; always?: boolean; by: Addressee }
 
-/** Every place the factory can ask a person, in flow order; `on` ones are the points the person is asked at. */
 export const checkpointsOf = (doc: Doc): Checkpoint[] => {
   const out: Checkpoint[] = []
   for (const s of stagesOf(doc)) {

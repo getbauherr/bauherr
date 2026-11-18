@@ -2,44 +2,29 @@ import { type HumanGate, humanGates } from './mode'
 import { kindOfRun } from './stage-text'
 import { is, type Kind, liveStages, nameOf, stage, type Workflow, wipStages } from './workflow'
 
-/** A stage name of the workflow; `parent` is a Ticket whose plan was split into sub-tickets (no Runs, closes with its last child). */
 export type Stage = string
 
 export const APPROVED_PLAN = 'bauherr:approved:plan'
 export const APPROVED_STAGING = 'bauherr:approved:staging'
-/** Every value `needsYou` can return; the Ticket page maps each to a Gate with an action (`gates.ts`). */
 export const NEEDS = ['Approve plan', 'Answer decisions', 'Answer questions', 'Accept on staging', 'Staging not confirmed', 'Configure production checks', 'Approve production', 'Production deploy failed', 'Release failed', 'Round cap reached', 'Decision needed', 'Needs you', 'Run needs you', 'Cancelled', 'Run failed', 'Expedite?', 'Fast lane held'] as const
 export type Need = (typeof NEEDS)[number]
-/** Names of the four human touch points, in flow order; Settings > Factory > Workflow, docs and README use them. */
 export const GATE_NAMES: Record<HumanGate, string> = { refine: 'Refine', plan: 'Approve plan', staging: 'Accept on staging', production: 'Approve production' }
-/** Hold label: Triage asked the owner questions; answering them moves the Ticket to plan. */
 export const NEEDS_REFINEMENT = 'bauherr:needs-refinement'
-/** Expedite lane: the label a human sets (or the Expedite action), and the label Triage sets to propose it. */
 export const EXPEDITE_LABEL = 'bauherr:expedite'
-/** Touch kind of a staging gate skipped for a Hotfix by the Product setting `expediteSkipStaging`. */
 export const EXPEDITE_SKIP_TOUCH = 'auto:staging:expedite-skip'
 export const EXPEDITE_PROPOSED = 'bauherr:expedite-proposed'
-/** Returns from review to build per Ticket before it needs a human. */
 export const MAX_REVIEW_ROUNDS = 2
 const IN_PROGRESS = ['running', 'queued', 'awaiting_session']
 
-/** The needs that park a Ticket: it waits for the owner on something outside an approval, so it keeps its card but holds no WIP slot (`wipWhere`). */
 export const PARKING_NEEDS: readonly Need[] = ['Run needs you', 'Needs you', 'Cancelled', 'Run failed', 'Decision needed']
 
-/** The need when it parks the Ticket (open, in a WIP stage, a parking need, no queued, awaiting_session or running Run), else null. Approval gates, answers and acceptances never park, nor does a `human` stage (a checkpoint the owner decides). */
 export const parkingNeed = (wf: Workflow, t: { state?: string | null; stage?: string | null }, need: Need | null, run: { status: string } | null): Need | null =>
   need && PARKING_NEEDS.includes(need) && t.state !== 'closed' && !!t.stage && wipStages(wf).includes(t.stage) && !is(wf, t.stage, 'human') && !IN_PROGRESS.includes(run?.status ?? '') ? need : null
 
-/** Closed tickets are `done`; open ones without a known stage label are `triage`. */
 export const stageOf = (wf: Workflow, t: { state?: string | null; stage?: string | null }): Stage => {
   return t.state === 'closed' ? nameOf(wf, 'done') : t.stage && stage(wf, t.stage) ? t.stage : nameOf(wf, 'triage')
 }
 
-/**
- * D5 for v1: plan posted = the latest Run is a succeeded plan Run (tickets carry no comment cache).
- * A plan Run still in progress is "Plan in progress", not needs-you. "Run failed" is an addition to D5.
- * D5 (c): a succeeded plan awaiting approval with `unansweredCritical` > 0 is "Answer decisions" (before "Approve plan").
- */
 export const needsYou = (
   wf: Workflow,
   ticket: { stage: string | null; labels: string[]; releaseState?: string | null; productionState?: string | null; productionChecksMissing?: boolean; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null; waitingFor?: string | null; laneHeld?: boolean | null; jobsOpen?: boolean | null },
@@ -54,13 +39,10 @@ export const needsYou = (
   const planRun = runIs('plan') || (!!run?.job && run.stage === stage)
   if (at('plan') && planRun && IN_PROGRESS.includes(run?.status ?? '')) return null
   if (at('plan') && gates.includes('plan') && !ticket.expedite && !ticket.labels.includes(APPROVED_PLAN) && !ticket.jobsOpen && planRun && run?.status === 'succeeded') return unansweredCritical ? 'Answer decisions' : 'Approve plan'
-  // A held Ticket whose points are all answered only waits for a free slot: `waitingFor` is set once it reached `enterStage`.
   if (at('triage') && ticket.labels.includes(NEEDS_REFINEMENT)) return ticket.waitingFor ? null : 'Answer questions'
   if (at('human')) return 'Decision needed'
   if (at('review') && ticket.reviewState === 'needs_human' && (ticket.reviewRounds ?? 0) > MAX_REVIEW_ROUNDS) return 'Round cap reached'
   if (at('review') && ticket.reviewState === 'needs_human') return 'Needs you'
-  // Once the Ticket reached release (its MR merged, e.g. during a Build), an earlier stage's Run asks nothing.
-  // `stuck` is the factory's to escalate to a stronger model; the other kinds, and a Run that never said, are the owner's.
   if (run?.status === 'needs_human' && !(at('release') && run.stage !== stage) && !runIs('triage') && run.reasonKind !== 'stuck') return 'Run needs you'
   if (at('release') && !accepted) {
     if (ticket.releaseState === 'on_staging' && gates.includes('staging') && !ticket.jobsOpen) return 'Accept on staging'
@@ -72,14 +54,12 @@ export const needsYou = (
   }
   if (ticket.releaseChecksState === 'failed') return 'Release failed'
   if (run?.status === 'cancelled' && run.stage === stage && liveStages(wf).includes(stage)) return 'Cancelled'
-  // A failed Run is the owner's only once the escalation ladder ended (`reasonKind` set by `escalate`); until then the factory retries it on a stronger model.
   if (run?.status === 'failed' && !(at('release') && run.stage !== stage) && !runIs('triage') && run.reasonKind && run.reasonKind !== 'stuck') return 'Run failed'
   if (ticket.laneHeld) return 'Fast lane held'
   if (ticket.labels.includes(EXPEDITE_PROPOSED) && !ticket.expedite && !ticket.labels.includes(EXPEDITE_LABEL) && !at('release')) return 'Expedite?'
   return null
 }
 
-/** Words for the `release` stage: where the Ticket is between merge and acceptance. */
 export const releaseWord = (wf: Workflow, t: { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null; productionState?: string | null }): string | null => {
   const released = !!t.stage && is(wf, t.stage, 'release')
   if (t.productionState === 'deployed') return 'deployed'
@@ -90,10 +70,8 @@ export const releaseWord = (wf: Workflow, t: { stage?: string | null; state?: st
   return t.releaseState === 'on_staging' ? 'on staging' : t.releaseState === 'timed_out' ? 'timed out' : 'waiting'
 }
 
-/** Factory health text of liveness causes that are not self-explanatory. */
 export const CAUSE_LABEL: Record<string, string> = { 'review-stalled': 'Waiting for a human merge for over 30 min', 'fast-lane-held': 'Holds the fast lane while waiting for a human' }
 
-/** Where a Ticket in `review` stands: the factory's review and merge gate. */
 export const reviewWord = (reviewState?: string | null): string =>
   ({
     waiting_checks: 'Review clean, waiting for checks to finish',
@@ -105,12 +83,10 @@ export const reviewWord = (reviewState?: string | null): string =>
 
 type Row = { stage?: string | null; state?: string | null; labels?: string[] | null; releaseState?: string | null; productionState?: string | null; releaseChecksState?: string | null; reviewState?: string | null; reviewRounds?: number | null; expedite?: boolean | null; openCriticalDecisions?: number | null; waitingFor?: string | null; jobsOpen?: boolean | null; parked?: boolean | null; liveness?: { cause?: string; need?: string | null } | null }
 
-/** What a Ticket row needs from the owner: the one input-builder behind the overview rows and the `tickets.needsYou` column the top bar counts, so they cannot drift. `gates`: the Product's human gates when they differ from the workflow's (`humanGates(wf, stagingGateOn(...))`). Closed Tickets only while a release check failed. */
 export const needsOf = (wf: Workflow, t: Row, run: { stage: string; kind?: string | null; job?: string | null; status: string; reasonKind?: string | null } | null, productionChecksMissing: boolean, gates?: readonly HumanGate[]): Need | null => {
   const need =
   t.parked ? null : t.state !== 'closed' || t.releaseChecksState === 'failed'
     ? needsYou(wf, { stage: t.stage ?? null, labels: t.labels ?? [], releaseState: t.releaseState, productionState: t.productionState, productionChecksMissing, releaseChecksState: t.releaseChecksState, reviewState: t.reviewState, reviewRounds: t.reviewRounds, expedite: t.expedite, waitingFor: t.waitingFor, jobsOpen: t.jobsOpen, laneHeld: t.liveness?.cause === 'fast-lane-held' && t.liveness.need === 'Fast lane held' }, run, 0, gates)
     : null
-  // The stored count of unanswered critical decisions turns "Approve plan" into "Answer decisions" without a forge call.
   return need === 'Approve plan' && (t.openCriticalDecisions ?? 0) > 0 ? 'Answer decisions' : need
 }

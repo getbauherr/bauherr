@@ -25,14 +25,12 @@ const PAGES: Record<string, string> = {
   '/settings': 'Settings', '/settings/api-key': 'Settings: API keys', '/settings/audit': 'Settings: Audit log', '/settings/bauherren': 'Settings: Members', '/settings/connections': 'Settings: Connections', '/settings/products': 'Settings: Products',
   '/settings/usage': 'Settings: Usage', '/settings/templates': 'Settings: Templates', '/workflow/edit': 'Workflow editor', '/settings/workspace': 'Settings: Workspace', '/settings/models': 'Settings: Models & budget', '/settings/profile': 'Settings: Profile', '/settings/knowledge': 'Settings: Knowledge repo', '/settings/health': 'Settings: Health',
 }
-/** One line of text others wrote: no line breaks or markup that could pose as page structure. */
 const line = (s: unknown, n = 120): string => String(s ?? '').replace(/\s+/g, ' ').replace(/[<>`]/g, '').trim().slice(0, n)
 const day = (d: unknown): string => (d ? String(d).slice(0, 16).replace('T', ' ') : '-')
 const gone = (): PageContext => ({ label: 'Not found', markdown: 'The page shows something that does not exist in this Workspace.' })
 const make = (label: string, lines: string[], entity?: PageContext['entity']): PageContext => ({ label: line(label, 100), markdown: lines.join('\n').slice(0, CONTEXT_MAX_CHARS), ...(entity && { entity }) })
 const numeric = (s: string): number | null => (/^\d+$/.test(s) ? Number(s) : null)
 
-/** The prepared Decision as plain lines, for the Ticket's page and the Inbox list. */
 const decisionText = (d: Doc): string[] => [
   `Decision (${line(d.checkpoint)}): ${line(d.ask, 160)}`,
   ...(d.recommendation ? [`Recommendation: ${line(d.recommendation, 200)}`] : []),
@@ -116,7 +114,6 @@ const settingsPage = async (payload: Payload, ws: number, page: string, name: st
 
 const query = (path: string) => new URLSearchParams(path.split('#')[0]!.split('?')[1] ?? '')
 
-/** The Workflow view: the selected `?stage=` and, per stage, the open Tickets with their status (stage and status counts only; the Tickets are in `list_tickets`). */
 const workflowPage = async (ws: number, path: string): Promise<PageContext> => {
   const wf = workflowFor(ws)
   const { tickets, wip } = await loadOverviewRows(ws, false)
@@ -141,7 +138,6 @@ const workflowPage = async (ws: number, path: string): Promise<PageContext> => {
   ])
 }
 
-/** Insights: the range, the tiles and the bottleneck sentence as text. */
 const insightsPage = async (payload: Payload, ws: number, path: string): Promise<PageContext> => {
   const wf = workflowFor(ws)
   const q = query(path)
@@ -156,7 +152,6 @@ const insightsPage = async (payload: Payload, ws: number, path: string): Promise
   ])
 }
 
-/** What the person is looking at, from the PATH only (never client-sent content), limited to the Workspace they act in; a foreign or unknown id reads as "not found". */
 export const resolveContext = async (payload: Payload, user: Doc, workspace: number | string, a: { path: string }): Promise<PageContext> => {
   const ws = Number(workspace)
   if (user.role !== 'admin' && !tenantsOf(user).map(Number).includes(ws)) return gone()

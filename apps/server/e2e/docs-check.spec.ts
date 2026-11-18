@@ -7,7 +7,6 @@ test.skip(!email || !process.env.E2E_PASSWORD_FILE || !process.env.E2E_FAKE_FORG
 const shots = process.env.SHOTS_DIR
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-/** Signs in and opens the Docs tab of Docs Web in the Workspace of this spec (`seed-e2e.ts`). */
 const docsTab = async (page: Page, who: string) => {
   await page.context().addCookies([{ name: 'bauherr-ws', value: 'docsco', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
   await page.goto('/login')

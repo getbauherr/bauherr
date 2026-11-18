@@ -1,17 +1,11 @@
 'use client'
 import { useCallback, useRef, useState } from 'react'
 
-/** A turn in flight: what the person sent (null for the background re-check) and the reply as far as it has come. */
 export type Turn = { user: string | null; reply: string }
 export type TurnBody = { text: string; images?: number[] } | { recheck: { point: string } }
-/** What a turn route streams: the reply as far as written, then the whole state of the conversation (`V`), or the reason nothing changed. */
 export type TurnEvent<V> = { type: 'reply'; text: string } | { type: 'done'; view: V | null } | { type: 'error'; message: string }
 export type TurnResult<V> = { ok: true; view: V | null } | { ok: false; aborted: boolean; error: string }
 
-/**
- * One streamed turn of a conversation against its turn route (`url`: `/api/refine/<ticket>/turn`, `/api/requests/<id>/turn`): `turn` is set from the moment of sending until the validated state arrives (`onView`), so any layout can show the
- * message and the "is writing" state; `stop` aborts (nothing is stored). Layout-neutral: it knows nothing about the panel.
- */
 export const useTurn = <V>(url: string, onView: (view: V | null) => void) => {
   const [turn, setTurn] = useState<Turn | null>(null)
   const abort = useRef<AbortController | null>(null)

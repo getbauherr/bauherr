@@ -1,7 +1,6 @@
 import type { ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
-/** shadcn-style Switch on a native checkbox (`role="switch"`), so it posts with its form like any input; add `peer` to style siblings by its state. */
 export function Switch({ className, ...props }: Omit<ComponentProps<'input'>, 'type' | 'role'>) {
   return (
     <input

@@ -5,12 +5,6 @@ import { OptionList } from '../assistant-ui/elements/option-list'
 
 export type Choice = { label: string; recommended?: boolean }
 
-/**
- * What the agent asks next, as a card at the end of its message: an eyebrow ("Question 2 of 4"), the question as `title` (left out when the message above already says it), one line of
- * why with "Why this matters" (`onWhy`), the options (one click answers; the recommended one is marked), and "Or answer in your own words below" with `extra` (a shortcut button).
- * Built from `OptionList`; the registry's `QuestionFlow` is not used because it keeps its own state and confirms every answer at the end, while each answer here is recorded at once
- * and the next question follows from the engine.
- */
 export const QuestionCard: FC<{ id?: string; eyebrow: string; title?: string; why?: string; options: Choice[]; busy: boolean; onPick(option: number): Promise<void>; onWhy?(): void; extra?: ReactNode }> = ({ id, eyebrow, title, why, options, busy, onPick, onWhy, extra }) => (
   <section data-testid="current-point" data-point={id} aria-label="Current question" className="mt-1 flex flex-col overflow-hidden rounded-md border border-border bg-card">
     <div className="flex flex-col gap-1 px-4 pt-3.5">

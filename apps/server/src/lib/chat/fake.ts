@@ -1,12 +1,10 @@
 import { assertFakeAllowed } from '../fake-guard'
 import type { ModelCall, ModelEvent } from './stream'
 
-/** E2E and tests only (`CHAT_FAKE=1`, never in production): `approve #<n>` calls `approve`, `send back #<n> to <stage>` calls `send_back`, `comment #<n>: <text>` calls `post_comment`, `status` calls `factory_status`, a tool result is acknowledged, anything else is echoed. */
 assertFakeAllowed('CHAT_FAKE')
 
 const usage = (text: string): ModelEvent => ({ type: 'usage', tokensIn: 10, tokensOut: Math.max(1, Math.ceil(text.length / 4)), model: 'fake' })
 
-/** The refine engine's turn (`tools` holds `refine`): the person's text starting `refine:` carries the whole result as JSON; any other text settles the first open point with it. */
 const fakeRefine = (said: string): Record<string, unknown> => {
   const open = (JSON.parse(/<state>([\s\S]*)<\/state>/.exec(said)?.[1] ?? '{}') as { points?: { id: string; status: string }[] }).points?.filter((p) => p.status === 'open') ?? []
   const text = (/<person>([\s\S]*)<\/person>/.exec(said)?.[1]?.trim() ?? '').replace(/^hold:/, '')
@@ -16,13 +14,11 @@ const fakeRefine = (said: string): Record<string, unknown> => {
   return { reply: first ? 'Noted.' : 'Noted, nothing else is open.', settled: first ? [{ id: first.id, answer: text.slice(0, 500) }] : [], dropped: [], added: [], next: open.length > 1 ? 'ask' : 'summary' }
 }
 
-/** The gate a `hold:` refine turn waits at after the first 30 characters of its reply, until `releaseFakeGate()` (the `api/chat/fake-gate` route) or an abort. On `globalThis`: route and model may sit in different bundles. */
 const gates = globalThis as { __fakeGate?: { promise: Promise<void>; resolve(): void } }
 export const releaseFakeGate = (): void => void gates.__fakeGate?.resolve()
 const HOLD_AT = '{"reply":"'.length + 30
 const CHUNK = 16
 
-/** Every request the fake model got (model it was asked as, the last user text, image blocks in it), for e2e assertions on what a turn sent (`api/chat/fake-requests`). On `globalThis` like the gate. */
 type Recorded = { model: string; text: string; images: number }
 const log = globalThis as { __fakeRequests?: Recorded[] }
 export const fakeRequests = (): Recorded[] => log.__fakeRequests ?? []
@@ -36,7 +32,6 @@ const run = async function* ({ messages, tools, signal }: Parameters<ModelCall>[
     const id = `toolu_fake_refine_${messages.length}`
     const json = JSON.stringify({ reply, ...rest })
     const hold = /<person>\s*hold:/.test(said)
-    // The reply streams in fixed chunks, `reply` first, like the real tool input.
     for (let at = 0; at < json.length; at += CHUNK) {
       const end = hold && at < HOLD_AT && at + CHUNK > HOLD_AT ? HOLD_AT : Math.min(at + CHUNK, json.length)
       yield { type: 'tool_delta', id, name: 'refine', json: json.slice(0, end) }
@@ -92,6 +87,5 @@ const run = async function* ({ messages, tools, signal }: Parameters<ModelCall>[
   yield usage(text)
 }
 
-/** The fake model as the named Workspace model: it answers like `fakeChatModel` but reports (and records) that name. */
 export const fakeChatModelOf = (model: string): ModelCall => (a) => run(a, model)
 export const fakeChatModel = fakeChatModelOf('fake-refine')

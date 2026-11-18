@@ -72,7 +72,6 @@ beforeEach(async () => {
   })
 })
 
-/** An open Ticket on the fake forge; `run` adds an awaiting_session Run of `runStage`, `stage` leaves the Ticket in that stage (none = untriaged). */
 const ticket = async (title: string, stage: string | null, opts: { run?: string | false; runStatus?: string } = {}) => {
   const labels = stage ? [`bauherr:stage:${stage}`] : []
   const issue = await fake.tickets(repo).create({ title, labels })
@@ -288,9 +287,7 @@ it('next_work hands a custom agent stage to the role that owns it, with the stag
 })
 
 describe('exceptions role', () => {
-  /** What the liveness sweep stores for a stuck Ticket. */
   const finding = (id: number, cause: string, ageMs = 0) => db().execute(sql`UPDATE "tickets" SET "liveness" = ${JSON.stringify({ cause, need: null, at: new Date(Date.now() - ageMs).toISOString() })}::jsonb WHERE "id" = ${id}`)
-  /** Counts every call into the fake forge while `fn` runs. */
   const forgeCalls = async (fn: () => Promise<unknown>): Promise<number> => {
     let n = 0
     const restore: (() => void)[] = []

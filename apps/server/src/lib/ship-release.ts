@@ -15,13 +15,11 @@ import { SUMMARY_MARKER } from './summary'
 
 type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
-/** Postgres unique violation (23505), also when wrapped by the ORM or reported by Payload as "Value must be unique". */
 const isDuplicate = (e: unknown): boolean => {
   for (let c: any = e; c; c = c.cause) if (c.code === '23505' || c.errors?.some((x: { message?: string }) => x.message === 'Value must be unique')) return true
   return false
 }
 
-/** Whether a merge commit is in a release, per (repo, merge sha, release sha): the answer never changes. LRU of 500 entries. */
 const LRU = 500
 const ancestry = new Map<string, boolean>()
 const inRelease = async (repo: string, sha: string, release: string, ask: () => Promise<boolean>): Promise<boolean> => {
@@ -34,14 +32,12 @@ const inRelease = async (repo: string, sha: string, release: string, ask: () => 
   return answer
 }
 
-/** Tickets of the Product that are done, have a merge commit and are in no release yet, oldest first. Database fields only (no forge call). Once the Product has a `lastReleaseAt`, Tickets whose `releaseAt` is not after it are left out: they were merged before the latest release. Tickets without `releaseAt` still count until the Releases page records them. Tickets released before `releasedIn` existed are recorded by `releaseDraft`. */
 export const waitingTickets = async (payload: Payload, product: number | string): Promise<Doc[]> => {
   const { lastReleaseAt, workspace } = (await payload.findByID({ collection: 'products', id: product, ...o })) as Doc
   const afterLastRelease = lastReleaseAt ? [{ or: [{ releaseAt: { exists: false } }, { releaseAt: { greater_than: lastReleaseAt } }] }] : []
   return (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product } }, { stage: { equals: nameOf(workflowFor(workspace), 'done') } }, { releasedIn: { exists: false } }, { releaseUrl: { exists: false } }, { releasePublishedAt: { exists: false } }, { mergeSha: { exists: true } }, ...afterLastRelease] }, sort: 'number', limit: 500, pagination: false, ...o })).docs as Doc[]
 }
 
-/** Records a Ticket found in the latest release as released in it. Conditional, so a value a ship wrote first stays; no comment, no touch, no `updatedAt`. */
 const recordOldRelease = (payload: Payload, ticket: number | string, tag: string) =>
   payload.db.drizzle.execute(sql`UPDATE "tickets" SET "released_in" = ${tag} WHERE "id" = ${ticket} AND "released_in" IS NULL`)
 
@@ -49,7 +45,6 @@ const SEMVER = /^v?(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/
 const parse = (tag: string) => { const m = SEMVER.exec(tag); return m && (m.slice(1).map((x) => (x === undefined ? 0 : Number(x))) as [number, number, number, number]) }
 const order = (a: string, b: string) => { const [x, y] = [parse(a)!, parse(b)!]; return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || x[3] - y[3] }
 
-/** The newest final tag and the open release-candidate line of `tags` (other tag names are ignored): the newest `vX.Y.Z-rc.N` of a line above the newest final whose `vX.Y.Z` does not exist yet. Tags, not releases, so an rc cut by the CLI fallback counts. */
 export const releaseLine = (tags: string[]): { final: string | null; rc: string | null } => {
   const all = tags.filter((t) => /^v\d+\.\d+\.\d+(-rc\.\d+)?$/.test(t))
   const final = all.filter((t) => !t.includes('-rc.')).sort(order).at(-1) ?? null
@@ -57,7 +52,6 @@ export const releaseLine = (tags: string[]): { final: string | null; rc: string 
   return { final, rc }
 }
 
-/** Versions offered for the next release. From a final X.Y.Z: the rc.1 of the patch, minor and major bump, then the plain finals (a Product that does not use rcs). From an open rc line X.Y.Z-rc.N: only rc.N+1 (X.Y.Z itself is promoted, not cut). No previous release = 0.1.0 or its rc. */
 export const versionChoices = (last: string | null): string[] => {
   const v = last && parse(last)
   if (!v) return ['0.1.0', '0.1.0-rc.1']
@@ -67,7 +61,6 @@ export const versionChoices = (last: string | null): string[] => {
   return [...bumps.map((b) => `${b}-rc.1`), ...bumps]
 }
 
-/** Next version (no `v`) from the last release tag: while that is an rc the rc number goes up; else any `breaking` label = major, any `type:feature` = minor, else patch, as the first rc of that bump; no previous release = 0.1.0. */
 export const proposeVersion = (last: string | null, tickets: { labels?: string[] | null }[]): string => {
   const v = last && parse(last)
   if (!v) return '0.1.0'
@@ -84,9 +77,6 @@ export const renderNotes = async (payload: Payload, product: number | string, ts
 
 const shippedMarker = (tag: string) => `<!-- bauherr:shipped:${tag} -->`
 
-/**
- * Ships the selected Tickets as release `v<version>`: every merge commit must be an ancestor of the newest one (else refused naming the Ticket), then the human touch `ship:release`, tag and forge release, the comment and `releasedIn`/`releasedAt` per Ticket, and the CHANGELOG MR (stable versions). Every step looks before it writes (release by tag, comment by marker, touch by tag, MR by branch), so a retry after an error finishes what is left and creates no second tag or release.
- */
 export const shipRelease = async (payload: Payload, user: Doc, a: { product: number | string; tickets: Doc[]; version: string; notes: string }): Promise<{ tag: string; url: string }> => {
   const tag = `v${a.version}`
   const { backend, repo, tickets: ts } = await forgeOf(payload, a.product)
@@ -123,16 +113,12 @@ export const shipRelease = async (payload: Payload, user: Doc, a: { product: num
     if (!latestWith(await ts.listComments(n), shippedMarker(tag))) await ts.comment(n, `${shippedMarker(tag)}\nReleased in [${tag}](${release.url})`)
     await cas(payload, t.id, sql`"released_in" = ${tag}, "released_at" = ${at}`, sql`"released_at" IS NULL`)
   }
-  // After the loop: a retry after a failed Ticket still finds the unreleased ones waiting (see waitingTickets).
   const product = (await payload.findByID({ collection: 'products', id: a.product, ...o })) as Doc
   if (!product.lastReleaseAt || headAt > new Date(product.lastReleaseAt).toISOString()) await payload.update({ collection: 'products', id: a.product, data: { lastReleaseTag: tag, lastReleaseSha: head, lastReleaseAt: headAt }, ...o })
   if (!rcN) await changelogPr(forge, repo, release, marker, Date.now())
   return { tag, url: release.url }
 }
 
-/**
- * Promotes the newest release candidate `rc` (`vX.Y.Z-rc.N`) to `vX.Y.Z` on the same commit: refused unless `rc` is the newest rc of its line and `vX.Y.Z` is not on another commit; the final release carries the notes of every Ticket released in any rc of the line, those Tickets become `releasedIn` the final (with a Comment naming the rc), then the CHANGELOG MR and `lastRelease*`. Every step looks before it writes, so a retry finishes what is left.
- */
 export const promoteRelease = async (payload: Payload, user: Doc, a: { product: number | string; rc: string }): Promise<{ tag: string; url: string }> => {
   const m = /^(v\d+\.\d+\.\d+)-rc\.(\d+)$/.exec(a.rc)
   if (!m) throw new Error(`${a.rc} is not a release candidate (vX.Y.Z-rc.N)`)
@@ -168,7 +154,6 @@ export const promoteRelease = async (payload: Payload, user: Doc, a: { product: 
   return { tag: final, url: release.url }
 }
 
-/** The newest rc of the newest final's line when a promote of it did not finish: the final tag is on that rc's commit and a Ticket still says rc, the final release is missing, or its CHANGELOG MR is. Null otherwise. */
 const unfinishedPromotion = async (payload: Payload, forge: Forge, repo: string, product: number | string, tags: string[], finalTag: string | null): Promise<string | null> => {
   if (!finalTag) return null
   const rc = tags.filter((t) => t.startsWith(`${finalTag}-rc.`) && /-rc\.\d+$/.test(t)).sort(order).at(-1)
@@ -178,10 +163,6 @@ const unfinishedPromotion = async (payload: Payload, forge: Forge, repo: string,
   return done ? null : rc
 }
 
-/**
- * The Releases page data of a Product: Tickets waiting, the `picked` ones (all, or those in `ids`), the proposed version and notes for them, and the forge's releases (newest first, only with `withPast`).
- * With `withPast` (the page opened on purpose) it asks the forge for the releases, backfills `lastRelease*` once, and drops Tickets whose merge is already in the latest release (ancestry, 4 at a time). Without it nothing but the Ticket comments is read from the forge.
- */
 export const releaseDraft = async (payload: Payload, product: number | string, ids?: (number | string)[], withPast = true, lastTag?: string | null) => {
   const { backend, repo, tickets: ts } = await forgeOf(payload, product)
   const past = withPast ? await backend.forge.listReleases(repo) : []
@@ -204,14 +185,12 @@ export const releaseDraft = async (payload: Payload, product: number | string, i
   return { waiting, picked, last, version: proposeVersion(last, picked), versions: versionChoices(last), notes, past, rc, finishing: !line.rc && !!rc, rcTickets }
 }
 
-/** Admin-only: promotes the release candidate `rc` of a Product of the Workspace (see `promoteRelease`). */
 export const promoteSelected = async (payload: Payload, user: Doc, a: { workspaceId: number | string; product: number | string; rc: string }): Promise<{ tag: string; url: string }> => {
   if (user.role !== 'admin') throw new NotAdmin()
   await productIn(payload, a.product, a.workspaceId)
   return promoteRelease(payload, user, a)
 }
 
-/** The model-written summary over the notes of the Tickets `ids`, on request only (the Summarise button); empty without a gateway or on any model error. */
 export const releaseSummary = async (payload: Payload, product: number | string, ids: (number | string)[]): Promise<string> => {
   if (!process.env.GATEWAY_URL) return ''
   const { picked, notes } = await releaseDraft(payload, product, ids, false)
@@ -224,7 +203,6 @@ const productIn = async (payload: Payload, product: number | string, workspaceId
   if (!(await payload.find({ collection: 'products', where: { and: [{ id: { equals: product } }, { workspace: { equals: workspaceId } }] }, limit: 1, ...o })).totalDocs) throw new NotInWorkspace()
 }
 
-/** Admin-only: ships the Tickets `ids` (each must be waiting for a release) of a Product of the Workspace as `version`. */
 export const shipSelected = async (payload: Payload, user: Doc, a: { workspaceId: number | string; product: number | string; ids: (number | string)[]; version: string; notes: string; summary?: string }): Promise<{ tag: string; url: string }> => {
   if (user.role !== 'admin') throw new NotAdmin()
   await productIn(payload, a.product, a.workspaceId)
@@ -235,7 +213,6 @@ export const shipSelected = async (payload: Payload, user: Doc, a: { workspaceId
   return shipRelease(payload, user, { product: a.product, tickets, version: a.version, notes: a.summary?.trim() ? `${a.summary.trim()}\n\n${a.notes}` : a.notes })
 }
 
-/** The owner's reminder (manual Product only): done Tickets have waited longer than `releaseReminderDays` (default 7) for a release. Null when nothing is due. Computed on every Board load, so it needs no stored state and posts no Comment. */
 export const releaseReminder = (product: { releaseMode?: string | null; releaseReminderDays?: number | null }, waiting: { productionRequestedAt?: string | null; releaseAt?: string | null; updatedAt: string }[], now = Date.now()): { count: number; days: number } | null => {
   if (product.releaseMode !== 'manual' || !waiting.length) return null
   const since = Math.min(...waiting.map((t) => Date.parse(t.productionRequestedAt ?? t.releaseAt ?? t.updatedAt)))
@@ -243,7 +220,6 @@ export const releaseReminder = (product: { releaseMode?: string | null; releaseR
   return days > (product.releaseReminderDays ?? 7) ? { count: waiting.length, days } : null
 }
 
-/** Reminders for the Workspace's manual Products, for the Board. */
 export const releaseReminders = async (payload: Payload, workspaceId: number | string): Promise<{ product: { id: number; name: string }; count: number; days: number }[]> => {
   const products = (await payload.find({ collection: 'products', where: { and: [{ workspace: { equals: workspaceId } }, { releaseMode: { equals: 'manual' } }] }, pagination: false, ...o })).docs as Doc[]
   const out = await Promise.all(products.map(async (p) => {

@@ -1,13 +1,6 @@
 import { chromium, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
-/**
- * Page speed of `/`, a Ticket page and `/settings/workspace` against a running production build seeded by `seed:e2e`.
- * On demand, not in CI: `BASE_URL=... E2E_EMAIL=... E2E_PASSWORD_FILE=... [RUNS=5] tsx scripts/measure-pages.ts`
- * (host has no Chromium: run it in the Playwright image, see docs/ui.md).
- * Cold: a fresh browser context per run (no HTTP cache, new session). Warm: repeat loads in one context after a priming load.
- * Prints the median per page: TTFB (response start minus request start) and load (loadEventEnd), both in ms.
- */
 const env = (k: string): string => process.env[k] ?? (() => { throw new Error(`missing env ${k}`) })()
 const base = env('BASE_URL')
 const runs = Number(process.env.RUNS ?? 5)

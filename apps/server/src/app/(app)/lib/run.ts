@@ -15,7 +15,6 @@ export type RunDoc = {
   kind?: string | null
   status: string
   reasonKind?: string | null
-  /** Number of the hotfix Ticket that paused the Run (and its successor), and when it marked the running Run. */
   preemptedFor?: number | null
   preemptAt?: string | null
   mode: string
@@ -61,13 +60,8 @@ const PUBLIC_RUN_KEYS = ['id', 'ticket', 'stage', 'kind', 'status', 'reasonKind'
 const PUBLIC_TICKET_KEYS = ['id', 'number', 'title', 'url', 'stage', 'state', 'labels', 'releaseState', 'product', 'waitingFor', 'reviewState', 'releaseChecksState', 'ciSummary'] as const
 const pick = <T extends object>(o: T, keys: readonly string[]): T => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, (o as Record<string, unknown>)[k]])) as T
 
-/** What a non-Admin sees of a Run: no model, provider, client, tokens, gateway or cost data, no owner, agent key or Goal. Typed as `RunDoc`; the dropped fields are absent at runtime. */
 export const publicRun = (run: RunDoc): RunDoc => pick(run, PUBLIC_RUN_KEYS)
 
-/**
- * Run (404 outside the Workspace) with its Ticket, its agent session and the Runs it relates to. Everyone gets the Step summaries (`id, seq, summary, at`) and the session's role and liveness.
- * Admin only: full Run, Step tokens, and under `admin` the owner email, agent key label, tool calls and `usage_entries`. D5: no extra tables.
- */
 export const loadRun = cache(async (workspace: number, id: string, isAdmin: boolean) => {
   if (!/^\d+$/.test(id)) notFound()
   const payload = await payloadClient()
@@ -104,18 +98,15 @@ export const loadRun = cache(async (workspace: number, id: string, isAdmin: bool
     run: isAdmin ? run : publicRun(run),
     ticket: pick(ticket, PUBLIC_TICKET_KEYS),
     session,
-    /** Connected sessions of the Run's role while it awaits one, else 0. */
     connected,
     steps: steps.docs,
     stepsTotal: steps.total,
-    /** The Run this one continues (`previousRun`), the Runs that continue it, and the Workspace's Runs it escalated from or investigates. */
     chain: {
       previous: typeof run.previousRun === 'object' ? (run.previousRun?.id ?? null) : run.previousRun,
       next,
       escalation: (run.escalation?.previousRuns ?? []).filter((n) => related.has(n)),
       investigation: (run.investigation?.failedRuns ?? []).filter((n) => related.has(n)),
     },
-    /** Admin only; null for everyone else. */
     admin: isAdmin
       ? {
           callsByStep: calls.reduce((m, c) => m.set(c.step, [...(m.get(c.step) ?? []), c]), new Map<number, ToolCallDoc[]>()),

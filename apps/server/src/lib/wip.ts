@@ -18,22 +18,15 @@ import { heldStages, is, stage as stageDef, title, wipStages } from './workflow'
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
-/**
- * The query behind the count of `stage`: open Tickets in it that take a slot. Not counted: parents (their stage is `parent`), epic-parked Tickets, Tickets parked on a need outside an approval (`parkedNeed`),
- * and Tickets waiting to enter the column. A Plan Ticket waiting for any column (an approved plan waiting for Build) does not count either; in the other columns a finished Ticket waiting for the next one
- * still occupies this one. Release is never waited for (`waitingFor` cannot hold it).
- */
 export const wipWhere = (workspace: number | string, stage: string): Where => {
   const wf = workflowFor(workspace)
   const waiting: Where[] = is(wf, stage, 'release') ? [] : [is(wf, stage, 'plan') ? { waitingFor: { exists: false } } : { waitingFor: { not_equals: stage } }]
   return { and: [{ workspace: { equals: workspace } }, { stage: { equals: stage } }, { state: { equals: 'open' } }, { expedite: { not_equals: true } }, NOT_PARKED, { parkedNeed: { exists: false } }, ...waiting] }
 }
 
-/** The number of Tickets taking a slot in `stage`. This is the only definition of the count; the Board header uses `wipCounts`. */
 export const wipCount = async (payload: Payload, workspace: number | string, stage: string): Promise<number> =>
   (await payload.count({ collection: 'tickets', where: wipWhere(workspace, stage), overrideAccess: true })).totalDocs
 
-/** `wipCount` of every limited column, with the open Tickets there that are parked (on a need or as an epic) and take no slot. */
 export const wipCounts = async (payload: Payload, workspace: number | string): Promise<Record<string, { count: number; parked: number }>> =>
   Object.fromEntries(
     await Promise.all(
@@ -44,10 +37,6 @@ export const wipCounts = async (payload: Payload, workspace: number | string): P
     ),
   )
 
-/**
- * The pull rule: a Ticket may enter `stage` only while it has room. `move` does the whole move (label and `stage` row) and runs under a per-(Workspace, stage) advisory lock,
- * so two entries into one free slot cannot both win. A full column leaves the Ticket where it is, marked `waitingFor`, with no Run. Release is never gated, nor are returns to an earlier stage, nor is an expedite Ticket (it takes an extra slot and is not counted). A Build entry is also held (`'held'`, waiting with a reason, no limit involved) while an earlier Ticket overlaps its paths.
- */
 export const enterStage = async (payload: Payload, t: Doc, stage: string, move: () => Promise<void>): Promise<'moved' | 'waiting' | 'held'> => {
   const wf = workflowFor(t.workspace)
   if (is(wf, stage, 'build') && (await holdOverlap(payload, t))) return 'held'
@@ -62,17 +51,12 @@ export const enterStage = async (payload: Payload, t: Doc, stage: string, move: 
   return payload.db.drizzle.transaction(async (tx: any) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${ws}::int, hashtext(${'wip:' + stage}))`)
     if ((await wipCount(payload, ws, stage)) < limit) return enter()
-    // A Ticket waiting in its own column (`rejoin`) keeps its reason: without one the Ticket guard drops `waitingFor`.
     const own = t.stage === stage
     if (t.waitingFor !== stage || (t.waitingReason && !own)) await payload.update({ collection: 'tickets', id: t.id, data: { waitingFor: stage, waitingReason: null }, ...o })
     return 'waiting' as const
   })
 }
 
-/**
- * A parked Ticket whose need cleared takes its slot back without displacing anyone. With room (or no limit, Release, a fast-lane Ticket) it only loses `parkedNeed`; with the column full it waits for its own
- * column (`waitingFor` with the reason the Ticket guard requires for a Ticket that waits in its own column, no Run) and `pullWaiting` starts it when a slot frees. One Comment per parking says so.
- */
 export const rejoin = async (payload: Payload, t: Doc): Promise<'moved' | 'waiting'> => {
   const wf = workflowFor(t.workspace)
   const ws = Number(id(t.workspace))
@@ -93,7 +77,6 @@ export const rejoin = async (payload: Payload, t: Doc): Promise<'moved' | 'waiti
   return 'waiting'
 }
 
-/** The move of a waiting Ticket into `stage`: forge label (dropping the Triage hold when it leaves it) and `stage` row; a Ticket already labelled `stage` (a spawned child) only loses its hold. */
 const completeMove = async (payload: Payload, t: Doc, stage: string): Promise<void> => {
   if (t.stage !== stage) {
     const { tickets: ts } = await forgeOf(payload, id(t.product))
@@ -103,7 +86,6 @@ const completeMove = async (payload: Payload, t: Doc, stage: string): Promise<vo
   }
 }
 
-/** Starts the Run the pulled Ticket's new column calls for (a Ticket with an unreviewed assignee waits for its gate). */
 export const startAfterPull = async (payload: Payload, t: Doc, stage: string): Promise<void> => {
   const fresh = (await payload.findByID({ collection: 'tickets', id: t.id, ...o })) as Doc
   if (fresh.parked || is(workflowFor(t.workspace), stage, 'human')) return
@@ -114,10 +96,6 @@ export const startAfterPull = async (payload: Payload, t: Doc, stage: string): P
   }
 }
 
-/**
- * Per Workspace, columns right to left: while a column has room, the best-ranked Ticket waiting for it enters and starts its Run.
- * Runs on every poll, so a raised limit or a Ticket that left a column takes effect on the next one. Blocked Tickets wait without taking a slot.
- */
 export const pullWaiting = async (payload: Payload): Promise<number> => {
   const waiting = (await payload.find({ collection: 'tickets', where: { and: [{ waitingFor: { exists: true } }, { state: { equals: 'open' } }, NOT_PARKED] }, pagination: false, depth: 1, overrideAccess: true })).docs as Doc[]
   let pulled = 0
@@ -144,7 +122,6 @@ export const pullWaiting = async (payload: Payload): Promise<number> => {
   return pulled
 }
 
-/** Text of a waiting Ticket's chip and notice, e.g. "Waiting: Build is full (2/2)"; null when it is not waiting. */
 export const waitingLabel = async (payload: Payload, t: Doc): Promise<string | null> => {
   if (!t.waitingFor) return null
   const wf = workflowFor(t.workspace)

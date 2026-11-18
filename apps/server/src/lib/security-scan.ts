@@ -12,10 +12,8 @@ import { forgeOf, id } from './release'
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
-/** Label of the one long-lived anchor Ticket per Product; the triage stage excludes it. */
 export const SECURITY_SCAN_LABEL = 'bauherr:security-scan'
 
-/** The Product's anchor Ticket, created on first use (forge issue and local row). */
 export const anchorTicket = async (payload: Payload, product: Doc, req?: Partial<PayloadRequest>): Promise<Doc & { id: number | string }> => {
   const existing = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: product.id } }, { labels: { equals: SECURITY_SCAN_LABEL } }] }, limit: 1, ...o, req })).docs[0]
   if (existing) return existing as Doc & { id: number | string }
@@ -29,11 +27,6 @@ export const anchorTicket = async (payload: Payload, product: Doc, req?: Partial
 
 const SCAN_LOCK = 464
 
-/**
- * Starts a scan Run (always autonomous) on the Product's anchor Ticket unless one is active and records `lastScanAt` for a new one.
- * Runs in one transaction under a per-Product advisory lock taken on that transaction's connection, with every read and write on the same connection (a waiter holds one pooled connection and the holder needs no second one),
- * so a tick and a manual start cannot both create the anchor Ticket.
- */
 export const startSecurityScan = async (payload: Payload, productId: number | string): Promise<{ run: Doc; created: boolean }> => {
   const req = await createLocalReq({}, payload)
   const tx = await payload.db.beginTransaction()
@@ -63,7 +56,6 @@ const sevLabel = (s: Severity) => `security:${s}`
 
 const isText = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
 
-/** Parses `.bauherr/findings.json` (`{findings: [...]}` as the skill writes it, or a bare array); throws on any shape error so nothing is filed from a bad file. */
 export const parseFindings = (raw: unknown): Finding[] => {
   const list = Array.isArray(raw) ? raw : (raw as { findings?: unknown } | null)?.findings
   if (!Array.isArray(list)) throw new Error('findings.json must be {"findings": [...]}')
@@ -74,23 +66,17 @@ export const parseFindings = (raw: unknown): Finding[] => {
   })
 }
 
-/** Truncates to 2000 characters and redacts token-like strings. */
 export const scrub = (text: string): string =>
   text
     .replace(/\b(?:gh[pousr]_|github_pat_|glpat-|sk-|xox[abprs]-|AKIA)[A-Za-z0-9_-]{8,}|\bBearer\s+\S+|\b[A-Za-z0-9+]{32,}\b/g, '[redacted]')
     .slice(0, TEXT_CAP)
 
-/** sha256(slug|normalised rootCause|sorted paths), 12 hex characters. Line numbers never enter the key. */
 export const findingKey = (slug: string, f: Pick<Finding, 'rootCause' | 'files'>): string =>
   createHash('sha256').update(`${slug}|${f.rootCause.toLowerCase().replace(/\s+/g, ' ').trim()}|${[...new Set(f.files)].sort().join(',')}`).digest('hex').slice(0, 12)
 
 const MARKER_RE = /<!-- bauherr:security-finding:([0-9a-f]{12}) -->/
 const rank = (s: Severity) => SEVERITIES.indexOf(s)
 
-/**
- * Files the findings of a finished (or budget-exhausted) scan Run as Tickets, deduplicated by key marker.
- * Forge budget: one list call, at most 10 creates, at most 11 comments; no per-finding DB queries.
- */
 export const fileFindings = async (payload: Payload, run: Doc): Promise<{ created: number; seen: number }> => {
   let findings: Finding[]
   try {

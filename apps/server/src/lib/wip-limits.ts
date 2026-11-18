@@ -3,7 +3,6 @@ import { DEFAULT, stage as stageDef, title, wipStages, type Workflow } from './w
 
 export type WipLimits = Partial<Record<string, number>>
 
-/** Why `v` is not a WIP limit map (only the workflow's WIP columns, positive integers; a missing key means no limit), or null. */
 export const wipLimitsError = (v: unknown, wf: Workflow = DEFAULT()): string | null => {
   if (v == null) return null
   if (typeof v !== 'object' || Array.isArray(v)) return 'must be an object of column limits'
@@ -14,7 +13,6 @@ export const wipLimitsError = (v: unknown, wf: Workflow = DEFAULT()): string | n
   return null
 }
 
-/** The Workspace override (`wipLimits`, a missing key = no limit) when set, else the `wip` of the stage in its workflow. */
 export const wipLimit = (ws: { id?: number | string; wipLimits?: unknown } | null | undefined, stage: string, wf: Workflow = workflowFor(ws as { id: number }| null | undefined)): number | null => {
   const own = ws?.wipLimits as WipLimits | null | undefined
   const n = own ? own[stage] : stageDef(wf, stage)?.wip
@@ -23,5 +21,4 @@ export const wipLimit = (ws: { id?: number | string; wipLimits?: unknown } | nul
 
 const label = (s: string) => s[0].toUpperCase() + s.slice(1)
 
-/** "Waiting: Build is full (2/2)", or "Waiting: overlaps #12" when the Ticket carries a reason. */
 export const waitingText = (wf: Workflow, stage: string, count: number, limit: number | null, reason?: string | null): string => (stage === 'checks' ? 'Waiting for checks' : reason ? `Waiting: ${reason}` : `Waiting: ${label(title(wf, stage))} is full (${count}/${limit ?? count})`)

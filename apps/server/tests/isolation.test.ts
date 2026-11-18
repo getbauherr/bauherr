@@ -31,7 +31,6 @@ it('a bauherr of workspace A cannot read workspace B tickets', async () => {
     })
     return { workspace, ticket }
   }
-  // The first Bauherr ever created becomes the Admin.
   await payload.create({ collection: 'bauherren', data: { email: 'admin@example.com', password: 'pw-admin-12345' }, ...o } as never)
   const a = await seed('a')
   const b = await seed('b')

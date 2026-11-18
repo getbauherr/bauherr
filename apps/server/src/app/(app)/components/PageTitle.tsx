@@ -4,7 +4,6 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 const Context = createContext<(label: string | null) => void>(() => {})
 const Label = createContext<string | null>(null)
 
-/** Holds the last breadcrumb label a page supplies with `<PageTitle>`. */
 export function PageTitleProvider({ children }: { children: ReactNode }) {
   const [label, setLabel] = useState<string | null>(null)
   return (
@@ -16,7 +15,6 @@ export function PageTitleProvider({ children }: { children: ReactNode }) {
 
 export const usePageTitle = (): string | null => useContext(Label)
 
-/** Renders nothing; puts `children` (a string) as the last breadcrumb while the page is mounted, e.g. `#123` on a Ticket page. */
 export function PageTitle({ children }: { children: string }) {
   const set = useContext(Context)
   useEffect(() => {

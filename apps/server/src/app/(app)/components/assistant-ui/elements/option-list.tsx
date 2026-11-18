@@ -13,7 +13,6 @@ export interface OptionListOption {
   id: string;
   label: string;
   description?: string | undefined;
-  /** A small badge on the label's line ("Recommended"). */
   badge?: string | undefined;
   disabled?: boolean | undefined;
 }
@@ -23,28 +22,12 @@ export interface OptionListProps extends Omit<
   "children" | "defaultValue" | "onChange"
 > {
   options: readonly OptionListOption[];
-  /** One option answers the question, or several do. */
   selectionMode?: "single" | "multiple" | undefined;
-  /**
-   * Options the list starts selected: checked in a multiple selection, and
-   * marked as the current answer in a single one.
-   */
   defaultValue?: readonly string[] | undefined;
-  /** The fewest options a multiple selection confirms with. */
   minSelections?: number | undefined;
-  /** The most options a multiple selection may hold. */
   maxSelections?: number | undefined;
-  /**
-   * Commits the answer: a single selection commits on pick, a multiple one on
-   * the confirm button. Without it the list only displays its options. A
-   * rejected promise reopens the list, because the answer never landed.
-   */
   onConfirm?: ((ids: string[]) => void | Promise<void>) | undefined;
   confirmLabel?: string | undefined;
-  /**
-   * The committed answer. Once set, the list is a receipt of just these
-   * options and takes no further input.
-   */
   choice?: readonly string[] | undefined;
 }
 

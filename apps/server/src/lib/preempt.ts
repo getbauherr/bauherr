@@ -9,17 +9,10 @@ import { roleOfRun } from './workflow'
 type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
-/** How long a marked session has to hand over before the lease sweep ends its Run. */
 export const PREEMPT_GRACE_MS = 2 * 60_000
 
-/** What every tool answer to the victim's session carries. */
 export type Preempt = { ticket: number; run: number; reason: string }
 
-/**
- * The victim for an expedite Run of role `roleId`: the running session Run of that role with the latest start that is not marked and whose Ticket is not expedite;
- * when no session Run qualifies, the same for an autonomous (Runner) Run of the role.
- * Null while a connected session of the role is free (no running Run, and the role's `agents` cap not reached). Runs on `tx`, under the caller's lock.
- */
 export const pickVictim = async (tx: any, workspace: number, roleId: string, cap: number | null | undefined): Promise<number | null> => {
   const running = (await tx.execute(sql`SELECT count(*)::int AS n FROM "runs" WHERE "workspace_id" = ${workspace} AND "role" = ${roleId} AND "mode" = 'session' AND "status" = 'running'`)).rows[0] as { n: number }
   const free = (await tx.execute(sql`SELECT 1 FROM "agent_sessions" s WHERE s."workspace_id" = ${workspace} AND s."role" = ${roleId} AND s."disconnected_at" IS NULL AND s."last_seen_at" > now() - make_interval(secs => ${sessionTimeoutS()}) AND NOT EXISTS (SELECT 1 FROM "runs" r WHERE r."session_id" = s."id" AND r."status" = 'running') LIMIT 1`)).rows.length > 0
@@ -31,10 +24,6 @@ export const pickVictim = async (tx: any, workspace: number, roleId: string, cap
   return null
 }
 
-/**
- * Marks one victim for the claimable expedite Run `hot` of `ticket`, when the Workspace's switch is on and nobody of the role is free. At most one victim per expedite Run, ever (a marked, later ended or released victim still counts).
- * The check and the mark share one transaction under the Workspace's advisory lock, so two sweeps cannot mark two. Returns the victim Run id, or null.
- */
 export const markPreempt = async (payload: Payload, hot: Doc, ticket: Doc): Promise<number | null> => {
   const role = roleOfRun(workflowFor(hot.workspace), hot)
   if (!role) return null
@@ -52,7 +41,6 @@ export const markPreempt = async (payload: Payload, hot: Doc, ticket: Doc): Prom
   })
 }
 
-/** Every claimable session Run of an expedite Ticket that the lane serves gets its victim (see `markPreempt`). Runs in the poll and the lease sweep; returns how many Runs it marked. */
 export const preemptSweep = async (payload: Payload): Promise<number> => {
   const tickets = (await payload.find({ collection: 'tickets', where: { and: [{ expedite: { equals: true } }, { state: { equals: 'open' } }] }, pagination: false, ...o })).docs as Doc[]
   let marked = 0
@@ -67,18 +55,15 @@ export const preemptSweep = async (payload: Payload): Promise<number> => {
   return marked
 }
 
-/** The `preempt` of a session: its marked running Run, while the hotfix it waits for is still unclaimed. Null otherwise. One query. */
 export const preemptFor = async (payload: Payload, sessionId: number | string): Promise<Preempt | null> => {
   const row = (await payload.db.drizzle.execute(sql`SELECT e."id" AS run, e."ticket_id" AS ticket, t."number" AS number FROM "runs" v JOIN "runs" e ON e."id" = v."preempted_by" JOIN "tickets" t ON t."id" = e."ticket_id" WHERE v."session_id" = ${sessionId} AND v."status" = 'running' AND v."preempt_at" IS NOT NULL AND e."status" = 'awaiting_session' LIMIT 1`)).rows[0] as { run: number; ticket: number; number: number } | undefined
   return row ? { ticket: Number(row.ticket), run: Number(row.run), reason: `hotfix #${row.number}` } : null
 }
 
-/** Number of the Ticket whose session `hot` is waiting to pause (a marked Run still running), for "Starting: ... pausing #m". */
 export const pausingFor = async (payload: Payload, hot: number | string): Promise<number | null> => {
   const row = (await payload.db.drizzle.execute(sql`SELECT t."number" AS number FROM "runs" v JOIN "tickets" t ON t."id" = v."ticket_id" WHERE v."preempted_by" = ${hot} AND v."status" = 'running' AND v."preempt_at" IS NOT NULL LIMIT 1`)).rows[0] as { number: number } | undefined
   return row ? Number(row.number) : null
 }
 
-/** Whether the running Run `runId` is marked for a hotfix that still waits for a session: the Runner polls it at its tool boundaries. */
 export const preemptedRun = async (payload: Payload, runId: number | string): Promise<boolean> =>
   (await payload.db.drizzle.execute(sql`SELECT 1 FROM "runs" v JOIN "runs" e ON e."id" = v."preempted_by" WHERE v."id" = ${runId} AND v."status" = 'running' AND v."preempt_at" IS NOT NULL AND e."status" = 'awaiting_session' LIMIT 1`)).rows.length > 0

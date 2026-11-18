@@ -13,7 +13,6 @@ const docOf = (y: string | null): Doc | null => {
   return d?.ok ? d.doc : null
 }
 
-/** Applied versions, newest first; View shows what changed against the version before, Restore loads one into the draft. */
 export function HistoryTab({ versions, active, onRestore, onRestoreShipped }: { versions: VersionRow[]; active: number | null; onRestore: (v: VersionRow) => void; onRestoreShipped: () => void }) {
   const [viewing, setViewing] = useState<number | null>(null)
   return (

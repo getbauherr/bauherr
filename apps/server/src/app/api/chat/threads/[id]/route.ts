@@ -15,7 +15,6 @@ export const GET = async (req: Request, { params }: P): Promise<Response> => {
   return t ? Response.json((await listThreads(w, { archived: !!t.archivedAt })).find((m) => m.id === t.id)) : NOT_FOUND()
 }
 
-/** Body `{ title?, archived? }`. */
 export const PATCH = async (req: Request, { params }: P): Promise<Response> => {
   const w = await chatWho(req)
   if (w instanceof Response) return w

@@ -2,10 +2,8 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { sessionTimeoutS } from './sessions'
 
-/** `working`: connected sessions that hold a running Run plus running autonomous Runs (Runner, CI); `idle`: connected sessions without one. */
 export type Presence = { working: number; idle: number }
 
-/** One round trip. A session is connected while it is not disconnected and either holds a running Run or was seen within `sessionTimeoutS()` (the Team page's rule). */
 export const loadPresence = async (payload: Payload, workspace: number | string): Promise<Presence> => {
   const { rows } = await payload.db.drizzle.execute(sql`
     WITH s AS (
@@ -20,7 +18,6 @@ export const loadPresence = async (payload: Payload, workspace: number | string)
   return { working: r.busy + r.auto, idle: r.idle }
 }
 
-/** Connected sessions of `role` (the same rule as `loadPresence`: a running Run or seen within `sessionTimeoutS()`). */
 export const connectedOfRole = async (payload: Payload, workspace: number | string, role: string): Promise<number> => {
   const { rows } = await payload.db.drizzle.execute(sql`
     SELECT count(*)::int AS "n" FROM "agent_sessions" a

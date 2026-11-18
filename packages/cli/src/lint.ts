@@ -58,7 +58,6 @@ export function lintPack({ packDir, contextFile, specFile }: LintOpts): Finding[
   const context = read(contextFile)
   const spec = read(specFile)
 
-  // 1. size caps
   for (const f of files) {
     const cap = CAPS.find(([re]) => re.test(f))
     if (!cap) continue
@@ -69,7 +68,6 @@ export function lintPack({ packDir, contextFile, specFile }: LintOpts): Finding[
     if (bytes > maxBytes) add(f, 1, `The ${kind} is ${bytes} bytes; the cap for a ${kind} is ${maxBytes}. Split it or cut it.`)
   }
 
-  // 2. cited paths exist inside the pack; anything not rooted at a pack folder is a Product or runtime path and is not checked
   for (const f of files.filter((x) => /\.(md|ya?ml)$/.test(x))) {
     lines(f).forEach((l, i) => {
       for (const m of l.matchAll(PACK_PATH)) {
@@ -83,7 +81,6 @@ export function lintPack({ packDir, contextFile, specFile }: LintOpts): Finding[
     })
   }
 
-  // 3. terms the glossary forbids
   if (!context) add(contextFile, 1, 'The glossary was not found, so its Avoid terms were not checked.')
   else {
     for (const term of avoidTerms(context)) {
@@ -92,7 +89,6 @@ export function lintPack({ packDir, contextFile, specFile }: LintOpts): Finding[
     }
   }
 
-  // 4. tiers equal the spec's Role | Tier table
   const table = spec ? specTiers(spec) : null
   if (!table) add(specFile, 1, 'The spec has no `| Role | Tier |` table, so the tiers of the factory file and the presets were not checked.')
   else {
@@ -109,13 +105,11 @@ export function lintPack({ packDir, contextFile, specFile }: LintOpts): Finding[
     for (const [id, tier] of table.tiers) if (!TIERS.includes(tier)) add(specFile, table.line, `The tier table gives ${id} the tier "${tier}"; it must be one of ${TIERS.join(', ')}.`)
   }
 
-  // 5. no stack or language names in the core layer
   const stack = new RegExp(`(?<![\\w.])(${STACK_TERMS.map(ESCAPE).join('|')})(?![\\w])`, 'g')
   for (const f of files.filter((x) => !x.startsWith('stacks/'))) {
     lines(f).forEach((l, i) => { for (const m of l.matchAll(stack)) add(f, i + 1, `It names ${m[1]}; stack names belong under stacks/, not in the core pack.`) })
   }
 
-  // 6. a rule that cites a hook as enforcement cites one that is implemented (a stub has a TODO or says "not active")
   const hooks = new Map(files.filter((f) => /^hooks\/[\w-]+\.(ts|sh)$/.test(f)).map((f) => [f.slice(6), /TODO|not active/i.test(text.get(f)!)]))
   const cites = [...files.filter((f) => !f.startsWith('hooks/') && f !== 'pack.yaml').map((f) => ({ file: f, body: text.get(f)! })), ...(spec ? [{ file: specFile, body: spec }] : [])]
   for (const { file, body } of cites) {

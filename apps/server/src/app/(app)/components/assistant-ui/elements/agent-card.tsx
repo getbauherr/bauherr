@@ -4,8 +4,6 @@ import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { paper } from "./surfaces";
 
-// From `elements-agent-card`: who you are talking to. The registry's skill list and "Connect" button are not used (nothing to connect to here): the card shows the role's
-// avatar and profile line, then the executor's facts as rows (`facts`) and a footer slot (`children`).
 export function AgentCard({
   avatar,
   name,

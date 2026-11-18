@@ -3,7 +3,6 @@ import { payloadClient } from './session'
 
 type Doc = Record<string, any>
 
-/** What the Settings pages show of a template: the pack default, and the Workspace's override when there is one. */
 export const loadTemplates = async (workspace: number): Promise<{ name: TemplateName; title: string; usedBy: string; description: string; custom: { by: string | null; at: string } | null }[]> => {
   const rows = (await (await payloadClient()).find({ collection: 'templates', where: { workspace: { equals: workspace } }, select: { name: true, updatedBy: true, updatedAt: true }, depth: 0, pagination: false, overrideAccess: true })).docs as Doc[]
   return TEMPLATE_NAMES.map((name) => {

@@ -7,23 +7,17 @@ import { roleOf, type Workflow } from './workflow'
 
 export type RunHealthState = 'queued' | 'awaiting_session' | 'waiting_ci' | 'waiting_review' | 'working' | 'stuck' | 'session_gone' | 'succeeded' | 'failed' | 'cancelled' | 'needs_human' | 'budget_exhausted' | 'abandoned'
 export type RunAction = null | { kind: 'connect'; href: string } | { kind: 'release' } | { kind: 'rerun'; stage: string } | { kind: 'open_ticket'; href: string }
-/** `tone` is a Badge variant. */
 export type RunHealth = { state: RunHealthState; chip: string; tone: 'neutral' | 'muted' | 'accent' | 'ok' | 'warn' | 'destructive'; sentence: string; action: RunAction }
 
 type RunIn = { status: string; stage: string; mode: string; startedAt?: string | null; finishedAt?: string | null; heartbeatAt?: string | null; sessionLabel?: string | null; error?: string | null; outcome?: string | null; reasonKind?: string | null; costUsd?: number | null }
 type SessionIn = { label?: string | null; lastSeenAt?: string | null; disconnectedAt?: string | null; endReason?: string | null }
 type TicketIn = { id: number; waitingFor?: string | null; reviewState?: string | null; ciSummary?: unknown; releaseChecksState?: string | null }
-/** Plan-step progress; the seam for the milestone data of #555 slice 4 (`planDone`/`planTotal`, newest report time). */
 export type RunProgress = { done: number; total: number; lastReportAt?: string | null }
 
 const END_WORD: Record<string, string> = { disconnect: 'disconnected', timeout: 'timed out', replaced: 'was replaced' }
 const firstLine = (s?: string | null) => s?.split('\n')[0]?.trim() ?? ''
 const latest = (...d: (string | null | undefined)[]) => d.filter(Boolean).sort().pop() ?? null
 
-/**
- * What a Run is truthfully doing; first match wins in the order of the Run page's header table (#555). A running session Run is checked for a dead session before CI and review waits.
- * Review wait reads Ticket `reviewState === 'requested'` only; slice 4 adds the `review_requested` Step.
- */
 export const runHealth = (a: { run: RunIn; session: SessionIn | null; ticket: TicketIn; connected: number; isAdmin: boolean; now: number; timeoutS: number; wf: Workflow; progress?: RunProgress | null }): RunHealth => {
   const { run, session, ticket, now, isAdmin } = a
   const rel = (iso: string | null | undefined) => (iso ? ago(iso, now) : 'a while ago')

@@ -83,7 +83,6 @@ it('splits the watchers into separate tasks with separate concurrency keys', asy
 it('health: stale scheduled tasks are named, fresh ones and the startup grace are ok', async () => {
   await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs"`)
   const fresh = Date.now()
-  // startup grace: only a young job row exists
   await insert('poll-tickets', { updated: 1 })
   expect(await health.staleTasks(payload, fresh)).toEqual([])
   for (const s of jobs.scheduledSlugs().filter((s) => s !== 'watch-release')) await insert(s, { updated: 1, completed: 1 })
@@ -92,7 +91,6 @@ it('health: stale scheduled tasks are named, fresh ones and the startup grace ar
   await insert('watch-release', { updated: 0, completed: 0 })
   expect(await health.staleTasks(payload, fresh)).toEqual([])
   await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs" WHERE "task_slug" = 'notify-gates'`)
-  // an hourly and a daily task are not stale between their runs, and are once a run was missed
   await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs" WHERE "task_slug" IN ('notify-gates', 'security-scan-tick', 'prune-comment-media')`)
   await insert('notify-gates', { updated: 1, completed: 1 })
   await insert('security-scan-tick', { updated: 50, completed: 50 })
@@ -114,17 +112,13 @@ it('health: a task without a row is stale only when its schedule demonstrably ra
   const now = Date.now()
   const [lonely, ...siblings] = sameCron()
   const hourly = jobs.scheduledTasks().find((t) => t.cron.split(' ')[1] === '0' && t.cron.split(' ')[2] === '*')!.slug
-  // (a) a new hourly task right after a deploy: other tasks ran, it has no row
   for (const s of jobs.scheduledSlugs().filter((s) => s !== hourly)) await insert(s, { updated: 1, completed: 1 })
   expect(await health.staleTasks(payload, now)).toEqual([])
-  // (b) same schedule, siblings completed twice, this one has no row
   await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs"`)
   for (const s of siblings) for (const m of [3, 1]) await insert(s, { updated: m, completed: m })
   expect(await health.staleTasks(payload, now)).toEqual([lonely])
-  // one completion of the siblings is not enough
   await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs" WHERE "completed_at" < ${minutesAgo(2)}`)
   expect(await health.staleTasks(payload, now)).toEqual([])
-  // (c) a row created 10 minutes ago, never completed, for an every-minute task
   await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs"`)
   await insert(lonely, { updated: 10 })
   expect(await health.staleTasks(payload, now)).toEqual([lonely])

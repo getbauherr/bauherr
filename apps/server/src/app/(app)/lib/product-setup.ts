@@ -8,7 +8,6 @@ type SetupInput = {
   deploy: { stagingUrl: string; mode: string; webhookUrl: string; productionChecks: string }
 }
 
-/** Setup checklist rows (section id, status word, tone), the number of open steps and the "Production approval" word for the list. */
 export function setupOf(p: SetupInput, productionOn: boolean) {
   const { deploy: d } = p
   const word = (done: boolean, otherwise: 'Needs setup' | 'Optional' = 'Needs setup') => (done ? 'Done' : otherwise)
@@ -32,7 +31,6 @@ type Deploy = { stagingUrl: string; deployMode: string; deployWebhookUrl: string
 
 const URL_MESSAGE = 'Enter an address starting with https://.'
 
-/** Per-field messages of the Product deploy form, keyed by field name; empty when valid. */
 export function deployErrors(d: Deploy): Record<string, string> {
   const e: Record<string, string> = {}
   for (const k of ['stagingUrl', 'deployWebhookUrl', 'productionWebhookUrl'] as const) if (d[k] && !isWebUrl(d[k])) e[k] = URL_MESSAGE
@@ -46,10 +44,6 @@ export function deployErrors(d: Deploy): Record<string, string> {
 
 export type Callout = { tone: Tone; lead: string; text: string }
 
-/**
- * The production status callouts, most important first. `seen` holds the check names found on recent commits, or null when the forge could not be read (then a named check counts as ready, with a note that it is not confirmed).
- * `notifiable` is false when no Bauherr or Admin of the Workspace has a linked forge login.
- */
 export function productionCallouts({ on, checks, seen, notifiable }: { on: boolean; checks: string[]; seen: string[] | null; notifiable: boolean }): Callout[] {
   if (!on) return [{ tone: 'muted', lead: 'Off', text: 'Once you accept on staging, the Ticket is done. Nothing waits for you before production.' }]
   const out: Callout[] = []
@@ -63,10 +57,8 @@ export function productionCallouts({ on, checks, seen, notifiable }: { on: boole
   return out
 }
 
-/** Comma-separated check names as a list. */
 export const namesOf = (v: string): string[] => v.split(',').map((c) => c.trim()).filter(Boolean)
 
-/** GitHub Actions workflow for the label-triggered production deploy; it reports every check in `checks` on the Ticket's merge commit, not on the latest default branch commit. Names go through an env block, never into the shell command; `${{` is dropped so a name cannot inject an expression. */
 export const productionWorkflow = (checks: string[]): string => `name: Deploy production
 on:
   issues:

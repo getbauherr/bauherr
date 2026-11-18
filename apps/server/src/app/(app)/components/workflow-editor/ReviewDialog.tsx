@@ -27,7 +27,6 @@ type Props = {
   onContinueInYaml: () => void
 }
 
-/** What will change, what is wrong, what happens to open tickets, then Apply. The server checks the draft too. */
 export function ReviewDialog(p: Props) {
   const [check, setCheck] = useState<ApplyResult | null>(null)
   const [stale, setStale] = useState(false)

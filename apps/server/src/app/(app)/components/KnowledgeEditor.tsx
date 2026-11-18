@@ -4,7 +4,6 @@ import { saveKnowledgeDocument, type EditState } from '../lib/actions'
 import { NextStepBar } from './NextStepBar'
 import { Textarea } from './ui/textarea'
 
-/** Text area plus save; a stale save shows the changes and the next save is made against the current version. */
 export function KnowledgeEditor({ path, content, sha }: { path: string; content: string; sha: string }) {
   const [state, action, pending] = useActionState<EditState, FormData>(saveKnowledgeDocument, {})
   const formId = useId()

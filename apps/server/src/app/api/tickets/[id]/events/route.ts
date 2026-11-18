@@ -6,7 +6,6 @@ export const dynamic = 'force-dynamic'
 const POLL_MS = 2000
 const HEARTBEAT_MS = 15000
 
-/** Server-sent `milestone` events of one Ticket (new Steps of its Runs and history events), from `Last-Event-ID` (else from now). Database only: one query every 2 s per open stream; ends when the client goes away. */
 export const GET = async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
   const t = await liveTicket((await params).id)
   if (t instanceof Response) return t

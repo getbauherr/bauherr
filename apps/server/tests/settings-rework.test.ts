@@ -113,7 +113,6 @@ describe('Workspace settings split by page', () => {
     }
     const after = (await payload.findByID({ collection: 'workspaces', id: ws, depth: 0, ...o })) as Record<string, any>
     expect(after).toMatchObject({ budgetUsd30d: before.budgetUsd30d, routerBudgetShare: before.routerBudgetShare, name: before.name })
-    // The REST path (Payload local API with access control, as /api) is closed too.
     await expect(payload.update({ collection: 'workspaces', id: ws, data: { budgetUsd30d: 1 }, user: member, overrideAccess: false })).rejects.toThrow()
     expect(((await payload.findByID({ collection: 'workspaces', id: ws, depth: 0, ...o })) as Record<string, any>).budgetUsd30d).toBe(before.budgetUsd30d)
     signedIn = { user: admin, workspace: { id: ws } }

@@ -63,7 +63,6 @@ describe('the factory file addresses checkpoints', () => {
     const w = wf(shipped)
     expect(['refine', 'plan', 'staging', 'production'].map((k) => checkpointBy(w, k as 'plan'))).toEqual(['product-owner', 'bauherr', 'product-owner', 'bauherr'])
     expect(gates(w)).toEqual({ plan: true, staging: true, production: true })
-    // `gateOn` and `humanGates` are the unconditional gates: without a Product owner who tests there is no acceptance checkpoint, as before
     expect(gateOn(w, 'release')).toBe(false)
     expect(humanGates(w)).toEqual(['refine', 'plan', 'production'])
   })

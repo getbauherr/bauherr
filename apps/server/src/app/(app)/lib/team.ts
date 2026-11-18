@@ -10,7 +10,6 @@ type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 const TIERS = ['cheap', 'standard', 'strong']
 
-/** Model choices of the role form: the Workspace's tiers with the model each maps to, then the models of every LLM Connection (its preset's models and the ones a tier uses). Values are `tier:<tier>` or `<connection>/<model>`. */
 export const loadModelOptions = async (payload: Payload, workspace: number): Promise<ModelOption[]> => {
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, select: { slug: true, modelByTier: true }, ...o })) as Doc
   const conns = (await payload.find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' } }, sort: 'id', pagination: false, select: { slug: true, name: true, config: true }, ...o })).docs as Doc[]
@@ -27,7 +26,6 @@ export const loadModelOptions = async (payload: Payload, workspace: number): Pro
   return [...tiers, ...models]
 }
 
-/** The factory file with one role's model and agent cap changed (comments and order kept). Throws when the role is not in the file. */
 export const withRoleSettings = (yaml: string, roleId: string, s: RoleSettings): string => {
   const doc = parseDocument(yaml)
   const path = ['team', 'roles', roleId]

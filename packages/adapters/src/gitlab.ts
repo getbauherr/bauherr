@@ -23,7 +23,6 @@ export class GitlabError extends Error {
 
 export interface GitlabOptions {
   auth: GitlabAuth;
-  /** Web origin, e.g. `https://gitlab.com`; the API lives at `<baseUrl>/api/v4`. */
   baseUrl?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
@@ -90,7 +89,6 @@ export class GitlabHttp {
 }
 
 const enc = encodeURIComponent;
-/** The contract wants whole seconds (GitHub shape); GitLab adds millis. */
 const secs = (iso: string): string => iso.replace(/\.\d+Z$/, 'Z');
 const REASONS: CloseReason[] = ['completed', 'not_planned', 'duplicate'];
 
@@ -249,8 +247,6 @@ class GitlabTickets implements TicketSource {
   }
 }
 
-/** Waits between polls for an asynchronous merge (~30 s in total). */
-/** Waits for GitLab's mergeability check of the temporary train MR. */
 const TRAIN_STATUS_POLL_MS = [500, 1000, 2000, 4000];
 const MERGE_POLL_MS = [500, 1000, 2000, 4000, 8000, 15000];
 const PIPELINE_PENDING = ['created', 'waiting_for_resource', 'preparing', 'pending', 'running', 'scheduled'];
@@ -446,7 +442,6 @@ class GitlabForge implements Forge {
     const f = await this.file(repo, path, ref ?? (await this.getRepository(repo)).defaultBranch);
     return { content: Buffer.from(f.content, 'base64').toString('utf8'), sha: f.blob_id as string };
   }
-  /** GitLab has no blob-sha precondition: check `expectSha` against the branch, then pin the write to that file's `last_commit_id`. */
   async putFile(repo: RepoRef, o: { branch: string; path: string; content: string; message: string; expectSha?: string }) {
     const cur = await this.file(repo, o.path, o.branch).catch((e) => (e instanceof GitlabError && e.status === 404 ? null : Promise.reject(e)));
     if (o.expectSha !== undefined && (cur?.blob_id ?? '') !== o.expectSha) throw new Conflict(`${o.path} changed`);
@@ -526,7 +521,6 @@ class GitlabForge implements Forge {
     mrNumber = mr.number;
     const mrPath = `/projects/${enc(repo)}/merge_requests/${mr.number}`;
     try {
-      // https://docs.gitlab.com/api/merge_requests/#merge-a-merge-request: 405 = cannot merge (conflict, merge_status still checking, pipeline must succeed, ...), so read the status first.
       let status: { merge_status?: string; detailed_merge_status?: string; has_conflicts?: boolean } = {};
       for (const ms of [0, ...TRAIN_STATUS_POLL_MS]) {
         if (ms) await this.sleep(ms);

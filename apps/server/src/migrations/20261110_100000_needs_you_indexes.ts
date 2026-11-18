@@ -1,7 +1,6 @@
 import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 
 export async function up({ db }: MigrateUpArgs): Promise<void> {
-  // needs_you stays null for existing Tickets; the next minute's gate sweep fills it.
   await db.execute(sql`
    ALTER TABLE "tickets" ADD COLUMN "needs_you" varchar;
    CREATE INDEX "tickets_needs_you_idx" ON "tickets" USING btree ("needs_you");

@@ -4,7 +4,6 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/** `syncGates` judges a Ticket in a stage with Jobs by the worst Run of the visit, not by the newest (fixtures/jobs-pack, stage audit). */
 let payload: Payload
 let fake: FakeBackend
 let ws: number

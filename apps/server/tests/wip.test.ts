@@ -24,7 +24,6 @@ let repo = ''
 let connection: number
 let n = 0
 
-/** No name = the default pack. Tests that move plans to build without an approval say `usePack('bare-pack')`: the default pack has the plan gate on. */
 const usePack = (name?: 'gated-pack' | 'bare-pack') => {
   if (name) process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
   else delete process.env.BAUHERR_PACK_DIR
@@ -76,7 +75,6 @@ const runs = async (id: number, stage: string) => (await payload.find({ collecti
 const PLAN = '## Goal\n- Ship it\n\n## Steps\n1. Do it'
 const SUBS = `${PLAN}\n\n## Sub-tickets\n- **Part A** — first.\n- **Part B** — second.\n`
 
-/** An open Ticket in `stage`; a plan Ticket also gets a succeeded plan Run and a posted plan. */
 const ticket = async (title: string, stage: string, extra: Record<string, unknown> = {}, markdown = PLAN) => {
   const labels = stage === 'triage' ? [] : [`bauherr:stage:${stage}`]
   const issue = await fake.tickets(repo).create({ title, labels })
@@ -188,7 +186,6 @@ describe('the pull rule', () => {
 })
 
 describe('a refined Ticket queued for a full Plan', () => {
-  /** A Triage hold with its questions all answered, whose card the sweep wrote before the release. */
   const held = async () => {
     await limits({ plan: 1 })
     const a = await ticket('a', 'plan')

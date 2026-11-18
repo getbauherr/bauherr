@@ -18,7 +18,6 @@ const MAX_ITEMS = 40;
 const MAX_FILE = 25 * 1024 * 1024;
 const COMMAND_MS = 5 * 60_000;
 
-/** Reads `.bauherr/artifacts.json` of `dir`: entries `{file|url|text, kind, title, criterion?, rule?, pair?}`; a file must lie inside `.bauherr/artifacts/` (symlinks resolved), anything unreadable or malformed is skipped. */
 export function readManifest(dir: string, force?: Partial<ProofItem>): ProofItem[] {
   const manifest = join(dir, ARTIFACTS_MANIFEST);
   if (!existsSync(manifest)) return [];
@@ -62,10 +61,6 @@ const run = async (cmd: string, cwd: string, gatewayHost: string, rule: Artifact
   }
 };
 
-/**
- * Makes the proof of the matching rules after the last edit: runs each rule's command in the clone (the egress guard applies, no forge credentials in its environment), then reads the manifest.
- * A rule with `before` runs a second time in a clean checkout of the base branch with `BAUHERR_ARTIFACT_PAIR=before`. A failing command leaves its rule without proof, which the pre-review check then reports.
- */
 export async function makeProof(o: { dir: string; env: NodeJS.ProcessEnv; base: string; rules: ArtifactRule[]; gatewayHost: string; log: (m: string) => void }): Promise<ProofItem[]> {
   const items: ProofItem[] = [];
   for (const rule of o.rules) {

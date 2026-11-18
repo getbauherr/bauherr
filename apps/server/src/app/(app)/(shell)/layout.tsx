@@ -14,7 +14,6 @@ import { loadHolds } from '../lib/holds-strip'
 import { loadSetup, SETUP_STEPS } from '../lib/setup'
 import { appVersion } from '../lib/version'
 
-/** Open Tickets whose `needsYou` column (written by the gate sweep) is set, plus for an Admin the skill proposals that wait for a merge: indexed counts instead of the overview. A Product owner (`owner`) counts only what asks them (`needsBy`) on their Products. */
 const countNeedsYou = async (workspace: number, admin: boolean, owner?: Person): Promise<number> => {
   const payload = await payloadClient()
   const [tickets, skills] = await Promise.all([
@@ -24,7 +23,6 @@ const countNeedsYou = async (workspace: number, admin: boolean, owner?: Person):
   return tickets.totalDocs + skills.totalDocs
 }
 
-/** The sidebar chip only matters until the first Ticket exists, so a Workspace with one pays a single indexed lookup instead of the setup queries. */
 const setupOf = async (workspace: number) => {
   const first = await (await payloadClient()).find({ collection: 'tickets', where: { workspace: { equals: workspace } }, limit: 1, pagination: false, depth: 0, select: {}, overrideAccess: true })
   if (first.docs.length) return { done: SETUP_STEPS.length, total: SETUP_STEPS.length, complete: true }
@@ -32,7 +30,6 @@ const setupOf = async (workspace: number) => {
   return { done: s.count, total: SETUP_STEPS.length, complete: s.complete }
 }
 
-/** What a Product owner gets: Requests, Profile and the user menu. No dock, no Workspace switcher, no polling, nothing of the factory. */
 async function ProductOwnerShell({ person, children }: { person: Person; children: ReactNode }) {
   const { workspace } = await currentPersonWorkspace()
   const [drafts, needsYou] = workspace ? await Promise.all([countOwnDrafts(person.id as number, workspace.id), countNeedsYou(workspace.id, false, person)]) : [0, 0]

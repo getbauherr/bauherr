@@ -15,11 +15,9 @@ import { TEMPLATE_NAMES } from './lib/template-text'
 import { assignmentRows, isBauherr, ROLES, tenantIds } from './lib/people'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
-/** The default of every collection: only an Admin or a Bauherr (the tenant plugin narrows to their Workspaces). A Product owner and an unknown role get nothing. */
 export const bauherrOnly = ({ req }: { req: { user?: object | null } }): boolean => isBauherr(req.user as Doc | null)
 
 type Doc = Record<string, any>
-/** The workflow of the Workspace a document belongs to, or undefined when the document does not say. */
 const wfOfDoc = (data?: Doc, sibling?: Doc) => {
   const w = sibling?.workspace ?? data?.workspace
   return w ? workflowFor(w) : undefined
@@ -29,14 +27,12 @@ const AMBIENT_LOCK = 143
 const ACCOUNT_LOCK = 144
 const MONITORING_LOCK = 145
 
-/** Serialises the ambient-identity single-tenant check (or, with `key`, another instance-wide check) against the write it guards; released when the request transaction ends. */
 const lockAmbient = async (req: PayloadRequest, key = AMBIENT_LOCK): Promise<void> => {
   const db = req.payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> }; sessions: Record<string, { db: typeof db.drizzle }> }
   const tx = (req.transactionID ? db.sessions[await req.transactionID]?.db : undefined) ?? db.drizzle
   await tx.execute(sql`select pg_advisory_xact_lock(${key})`)
 }
 
-/** Serialises writers of one account; released when the request transaction ends. */
 const lockAccount = async (req: PayloadRequest, id: number | string): Promise<void> => {
   const db = req.payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> }; sessions: Record<string, { db: typeof db.drizzle }> }
   const tx = (req.transactionID ? db.sessions[await req.transactionID]?.db : undefined) ?? db.drizzle
@@ -45,12 +41,10 @@ const lockAccount = async (req: PayloadRequest, id: number | string): Promise<vo
 
 const TIERS = ['cheap', 'standard', 'strong'] as const
 const isRouter = (config: { provider?: string } | null | undefined) => presetOf(config) === 'router'
-/** Ambient presets that share the gateway's own cloud identity; `router` is ambient (no user secret) but shares nothing. */
 const sharedIdentity = (p: Preset) => PRESETS[p].auth === 'ambient' && p !== 'router'
 const llmConnections = async (req: PayloadRequest, workspace: number | string) =>
   (await req.payload.find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' } }, sort: 'id', depth: 0, pagination: false, overrideAccess: true, req })).docs
 
-/** USD only while every Connection ships a price catalog; an unpriced call would count 0 and never trip the budget. The router prices nothing itself. */
 const unitOf = (conns: Record<string, any>[]) => (conns.filter((c) => !isRouter(c.config)).every((c) => PRESETS[presetOf(c.config)].catalog) ? 'usd' : 'tokens')
 
 const rel = (name: string, to: string, extra: Partial<Field> = {}): Field =>
@@ -62,7 +56,6 @@ const json = (name: string): Field => ({ name, type: 'json' })
 const select = (name: string, options: string[], extra: Partial<Field> = {}): Field =>
   ({ name, type: 'select', options, ...extra }) as Field
 
-/** Every collection decides its access: `extra.access` overrides single operations, the rest is `bauherrOnly`. */
 const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {}): CollectionConfig => ({
   slug,
   admin: { useAsTitle: (fields[0] as { name: string }).name },
@@ -71,10 +64,8 @@ const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {
   access: { read: bauherrOnly, create: bauherrOnly, update: bauherrOnly, delete: bauherrOnly, ...extra.access },
 })
 
-/** A person sees and changes only their own rows (`user`). */
 const ownRow = ({ req }: { req: { user?: object | null } }) => (isBauherr(req.user as Doc | null) ? { user: { equals: (req.user as Doc).id } } : false)
 
-/** What a Product owner may write on their own account. */
 const SELF_FIELDS = ['uiPrefs', 'password', 'githubLogin']
 
 const bauherren: CollectionConfig = {
@@ -82,7 +73,6 @@ const bauherren: CollectionConfig = {
   labels: { singular: 'Bauherr', plural: 'Bauherren' },
   auth: { useAPIKey: true, strategies: [oidcStrategy], tokenExpiration: SESSION_TTL_S },
   admin: { useAsTitle: 'email' },
-  // Replaces Payload's built-in login (custom endpoints are matched before the built-in ones) so REST and the Admin UI sign in through the same queue and IP limit as the login page.
   endpoints: [
     {
       path: '/login',
@@ -102,7 +92,6 @@ const bauherren: CollectionConfig = {
       },
     },
   ],
-  // Everyone reads and updates only their own account; a Product owner's own update is cut down to `SELF_FIELDS` by the beforeValidate hook.
   access: {
     admin: isAdmin,
     create: isAdmin,
@@ -115,34 +104,27 @@ const bauherren: CollectionConfig = {
       async ({ data, originalDoc, operation, req }) => {
         if (!data) return data
         const fail = (path: string, message: string) => new ValidationError({ collection: 'bauherren', errors: [{ path, message }] })
-        // Payload writes the whole merged document, so a write based on an older read would put back the role, assignments or tenants it saw.
-        // Under the account's lock the stored row must still be the one this update was built from, otherwise it is refused and nothing is written.
         if (operation === 'update' && originalDoc?.id != null) {
           await lockAccount(req, originalDoc.id)
           const fresh = (await req.payload.findByID({ collection: 'bauherren', id: originalDoc.id, depth: 0, overrideAccess: true, select: { updatedAt: true }, req })) as { updatedAt?: string }
           if (fresh.updatedAt !== originalDoc.updatedAt) throw fail('id', 'This account changed while you were editing it. Reload and try again.')
         }
         if (operation === 'update' && req.user?.role === 'product-owner') {
-          // `data` is the whole merged document: only a field that differs from the stored one counts as a change.
           const other = Object.keys(data).filter((k) => ![...SELF_FIELDS, 'updatedAt', 'createdAt'].includes(k) && !isDeepStrictEqual(data[k] ?? null, originalDoc?.[k] ?? null))
           if (other.length) throw fail(other[0], 'A Product owner can change only the password, display preferences and forge login')
         }
-        // A forge login speaks for one account: the label and comment checks look the author up by it, case ignored.
         if (data.githubLogin && data.githubLogin !== originalDoc?.githubLogin) {
           const mine = String(data.githubLogin).split(',').map((l) => l.trim().toLowerCase()).filter(Boolean)
           const others = await req.payload.find({ collection: 'bauherren', where: { and: [{ githubLogin: { exists: true } }, ...(originalDoc?.id != null ? [{ id: { not_equals: originalDoc.id } }] : [])] }, pagination: false, depth: 0, overrideAccess: true, select: { githubLogin: true }, req })
           if (others.docs.some((u) => String(u.githubLogin).split(',').some((l) => mine.includes(l.trim().toLowerCase())))) throw fail('githubLogin', 'This forge login is already linked to another account')
         }
         if ((data.role ?? originalDoc?.role) === 'product-owner') {
-          // `data` carries the stored value on an update: only turning a key on, or sending one, is refused; a stored key is switched off.
           if ((data.enableAPIKey && !originalDoc?.enableAPIKey) || (data.apiKey && data.apiKey !== originalDoc?.apiKey)) throw fail('enableAPIKey', 'A Product owner cannot have an API key')
           if (data.enableAPIKey) data.enableAPIKey = false
         }
         return data
       },
     ],
-    // Payload's built-in API-key and local-JWT strategies ignore lockUntil: refuse their lookup while the request is still unauthenticated.
-    // The throw hits any locked Bauherr read in an unauthenticated request that carries a credential; today only the strategies' own user lookups run there.
     afterRead: [
       async ({ doc, req }) => {
         if (!req.user && carriesPayloadCredential(req.headers) && (await accountLocked(req.payload, doc.id))) {
@@ -174,7 +156,6 @@ const bauherren: CollectionConfig = {
           }
           if (!isDeepStrictEqual(rows, assignmentRows(originalDoc?.assignments))) data.assignments = rows
         }
-        // The tenant plugin scopes by `tenants`: for a Product owner it is exactly the Workspaces of the assignments.
         const want = rows.map((r) => r.workspace)
         const have = tenantIds({ tenants: data.tenants ?? originalDoc?.tenants })
         if (want.length !== have.length || want.some((w, i) => w !== have[i])) data.tenants = want.map((tenant) => ({ tenant }))
@@ -216,7 +197,6 @@ const agentKeys = col(
     date('lastUsedAt'),
     date('revokedAt'),
   ],
-  // Minted, used and revoked only through lib/api-key.ts (overrideAccess); never writable over the API.
   { access: { create: () => false, update: () => false, delete: () => false, read: ({ req }) => (req.user?.role === 'admin' ? true : isBauherr(req.user as Doc | null) ? { owner: { equals: req.user?.id } } : false) } },
 )
 
@@ -332,10 +312,8 @@ const workspaces = col(
 const presetField = (name: (typeof PRESET_FIELDS)[number]): Field =>
   text(name, { admin: { condition: (data: Record<string, any>) => PRESETS[(data.provider as Preset) ?? 'anthropic'].required.includes(name) } })
 
-/** Monitoring Connections are instance-wide and Admin only: a Bauherr reads, changes and deletes every Connection but those. */
 const exceptMonitoring = ({ req }: { req: { user?: object | null } }) => (isAdmin({ req }) ? true : bauherrOnly({ req }) ? { kind: { not_equals: 'monitoring' } } : false)
 
-/** One `monitoring` Connection per service on the instance: validated per service, serialised by an advisory lock on the request transaction. */
 const validateMonitoring = async ({ data, originalDoc, req }: { data?: Doc; originalDoc?: Doc; req: PayloadRequest }): Promise<Doc | undefined> => {
   const fail = (path: string, message: string): never => {
     throw new ValidationError({ collection: 'connections', errors: [{ path, message }] })
@@ -409,7 +387,6 @@ const connections = col(
           if ((data?.kind ?? originalDoc?.kind) === 'monitoring') return validateMonitoring({ data, originalDoc, req })
           if ((data?.kind ?? originalDoc?.kind) !== 'llm-provider') return data
           const config = { ...originalDoc?.config, ...data?.config } as Record<string, string>
-          // The top-level field wins only when this request changed it; otherwise an explicit `config` value stands (API, seed).
           for (const k of ['provider', ...PRESET_FIELDS]) {
             const prev = originalDoc?.[k] ?? (k === 'provider' ? 'anthropic' : undefined)
             if (data?.[k] != null && data[k] !== prev) config[k] = data[k]
@@ -472,7 +449,6 @@ const connections = col(
             budgetUnit: string
           }
           const conns = await llmConnections(req, raw.workspace.id)
-          // Preset change (or new Connection) sets the budget unit and the tiers that point at this Connection or nowhere.
           const own = (v?: string) => !!v?.startsWith(`${slug}/`)
           const nowhere = (v?: string) => !conns.some((c) => v?.startsWith(`${c.slug}/`))
           const tiers = Object.fromEntries(
@@ -617,13 +593,11 @@ const tickets = col('tickets', [
 ], {
   indexes: [{ fields: ['product', 'externalId'], unique: true }, { fields: ['workspace', 'state'] }],
   hooks: {
-    /** The one write guard for "waitingFor is never the Ticket's own stage" (except an overlap hold, which carries a `waitingReason`): covers the poller, `completeMove` and hand edits. */
     beforeChange: [
       ({ data, originalDoc }) => {
         const stage = 'stage' in data ? data.stage : originalDoc?.stage
         const waitingFor = 'waitingFor' in data ? data.waitingFor : originalDoc?.waitingFor
         const reason = 'waitingReason' in data ? data.waitingReason : originalDoc?.waitingReason
-        // A Build held for overlapping paths (`waitingReason` "overlaps #N") may sit in Build without a Run: the reason marks it as deliberate.
         if (waitingFor && waitingFor === stage && !reason) data.waitingFor = null
         return data
       },
@@ -711,7 +685,6 @@ export const collections: CollectionConfig[] = [
     { name: 'overlapSuggestions', type: 'json', admin: { readOnly: true, description: 'Result of the last "Suggest paths" action: {at, items: [{path, percent}]}. Computed on request, never on page render.' } },
   ], {
     hooks: {
-      // A deleted Product leaves the assignments of every Product owner; a `products` assignment left empty grants nothing.
       afterDelete: [
         async ({ id, req }) => {
           const { docs } = await req.payload.find({ collection: 'bauherren', where: { 'assignments.products': { equals: id } }, pagination: false, depth: 0, overrideAccess: true, req })
@@ -772,7 +745,6 @@ export const collections: CollectionConfig[] = [
     num('gatewayTokensTotal'),
     select('costSource', ['sdk-estimate', 'gateway', 'session-reported'], { defaultValue: 'sdk-estimate' }),
     select('reconcileStatus', ['pending', 'matched', 'mismatch', 'unavailable', 'unpriced'], { defaultValue: 'pending' }),
-    // The money figure the UI shows: gateway cost when reconciled, else the SDK estimate.
     {
       name: 'costUsd',
       type: 'number',
@@ -935,7 +907,6 @@ export const collections: CollectionConfig[] = [
     text('note'),
   ]),
   col('ticket_events', [
-    // Not `required`: a NOT NULL column with ON DELETE SET NULL would make deleting a Ticket fail; `record` always sets it.
     rel('ticket', 'tickets'),
     { name: 'at', type: 'date', required: true },
     text('stage', { admin: { description: 'The stage the Ticket is in from this moment.' } }),

@@ -19,7 +19,6 @@ test('a Ticket held by Triage asks for answers; answering them moves it to plan'
   await expect(card.getByText('Answer questions')).toBeVisible()
   await card.getByRole('link', { name: 'Settle the export format' }).click()
 
-  // The Ticket waits for answers: the conversation is the left pane, the action bar sits in the Now pane.
   const panel = page.getByTestId('split-conversation').getByTestId('refine-panel')
   await expect(panel).toContainText('Which export format')
   await expect(page.getByTestId('now-pane').getByTestId('action-bar')).toHaveCount(1)

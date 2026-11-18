@@ -15,7 +15,6 @@ export const signIn = async (page: Page, who: string) => {
 export const dock = (page: Page) => page.getByTestId('chat-dock')
 export const composer = (page: Page) => dock(page).getByRole('textbox', { name: 'Message the factory' })
 
-/** Light and dark screenshots of the page at the given sizes into `SHOTS_DIR` (nothing without it). */
 export const shoot = async (page: Page, name: string, viewports = [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) => {
   const dir = process.env.SHOTS_DIR
   if (!dir) return

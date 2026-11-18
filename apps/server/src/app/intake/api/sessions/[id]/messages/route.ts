@@ -6,7 +6,6 @@ import { preflight, withCors } from '../../../../../../lib/intake/embed'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** One interview turn. Body: `{ text, images? }` (`images`: ids of this session's uploaded screenshots not yet sent). Answers as an SSE stream: `turn` (question, options, draft, readiness) or `error`. */
 export const OPTIONS = preflight
 export const POST = withCors(async (req: Request, { params }: { params: Promise<{ id: string }> }): Promise<Response> => {
   const a = await actor(req)

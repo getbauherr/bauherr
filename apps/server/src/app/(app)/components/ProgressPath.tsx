@@ -1,6 +1,5 @@
 import { PATH } from '../../../lib/progress'
 
-/** The six plain steps of a request with the current one marked; `large` for the request page. A request that ended without a change has no path. */
 export function ProgressPath({ step, large }: { step: number | null; large?: boolean }) {
   if (step === null) return null
   return (

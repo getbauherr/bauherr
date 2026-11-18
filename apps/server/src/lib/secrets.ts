@@ -1,7 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 
-/** Resolves `NAME_FILE` (compose secret) before `NAME` (env). */
 export const secret = (name: string): string => {
   const file = process.env[`${name}_FILE`]
   const value = file ? readFileSync(file, 'utf8').trim() : process.env[name]

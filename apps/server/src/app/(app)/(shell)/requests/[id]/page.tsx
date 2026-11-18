@@ -26,7 +26,6 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
   if (!workspace || !/^\d{1,9}$/.test(id)) notFound()
   const request = await loadRequest(workspace.id, Number(id), user as { id: number })
   if (!request) notFound()
-  // The author's open draft is the conversation; so is their filed request when asked for (read-only history).
   if (request.own || (request.mine && request.sent && view === 'conversation')) return <><PageTitle>{request.own && request.title === 'Untitled request' ? 'New request' : request.title}</PageTitle><RequestConversation session={request.id} owner={owner} /></>
   const next = request.tickets.find((t) => t.need)
   const lead = request.tickets[0]

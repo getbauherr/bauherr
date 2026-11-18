@@ -7,7 +7,6 @@ import { lintTemplate, packTemplate, parseSections, TEMPLATE_NAMES } from '../sr
 import { compile, DEFAULT, parseFactory, type Workflow } from '../src/lib/workflow'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-// adapters.ts reads this when it loads, so it is set before the first import of progress.ts
 process.env.BAUHERR_E2E_FAKE_FORGE = '1'
 const pack = (name: string): Workflow => compile(parseFactory(readFileSync(fileURLToPath(new URL(`./fixtures/${name}/factory.yaml`, import.meta.url)), 'utf8')))
 const tpl = packTemplate('progress')
@@ -98,7 +97,6 @@ const repo = 'acme/web'
 const MARK = '<!-- bauherr:progress -->'
 
 const reload = async (id: number) => (await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>
-/** A forge issue (authored by `author`) with its Ticket row. */
 const ticket = async (data: Record<string, unknown> = {}, author = 'requester') => {
   const issue = await fake.tickets(repo).create({ title: 'Export totals', author })
   return Number((await payload.create({ collection: 'tickets', data: { title: 'Export totals', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', labels: [], stage: 'build', product, workspace: ws, ...data }, ...o } as never)).id)

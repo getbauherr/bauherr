@@ -5,7 +5,6 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/** A custom agent stage (security) and human stage (signoff), applied to one Workspace, in the Workflow graph, the status line, Path/Steps, Insights and the Inbox. */
 let payload: Payload
 let fake: FakeBackend
 let ws: number

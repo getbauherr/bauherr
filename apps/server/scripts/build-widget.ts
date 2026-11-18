@@ -5,7 +5,6 @@ import postcss from 'postcss'
 
 const widget = new URL('../src/app/intake/widget/', import.meta.url)
 
-/** Bundles the embeddable Intake widget (React, assistant-ui and its CSS inlined) into `outfile`. */
 export async function buildWidget(outfile: string): Promise<void> {
   const from = new URL('widget.css', widget).pathname
   const compiled = await postcss([tailwind({ base: widget.pathname })]).process(readFileSync(from, 'utf8'), { from })

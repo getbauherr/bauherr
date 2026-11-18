@@ -3,7 +3,6 @@ import { Panel } from './Panel'
 
 type Chain = { previous: number | null; next: number[]; escalation: number[]; investigation: number[] }
 
-/** Runs this one continues, is continued by, escalated from or investigates; `null` when there are none. */
 export function RunRelations({ chain, className }: { chain: Chain; className?: string }) {
   const rows: [string, number][] = [
     ...(chain.previous ? [['Continues', chain.previous] as [string, number]] : []),

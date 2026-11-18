@@ -12,7 +12,6 @@ import { searchTickets, type TicketHit } from '../lib/search'
 
 const SEARCH_DEBOUNCE_MS = 150
 
-/** Header search button plus the command palette it and Ctrl/Cmd+K open: pages, Tickets of the Workspace (searched on the server while typing), actions. */
 export function CommandMenu({ items, admin, setup, logout }: { items: Pick<NavItem, 'href' | 'label'>[]; admin: boolean; setup?: { complete: boolean }; logout: () => Promise<void> }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)

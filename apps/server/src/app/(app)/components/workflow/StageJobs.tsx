@@ -40,7 +40,6 @@ function JobCard({ wf, job, after, tickets, selected, href }: { wf: Workflow; jo
   )
 }
 
-/** The Jobs of one stage as a graph: columns by dependency depth, arrows for `needs`. Fixed card size and server-computed coordinates from `sm` up; below it a column of the same cards with "After ..." lines. */
 export function StageJobs({ wf, jobs, tickets, selected, hrefOf }: { wf: Workflow; jobs: ViewJob[]; tickets: Map<string, JobTicket[]>; selected?: string; hrefOf: (id: string) => string }) {
   const L = layoutJobs(jobs)
   const titleOf = new Map(jobs.map((j) => [j.id, j.title]))

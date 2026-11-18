@@ -19,18 +19,15 @@ const idOf = (v: unknown): number => Number(v && typeof v === 'object' ? (v as {
 
 export type Product = { id: number; name: string }
 
-/** The Products of the Workspace the person may start a request for (a Product owner: their assignment). */
 const productsOf = async (w: Who): Promise<Product[]> =>
   (await w.payload.find({ collection: 'products', where: productsVisibleTo(w.user, w.workspace), sort: 'name', pagination: false, select: { name: true }, ...o })).docs.map((p: Doc) => ({ id: p.id, name: p.name }))
 
-/** A request session of this person in this Workspace (open or sent) for a Product they may see, else null: never a hint that another one exists. */
 const ownSessionOf = async (w: Who, id: unknown): Promise<Doc | null> => {
   if (!/^\d+$/.test(String(id))) return null
   const s = (await w.payload.findByID({ collection: 'intake_sessions', id: Number(id), depth: 1, overrideAccess: true }).catch(() => null)) as Doc | null
   return s && s.persona === 'product-user' && ['open', 'submitted'].includes(s.status) && idOf(s.user) === Number(w.user.id) && idOf(s.workspace) === w.workspace && canSeeProduct(w.user, { id: idOf(s.product), workspace: w.workspace }) ? s : null
 }
 
-/** The person's empty draft for a Product (the first of their Products, or `want`), reused when they left one; else a new one. Null when they have no Product here. Throws when too many were started in the last hour. */
 export const startDraft = async (w: Who, want?: number): Promise<number | null> => {
   const products = await productsOf(w)
   if (!products.length) return null
@@ -46,7 +43,6 @@ export const startDraft = async (w: Who, want?: number): Promise<number | null> 
   return Number((await w.payload.create({ collection: 'intake_sessions', data: { product: product.id, workspace: w.workspace, persona: 'product-user', status: 'open', messages: [], user: w.user.id }, ...o })).id)
 }
 
-/** Deletes the drafts nobody wrote to (no message, no card, older than `olderThanMs`) and the old docked request threads without a message. Returns the drafts deleted. */
 export const pruneEmptyRequests = async (payload: Payload, { olderThanMs = 3_600_000 }: { olderThanMs?: number } = {}): Promise<number> => {
   const run = (q: ReturnType<typeof sql>) => payload.db.drizzle.execute(q)
   const before = new Date(Date.now() - olderThanMs).toISOString()
@@ -55,10 +51,8 @@ export const pruneEmptyRequests = async (payload: Payload, { olderThanMs = 3_600
   return gone.rows.length
 }
 
-/** Discards one of the person's open drafts: the session is abandoned (it leaves the lists and the count). `NotInWorkspace` for anything that is not their open draft. */
 export const discardRequest = (w: Who, session: number): Promise<void> => abandonIntake(w.payload, w.user, session)
 
-/** The card of any request of the Workspace for a viewer (`editable`: the author of an open draft). */
 export const cardData = async (w: Who, s: Doc, editable: boolean): Promise<CardData> => {
   const media = (await w.payload.find({ collection: 'media', where: { session: { equals: s.id } }, sort: 'id', pagination: false, select: { name: true, mime: true, mimeType: true }, ...o })).docs as Doc[]
   const followUp = s.followUpOf ? ((await w.payload.findByID({ collection: 'intake_sessions', id: idOf(s.followUpOf), depth: 0, select: { ticketNumber: true }, overrideAccess: true }).catch(() => null)) as Doc | null)?.ticketNumber ?? null : null
@@ -68,7 +62,6 @@ export const cardData = async (w: Who, s: Doc, editable: boolean): Promise<CardD
 export type CardPatch = Partial<{ title: string; type: Kind; urgency: 'normal' | 'urgent'; urgent_reason: string; problem: string; context: string; acceptance_criteria: string[]; product: number }>
 const CAPS = { title: 80, problem: 1000, context: 2000, urgent_reason: 500 } as const
 
-/** A direct edit of the card by the person: stored on the draft and the session, and remembered as theirs, so the next turn keeps it and the interview sees it. Throws a plain-words error for what the card does not allow. */
 const editCard = async (w: Who, s: Doc, patch: CardPatch): Promise<void> => {
   if (s.status !== 'open') throw new Error('This request cannot be edited.')
   await exclusive(`intake:${s.id}`, async () => {
@@ -111,7 +104,6 @@ const editCard = async (w: Who, s: Doc, patch: CardPatch): Promise<void> => {
   })
 }
 
-/** Removes one of the request's screenshots (an open draft only). */
 const removeImage = async (w: Who, s: Doc, mediaId: number): Promise<void> => {
   if (s.status !== 'open') throw new Error('This request cannot be edited.')
   await exclusive(`intake:${s.id}`, async () => {
@@ -123,30 +115,24 @@ const removeImage = async (w: Who, s: Doc, mediaId: number): Promise<void> => {
   })
 }
 
-/** What the request conversation shows; every action answers it whole, so the client never merges. */
 export type RequestView = {
   session: number
   sent: boolean
   card: CardData
   messages: Msg[]
-  /** The answers the last question suggests (empty: none, or the conversation is over). */
   options: { label: string; recommended: boolean }[]
   participant: Participant
-  /** The Workspace's models per tier; the request conversation always runs on `tier`. */
   models: View['models']
   tier: Tier
   cost: View['cost']
-  /** The foot's status line and the line under "File request". */
   status: string
   next: string
-  /** After filing: where the request went (`ticket` once the factory has synced it). */
   handoff: { numbers: number[]; ticket: { id: number; number: number } | null } | null
 }
 
 const PARTICIPANT: Participant = { role: 'Factory assistant', avatar: 'factory-assistant', about: 'Drafts the request with you: it asks a few questions, keeps the request card up to date while you talk, and hands the card to the team when you file it.', session: null }
 const speaker = (m: Message, at: string): Msg['speaker'] => (m.role === 'user' ? { kind: 'person', at } : { kind: 'assistant', role: PARTICIPANT.role, avatar: PARTICIPANT.avatar, model: m.usage?.model ?? null, at })
 
-/** The stored interview as conversation messages (ids by position; `at` of an older message falls back to the session's last change). */
 export const messagesOf = (s: Doc): Msg[] =>
   ((s.messages ?? []) as Message[]).map((m, i) => ({
     id: `${s.id}-${i}`,
@@ -157,7 +143,6 @@ export const messagesOf = (s: Doc): Msg[] =>
     ...(m.usage && { usage: m.usage }),
   }))
 
-/** The words of what is still open on the card and of what happens after filing. */
 export const footOf = (card: CardData): { status: string; next: string } => {
   const status = card.sent
     ? card.ticket ? `Filed as #${card.ticket}.` : 'Filed.'
@@ -192,13 +177,11 @@ const viewOf = async (w: Who, s: Doc): Promise<RequestView> => {
   }
 }
 
-/** The conversation of one of the person's requests (an open draft or a sent request); null when it is not theirs. */
 export const loadRequestView = async (w: Who, id: unknown): Promise<RequestView | null> => {
   const s = await ownSessionOf(w, id)
   return s ? viewOf(w, s) : null
 }
 
-/** Whether the request is the person's own (an open draft or a filed request) for a Product they may see. */
 export const ownsRequest = async (w: Who, id: unknown): Promise<boolean> => !!(await ownSessionOf(w, id))
 
 const own = async (w: Who, id: unknown): Promise<Doc> => {
@@ -207,7 +190,6 @@ const own = async (w: Who, id: unknown): Promise<Doc> => {
   return s
 }
 
-/** Adds the person's uploaded, unused images of the Workspace to the draft (at most `maxPerSession` in all); the ids that now belong to it. */
 const adopt = (w: Pick<Who, 'payload' | 'workspace'>, s: Doc, ids: number[]): Promise<number[]> =>
   exclusive(`intake:${s.id}`, async () => {
     if (!ids.length) return []
@@ -222,7 +204,6 @@ const adopt = (w: Pick<Who, 'payload' | 'workspace'>, s: Doc, ids: number[]): Pr
     return fresh.map((m) => m.id as number)
   })
 
-/** One turn of the interview: the person's text (and screenshots, ids from the media route) go to the intake engine, which answers the next question and updates the card; nothing is stored when the call fails or is aborted. The reply streams through `hooks.onPartial`. */
 export const requestTurn = async (w: Who, a: TurnHooks & { session: number; text: string; images?: number[] }): Promise<RequestView> => {
   const s = await own(w, a.session)
   if (s.status !== 'open') throw new Error('This request is already filed.')
@@ -231,7 +212,6 @@ export const requestTurn = async (w: Who, a: TurnHooks & { session: number; text
   return viewOf(w, await own(w, a.session))
 }
 
-/** A direct edit of the card, or the removal of one screenshot, by the author of an open draft. */
 export const requestEdit = async (w: Who, session: number, change: { patch: CardPatch } | { removeImage: number }): Promise<RequestView> => {
   const s = await own(w, session)
   if ('patch' in change) await editCard(w, s, change.patch)
@@ -239,7 +219,6 @@ export const requestEdit = async (w: Who, session: number, change: { patch: Card
   return viewOf(w, await own(w, session))
 }
 
-/** "File request": the Ticket(s) are created from the card exactly as it stands (the engine decides whether it is complete); the conversation is read-only history afterwards. */
 export const requestFile = async (w: Who, session: number): Promise<RequestView> => {
   const s = await own(w, session)
   if (s.status === 'open') await submitIntake(w.payload, s.id, s.split?.length ? s.split.length : undefined)

@@ -6,7 +6,6 @@ export const dynamic = 'force-dynamic'
 
 type P = { params: Promise<{ id: string }> }
 
-/** `{ context, ticket, pending, messages: [{ parentId, message, answer, feedback }] }`, oldest first. */
 export const GET = async (req: Request, { params }: P): Promise<Response> => {
   const w = await chatWho(req)
   if (w instanceof Response) return w
@@ -15,7 +14,6 @@ export const GET = async (req: Request, { params }: P): Promise<Response> => {
   return r ? Response.json(r) : fail('thread not found', 404)
 }
 
-/** Body `{ parentId?, message, answerId? }`: assistant-ui's exported message item, stored verbatim and upserted by `message.id`. */
 export const PUT = async (req: Request, { params }: P): Promise<Response> => {
   const w = await chatWho(req)
   if (w instanceof Response) return w

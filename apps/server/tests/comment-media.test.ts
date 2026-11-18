@@ -44,7 +44,6 @@ afterAll(async () => {
 })
 
 const comments = async (n: number) => (await (await actions.sourceOf(payload, await actions.loadTicket(payload, admin, n === 1 ? ticket : other))).ts.listComments(String(n))).map((c) => c.body)
-/** A comment image of a Ticket, stored the way the chat adopts a pasted one. */
 const upload = async (t: number): Promise<{ id: number }> => {
   const doc = await payload.findByID({ collection: 'tickets', id: t, ...o })
   return { id: (await media.saveMedia(payload, { bytes: png, name: 'shot.png', workspace: doc.workspace as number, product: doc.product as number, ticketNumber: doc.number as number })).id as number }

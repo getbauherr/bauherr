@@ -76,7 +76,6 @@ beforeEach(() => {
   stub.usage = { input_tokens: 100, output_tokens: 50 }
 })
 
-/** A merged Ticket in its own Workspace (the daily cap is per Workspace) with `rounds` review returns. */
 const seed = async (rounds: number, ws?: number) => {
   const n = ++seq
   if (!ws) {
@@ -93,7 +92,6 @@ const seed = async (rounds: number, ws?: number) => {
 const proposals = async (ticket: number) => (await payload.find({ collection: 'skill_proposals', where: { ticket: { equals: ticket } }, depth: 0, ...o })).docs as Record<string, any>[]
 const knowledgePrs = async () => forge().listPullRequests(REPO, 'all')
 
-/** A Ticket whose review ran at `base` and whose factory PR fixes it in `a.ts`. */
 const seedWithPr = async (fixLine: string) => {
   const { id, ws } = await seed(1)
   const t = (await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>

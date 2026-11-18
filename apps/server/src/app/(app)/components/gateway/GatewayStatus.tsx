@@ -3,10 +3,6 @@ import { Button } from '../ui/button'
 import { ago } from '../../lib/format'
 import { UI_SWITCH_ON, type GatewayStatus as Status } from '../../lib/gateway-setup'
 
-/**
- * One line with the stored gateway status. An Admin gets "Open the gateway UI" only while the gateway runs and its UI is switched on (`GATEWAY_UI_URL`, compose profile `gateway-ui`);
- * while it is off the line says how to switch it on instead of linking to a dead page.
- */
 export function GatewayStatus({ status, admin }: { status: Status; admin: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-3" data-testid="gateway-status">

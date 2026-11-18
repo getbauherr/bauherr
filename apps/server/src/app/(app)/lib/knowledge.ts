@@ -9,33 +9,28 @@ import { payloadClient } from './session'
 export type KnowledgeDoc = { source: string; path: string; title: string }
 export type WriteBack = { number: number; title: string; url: string; head: string; checks: 'green' | 'pending' | 'red'; failed: string[] }
 export type SkillProposalRow = { id: number; ticket: string; status: string; skill: string; score: number | null; baseline: number | null; prUrl: string | null; prNumber: number | null; headSha: string | null; reason: string | null; results: ProposalResults | null }
-/** Pass or fail per eval case without and with the skill, and what the replay cost. */
 export type ProposalResults = { cases: { id: string; baseline: boolean | null; withSkill: boolean | null }[]; calls: number | null; cost: number | null }
 export type KnowledgePage = {
   sources: { name: string; label: string; docs: KnowledgeDoc[] }[]
   repo: string | null
   hits: Citation[] | null
   doc: (KnowledgeDoc & { html: string }) | null
-  /** Started with the load, not awaited: forge calls, so the page streams them in behind a Suspense boundary. */
   writeBacks: Promise<WriteBack[] | null>
   proposals: Promise<SkillProposalRow[]>
 }
 
 const FORGE_TIMEOUT_MS = 3000
-/** Plain-language document title: its first heading, else the file name without `.md`, de-dashed and capitalised. */
 export const title = (path: string, heading?: string | null): string => {
   if (heading?.trim()) return heading.trim()
   const name = (path.split('/').pop() ?? path).replace(/\.md$/, '').replace(/[-_]+/g, ' ').trim()
   return name.charAt(0).toUpperCase() + name.slice(1)
 }
 export const docKey = (d: { source: string; path: string }) => `${d.source}:${d.path}`
-/** `?doc=` is `<source>:<path>`; a source never contains a colon. */
 export const parseDocKey = (key: string | undefined): { source: string; path: string } | null => {
   const i = key?.indexOf(':') ?? -1
   return key && i > 0 && i < key.length - 1 ? { source: key.slice(0, i), path: key.slice(i + 1) } : null
 }
 
-/** Open `bauherr/*` PRs (write-backs and editor PRs) of the Knowledge repo with their merge-gate checks; null when the forge does not answer in time. */
 const loadWriteBacks = async (payload: Awaited<ReturnType<typeof payloadClient>>, connection: unknown, repo: string): Promise<WriteBack[] | null> => {
   try {
     const forge = backendFor(await connectionInput(payload, connection)).forge
@@ -56,8 +51,6 @@ const loadWriteBacks = async (payload: Awaited<ReturnType<typeof payloadClient>>
   }
 }
 
-/** Distilled skill proposals of the Workspace, newest first; the head of an open PR is read from the forge (null when it does not answer) so the approval can name the head it saw. */
-/** The replay results the distill job stored (`results`), reduced to what the Knowledge page shows; null when there are none. */
 export const resultsOf = (r: unknown): ProposalResults | null => {
   const v = r as { baseline?: { id: string; pass: boolean }[]; withSkill?: { id: string; pass: boolean }[]; calls?: number; cost?: number } | null
   if (!v || (!Array.isArray(v.withSkill) && !Array.isArray(v.baseline))) return null
@@ -89,7 +82,6 @@ const loadProposals = async (payload: Awaited<ReturnType<typeof payloadClient>>,
   )
 }
 
-/** Everything the Knowledge page shows for a Workspace: sources and documents, search hits for `q`, the rendered `doc`, and the open write-back PRs. */
 export const loadKnowledge = async (workspace: number, q: string | undefined, docParam: string | undefined, { admin }: { admin: boolean }): Promise<KnowledgePage> => {
   const payload = await payloadClient()
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, overrideAccess: true })) as Record<string, any>

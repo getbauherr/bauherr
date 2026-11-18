@@ -21,13 +21,10 @@ const factoryAs = async (yaml: string, base: number | null, opts: { dryRun?: boo
   return r
 }
 
-/** Admin: the server's check of a draft (rules, skills, models, tickets held by removed steps); nothing is saved. */
 export const reviewDraft = async (yaml: string, base: number | null): Promise<ApplyResult> => factoryAs(yaml, base, { dryRun: true })
 
-/** Admin: applies the draft as a new version; refused when the active version moved since the page loaded. */
 export const applyDraft = async (yaml: string, base: number | null, note: string): Promise<ApplyResult> => factoryAs(yaml, base, { note: (note ?? '').trim() || undefined })
 
-/** Admin: the fast lane switch, saved right away (it is not part of the file). */
 export const setExpediteLane = async (on: boolean): Promise<{ error?: string }> => {
   const { user, workspace } = await currentWorkspace()
   if (!isAdmin(user)) return { error: 'Only an Admin can change this.' }
@@ -37,7 +34,6 @@ export const setExpediteLane = async (on: boolean): Promise<{ error?: string }> 
   return {}
 }
 
-/** Admin: "Pause running work for a hotfix", saved right away; off keeps a hotfix waiting for a free session. */
 export const setPreemptForHotfix = async (on: boolean): Promise<{ error?: string }> => {
   const { user, workspace } = await currentWorkspace()
   if (!isAdmin(user)) return { error: 'Only an Admin can change this.' }

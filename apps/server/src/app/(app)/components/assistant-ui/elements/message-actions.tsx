@@ -7,7 +7,6 @@ import { ghostButton, iconSwap, iconSwapIn, iconSwapOut } from "./surfaces";
 
 export type Reaction = "up" | "down" | null;
 
-// From `elements-message-actions`: copy and the two thumbs. The registry's regenerate and "more" buttons are not used (a refinement turn cannot be replayed: it changed the Ticket).
 export function MessageActions({ copied, reaction, onCopy, onReactionChange, className, ...props }: Omit<ComponentProps<"div">, "children"> & { copied: boolean; reaction: Reaction; onCopy: () => void; onReactionChange: (reaction: Reaction) => void }) {
   const button = cn(ghostButton, "size-7");
   const on = "bg-secondary text-foreground";

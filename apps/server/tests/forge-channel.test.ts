@@ -81,7 +81,6 @@ const ticketRow = async (p: 'a' | 'b', title: string, stage: 'plan' | 'release')
   return { id: t.id as number, n: String(issue.number) }
 }
 
-/** The label set by `login` on the forge, then checked the way the poller does. */
 const labelled = async (p: 'a' | 'b', stage: 'plan' | 'release', label: string, login: string, title = `${login} sets ${label}`) => {
   const t = await ticketRow(p, title, stage)
   const ts = fake.tickets(REPOS[p])
@@ -156,7 +155,6 @@ describe('an answers comment from the forge (owner-pack: the sheet asks the Prod
     const notices = await t.ignored()
     expect(notices).toHaveLength(1)
     expect(notices[0]!.body).toContain('@stranger is not linked')
-    // a page render (no notify) writes nothing
     await t.post('another', 'D1: free')
     await t.open()
     expect(await t.ignored()).toHaveLength(1)
@@ -177,7 +175,6 @@ describe('an answers comment from the forge (owner-pack: the sheet asks the Prod
     const [note, ...rest] = await t.ignored()
     expect(rest).toHaveLength(0)
     expect(note!.body).toContain('D1 is the Bauherr')
-    // the Product owner of Product B has no say on this Ticket at all
     const b = await planTicket('a', 'other po answers')
     await b.post('the-po-b', 'D2: formal')
     expect(await b.open(true)).toEqual(['D1', 'D2'])

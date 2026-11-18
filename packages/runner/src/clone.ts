@@ -8,7 +8,6 @@ const exec = promisify(execFile);
 
 export type Clone = { dir: string; branch: string; baseSha: string; cleanup(): Promise<void> };
 
-/** Env for the Runner's own git commands only; the token never reaches the agent env or .git/config. */
 export function gitEnv(token: string, home: string, user = 'x-access-token'): NodeJS.ProcessEnv {
   const basic = Buffer.from(`${user}:${token}`).toString('base64');
   return {
@@ -49,7 +48,6 @@ export async function cloneRepo(o: { baseUrl: string; repo: string; defaultBranc
   }
 }
 
-/** Fetches the base (full history, so a merge base exists), then merges it into HEAD without an agent. A conflict leaves the merge in progress in the tree. */
 export async function mergeBase(c: Clone, env: NodeJS.ProcessEnv, base: string): Promise<'uptodate' | 'clean' | 'conflict'> {
   const shallow = (await git(c.dir, env, 'rev-parse', '--is-shallow-repository')) === 'true';
   await git(c.dir, env, 'fetch', ...(shallow ? ['--unshallow'] : []), '--no-tags', 'origin', `${base}:refs/remotes/origin/${base}`);
@@ -61,7 +59,6 @@ export async function mergeBase(c: Clone, env: NodeJS.ProcessEnv, base: string):
   }
 }
 
-/** Stable patch-id of the MR-only diff (merge base of `origin/<base>` to `rev`); equal ids mean the same change regardless of main's movement. Empty for an empty diff. */
 export async function patchId(c: Clone, env: NodeJS.ProcessEnv, base: string, rev = 'HEAD'): Promise<string> {
   const range = `${await git(c.dir, env, 'merge-base', `origin/${base}`, rev)}..${rev}`;
   const { stdout } = await exec('sh', ['-c', 'git diff "$0" | git patch-id --stable', range], { cwd: c.dir, env, maxBuffer: 1 << 28 });
@@ -70,13 +67,11 @@ export async function patchId(c: Clone, env: NodeJS.ProcessEnv, base: string, re
 
 export const REVIEW_MD_CAP = 20_000;
 
-/** `REVIEW.md` at the root of `origin/<base>` (never the MR head, so an MR cannot change its own review rules), capped at 20 KB; empty when absent. */
 export async function baseReviewMd(c: Clone, env: NodeJS.ProcessEnv, base: string): Promise<string> {
   const text = await git(c.dir, env, 'show', `origin/${base}:REVIEW.md`).catch(() => '');
   return Buffer.from(text).subarray(0, REVIEW_MD_CAP).toString();
 }
 
-/** Writes the difference between the MR-only diff at `reviewedSha` and at HEAD to `out`; falls back to the full MR-only diff when `reviewedSha` is not in the clone. */
 export async function interdiff(c: Clone, env: NodeJS.ProcessEnv, base: string, reviewedSha: string, out: string): Promise<void> {
   if (!(await git(c.dir, env, 'cat-file', '-t', reviewedSha).catch(() => ''))) {
     await git(c.dir, env, 'diff', `--output=${out}`, `origin/${base}...HEAD`);
@@ -95,21 +90,18 @@ export async function interdiff(c: Clone, env: NodeJS.ProcessEnv, base: string, 
   }
 }
 
-/** Commits all changes; false when the branch has no commit beyond where it started. */
 export async function commitAll(c: Clone, env: NodeJS.ProcessEnv, message: string): Promise<boolean> {
   await git(c.dir, env, 'add', '-A');
   if ((await git(c.dir, env, 'status', '--porcelain')) !== '') await git(c.dir, env, 'commit', '-m', message);
   return (await git(c.dir, env, 'rev-parse', 'HEAD')) !== c.baseSha;
 }
 
-/** Commit leftover changes and push; returns false when the agent produced no commits. */
 export async function commitAndPush(c: Clone, env: NodeJS.ProcessEnv, message: string): Promise<boolean> {
   if (!(await commitAll(c, env, message))) return false;
   await git(c.dir, env, 'push', 'origin', `HEAD:refs/heads/${c.branch}`);
   return true;
 }
 
-/** Diff base of a slice review: the merge commit of main into the slice (first parent `prev`) when there is one, else `prev`. Deepens the clone until `prev` is reachable. */
 export async function sliceBase(c: Clone, env: NodeJS.ProcessEnv, prev: string): Promise<string> {
   if (!(await git(c.dir, env, 'cat-file', '-t', prev).catch(() => ''))) {
     await git(c.dir, env, 'fetch', ...((await git(c.dir, env, 'rev-parse', '--is-shallow-repository')) === 'true' ? ['--unshallow'] : []), '--no-tags', 'origin');
@@ -118,7 +110,6 @@ export async function sliceBase(c: Clone, env: NodeJS.ProcessEnv, prev: string):
   return merges.findLast(([, first]) => first === prev)?.[0] ?? prev;
 }
 
-/** Writes the slice's own change (`b..HEAD`, without main) to `out`, followed by the remerge-diff of `b` when the merge of main into the slice was resolved by hand. */
 export async function sliceDiff(c: Clone, env: NodeJS.ProcessEnv, b: string, out: string): Promise<void> {
   await git(c.dir, env, 'diff', `--output=${out}`, `${b}..HEAD`);
   const merge = (await git(c.dir, env, 'rev-list', '--parents', '-n', '1', b)).split(' ').length > 2 ? await git(c.dir, env, 'show', '--remerge-diff', '--format=', b) : '';

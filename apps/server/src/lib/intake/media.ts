@@ -9,7 +9,6 @@ export type { ImageMime }
 
 type Doc = Record<string, any>
 
-/** Upload limits from the environment (D2): `MEDIA_MAX_BYTES` (default 5 MiB), `MEDIA_MAX_PER_SESSION` (default 5). */
 export const mediaLimits = (): { maxBytes: number; maxPerSession: number } => ({
   maxBytes: Number(process.env.MEDIA_MAX_BYTES) || 5 * 1024 * 1024,
   maxPerSession: Number(process.env.MEDIA_MAX_PER_SESSION) || 5,
@@ -17,7 +16,6 @@ export const mediaLimits = (): { maxBytes: number; maxPerSession: number } => ({
 
 const ascii = (b: Uint8Array, at: number, s: string): boolean => [...s].every((c, i) => b[at + i] === c.charCodeAt(0))
 
-/** The image type by magic bytes; the client's Content-Type is never trusted. */
 export const sniff = (b: Uint8Array): ImageMime | null =>
   b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff ? 'image/jpeg'
   : b[0] === 0x89 && ascii(b, 1, 'PNG\r\n') && b[6] === 0x1a && b[7] === 0x0a ? 'image/png'
@@ -31,7 +29,6 @@ const join = (parts: Uint8Array[]): Uint8Array => {
   return out
 }
 
-/** Drops EXIF, XMP and text metadata (location, device, author) without re-encoding; throws on a truncated file. */
 export const stripMetadata = (b: Uint8Array, mime: ImageMime): Uint8Array => {
   const parts: Uint8Array[] = []
   const bad = () => new Error('corrupt image')
@@ -78,13 +75,11 @@ const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' } as
 
 const sign = (id: number | string): string => createHmac('sha256', secret('PAYLOAD_SECRET')).update(`media:${id}`).digest('base64url')
 
-/** Whether `sig` (with or without a trailing `.ext`) is the signature of media `id`. */
 export const verifyMediaSig = (id: number | string, sig: string): boolean => {
   const [got, want] = [Buffer.from(sig.replace(/\.\w+$/, '')), Buffer.from(sign(id))]
   return got.length === want.length && timingSafeEqual(got, want)
 }
 
-/** Public, unguessable, non-expiring link `${PUBLIC_URL}/m/<id>/<sig>.<ext>`; the extension only makes forge image proxies treat it as an image. Rotating `PAYLOAD_SECRET` invalidates every link. */
 export const mediaUrl = (id: number | string, mime: ImageMime): string =>
   `${(process.env.PUBLIC_URL ?? '').replace(/\/$/, '')}/m/${id}/${sign(id)}.${EXT[mime]}`
 
@@ -92,7 +87,6 @@ export class MediaRejected extends Error {}
 
 const fail = (error: string, status: number) => Response.json({ error }, { status })
 
-/** The multipart image `file` of an upload request, or the 411/413/400 Response when it is missing or over `mediaLimits().maxBytes`. */
 export const readUpload = async (req: Request): Promise<{ name: string; bytes: Uint8Array } | Response> => {
   const { maxBytes } = mediaLimits()
   const tooBig = tooBigMessage(maxBytes)
@@ -105,7 +99,6 @@ export const readUpload = async (req: Request): Promise<{ name: string; bytes: U
   return { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) }
 }
 
-/** Sniffs, strips metadata and stores one image in the `media` collection (local volume or S3, whichever is configured). Throws `MediaRejected` for a non-image or corrupt file. */
 export const saveMedia = async (
   payload: Payload,
   a: { bytes: Uint8Array; name: string; workspace: number | string; session?: number | string; product?: number | string; ticketNumber?: number },
@@ -127,7 +120,6 @@ export const saveMedia = async (
   })) as Doc
 }
 
-/** The bytes of a stored image: legacy rows from `data`, then the S3 handler when configured, then the local volume, so files written under the other store stay readable after switching. */
 export const mediaBytes = async (payload: Payload, doc: Doc): Promise<Uint8Array> => {
   if (doc.data) return Buffer.from(doc.data, 'base64')
   const upload = payload.collections.media!.config.upload
@@ -144,7 +136,6 @@ export const mediaBytes = async (payload: Payload, doc: Doc): Promise<Uint8Array
   }
 }
 
-/** Deletes comment images (bound to a Ticket, never posted) older than 24 h, files included. */
 export const pruneCommentMedia = async (payload: Payload): Promise<number> => {
   const { docs } = await payload.find({ collection: 'media', where: { and: [{ ticketNumber: { exists: true } }, { attached: { equals: false } }, { createdAt: { less_than: new Date(Date.now() - 864e5).toISOString() } }] }, pagination: false, depth: 0, select: {}, overrideAccess: true })
   for (const d of docs) await payload.delete({ collection: 'media', id: d.id, overrideAccess: true })

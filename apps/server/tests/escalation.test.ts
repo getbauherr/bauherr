@@ -111,7 +111,6 @@ it('the ladder: strong retry fails, investigation; investigations used up, the o
   await liveness.sweepLiveness(payload)
   expect((await runs(id, 'plan'))[0]).toMatchObject({ investigation: { failedRuns: [first!.id, retry!.id], stage: 'build' } })
   expect(await ladder(n)).toContain(`Step 3 of 4 after build Run #${retry!.id}`)
-  // Two investigations exist: the next failure of a strong Build has no rung left.
   await payload.create({ collection: 'runs', data: { ticket: id, stage: 'plan', status: 'succeeded', mode: 'session', workspace: ws, investigation: { failedRuns: [], stage: 'build' } }, ...o })
   await payload.update({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { status: { equals: 'awaiting_session' } }] }, data: { status: 'cancelled' }, ...o })
   await payload.update({ collection: 'tickets', id, data: { stage: 'build' }, ...o })

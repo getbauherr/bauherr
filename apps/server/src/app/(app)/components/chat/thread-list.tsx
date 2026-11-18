@@ -42,7 +42,6 @@ const Row: FC<{ close(): void }> = ({ close }) => {
   )
 }
 
-/** The person's chats in a popover: new, switch, rename, archive, delete (confirmed in a dialog). */
 export const ThreadList: FC = () => {
   const [open, setOpen] = useState(false)
   return (

@@ -2,18 +2,6 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/**
- * Closed by default: everything a Product owner could reach is enumerated and refused unless it is listed here, with the reason.
- * Adding a page, route, server action, MCP tool or collection fails this file until it is decided: to open something to a Product owner
- * add it to the matching allow-list below (and to docs/spec/people.md), never loosen an existing rule to make this pass.
- */
-
-/**
- * Every page, route handler, server action, chat tool and collection is in exactly one of two lists: `BAUHERR_*` (a Product owner is refused) or `PO_*` (open to a Product owner, with the reason).
- * A page, route, action or collection not in either fails the partition tests below; a `PO_*` entry that shows data must also pass the assignment checks at the end of this file (Product B answers 404).
- */
-
-/** Page routes (relative to src/app/(app), without `/page.tsx`) a Product owner may open. */
 const PO_PAGES: Record<string, string> = {
   login: 'public sign-in; a signed-in account is sent to its home',
   settings: 'redirects to the profile',
@@ -25,7 +13,6 @@ const PO_PAGES: Record<string, string> = {
   inbox: 'only the cards that ask a Product owner (`tickets.needsBy`) on assigned Products',
 }
 const BAUHERR_PAGES = ['', 'insights', 'knowledge', 'knowledge/edit', 'release-notes', 'releases', 'runs', 'runs/[id]', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/chat-feedback', 'settings/connections', 'settings/health', 'settings/knowledge', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/templates', 'settings/templates/[name]', 'settings/usage', 'settings/workflow', 'settings/workspace', 'setup', 'team', 'team/[id]', 'tickets/n/[number]', 'workflow/[stage]', 'workflow/edit']
-/** Route handlers (relative to src/app, `<path> <METHOD>`) that answer a Product owner's session. */
 const PO_ROUTES: Record<string, string> = {
   'api/health GET': 'unauthenticated health probe',
   'auth/oidc/login GET': 'sign-in flow',
@@ -38,7 +25,6 @@ const PO_ROUTES: Record<string, string> = {
   'api/requests/media POST': 'a screenshot for their own request conversation, stored in their Workspace',
 }
 const BAUHERR_ROUTES = ['api/chat/context GET', 'api/chat/media POST', 'api/chat/threads GET', 'api/chat/threads POST', 'api/chat/threads/[id] DELETE', 'api/chat/threads/[id] GET', 'api/chat/threads/[id] PATCH', 'api/chat/threads/[id]/confirm POST', 'api/chat/threads/[id]/feedback POST', 'api/chat/threads/[id]/messages GET', 'api/chat/threads/[id]/messages PUT', 'api/chat/threads/[id]/run POST', 'api/chat/fake-gate POST', 'api/chat/fake-requests GET', ...['DELETE', 'GET', 'HEAD', 'PATCH', 'POST', 'PUT'].map((m) => `-/gateway/[[...path]] ${m}`), ...['DELETE', 'GET', 'POST'].map((m) => `mcp ${m}`), '-/metrics GET', 'api/changes GET', 'api/tickets/[id]/live GET', 'api/tickets/[id]/events GET', 'api/presence GET', 'api/usage POST', 'api/workspaces/[slug]/factory GET', 'api/workspaces/[slug]/factory PUT', 'intake/api/media-limits OPTIONS', 'intake/api/media-limits POST', 'intake/api/sessions OPTIONS', 'intake/api/sessions POST', 'intake/api/sessions/[id] GET', 'intake/api/sessions/[id] OPTIONS', 'intake/api/sessions/[id] POST', 'intake/api/sessions/[id]/messages OPTIONS', 'intake/api/sessions/[id]/messages POST', 'intake/api/sessions/[id]/screenshots OPTIONS', 'intake/api/sessions/[id]/screenshots POST', 'intake/api/sessions/[id]/submit OPTIONS', 'intake/api/sessions/[id]/submit POST']
-/** Exported server actions (`<file>#<name>`, file relative to src/app/(app)) a Product owner may call. */
 const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
@@ -61,12 +47,9 @@ const BAUHERR_ACTIONS = [
   ...['applyPreset', 'skipSession', 'importIssue'].map((n) => `(shell)/setup/actions.ts#${n}`),
   ...['previewRelease', 'summariseRelease', 'shipReleaseAction', 'promoteReleaseAction'].map((n) => `(shell)/releases/actions.ts#${n}`),
 ])
-/** MCP tools a Product owner may call (none: `/mcp` refuses them behind any key). */
 const OPEN_TOOLS: Record<string, string> = {}
-/** Chat tools: none is open to a Product owner (the dock is closed to them: `chatWho` refuses every chat route). */
 const PO_CHAT_TOOLS: string[] = []
 const BAUHERR_CHAT_TOOLS = ['factory_status', 'list_tickets', 'team_status', 'cost_summary', 'get_run', 'list_frontier', 'get_ticket', 'read_worklog', 'read_knowledge', 'search_knowledge', 'approve', 'accept_staging', 'approve_production', 'decide', 'grant_review_round', 'stop_review', 'request_changes', 'send_back', 'post_comment', 'approve_skill_proposal', 'reject_skill_proposal']
-/** Collections a Product owner may touch, and how. Every other collection is `BAUHERR_COLLECTIONS`: no operation at all, also over Payload REST. `artifacts` stay closed: proof reaches a Product owner through the Ticket page and its artifact route, never over REST. */
 const PO_COLLECTIONS: Record<string, Record<string, string>> = {
   bauherren: { read: 'own account only', update: 'own account: uiPrefs, password and the linked forge login (one account per login) only' },
   'payload-preferences': { read: 'own preferences (Payload built-in, keyed to the user)', create: 'own preferences', update: 'own preferences', delete: 'own preferences' },
@@ -77,7 +60,6 @@ const OPEN_PAGES = PO_PAGES
 const OPEN_ROUTES = PO_ROUTES
 const OPEN_ACTIONS = PO_ACTIONS
 
-/** Both lists together are the whole set, and nothing is in both. */
 const partition = (what: string, all: string[], po: string[], bauherr: string[]) => {
   expect(new Set([...po, ...bauherr]).size, `${what}: an entry is in both lists or twice`).toBe(po.length + bauherr.length)
   expect([...po, ...bauherr].sort(), `${what}: every one is in exactly one list`).toEqual([...all].sort())
@@ -199,7 +181,6 @@ describe('collections', () => {
     await expect(own({ password: `${PASSWORD}-new` })).resolves.toBeTruthy()
     const before = await payload.findByID({ collection: 'bauherren', id: po.id, depth: 0, ...o })
     for (const data of [{ role: 'bauherr' }, { role: 'admin' }, { tenants: [] }, { assignments: [] }, { enableAPIKey: true }, { apiKey: 'x'.repeat(32) }, { oidcSubject: 'x|y' }, { email: 'other@x.io' }]) {
-      // Refused, or the field is dropped by its own access rule: either way nothing changes.
       await own(data).catch(() => undefined)
       const after = await payload.findByID({ collection: 'bauherren', id: po.id, depth: 0, ...o })
       for (const k of ['role', 'tenants', 'assignments', 'enableAPIKey', 'oidcSubject', 'email'] as const) expect(after[k] ?? null, `${JSON.stringify(data)} changed ${k}`).toEqual(before[k] ?? null)
@@ -227,7 +208,6 @@ describe('collections', () => {
 })
 
 const APP = '../src/app/'
-/** Globs cannot match the literal `(app)` of the route groups: list everything and filter. */
 const only = <T>(all: Record<string, T>, keep: (f: string) => boolean): Record<string, T> => Object.fromEntries(Object.entries(all).filter(([f]) => keep(f)))
 const pageModules = only(import.meta.glob('../src/app/**/page.tsx'), (f) => f.includes('/(app)/')) as Record<string, () => Promise<{ default: (p: unknown) => Promise<unknown> }>>
 const routeModules = only(import.meta.glob('../src/app/**/route.ts'), (f) => !f.includes('/(payload)/')) as Record<string, () => Promise<Record<string, unknown>>>
@@ -336,7 +316,6 @@ describe('routes', () => {
         const read = method === 'GET' || method === 'HEAD'
         const init: RequestInit = { method, headers: { cookie: productOwnerCookie, ...(read ? {} : { 'content-type': 'application/json' }) }, ...(read ? {} : { body: '{}' }) }
         const res = (await (mod[method] as (r: Request, c: unknown) => Promise<Response>)(new Request(url, init), { params: Promise.resolve({ id: '1', slug: 'a', sig: 'x', path: [] }) })) as Response
-        // A CORS preflight (OPTIONS, 204) carries no data and no session.
         expect(method === 'OPTIONS' ? [204] : [401, 403, 404], key).toContain(res.status)
       }
     }
@@ -408,7 +387,6 @@ describe('what is open to a Product owner answers 404 outside the assignment', (
       expect(await call('decideAction', id, 'Approve plan', 'approvePlan'), `decideAction ${id}`).toEqual({ outcome: '404' })
       expect(await call('markSeen', { ticket: id, need: 'Approve plan', since: '2026-01-01T00:00:00Z' }), `markSeen ${id}`).toEqual({ outcome: '404' })
     }
-    // their own Ticket: nothing is addressed to them there, so nothing happens; the options only a Bauherr has are refused up front
     expect(await call('decideAction', mine.ticket, 'Run failed', 'rerun')).toEqual({ returned: { error: 'Only a Bauherr can do this.' } })
     expect(await call('decideAction', mine.ticket, 'Expedite?', 'expedite')).toEqual({ returned: { error: 'Only a Bauherr can do this.' } })
     expect((await call('refineState', mine.ticket)).outcome).toBeUndefined() // reached: the harness has no forge, so it answers an error text, not a 404

@@ -175,11 +175,9 @@ it('a gateway row of a session Run whose calls went elsewhere is removed on the 
   await reconcileSessions(payload, now)
   const models = async () => ((await db().execute(sql`SELECT "run_id", "model" FROM "usage_entries" WHERE "source" = 'gateway' AND "run_id" IS NOT NULL AND "workspace_id" = ${a.workspace} ORDER BY "run_id", "model"`)).rows as { run_id: number; model: string }[]).map((r) => `${r.run_id}:${r.model}`)
   expect(await models()).toEqual([`${run}:claude-opus-5-5`, `${run}:claude-sonnet-5-5`, `${runner}:claude-haiku-5-5`].sort())
-  // The opus call is now attributed elsewhere (its session name no longer matches): its Run row must go.
   await gw.query(`UPDATE request_logs SET attributes_json = jsonb_set(attributes_json, '{session}', '"someone-else"') WHERE started_at = $1`, [second])
   await reconcileSessions(payload, now)
   expect(await models()).toEqual([`${run}:claude-sonnet-5-5`, `${runner}:claude-haiku-5-5`].sort())
-  // Every call gone: the Run no longer claims gateway pricing.
   await gw.query('DELETE FROM request_logs')
   await reconcileSessions(payload, now)
   expect(await models()).toEqual([`${runner}:claude-haiku-5-5`])

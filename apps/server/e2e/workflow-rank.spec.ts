@@ -7,13 +7,11 @@ const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim
 test.use({ viewport: { width: 1280, height: 2400 } }) // the whole column is on screen, so a drag needs no scrolling
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
-// The Workflow list shows the owner's rank (#357): a drop or a menu move stays where it was put after a reload, whatever is blocked or live in the column.
 const col = (page: Page) => page.locator('.col[data-stage=build]')
 const cards = (page: Page) => col(page).locator('.card')
 const titles = (page: Page) => col(page).locator('.card .ticket-title').allTextContents()
 const card = (page: Page, name: string) => col(page).locator('.card', { hasText: name })
 const chore = (n: number) => `Isolated chore ${n}`
-// The Hotfix lane (#373) is always first; the ranked cards follow.
 const lane = async (page: Page) => (await cards(page).evaluateAll((els) => els.filter((e) => !e.hasAttribute('data-lane')).map((e) => e.querySelector('.ticket-title')!.textContent!)))
 const stays = async (page: Page, check: (t: string[]) => void) => {
   await expect(async () => {
@@ -103,7 +101,6 @@ test('a blocked card is ranked like any other and says why it waits', async ({ p
   await stays(page, (t) => expect(toTop ? t[0] : t.at(-1)).toBe('Blocked: add the invoice filter'))
 })
 
-// Moved here from overview.spec.ts: they reorder the same Build column as the tests above, and tests of one file run one after the other, so no drop shifts a position another test asserts.
 test('drag a Board card above another: the order survives a reload', async ({ page }) => {
   const titles = () => page.locator('.col[data-stage=build] .card .ticket-title').allTextContents()
   const a = 'Blocker: migrate the invoice table'

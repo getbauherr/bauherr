@@ -1,15 +1,12 @@
 import { parse } from 'yaml'
 import { asList, REQUEST_TYPES, SET_NAME, WHEN_KEYS, type When } from './workflow-when'
 
-// Browser-safe: no node: imports. The pure half of workflow.ts (types, kind rules, lint); workflow.ts re-exports it.
 export type Kind = 'triage' | 'plan' | 'container' | 'build' | 'review' | 'release' | 'done' | 'agent' | 'human'
-/** Who a checkpoint asks. `gate: human` is `{by: bauherr}`; a Bauherr or Admin can always step in for the Product owner. */
 export const ADDRESSEES = ['bauherr', 'product-owner'] as const
 export type Addressee = (typeof ADDRESSEES)[number]
 export type StageDef = { name: string; title: string; kind: Kind; role?: string; skill?: string; mode?: 'session' | 'autonomous'; gate?: 'human'; /** Compiled `gate: {by}`; absent = bauherr. */ gate_by?: Addressee; production_gate?: 'human'; production_gate_by?: Addressee; /** Triage's questions (`refine: {by}` on the triage stage); absent = bauherr. */ refine_by?: Addressee; /** Who decides a `human` stage; absent = bauherr. */ by?: Addressee; wip?: number; exclude_labels?: string[]; /** A step of kind agent or human that runs only when the change matches; otherwise the Ticket moves on (see `skipTarget`). */ when?: When; skip_to?: string; jobs?: JobDef[]; outcomes: Record<string, string>; /** The outcome keys in the order the file lists them (jsonb does not keep object key order); the buttons of a `human` stage and the outcome lists of an `agent` stage follow it. */ outcomeOrder?: string[] }
 export type JobDef = { id: string; kind: 'agent' | 'human'; role?: string; skill?: string; by?: Addressee; needs: string[]; when?: When; blocking: boolean; outcomes: Record<string, string>; outcomeOrder: string[] }
 export type Role = { id: string; title: string; tier?: 'cheap' | 'standard' | 'strong'; provider?: string; model?: string; agents?: number; avatar?: string; skills?: string[]; exceptions?: boolean; profile?: string; profile_file?: string }
-/** Plain JSON: safe to pass to client components. */
 export type Workflow = { version: 1; roles: Role[]; stages: StageDef[]; aliases: Record<string, string> }
 
 export const KINDS: Kind[] = ['triage', 'plan', 'container', 'build', 'review', 'release', 'done', 'agent', 'human']
@@ -33,13 +30,11 @@ export const OWN_VERDICT: Kind[] = ['plan', 'review', 'release']
 const obj = (v: unknown): Record<string, any> | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, any>) : undefined)
 const posInt = (v: unknown) => Number.isInteger(v) && (v as number) > 0
 const addressee = (v: unknown): v is Addressee => (ADDRESSEES as readonly unknown[]).includes(v)
-/** `human` or `{by: <addressee>}` (nothing else in the map): who the checkpoint asks; undefined when the value is neither. */
 export const askedBy = (v: unknown): Addressee | undefined => {
   const m = obj(v)
   return v === 'human' ? 'bauherr' : m && Object.keys(m).length === 1 && addressee(m.by) ? m.by : undefined
 }
 
-/** Where a Ticket goes when the conditional step `s` does not match: `skip_to`, else the target of its first outcome in file order (`outcomeOrder` once compiled). */
 export const skipTarget = (s: { outcomes?: Record<string, string>; outcomeOrder?: string[]; skip_to?: string }): string | undefined => s.skip_to ?? s.outcomes?.[(s.outcomeOrder ?? Object.keys(s.outcomes ?? {}))[0] as string]
 
 export const parseFactory = (yaml: string): unknown => parse(yaml)
@@ -120,7 +115,6 @@ const lintWhen = (prefix: string, when: unknown): string[] => {
   return out
 }
 
-/** Findings of a factory document; empty = valid. */
 export const lint = (doc: unknown): string[] => {
   const out: string[] = []
   const d = obj(doc)

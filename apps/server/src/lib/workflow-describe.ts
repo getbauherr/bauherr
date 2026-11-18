@@ -3,21 +3,17 @@ import { ASKED, modelText, pathLabel, SPECIAL_TARGET, stageTitle } from './workf
 import { askedBy, type Kind } from './workflow-rules'
 import { whenClause } from './workflow-when'
 
-// Browser-safe. Plain-word list of what differs between two factory documents (Review changes and History).
-
 const roles = (d: Doc): Doc => d?.team?.roles ?? {}
 const roleTitle = (d: Doc, id: unknown): string => roles(d)[String(id)]?.title ?? String(id)
 const limit = (n: unknown): string => (typeof n === 'number' ? String(n) : 'no limit')
 const gateOf = (s: Doc): unknown => s.gate ?? ((j) => j && { by: j.by ?? 'bauherr' })(s.jobs?.find((x: Doc) => x?.kind === 'human'))
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
-/** The step before `name` in the flow (containers skipped). */
 const before = (list: Doc[], name: string): Doc | undefined => {
   let i = list.findIndex((s) => s.name === name) - 1
   while (list[i]?.kind === 'container') i--
   return list[i]
 }
 
-/** What changes from `a` to `b`, one plain line each, in flow order. Empty when nothing visible differs. */
 export const describeChanges = (a: Doc, b: Doc): string[] => {
   const out: string[] = []
   const sa = stagesOf(a)

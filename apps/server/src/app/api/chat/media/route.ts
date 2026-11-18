@@ -4,7 +4,6 @@ import { MediaRejected, mediaUrl, readUpload, saveMedia, type ImageMime } from '
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Stores one pasted or dropped image of the current Workspace. Multipart field `file`: png, jpeg or webp within `mediaLimits()`. Answers `{ id, url }`; send `id` as `{ type: 'image', mediaId }` in a run. */
 export const POST = async (req: Request): Promise<Response> => {
   const w = await chatWho(req)
   if (w instanceof Response) return w

@@ -16,25 +16,19 @@ interface FakeRepo {
   branches: Map<string, { sha: string; files: Map<string, string> }>;
   prs: PullRequest[];
   checks: Map<string, Check[]>;
-  /** Checks `rerunFailed` switches `checks[sha]` to. */
   rerunChecks: Map<string, Check[]>;
   reruns: Check[][];
   reviews: { number: number; body: string; comments: InlineComment[] }[];
   commitDates: Map<string, string>;
   releases: Release[];
   tags: string[];
-  /** Commit of a tag made by `addTag`. */
   tagShas: Map<string, string>;
-  /** Commits a release tag contains besides its own (test helper `addRelease`). */
   contains: Map<string, string[]>;
   commits: { sha: string; message: string }[];
-  /** Ancestors of a commit (test helper `setAncestors`). */
   ancestors: Map<string, string[]>;
   queueSupport: boolean;
   requiredChecks: string[];
-  /** PR numbers in the merge queue, head entry first. */
   queue: number[];
-  /** Files at every commit sha a branch ever had, so a branch can be reset to a sha and a head merged by sha. */
   snapshots: Map<string, Map<string, string>>;
 }
 
@@ -46,9 +40,7 @@ export class FakeBackend implements Backend {
   readonly forge: Forge;
   private ticketSources = new Map<string, FakeTickets>();
   private repos = new Map<string, FakeRepo>();
-  /** Login recorded as the actor of label changes and the author of comments. */
   actingAs = 'factory';
-  /** What `whoami` reports: the factory credential's own login. */
   login: string | null = 'factory';
   private tick = 0;
   private seq = 0;
@@ -70,7 +62,6 @@ export class FakeBackend implements Backend {
     return ts;
   }
 
-  /** Test helper: writes a file on a branch (creates the repo with branch `main` if unknown). */
   commit(repo: RepoRef, branch: string, path: string, content: string): string {
     const b = this.repo(repo).branches.get(branch);
     if (!b) throw new Error(`no branch ${branch}`);
@@ -81,7 +72,6 @@ export class FakeBackend implements Backend {
     return b.sha;
   }
 
-  /** Test helper: the next `times` calls of the label operation throw a 503. */
   failNext(op: 'addLabels' | 'removeLabels', times = 1): void {
     this.failures[op] = times;
   }
@@ -90,17 +80,14 @@ export class FakeBackend implements Backend {
     if (this.failures[op]-- > 0) throw Object.assign(new Error('503'), { status: 503 });
   }
 
-  /** Test helper: sets whether the forge reports an open PR as mergeable (false = conflicts). */
   setMergeable(repo: RepoRef, number: number, value: boolean | undefined): void {
     this.setPullRequest(repo, number, { mergeable: value });
   }
 
-  /** Test helper: sets whether the forge reports an open PR as behind its base. */
   setBehind(repo: RepoRef, number: number, value: boolean | undefined): void {
     this.setPullRequest(repo, number, { behind: value });
   }
 
-  /** Test helper: merges an open PR (merge commit on the base branch). */
   merge(repo: RepoRef, number: number): string {
     const r = this.repo(repo);
     const pr = r.prs.find((p) => p.number === number);
@@ -110,46 +97,38 @@ export class FakeBackend implements Backend {
     return pr.mergeSha;
   }
 
-  /** Test helper: closes an open PR without merging. */
   close(repo: RepoRef, number: number): void {
     const pr = this.repo(repo).prs.find((p) => p.number === number);
     if (!pr) throw new Error(`no PR ${number}`);
     pr.state = 'closed';
   }
 
-  /** Test helper: sets the check runs reported for `sha`. */
   setChecks(repo: RepoRef, sha: string, checks: Check[]): void {
     this.repo(repo).checks.set(sha, checks);
   }
 
-  /** Test helper: what `listChecks(sha)` reports after the next `rerunFailed`. */
   setRerunChecks(repo: RepoRef, sha: string, checks: Check[]): void {
     this.repo(repo).rerunChecks.set(sha, checks);
   }
 
-  /** Test helper: the `rerunFailed` calls so far. */
   reruns(repo: RepoRef): Check[][] {
     return this.repo(repo).reruns;
   }
 
-  /** Test helper: the `reviewPullRequest` calls so far. */
   reviews(repo: RepoRef): { number: number; body: string; comments: InlineComment[] }[] {
     return this.repo(repo).reviews;
   }
 
-  /** Test helper: overrides fields of a PR (draft, headRepo, head, ...). */
   setPullRequest(repo: RepoRef, number: number, patch: Partial<PullRequest>): void {
     const pr = this.repo(repo).prs.find((p) => p.number === number);
     if (!pr) throw new Error(`no PR ${number}`);
     Object.assign(pr, patch);
   }
 
-  /** Test helper: sets the commit time reported for `sha` (unknown shas are old). */
   setCommitDate(repo: RepoRef, sha: string, iso: string): void {
     this.repo(repo).commitDates.set(sha, iso);
   }
 
-  /** Test helper: a release made by the Product's own tooling (or earlier by the factory). */
   addRelease(repo: RepoRef, o: { tag: string; sha: string; body?: string; contains?: string[]; prerelease?: boolean; createdAt?: number | string }): Release {
     const r = this.repo(repo);
     if (o.contains) r.contains.set(o.tag, o.contains);
@@ -158,39 +137,32 @@ export class FakeBackend implements Backend {
     return rel;
   }
 
-  /** Test helper: a tag without a release (pointing at `sha`). */
   addTag(repo: RepoRef, tag: string, sha?: string): void {
     const r = this.repo(repo);
     r.tags.push(tag);
     if (sha) r.tagShas.set(tag, sha);
   }
 
-  /** Test helper: releases of `repo`, oldest first. */
   listReleases(repo: RepoRef): Release[] {
     return [...this.repo(repo).releases];
   }
 
-  /** Test helper: the commits `isAncestor` reports as ancestors of `head` (every commit is its own ancestor). */
   setAncestors(repo: RepoRef, head: string, shas: string[]): void {
     this.repo(repo).ancestors.set(head, shas);
   }
 
-  /** Test helper: the commits `listCommits` returns (newest first). */
   setCommits(repo: RepoRef, commits: { sha: string; message: string }[]): void {
     this.repo(repo).commits = commits;
   }
 
-  /** Test helper: whether the repo reports a native merge queue (default off). */
   setQueueSupport(repo: RepoRef, value: boolean): void {
     this.repo(repo).queueSupport = value;
   }
 
-  /** Test helper: the check names the default branch requires. */
   setRequiredChecks(repo: RepoRef, names: string[]): void {
     this.repo(repo).requiredChecks = names;
   }
 
-  /** Test helper: the forge works off the head queue entry: merges it (`merge<N>` sha) or, when its number is in `fail`, drops it unmerged. Returns the PR number, or null on an empty queue. */
   advanceQueue(repo: RepoRef, o: { fail?: number[] } = {}): number | null {
     const r = this.repo(repo);
     const n = r.queue.shift();
@@ -390,7 +362,6 @@ export class FakeBackend implements Backend {
         if (o.expectSha && o.expectSha !== sha(this.repo(repo), pr.head)) throw new Error(`PR ${n} head moved`);
         const mergeSha = this.merge(repo, n);
         if (o.deleteBranch && pr.headRepo === pr.baseRepo) {
-          // Like the real forges: the PRs stacked on the deleted head are moved to this PR's base first.
           for (const s of this.repo(repo).prs) if (s.state === 'open' && s.base === pr.head) s.base = pr.base;
           this.repo(repo).branches.delete(pr.head);
         }
@@ -415,7 +386,6 @@ class FakeTickets implements TicketSource {
   private touch(t: FakeTicket): void {
     t.updatedAt = this.b.now();
   }
-  /** Relations live in fields (native) or in the stored body (convention). */
   private rel(t: FakeTicket): Relations {
     return this.b.opts.native ? t.rel : parseRelations(t.body).relations;
   }

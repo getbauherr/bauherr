@@ -3,14 +3,10 @@ import { readFileSync } from 'node:fs'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-// Own Workspace (slug `editor`, seeded) and own Admin: nothing this spec applies is seen by another spec.
-// Its own Admin in its own Workspace (seed-e2e.ts): what this spec applies must never reach the Workspace other specs read.
 const email = 'editor-admin@example.com'
 const inEditorWorkspace = (page: Page) => page.context().addCookies([{ name: 'bauherr-ws', value: 'editor', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
 
 test.skip(!process.env.E2E_EMAIL || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-
-// Every test that applies a factory file lives in this one file (one worker): two specs must never write the same Workspace's factory file. The last test puts the shipped default back; e2e/team.spec.ts only reads.
 
 const signIn = async (page: Page) => {
   await inEditorWorkspace(page)
@@ -28,7 +24,6 @@ const open = async (page: Page, path = '/workflow/edit') => {
 const planSwitch = (page: Page) => page.getByRole('switch', { name: /approve the plan/ }).first()
 const stepOrder = (page: Page) => page.getByTestId('step').evaluateAll((els) => els.map((e) => e.getAttribute('data-stage')))
 
-/** Switches plan approval and applies it through Review changes; returns the version it created. */
 const applyPlanApproval = async (page: Page, note: string) => {
   await planSwitch(page).click()
   await page.getByRole('button', { name: 'Review changes' }).click()
@@ -88,7 +83,6 @@ test('every checkpoint says whom it asks in a select; changing it regroups the s
   const asked = (what: string) => page.getByRole('combobox', { name: `Asked: ${what}` })
   const group = (by: string) => strip.getByTestId(`strip-${by}`)
   const words: Record<string, string> = { bauherr: 'Bauherr', 'product-owner': 'Product owner' }
-  // every point is in the group of whom it asks, whatever the workflow in force (the shipped default asks the Product owner for Triage's questions, the gated pack the Bauherr)
   await expect(group('bauherr')).toContainText(/You are asked at \d+ points?:/)
   const from = await asked('Open questions').inputValue()
   const to = from === 'bauherr' ? 'product-owner' : 'bauherr'
@@ -175,7 +169,6 @@ test('Admin adds an agent step between Build and Review; the card and the YAML s
   await page.locator('[data-stage=done]').dispatchEvent('dragover', { dataTransfer: transfer })
   await page.locator('[data-stage=done]').dispatchEvent('drop', { dataTransfer: transfer })
   await expect(page.getByTestId('notice')).toContainText('takes no agent')
-  // Events, not a mouse drag: Playwright's native drag emulation seats the role only on some runs in the production build.
   await source.dispatchEvent('dragend', { dataTransfer: transfer })
   const second = await page.evaluateHandle(() => new DataTransfer())
   await source.dispatchEvent('dragstart', { dataTransfer: second })
@@ -223,7 +216,6 @@ test('Admin turns plan approval off, reviews it in words, applies it and restore
   await expect(page.getByTestId('draft-badge')).toHaveCount(0)
   await expect(page.getByTestId('checkpoint').filter({ hasText: 'Not asked: approve the plan' })).toBeVisible()
 
-  // another browser applies the restore; this tab's draft is on the old base
   await page.getByRole('switch', { name: /on staging|production/ }).first().click()
   const ctx = await browser.newContext({ baseURL: test.info().project.use.baseURL, viewport: { width: 1280, height: 900 } })
   const other = await ctx.newPage()

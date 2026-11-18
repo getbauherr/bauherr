@@ -5,7 +5,6 @@ import { expect, it } from 'vitest'
 
 const root = fileURLToPath(new URL('../../..', import.meta.url))
 const roots = [join(root, 'apps/server/src'), join(root, 'apps/server/scripts'), ...readdirSync(join(root, 'packages')).map((p) => join(root, 'packages', p, 'src'))]
-/** Files allowed to call DEFAULT() (the pack workflow), each with the reason. Everything Workspace-scoped uses workflowFor(). */
 const ALLOWED: Record<string, string> = {
   'apps/server/src/lib/workflow.ts': 'defines DEFAULT()',
   'apps/server/src/lib/factory.ts': 'workflowFor() falls back to the pack default; the first apply compares against it; defaultHash',

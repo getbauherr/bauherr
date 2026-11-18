@@ -6,7 +6,6 @@ type Doc = Record<string, any>
 const bearer = (req: Request): string | null => /^Bearer (bemb_\S+)$/.exec(req.headers.get('authorization') ?? '')?.[1] ?? null
 export const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex')
 
-/** Mints an embed token for a Product. Only the hash is stored; the plaintext is returned once. */
 export const createEmbedToken = async (payload: Payload, input: { product: number | string; name: string; allowedOrigins: string[]; maxSessionsPerHour?: number }): Promise<string> => {
   const product = (await payload.findByID({ collection: 'products', id: input.product, depth: 0, overrideAccess: true })) as Doc
   const token = `bemb_${randomBytes(32).toString('base64url')}`
@@ -18,7 +17,6 @@ export const createEmbedToken = async (payload: Payload, input: { product: numbe
   return token
 }
 
-/** The embed token of this request, or: null (no embed token sent), 403 Response (unknown, revoked, or Origin not on the allowlist). */
 export const embedAuth = async (payload: Payload, req: Request): Promise<Doc | Response | null> => {
   const raw = bearer(req)
   if (!raw) return null
@@ -27,7 +25,6 @@ export const embedAuth = async (payload: Payload, req: Request): Promise<Doc | R
   return t && !t.revokedAt && origin && ((t.allowedOrigins as string[] | null) ?? []).includes(origin) ? t : Response.json({ error: 'forbidden' }, { status: 403 })
 }
 
-/** Adds CORS headers for embed-token requests the server accepted (any non-403: the Origin was checked against the allowlist). */
 export const withCors =
   <A extends unknown[]>(handler: (req: Request, ...args: A) => Promise<Response>) =>
   async (req: Request, ...args: A): Promise<Response> => {
@@ -40,7 +37,6 @@ export const withCors =
     return res
   }
 
-/** Preflight cannot carry the token, so it only echoes the Origin; the actual request is what is checked. */
 export const preflight = (req: Request): Response =>
   new Response(null, {
     status: 204,

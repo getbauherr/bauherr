@@ -9,7 +9,6 @@ export const dynamic = 'force-dynamic'
 
 const ROLE = { admin: 'Admin', bauherr: 'Bauherr', 'product-owner': 'Product owner' } as const
 
-/** What the Product owner is assigned to, in words; reads the assignment's Workspace and Product names. */
 async function assignmentOf(user: { assignments?: unknown[] }): Promise<string> {
   const payload = await payloadClient()
   const rows = (user.assignments ?? []) as { workspace: { name: string } | number; scope: 'workspace' | 'products'; products?: ({ name: string } | number)[] }[]
@@ -17,7 +16,6 @@ async function assignmentOf(user: { assignments?: unknown[] }): Promise<string> 
   return assignmentWords(await Promise.all(rows.map(async (r) => ({ workspace: await name('workspaces', r.workspace), scope: r.scope, products: await Promise.all((r.products ?? []).map((p) => name('products', p))) }))))
 }
 
-/** Account: the signed-in person's own record (an Admin changes role and Workspaces under People), their linked forge login (editable here) and the theme of this browser. Open to a Product owner too. */
 export default async function Profile() {
   const user = await requirePerson()
   const owner = isProductOwner(user)

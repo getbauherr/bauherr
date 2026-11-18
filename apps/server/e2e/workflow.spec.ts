@@ -20,15 +20,12 @@ test('the graph draws the stages of the workflow in order, with the counts of th
   const nodes = page.getByTestId('stage-node')
   await expect(nodes).toHaveText([/triage/i, /plan/i, /Split/, /build/i, /review/i, /Staging/, /Done/i])
   expect(await nodes.evaluateAll((els) => els.map((e) => e.getAttribute('data-stage')))).toEqual(['triage', 'plan', 'parent', 'build', 'review', 'release', 'done'])
-  // node, heading and cards are read in one go: Tickets of other specs move while this runs, and the page refreshes on its own, so reads made one after the other can straddle a refresh
   await expect.poll(() => page.evaluate(() => ['triage', 'plan', 'build', 'review', 'release', 'done'].flatMap((stage) => {
-    // the node and the list heading read the same count (a WIP limit set by another spec turns it into "n / limit"); the done group is collapsed behind "Show N done"
     const count = document.querySelector(`[data-testid=stage-node][data-stage=${stage}] [data-testid=stage-count]`)?.textContent?.trim() ?? ''
     const heading = document.querySelector(`.col[data-stage=${stage}] h2`)?.textContent ?? ''
     const cards = document.querySelectorAll(`.col[data-stage=${stage}] .card`).length
     return [...(heading.includes(count) ? [] : [`${stage}: heading "${heading}" vs count ${count}`]), ...(count.includes('/') || stage === 'done' || cards === Number(count) ? [] : [`${stage}: ${cards} cards vs count ${count}`])]
   }))).toEqual([])
-  // outcome edges: forward solid, backward dashed
   await expect(page.locator('[data-edge="build>review"][data-outcome=done]')).toHaveCount(1)
   await expect(page.locator('[data-edge="review>build"][data-back]')).toHaveCount(1)
   await expect(page.locator('[data-edge="build>plan"][data-back][data-outcome=replan]')).toHaveCount(1)
@@ -46,7 +43,6 @@ test('a stage with Jobs lists them as chips under its card, in order; the other 
 
 test('a checkpoint node counts the Tickets waiting at it and filters the list', async ({ page }) => {
   const refine = page.locator('[data-testid=checkpoint-node][data-checkpoint="triage:refine"]')
-  // the node and the waiting rows are read in one go (Triage specs answer their Tickets while this runs)
   const counts = () => page.evaluate(() => ({
     node: Number(/^\d+/.exec(document.querySelector('[data-testid=checkpoint-node][data-checkpoint="triage:refine"] [data-testid=checkpoint-count]')?.textContent ?? '')?.[0] ?? -1),
     rows: [...document.querySelectorAll('[data-testid=status-detail]')].filter((e) => e.textContent?.trim() === 'Answer questions').length,

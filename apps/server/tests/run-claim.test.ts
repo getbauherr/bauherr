@@ -45,7 +45,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** Creates a Ticket in the plan stage with one queued autonomous Run and its `run-stage` job. */
 const queuedRun = async (title: string) => {
   const issue = await fake.tickets(repo).create({ title, labels: ['bauherr:stage:plan'] })
   await (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
@@ -53,7 +52,6 @@ const queuedRun = async (title: string) => {
   return (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: t.id } }, { status: { equals: 'queued' } }] }, depth: 0, ...o })).docs[0]
 }
 const runOne = () => payload.jobs.run({ queue: 'runs', limit: 1 })
-/** Run ids handed to the executor. A poll may also start Runs for Tickets of earlier tests, so the tests assert that no Run executed twice, not a total. */
 const executed = () => exec.mock.calls.map(([ctx]) => ctx.run.id as string)
 const unique = (ids: string[]) => new Set(ids).size === ids.length
 const handle = (runId: number | string) => (jobs.runStage.handler as (a: unknown) => Promise<unknown>)({ input: { runId }, req: { payload } })
@@ -62,7 +60,6 @@ it('parallel workers execute each Run once', async () => {
   await queuedRun('a')
   await queuedRun('b')
   await Promise.all([runOne(), runOne(), runOne()])
-  // A parallel claim may find the second job still unqueued; drain it sequentially so the assertion is about duplicates, not timing.
   for (let i = 0; i < 3 && executed().length < 2; i++) await runOne()
   expect(executed().length).toBeGreaterThanOrEqual(2)
   expect(unique(executed())).toBe(true)

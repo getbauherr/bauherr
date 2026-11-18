@@ -11,10 +11,6 @@ const clean = (w: When): When | undefined => {
   return Object.keys(out).length ? out : undefined
 }
 
-/**
- * "When does this step run?": always, or only when the change touches a path set of the Product, the request is of a type or the ticket has a label.
- * `declared` maps the path sets some Product of the Workspace declares to those Products; a chosen set nobody declares gets a hint.
- */
 export function WhenFields({ value, onChange, declared, idPrefix }: { value: When | undefined; onChange: (w: When | undefined) => void; declared: Record<string, string[]>; idPrefix: string }) {
   const [only, setOnly] = useState(!!value && Object.keys(value).length > 0)
   const w = value ?? {}

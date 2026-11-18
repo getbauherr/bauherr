@@ -1,9 +1,5 @@
 import { MigrateDownArgs, MigrateUpArgs, sql } from '@payloadcms/db-postgres'
 
-/**
- * `products.gate_owners` (free-text logins) is replaced by the accounts' linked forge logins. A login that matches an account (case ignored) needs no change: the account already holds it.
- * A login without an account moves to `unlinked_gate_owners`, which Settings > Health lists until someone links it; it counts as nothing meanwhile.
- */
 export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`ALTER TABLE "products" ADD COLUMN "unlinked_gate_owners" varchar;`)
   const linked = new Set(
@@ -17,7 +13,6 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`ALTER TABLE "products" DROP COLUMN "gate_owners";`)
 }
 
-/** The matched logins stay on their accounts and are not written back; the unlinked ones return as the list. */
 export async function down({ db }: MigrateDownArgs): Promise<void> {
   await db.execute(sql`ALTER TABLE "products" ADD COLUMN "gate_owners" varchar;`)
   await db.execute(sql`UPDATE "products" SET gate_owners = unlinked_gate_owners WHERE unlinked_gate_owners IS NOT NULL;`)

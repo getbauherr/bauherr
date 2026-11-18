@@ -11,7 +11,6 @@ const JobStates = ({ jobs }: { jobs: JobRow[] }) => (
   </ol>
 )
 
-/** The Ticket's route as one line: done stages with a check, the current one marked, "×N" for a stage entered more than once. Scrolls, never wraps. */
 export function StageStrip({ stages, steps }: { stages: { name: string; title: string }[]; steps: Steps }) {
   const last = steps.visits?.at(-1)
   const jobs = last?.stage === steps.path.current ? last.jobs : undefined
@@ -40,7 +39,6 @@ export function StageStrip({ stages, steps }: { stages: { name: string; title: s
 
 const usd = (n: number) => '$' + n.toFixed(2)
 
-/** Admin only: what the Ticket cost in total, by stage and by Run (the Runs' `costUsd`). */
 export function CostPanel({ runs }: { runs: Doc[] }) {
   const { unreported, priced, estimated, total } = costSplit(runs)
   const sums = new Map<string, number>()

@@ -50,12 +50,10 @@ beforeEach(async () => {
 
 const poll = () => (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
 const reload = async (id: number) => (await payload.findByID({ collection: 'tickets', id, depth: 0, ...o })) as Record<string, any>
-/** Bumps updatedAt like a forge does on any edit, so the next poll sees the Ticket as changed. */
 const touch = (n: string) => fake.tickets(repo).addLabels(n, [`touch-${++n_}`])
 let n_ = 0
 const order = async () => (await call('list_frontier', {})).map((t: any) => t.number)
 
-/** An open Ticket in `stage` on the fake forge and locally; `builtBy` adds a succeeded Build Run with that label, `awaiting` an awaiting_session Run of `stage`. */
 const ticket = async (title: string, stage: 'build' | 'review', opts: { builtBy?: string; awaiting?: boolean } = { awaiting: true }) => {
   const labels = [`bauherr:stage:${stage}`]
   const issue = await fake.tickets(repo).create({ title, labels })

@@ -80,7 +80,6 @@ describe('Workspace templates', () => {
     const custom = await template(payload, ws, 'staging-summary')
     const md = buildStagingSummary(input, custom)
     expect([...md.matchAll(/^## (.+)$/gm)].map((m) => m[1])).toEqual(['Check this first', 'Result', 'Surprises', 'Decisions taken', 'Open'])
-    // sections the template dropped keep their content, appended under the pack's heading
     const tldr = stagingTldrOf(md, { whatYouGet: headingOf(custom, 'what-you-get'), found: headingOf(custom, 'found') })
     expect(tldr.whatYouGet).toContain('Users can switch')
     expect(tldr.found).toContain('label missing')
@@ -96,7 +95,6 @@ describe('Workspace templates', () => {
     expect(text).toContain('## Short answer')
     expect(text).not.toContain('{#tldr}')
     expect(text).toContain('## Template: Worklog')
-    // a session never receives the autonomous-only part
     expect(text).toContain('submit_plan')
     expect(text).not.toContain('Do not push or open the MR yourself')
     expect(text).not.toContain('.bauherr/outcome.json')

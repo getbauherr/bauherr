@@ -18,7 +18,6 @@ export const setStorageKey = (key: string) => void (storageKey = key)
 
 export const isOpen = () => document.documentElement.dataset.chat === 'open'
 
-/** Opens or closes the dock; the open state lives on `html[data-chat]` so CSS shows it without a render (and the pre-paint script can set it). */
 export function setOpen(open: boolean) {
   if (open) document.documentElement.dataset.chat = 'open'
   else delete document.documentElement.dataset.chat
@@ -31,7 +30,6 @@ export const subscribe = (cb: () => void) => {
   return () => removeEventListener(EVENT, cb)
 }
 
-/** Asks the (possibly not yet loaded) chat panel to do something once it is there: focus the composer, start a new chat, or open the Ticket's thread with the composer ready for `/comment`. */
 export function request(action: DockRequest) {
   pending = action
   setOpen(true)

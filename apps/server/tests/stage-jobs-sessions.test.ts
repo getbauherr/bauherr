@@ -7,7 +7,6 @@ import { createTestDb, type TestDb } from './helpers/test-db'
 
 type Doc = Record<string, any>
 
-/** Sessions claim the parallel Job Runs of the `audit` stage of fixtures/jobs-pack by role. */
 let payload: Payload
 let fake: FakeBackend
 let ws: number

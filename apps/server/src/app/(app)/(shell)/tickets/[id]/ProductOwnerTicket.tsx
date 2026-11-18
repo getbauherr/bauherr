@@ -18,7 +18,6 @@ import { loadProof } from '../../../lib/proof'
 import { loadOwnerTicket } from '../../../lib/requests'
 import { currentPersonWorkspace, payloadClient } from '../../../lib/session'
 
-/** What a Product owner sees of a Ticket of their Products: the request card, the plain-word path and timeline, who it waits for, proof for review, the release note and the comments. Never a Run, step, cost, token, agent, plan, budget or setting; a Ticket of another Product is a 404. */
 export async function ProductOwnerTicket({ id, view: wanted }: { id: string; view?: string }) {
   const { user, workspace } = await currentPersonWorkspace()
   if (!workspace || !/^\d{1,9}$/.test(id)) notFound()
@@ -29,7 +28,6 @@ export async function ProductOwnerTicket({ id, view: wanted }: { id: string; vie
   const full = (await payload.findByID({ collection: 'tickets', id: t.id, depth: 0, overrideAccess: true })) as Record<string, any>
   const product = (await payload.findByID({ collection: 'products', id: view.product.id, depth: 0, overrideAccess: true })) as Record<string, any>
   const proof = (await loadProof(payload, [full], new Map([[view.product.id, product]]))).get(t.id)
-  // What asks this person, when the checkpoint is addressed to the Product owner (a Bauherr's checkpoints are not shown).
   const asked = asksOwnerRow(full) && full.state === 'open' ? cardOf(full, { id: view.product.id, name: view.product.name, stagingUrl: product.stagingUrl }) : null
   if (asked && (wanted === 'conversation' || (asked.decision.need === 'Answer questions' && wanted !== 'ticket'))) {
     return (

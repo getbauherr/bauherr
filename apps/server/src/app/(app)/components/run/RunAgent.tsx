@@ -9,7 +9,6 @@ type AdminInfo = { owner: string | null; agentKeyLabel: string | null }
 
 const Row = ({ k, v, title }: { k: string; v: string; title?: string }) => <div className="contents"><dt className="text-muted-foreground">{k}</dt><dd className="mono m-0 break-words" title={title}>{v}</dd></div>
 
-/** Who works the Run: role and session (linking the Agent view), "Runner" or "CI" for an autonomous one. Admin adds client, model, provider, owner and agent key, and the Run's tokens and cost until the Cost panel lands. */
 export function RunAgent({ run, session, role, admin, animate, className }: { run: RunDoc; session: SessionInfo | null; role: Role; admin: AdminInfo | null; animate: boolean; className?: string }) {
   const name = session ? (session.label ?? session.publicId) : run.mode === 'session' ? (run.sessionLabel ?? 'Session') : run.executor === 'ci' ? 'CI' : 'Runner'
   const info = admin && { client: [session?.clientName ?? run.clientName, session?.clientVersion ?? run.clientVersion].filter(Boolean).join(' '), model: session?.model ?? run.model, provider: session?.provider ?? run.provider }

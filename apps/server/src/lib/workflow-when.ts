@@ -1,16 +1,11 @@
-// Browser-safe. Conditional stages: the `when` of a stage, whether it matches a change, and its plain words.
-
 export const REQUEST_TYPES = ['bug', 'feature', 'change', 'question'] as const
 export type RequestType = (typeof REQUEST_TYPES)[number]
-/** A Ticket carries its request type as the label `bauherr:type:<kind>`. */
 export const TYPE_LABEL = 'bauherr:type:'
 export const SET_NAME = /^[a-z][a-z0-9-]*$/
-/** The two path-set names a Product is offered to declare. */
 export const SUGGESTED_SETS = ['security', 'ui'] as const
 export const WHEN_KEYS = ['touches', 'paths', 'labels', 'types'] as const
 
 export type When = { touches?: string | string[]; paths?: string[]; labels?: string[]; types?: string[] }
-/** What a condition is judged by: the changed paths (null = not known), the Ticket's labels, the Product's named path sets. */
 export type Facts = { paths: string[] | null; labels: string[]; sets: Record<string, string[]> }
 export type Verdict = { match: true } | { match: false; reason: string }
 
@@ -19,7 +14,6 @@ export const typeOf = (labels: string[]): string | null => labels.find((l) => l.
 const A = (t: string) => `a ${t}`
 const or = (l: string[]) => l.join(' or ')
 
-/** Whether `when` matches the facts. Keys are AND-ed, values of a key OR-ed; unknown changed paths match (the review happens rather than being skipped silently); a path set the Product has not declared (or left empty) never matches. */
 export const evalWhen = (when: When, facts: Facts, glob: (g: string, p: string) => boolean): Verdict => {
   const no = (reason: string): Verdict => ({ match: false, reason })
   const touches = asList(when.touches)
@@ -37,7 +31,6 @@ export const evalWhen = (when: When, facts: Facts, glob: (g: string, p: string) 
   return { match: true }
 }
 
-/** The condition of a step in plain words: "when the change touches security paths", "for bugs". */
 export const whenClause = (when: When): string => {
   const c: string[] = []
   const touches = asList(when.touches)
@@ -51,5 +44,4 @@ export const whenClause = (when: When): string => {
   return `when ${c.join(' and ')}`
 }
 
-/** The chip of a conditional step: "Only when the change touches security paths", "Only for bugs". */
 export const whenText = (when: When): string => `Only ${whenClause(when)}`

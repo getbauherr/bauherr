@@ -6,7 +6,6 @@ import { runEval, type EvalCase, type EvalOptions } from '../src/index.js';
 
 type Call = { model: string; system?: string; user: string; judge: boolean; key?: string; run?: string };
 
-/** A gateway stub: the subject answers `reply(input)`, the judge passes every criterion not named in `failCriteria`. */
 async function stub(reply: (input: string, n: number) => string, failCriteria: string[] = [], usage = { input_tokens: 100, output_tokens: 50 }) {
   const calls: Call[] = [];
   const seen = new Map<string, number>();
@@ -88,7 +87,6 @@ test('a failing case is re-run once and the second attempt counts', async () => 
 test('max-usd aborts before the call that would exceed it', async () => {
   const g = await stub(() => 'failing test', [], { input_tokens: 1000, output_tokens: 1000 });
   const cases = [c({ id: 'one' }), c({ id: 'two' }), c({ id: 'three' })];
-  // worst case per call is ~$0.0158; one case costs ~$0.036 actual
   const r = await runEval(opts(g.url, { cases, maxUsd: 0.05 }));
   g.close();
   assert.equal(r.aborted, true);

@@ -13,9 +13,7 @@ import { type Kind, board, byKind, nameOf, stage as stageDef, title as stageTitl
 type Doc = Record<string, any>
 export type ToolKind = 'read' | 'confirm'
 export type ChatTool = { name: string; description: string; input_schema: Record<string, unknown>; kind: ToolKind }
-/** `approve` / `decline` replace the button labels; `noReason`: declining needs no reason. */
 export type Card = { title: string; details: { label: string; value: string }[]; destructive?: boolean; approve?: string; decline?: string; noReason?: boolean; /** Accept / approve cards: the proof table of the Ticket. */ proof?: ProofData }
-/** `reply` answers the model without running anything (unknown or ambiguous Ticket number). */
 export type Resolved = { input: Doc } | { reply: string; ok: boolean }
 
 const id = (v: unknown): number | string => (v && typeof v === 'object' ? (v as { id: number | string }).id : (v as number | string))
@@ -32,19 +30,14 @@ type Entry = {
   description?: string
   schema: Record<string, unknown>
   kind: ToolKind
-  /** Local handler; without it the MCP tool of the same name runs. */
   local?: (c: Ctx, input: Doc) => Promise<unknown>
-  /** Ticket number (and optional Product slug) in the model's input to the id the MCP tool takes. */
   ticket?: (ticketId: number | string, input: Doc, c: Ctx) => Doc
   fence?: boolean
-  /** Not offered to the model: only the server issues its call (the request intake's card). */
   hidden?: boolean
-  /** Offered to Admins only. */
   admin?: boolean
   describe?: (c: Ctx, input: Doc) => Promise<Card>
 }
 
-/** Open and closed Tickets of the Workspace by number; several Products can share one. */
 const findByNumber = async (c: Ctx, number: unknown, product?: unknown): Promise<Resolved & { ticket?: Doc }> => {
   if (!Number.isInteger(number)) return { reply: 'ticket must be a Ticket number (integer)', ok: false }
   const { docs } = await c.payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: c.workspace } }, { number: { equals: number } }] }, limit: 20, depth: 1, overrideAccess: true })
@@ -81,7 +74,6 @@ const note = (i: Doc) => (typeof i.note === 'string' && i.note.trim() ? [{ label
 type Overview = Awaited<ReturnType<typeof loadOverviewRows>>
 const needLine = (t: Overview['tickets'][number]) => ({ number: t.number, title: t.title, need: t.needsYou })
 
-/** Stages in workflow order with ticket counts and WIP limits, plus the open Tickets that need the person. */
 export const factoryStatus = async (workspace: number | string) => {
   const { tickets, wip } = await loadOverviewRows(Number(workspace), false)
   const wf = workflowFor(workspace)
@@ -126,7 +118,6 @@ const getRun = async (c: Ctx, a: Doc) => {
   }
 }
 
-/** Who works right now: per role its agent sessions (status, Ticket, client, model, active minutes) and the autonomous Runs, from the database only. */
 export const teamStatus = async (c: Ctx) => {
   const { roles, orphans } = await loadTeam(c.payload, c.workspace!)
   const mins = (s: number) => Math.round(s / 60)
@@ -137,7 +128,6 @@ export const teamStatus = async (c: Ctx) => {
   }
 }
 
-/** Tokens and cost of the last `days` days by model, role, stage and session, with how many Runs report usage (the Insights "Cost & tokens" numbers). DB only. */
 export const costSummary = async (c: Ctx, a: Doc) => {
   const days = Math.min(90, Math.max(1, Number(a.days) || 7))
   const cost = await loadCost(c.payload, workflowFor(c.workspace!), c.workspace as number, { days, product: null })
@@ -157,7 +147,6 @@ export const costSummary = async (c: Ctx, a: Doc) => {
   }
 }
 
-/** list_frontier spans every Workspace of the caller; keep this one's Tickets. */
 const frontierIn = async (c: Ctx, a: Doc) => {
   const rows = (await callTool(c, 'list_frontier', { product: a.product })) as Doc[]
   if (!rows.length) return rows
@@ -294,14 +283,11 @@ const mcp = (name: string) => mcpTools.find((t) => t.name === name)!
 
 const offered = (e: Entry | undefined, user: { role?: string | null }): e is Entry => !!e && !e.hidden && (!e.admin || user.role === 'admin')
 
-/** The chat tool set this person may use (Admin-only tools only for Admins, server-issued ones never); the client picks widgets by `kind`, never by name. */
 export const chatTools = (user: { role?: string | null }): ChatTool[] =>
   Object.entries(ENTRIES).filter(([, e]) => offered(e, user)).map(([name, e]) => ({ name, description: e.description ?? mcp(name).description, input_schema: e.schema, kind: e.kind }))
 
-/** The kind of a tool this person may call; undefined for an unknown one, one they have no right to and one only the server calls. */
 export const kindOf = (name: string, user: { role?: string | null }): ToolKind | undefined => (offered(ENTRIES[name], user) ? ENTRIES[name]!.kind : undefined)
 
-/** The canonical input the tool runs with: Ticket numbers become ids inside the Workspace. This exact value is what a confirmation stores and later runs. */
 export const resolveInput = async (c: Ctx, name: string, input: unknown): Promise<Resolved> => {
   const e = ENTRIES[name]
   if (!e) return { reply: `unknown tool ${name}`, ok: false }
@@ -313,7 +299,6 @@ export const resolveInput = async (c: Ctx, name: string, input: unknown): Promis
 
 export const describe = async (name: string, input: Doc, c: Ctx): Promise<Card> => ENTRIES[name]!.describe!(c, input)
 
-/** One line for the tool-call event and the audit trail. */
 export const summarize = (name: string, input: unknown): string =>
   `${name}(${Object.entries((input ?? {}) as Doc).filter(([k]) => k !== 'workspaceId').map(([k, v]) => `${k}=${typeof v === 'string' ? v.slice(0, 60) : JSON.stringify(v)}`).join(', ')})`
 
@@ -321,7 +306,6 @@ const audit = async (c: Ctx, name: string, input: unknown, ok: boolean, t0: numb
   await c.payload.create({ collection: 'tool_calls', data: { workspace: c.workspace, name, inputDigest: digest(input), status: ok ? 'ok' : 'error', durationMs: Date.now() - t0 }, overrideAccess: true })
 }
 
-/** Runs one chat tool as the signed-in person (human actor) on a canonical input from `resolveInput`; both local and MCP tools write a tool_calls row. Forge text in the result is fenced as untrusted. */
 export const runChatTool = async (c: Ctx, name: string, input: Doc): Promise<unknown> => {
   const e = ENTRIES[name]
   if (!e) throw new Error(`unknown tool ${name}`)

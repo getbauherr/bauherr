@@ -152,7 +152,6 @@ it('an open issue becomes an untriaged Ticket once; closed and unknown issues ar
   expect(await actions.importIssue({}, form({ number: 'abc' }))).toMatchObject({ error: expect.stringContaining('issue number') })
 })
 
-/** A Workspace on a factory file, with a Ticket driven to the Build stage (plan approved). */
 const drive = async (slug: string, preset: string, edit?: (d: Record<string, any>) => void) => {
   const repo = `acme/${slug}`
   const { ws } = await workspace(slug, repo)
@@ -209,7 +208,6 @@ const drive = async (slug: string, preset: string, edit?: (d: Record<string, any
   return { id, m, call, claim, stage, runs, labels, planAndApprove, build, poll }
 }
 
-/** Careful with its specialists as separate stages again (the shipped files fold them into review Jobs), the security review unconditional: these tests drive the outcomes, not the condition (tests/conditional-stages.test.ts covers that). */
 const always = (doc: Record<string, any>) => {
   const st = doc.workflow.stages as Record<string, any>[]
   const review = st.find((s) => s.name === 'review')!

@@ -4,7 +4,6 @@ import { renderToReadableStream } from 'react-dom/server'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/** The agent view: Admin-only fields (cost, client, model, provider, key owner, action buttons) are in an Admin's render and absent from a non-Admin's; unknown and foreign ids say so. */
 const session = vi.hoisted(() => ({ cookie: '', ws: '' }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ cookie: session.cookie }), cookies: async () => ({ get: (k: string) => (k === 'bauherr-ws' && session.ws ? { value: session.ws } : undefined), set: () => {}, delete: () => {} }) }))
 vi.mock('next/navigation', async (orig) => ({ ...(await orig<typeof import('next/navigation')>()), useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn(), back: vi.fn() }), usePathname: () => '/team/ses_view', useSearchParams: () => new URLSearchParams() }))

@@ -36,7 +36,6 @@ type EvalModule = {
   loadCases: (dir: string) => unknown[]
 }
 
-/** The runner is a private workspace package, resolved at run time so the published CLI does not depend on it. */
 const evalSpecifier = '@bauherr/eval'
 const loadEval = async (): Promise<EvalModule> => {
   try {

@@ -41,7 +41,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** A done Ticket merged as `sha` (committed `day` of Nov 2026). */
 const done = async (slug: string, title: string, sha: string, day: number, labels: string[] = []) => {
   const repo = `acme/${slug}`
   const issue = await fake.tickets(repo).create({ title, labels })
@@ -229,7 +228,6 @@ it('shipSelected is admin only, stays in the Workspace and ships exactly the sel
   expect(draft.waiting.map((t) => t.id)).toEqual([c.id])
 })
 
-/** Counts every call into the fake forge (forge methods and ticket-source lookups). */
 const countForgeCalls = () => {
   const calls = { n: 0 }
   for (const k of Object.keys(fake.forge) as (keyof typeof fake.forge)[]) {

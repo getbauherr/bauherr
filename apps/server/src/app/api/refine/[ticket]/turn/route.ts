@@ -5,13 +5,8 @@ import { hasRows, refineRecheck, refineTurn, type View } from '../../../../../li
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** What the stream carries: the reply as far as written, then the whole panel state, or the reason the turn changed nothing. */
 export type TurnEvent = { type: 'reply'; text: string } | { type: 'done'; view: View | null } | { type: 'error'; message: string }
 
-/**
- * Body `{ text, images? }` (a typed message, `images`: ids from `api/chat/media`) or `{ recheck: { point } }` (the short turn after an option click); streams NDJSON `TurnEvent`s. Bauherr/Admin, and a Product owner for the rows addressed to them on their Products (`loadGate`).
- * A client abort aborts the model call; nothing is stored then, nor when the result is invalid (logged, the chat gets a short sentence).
- */
 export const POST = async (req: Request, { params }: { params: Promise<{ ticket: string }> }): Promise<Response> => {
   const w = await chatWho(req, { owner: true })
   if (w instanceof Response) return w

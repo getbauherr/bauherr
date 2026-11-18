@@ -14,7 +14,6 @@ export type NodeStats = { count: number; limit: number | null; bar: Bar; execs: 
 
 const CHECKPOINTS = NEED_NODE
 
-/** The graph node id (`<stage>:refine|gate|production`) of the human checkpoint a Ticket waits at, else null. */
 export const checkpointOf = (wf: Workflow, t: Pick<TicketRow, 'needsYou' | 'stage'>): string | null => {
   if (t.needsYou === 'Decision needed') return t.stage
   const c = t.needsYou ? CHECKPOINTS[t.needsYou as Need] : undefined
@@ -28,7 +27,6 @@ const median = (xs: number[]): number | null => {
   return s.length % 2 ? s[(s.length - 1) / 2]! : (s[s.length / 2 - 1]! + s[s.length / 2]!) / 2
 }
 
-/** Median seconds a Ticket spent in each stage (all phases but closed), over the Tickets that started in the last `days` days. */
 export const stageMedians = async (payload: Payload, workspace: number, product: number | null, days = 30): Promise<Record<string, number>> => {
   const f = await flow(payload, workspace, { from: new Date(Date.now() - days * 864e5).toISOString(), to: new Date(Date.now() + 6e4).toISOString(), ...(product && { product }) })
   const per = new Map<string, number[]>()
@@ -40,7 +38,6 @@ export const stageMedians = async (payload: Payload, workspace: number, product:
   return Object.fromEntries([...per].map(([stage, xs]) => [stage, median(xs)!]))
 }
 
-/** Per stage: tickets, WIP limit, the four-phase bar, who works there right now, median time in stage and a state for the top border; and per checkpoint the Tickets waiting at it. */
 export const nodeStats = (wf: Workflow, rows: TicketRow[], wip: Record<string, { count: number; parked: number; limit: number | null }>, medians: Record<string, number>, now = Date.now()) => {
   const stages = new Map<string, NodeStats>()
   const checkpoints = new Map<string, number>()
@@ -66,16 +63,11 @@ export const nodeStats = (wf: Workflow, rows: TicketRow[], wip: Record<string, {
   return { stages, checkpoints }
 }
 
-/** The live Runs (queued, awaiting a session, running) of the Workspace: which Ticket works which Job of which stage right now. */
 export const liveJobRuns = async (payload: Payload, workspace: number): Promise<{ ticket: number; stage: string; job: string | null }[]> =>
   ((await payload.find({ collection: 'runs', where: { and: [{ workspace: { equals: workspace } }, { status: { in: ['queued', 'awaiting_session', 'running'] } }] }, select: { ticket: true, stage: true, job: true }, pagination: false, depth: 0, overrideAccess: true })).docs as unknown as { ticket: number; stage: string; job?: string | null }[]).map((r) => ({ ticket: r.ticket, stage: r.stage, job: r.job ?? null }))
 
 export type StageAgents = { role: { id: string; title: string; avatar: string }; working: number; idle: number; runner: number; ci: number; text: string | null; missing: boolean }
 
-/**
- * Who is stationed at each stage that names a role: the role's sessions working a Ticket in the stage, its idle sessions, and the Runner or CI Runs working there.
- * `text` is "2 working · 1 idle", "Runner working" or, for a session-mode stage nobody serves, "No agent connected" (`missing`); null for an autonomous stage at rest.
- */
 export const stageAgents = (wf: Workflow, roles: TeamRole[], modeOf: (stage: string) => Mode): Map<string, StageAgents> => {
   const out = new Map<string, StageAgents>()
   for (const s of wf.stages) {

@@ -8,7 +8,6 @@ type Tool = Extract<Part, { type: 'tool-call' }>
 type Json = Tool['args']
 type Detail = { label: string; value: string }
 
-/** Read from `part.artifact`, set by the adapter from the stream: the widget is picked by `kind`, never by tool name. */
 export type Artifact =
   | { kind: 'read'; summary: string }
   | { kind: 'confirm'; summary: string; title?: string; details?: Detail[]; destructive?: boolean; approve?: string; decline?: string; noReason?: boolean; proof?: ProofData }
@@ -35,7 +34,6 @@ export const mediaIdOf = (url: unknown): number | null => {
 }
 
 type Wire = { role: 'user' | 'assistant'; content: ({ type: 'text'; text: string } | { type: 'image'; mediaId: number })[] }
-/** The visible history, text and images only. */
 export const toWire = (messages: readonly ThreadMessage[]): Wire[] =>
   messages.flatMap((m): Wire[] => {
     if (m.role !== 'user' && m.role !== 'assistant') return []
@@ -63,13 +61,10 @@ async function* lines(res: Response): AsyncGenerator<Ev> {
 }
 
 type Options = {
-  /** The thread's server id; a thread nobody wrote to yet is created first. */
   threadId: () => Promise<string>
-  /** A run or confirmation changed what the page behind the dock shows. */
   onWrite: () => void
 }
 
-/** The one answer message, turned into parts as events arrive; a continuation (confirm) appends to the message the card sits in. */
 export function makeChatAdapter({ threadId, onWrite }: Options): ChatModelAdapter {
   return {
     async *run({ messages, abortSignal, unstable_getMessage }): AsyncGenerator<ChatModelRunResult> {
@@ -124,7 +119,6 @@ export function makeChatAdapter({ threadId, onWrite }: Options): ChatModelAdapte
 
 const outcome = (card: Tool, o: Outcome): Tool => ({ type: 'tool-call', toolCallId: card.toolCallId + OUTCOME, toolName: card.toolName, args: {}, argsText: '', artifact: { kind: 'outcome', ...(o.href && { href: o.href }) } satisfies Artifact, result: o })
 
-/** Uploads each image to `endpoint` and sends it as an image part whose URL carries the media id. */
 export const makeAttachments = (endpoint = '/api/chat/media'): AttachmentAdapter => ({
   accept: MEDIA_TYPES.join(','),
   async *add({ file }) {

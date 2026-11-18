@@ -38,23 +38,17 @@ type Doc = Record<string, any>
 export interface Ctx {
   payload: Payload
   user: Doc
-  /** Who is calling: only a personal API key (or the UI) is `human`; session Runs use an agent key. */
   actor: { kind: 'agent'; keyId: number | string } | { kind: 'human' }
-  /** Set by handlers once a Run or Ticket is loaded; used for the tool_calls row. */
   workspace?: number | string
   run?: number | string
-  /** The caller's `User-Agent` (MCP is stateless: the only client identity a session sends without being asked). */
   userAgent?: string
-  /** Name of the tool being called; recorded as the Run's `last_lease_call`. */
   tool?: string
-  /** The connected agent session of the call (its `sessionId` argument), resolved by `callTool`. */
   session?: Doc
 }
 export interface Tool {
   name: string
   description: string
   inputSchema: { type: 'object'; properties: Record<string, unknown>; required?: string[] }
-  /** Required, no default: `callTool` lets an agent key call only `'agent'` tools; owner decisions (gates) are `'human'`. */
   access: 'agent' | 'human'
   run: (a: any, c: Ctx) => Promise<unknown>
 }
@@ -70,14 +64,12 @@ const scoped = (c: Ctx) => scopedUser(c.user)
 
 const sha256 = (v: string): string => createHash('sha256').update(v).digest('hex')
 
-/** True when `token` hashes to the Run's `leaseHash`. */
 const holdsLease = (run: Doc, token: unknown): boolean => {
   if (typeof token !== 'string' || typeof run.leaseHash !== 'string') return false
   const [a, b] = [Buffer.from(sha256(token)), Buffer.from(run.leaseHash)]
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
-/** The live lease: session Run still running, `leaseToken` valid and the last heartbeat younger than SESSION_TIMEOUT_MS. */
 const assertLease = (run: Doc, a: { leaseToken?: unknown }): void => {
   if (run.mode !== 'session') throw new Error(`run ${run.id} is not a session Run`)
   if (run.status !== 'running') throw new Error(`lease lost: run ${run.id} is ${run.status}`)
@@ -87,11 +79,6 @@ const assertLease = (run: Doc, a: { leaseToken?: unknown }): void => {
 
 const U = sql`"updated_at" = now()`
 
-/**
- * Applies `set` to the Run only while it is still running, holds `token` and its heartbeat is fresh (one conditional UPDATE); else `lease lost`.
- * Every successful call also renews the lease (`heartbeat_at = now()`, unless `renew` is false because `set` clears it) and returns the new `leaseExpiresAt` (ISO).
- * A wrong token or an expired lease matches no row, so it never renews.
- */
 const renewLease = async (c: Ctx, run: Doc, token: unknown, set: ReturnType<typeof sql> = U, renew = true): Promise<string> => {
   const beat = renew ? sql`"heartbeat_at" = now(), ` : sql``
   const r = await c.payload.db.drizzle.execute(
@@ -105,7 +92,6 @@ const ownerWrite = renewLease
 const FINDING_ITEM = { type: 'object', properties: { severity: { enum: ['high', 'medium', 'low'] }, class: { enum: ['correctness', 'wrong-results', 'data-loss', 'security', 'rule', 'plan', 'low', 'pre-existing'] }, test: { type: 'object', properties: { command: { type: 'string', maxLength: 1000 }, failure: { type: 'string', maxLength: 1000 }, patch: { type: 'string', maxLength: 4000 } }, required: ['command', 'failure'] }, file: { type: 'string', pattern: FILE_PATTERN }, line: { type: 'integer', minimum: 0 }, slice: { type: 'integer', minimum: 1, description: 'Epic review: the Ticket number of the slice the finding belongs to; required on every finding of a changes verdict for an epic' }, msg: { type: 'string', maxLength: 1000 }, scenario: { type: 'string', maxLength: 1000 } }, required: ['severity', 'class', 'file', 'line', 'msg', 'scenario'] }
 const OPEN_ITEM = { type: 'object', properties: { text: { type: 'string', maxLength: 1000 }, reason: { enum: ['no-failing-test', 'constructed-input', 'out-of-round-scope', 'no-evidence'] } }, required: ['text', 'reason'] }
 
-/** Loads a Run in the caller's Workspace; `own` additionally requires the live lease. */
 const getRun = async (c: Ctx, runId: number | string, own?: { leaseToken?: unknown }): Promise<Doc> => {
   const run = (await c.payload.findByID({ collection: 'runs', id: runId, ...scoped(c), showHiddenFields: true })) as Doc
   c.workspace = id(run.workspace)
@@ -142,7 +128,6 @@ const ticketId = { ticket: { type: ['number', 'string'], description: 'Ticket id
 
 const clientArgs = { client: str('What you are: client name/version, e.g. claude-code/2.1'), model: str('What you are: model id'), provider: str('What you are: provider') }
 
-/** Who claims: client name and version from `client` (else the `User-Agent`), model and provider as told. */
 const clientOf = (a: { client?: unknown; model?: unknown; provider?: unknown }, c: Ctx) => {
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, 100) : null)
   const s = c.session
@@ -152,14 +137,12 @@ const clientOf = (a: { client?: unknown; model?: unknown; provider?: unknown }, 
 
 class ClaimLost extends Error {}
 
-/** The caller's session label, or null when it sent none (such a session is never skipped). */
 const labelOf = (a: { session?: unknown }): string | null => {
   if (a.session == null) return null
   if (typeof a.session !== 'string' || a.session.length > 64) throw new Error('session must be a string of at most 64 characters')
   return a.session.trim() || null
 }
 
-/** The stages the caller works, or null for all (no or empty `stages`). */
 const stagesOf = (a: { stages?: unknown }, c: Ctx): string[] | null => {
   if (a.stages == null) return null
   if (!Array.isArray(a.stages)) throw new Error('stages must be an array')
@@ -169,7 +152,6 @@ const stagesOf = (a: { stages?: unknown }, c: Ctx): string[] | null => {
   return a.stages.length ? a.stages : null
 }
 
-/** What a session needs to work an `agent` stage: its skill, the role's profile and the outcome keys it may report. */
 const agentBrief = (wf: Workflow, run: Doc) => {
   const def = stageDef(wf, run.stage)!
   const job = jobOf(def, run)!
@@ -177,10 +159,8 @@ const agentBrief = (wf: Workflow, run: Doc) => {
   return { stage: def.name, title: def.title, ...(run.job && { job: run.job }), skill: job.skill, role: role && { id: role.id, title: role.title, profile: role.profile ?? '' }, outcomes: job.outcomeOrder, reads: 'get_ticket, read_worklog, load_skill; no push, no MR, no approval tools' }
 }
 
-/** The GitHub login a session Run assigns on the Ticket. */
 const sessionLogin = (c: Ctx): string | undefined => (c.user.githubLogin as string | undefined) ?? process.env.BAUHERR_BOT_LOGIN
 
-/** The `slices` of an epic parent: one row per planned slice (`number` null until its Ticket exists). */
 const slicesOf = async (c: Ctx, parent: Doc) => {
   const planned = (parent.epic as EpicField).slices
   const ids = planned.flatMap((s) => (s.ticket ? [s.ticket] : []))
@@ -192,7 +172,6 @@ const slicesOf = async (c: Ctx, parent: Doc) => {
   })
 }
 
-/** Epic context of a slice sub-ticket (its parent's branch, position and worklog) or of an epic parent (branch and slices); null for every other Ticket. */
 const epicContext = async (c: Ctx, t: Doc) => {
   if (t.slice) {
     const slice = t.slice as SliceField
@@ -202,14 +181,12 @@ const epicContext = async (c: Ctx, t: Doc) => {
   return t.epic ? { branch: (t.epic as EpicField).branch, slices: await slicesOf(c, t) } : null
 }
 
-/** Claims an awaiting_session Run for the caller and returns the `claim_run` payload; `ClaimLost` when another claimer won. */
 const claimRun = async (c: Ctx, runId: number | string, label: string | null = null, stages: string[] | null = null, who: ReturnType<typeof clientOf> = clientOf({}, c)) => {
   const run = await getRun(c, runId)
   const wf = workflowFor(run.workspace)
   const kind = kindOfRun(wf, run)
   const notClaimable = `run ${run.id} is ${run.mode}/${run.status}, not awaiting_session`
   if (run.mode !== 'session' || run.stage === 'scan' || run.stage === 'docs') throw new Error(notClaimable)
-  // A session already holds it: the loser of a claim race gets the same message whether it read before or after the winner committed.
   if (run.status === 'running') throw new ClaimLost(`run ${run.id} was claimed by someone else`)
   if (run.status !== 'awaiting_session') throw new ClaimLost(notClaimable)
   const ticket = await getTicket(c, id(run.ticket))
@@ -226,7 +203,6 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
   const body = (await ts.get(n)).body
   const statements = await goalFor(c.payload, ticket, body, kind as GoalStage)
   const leaseToken = randomBytes(32).toString('base64url')
-  // Single conditional UPDATE (goal included): Payload's update-by-where is find-then-update and lets two claimers both win.
   const claimed = await c.payload.db.drizzle.execute(
     sql`UPDATE "runs" SET "status" = 'running', "session_owner_id" = ${c.user.id}, "agent_key_id" = ${c.actor.kind === 'agent' ? c.actor.keyId : null}, "session_label" = ${label}, "lease_hash" = ${sha256(leaseToken)}, "heartbeat_at" = now(), "last_lease_call" = ${c.tool ?? null}, "started_at" = now(), "executor" = 'session', "client_name" = ${who.name}, "client_version" = ${who.version}, "model" = COALESCE(${who.model}, "model"), "provider" = COALESCE(${who.provider}, "provider"), "session_id" = ${c.session?.id ?? null}, "preempted_for" = NULL, "preempt_at" = NULL, "reason_kind" = NULL, "role" = COALESCE(${c.session?.role ?? null}, "role"), "goal" = ${JSON.stringify({ statements })}::jsonb, ${U} WHERE "id" = ${run.id} AND "workspace_id" = ${id(run.workspace)} AND "status" = 'awaiting_session' RETURNING "id"`,
   )
@@ -242,7 +218,6 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
     }
   }
   await record(c.payload, id(run.ticket), { run: run.id, actor: c.session ? `${label} (${c.session.role})` : (label ?? c.user.email), cause: 'run:claimed' })
-  // Triage and Review Runs read text others wrote: hand it over fenced as data (the stored Goal stays plain).
   const fence = kind === 'triage' || kind === 'review' || kind === 'agent'
   const shown = fence ? { title: untrustedBlock(ticket.title), body: untrustedBlock(body) } : { title: ticket.title, body }
   const skipped = await skippedBefore(c, ticket, label, stages)
@@ -257,7 +232,6 @@ const claimRun = async (c: Ctx, runId: number | string, label: string | null = n
 
 type Frontier = { open: Doc[]; latest: Map<unknown, Doc>; all: Doc[]; builders: Map<unknown, string | null>; claimable: Map<unknown, Doc[]> }
 
-/** Open, unblocked, non-parent Tickets in frontier order with their latest Run; `all` also holds the blocked ones (for skip reasons). `stages` keeps only Tickets whose latest Run (else the Ticket) is in one of them. */
 const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = null): Promise<Frontier | null> => {
   const product = productSlug
     ? (await c.payload.find({ collection: 'products', where: { slug: { equals: productSlug } }, limit: 1, ...scoped(c) })).docs[0]
@@ -299,7 +273,6 @@ const frontier = async (c: Ctx, productSlug?: string, stages: string[] | null = 
 
 const openBlockers = (t: Doc): Doc[] => ((t.blockedBy as Doc[]) ?? []).filter((b) => b.state === 'open')
 
-/** Names of the sessions holding a lease in `latest`, by user id. */
 const leaseOwners = async (c: Ctx, latest: Map<unknown, Doc>): Promise<Map<unknown, string>> => {
   const leases = [...latest.values()].filter((r) => r.status === 'running' && r.mode === 'session')
   return new Map<unknown, string>(
@@ -307,10 +280,8 @@ const leaseOwners = async (c: Ctx, latest: Map<unknown, Doc>): Promise<Map<unkno
   )
 }
 
-/** Any Run of the review stage (the review Run and its Jobs) of a Ticket whose latest Build Run came from the caller's own (non-empty) session label. */
 const isOwnBuild = (t: Doc, f: Frontier, label: string | null): boolean => !!label && !!f.claimable.get(t.id)?.length && is(workflowFor(t.workspace), t.stage, 'review') && f.builders.get(t.id) === label
 
-/** Why `t` cannot be claimed right now, or null when it can. */
 const skipReason = (t: Doc, f: Frontier, owners: Map<unknown, string>, label: string | null): string | null => {
   const latest = f.latest
   const blockers = openBlockers(t)
@@ -321,7 +292,6 @@ const skipReason = (t: Doc, f: Frontier, owners: Map<unknown, string>, label: st
   return 'no claimable Run'
 }
 
-/** The Tickets ahead of `claimed` in the pull order that could not be claimed, with the reason. */
 const skippedBefore = async (c: Ctx, claimed: Doc, label: string | null, stages: string[] | null) => {
   const f = await frontier(c, undefined, stages)
   if (!f) return []
@@ -337,7 +307,6 @@ const skippedBefore = async (c: Ctx, claimed: Doc, label: string | null, stages:
 
 const isClaimable = (r?: Doc): boolean => r?.mode === 'session' && r.status === 'awaiting_session' && r.stage !== 'scan' && r.stage !== 'docs'
 
-/** Runs `claim_next` could not claim (non-ClaimLost error), by id with the time: `claim_run` does not hold others back behind them for 5 minutes. In-memory, per server process. */
 const failedClaims = new Map<string, number>()
 const FAILED_CLAIM_MS = 5 * 60_000
 const recentlyFailed = (r: Doc): boolean => Date.now() - (failedClaims.get(String(r.id)) ?? 0) < FAILED_CLAIM_MS
@@ -738,7 +707,6 @@ export const tools: Tool[] = [
       if (mine) assertLease(run, a)
       if (run.mode !== 'session' || !(run.status === 'awaiting_session' || mine)) throw new Error(`run ${run.id} is not releasable`)
       const auto = a.takeover === 'autonomous'
-      // A release while marked is recorded as preempted too: the Run keeps `preempted_by` (it resumes first) and never counts as a failure.
       const marked = mine && run.preemptAt ? sql`"reason_kind" = 'preempted', "preempt_at" = NULL, ` : sql``
       const reset = sql`"session_owner_id" = NULL, "agent_key_id" = NULL, "lease_hash" = NULL, "heartbeat_at" = NULL, ${marked}${auto ? sql`"mode" = 'autonomous', "status" = 'queued'` : sql`"status" = 'awaiting_session'`}, ${U}`
       if (mine) {
@@ -838,7 +806,6 @@ export const tools: Tool[] = [
       if (typeof a.reason !== 'string' || !a.reason.trim()) throw new Error('reason required')
       const dead = (await deadTickets(c.payload, id(t.workspace))).find((d) => d.ticket.id === t.id)
       if (!dead || !AGENT_REPAIRED.includes(dead.cause)) throw new Error(`ticket ${t.number} is not dead for a mechanical cause; nothing to repair`)
-      // The agent's own words stay out of the next Run's instructions (owner-level text); the tool call keeps them in the audit digest.
       return { outcome: await sendBackToBuild(c.payload, t, `Sent back to Build by an agent: ${dead.cause === 'mr-missing' ? 'the MR was closed' : 'checks are red on the MR'}.`) }
     },
   },
@@ -903,7 +870,6 @@ export const tools: Tool[] = [
       if (!/^[\w-]+$/.test(a.name)) throw new Error('invalid skill name')
       const ws = c.workspace ?? tenantsOf(c.user)[0]
       const tpls = ws === undefined ? [] : await Promise.all((SKILL_TEMPLATES[a.name] ?? []).map((n) => template(c.payload, ws, n)))
-      // MCP is the session channel: a skill with mode parts gets its session part, never the autonomous one (the Runner appends that one to the skill it materialises).
       const session = existsSync(resolve(PACK(), 'skills', a.name, 'session.md')) ? [packFile(`skills/${a.name}/session.md`)] : []
       return [packFile(`skills/${a.name}/SKILL.md`), ...session, ...tpls.map((t) => templateBlock(t))].join('\n\n')
     },
@@ -960,24 +926,19 @@ export const tools: Tool[] = [
   },
 ]
 
-/** Tools of a human decision on one Ticket. */
 const DECIDES = new Set(['approve', 'accept_staging', 'approve_production', 'return_to_build', 'release_fast_lane', 'grant_review_round', 'stop_review', 'request_changes', 'send_back'])
 
 const SESSION_ID_ARG = { type: 'string', description: 'Your sessionId from connect: keeps your session present and attributes the Run to it.' }
-// Every agent tool but connect takes an optional sessionId; wrapping the schema keeps the tools above untouched.
 for (const t of tools.filter((x) => x.access === 'agent' && x.name !== 'connect')) {
   const d = Object.getOwnPropertyDescriptor(t, 'inputSchema')!
   Object.defineProperty(t, 'inputSchema', { enumerable: true, configurable: true, get: () => { const base = d.get ? d.get.call(t) : d.value; return { ...base, properties: { sessionId: SESSION_ID_ARG, ...base.properties } } } })
 }
 
-/** Tools after which the Run is over: the session's span ends at this call. */
 const RUN_ENDING = ['finish_run', 'submit_review', 'submit_triage', 'release_run']
 
-/** Input digest: argument names plus a hash; raw payloads are never stored. */
 export const digest = (input: unknown): string =>
   `${Object.keys((input as object) ?? {}).join(',')} sha256:${createHash('sha256').update(JSON.stringify(input ?? {})).digest('hex').slice(0, 16)}`
 
-/** The one place `preempt` joins an answer: every answer to a session whose Run a hotfix marked carries it, whatever the tool. */
 const withPreempt = async (c: Ctx, name: string, out: unknown): Promise<unknown> => {
   if (!c.session || name === 'disconnect' || !out || typeof out !== 'object' || Array.isArray(out)) return out
   try {
@@ -989,7 +950,6 @@ const withPreempt = async (c: Ctx, name: string, out: unknown): Promise<unknown>
   }
 }
 
-/** Runs a tool and records the tool_calls row (skipped when no Workspace is known). */
 export const callTool = async (c: Ctx, name: string, input: unknown): Promise<unknown> => {
   const tool = tools.find((t) => t.name === name)
   if (!tool) throw new Error(`unknown tool ${name}`)
@@ -1003,7 +963,6 @@ export const callTool = async (c: Ctx, name: string, input: unknown): Promise<un
     if (sessionId !== undefined && name !== 'connect') c.session = await sessions.resolve(c, sessionId, name === 'disconnect')
     const out = await tool.run(input ?? {}, c)
     ok = true
-    // A decision taken here (chat, MCP) closes the Ticket's Inbox card at once, as in the UI.
     const ticket = (input as { ticket?: number | string } | null)?.ticket
     if (DECIDES.has(name) && ticket !== undefined) await settleDecision(c.payload, ticket)
     return await withPreempt(c, name, out)

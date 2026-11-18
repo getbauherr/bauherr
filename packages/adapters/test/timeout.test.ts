@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 import { appAuth, GithubBackend, GitlabBackend, gitlabPat, patAuth } from '../src/index.js';
 
-/** A forge that never answers but honours the abort signal. */
 const hang: typeof fetch = (_url, init) =>
   new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)));
 

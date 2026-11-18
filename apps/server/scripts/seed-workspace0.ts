@@ -16,7 +16,6 @@ const anthropicKey = process.env.ANTHROPIC_API_KEY_FILE ? readFileSync(process.e
 const payload = await getPayload({ config })
 const o = { overrideAccess: true } as const
 
-/** Find by `where` or create. */
 const ensure = async (collection: string, where: Record<string, unknown>, data: Record<string, unknown>) => {
   const found = await payload.find({ collection, where: where as never, limit: 1, depth: 0, ...o })
   return found.docs[0] ?? (await payload.create({ collection, data: data as never, ...o }))
@@ -29,10 +28,8 @@ const admin = await ensure('bauherren', eq({ email: env('BAUHERR_ADMIN_EMAIL') }
   password: adminPassword,
   role: 'admin',
 })
-// ensure() never touches an existing user; re-seeding is how the password is reset.
 await payload.update({ collection: 'bauherren', id: admin.id, data: { password: adminPassword, role: 'admin' }, ...o })
 
-// MCP connect: an agent key for the Admin lets the owner's Claude Code session reach /mcp (it cannot approve gates). A key file asked for replaces the previous 'seed' key (no accumulation); never printed.
 if (process.env.BAUHERR_MCP_KEY_FILE) await writeSecretFile(process.env.BAUHERR_MCP_KEY_FILE, await replaceAgentKey(payload, admin, 'seed'))
 
 const ws = await ensure('workspaces', eq({ slug: 'getbauherr' }), { name: 'getbauherr', slug: 'getbauherr' })
@@ -49,13 +46,10 @@ const github = await scoped('connections', { name: 'github' }, {
 })
 await scoped('connections', { name: 'anthropic' }, { kind: 'llm-provider', config: { provider: 'anthropic' }, secret: anthropicKey })
 const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr', productionGate: true, productionChecks: 'production', releaseMode: 'factory', releasePrerelease: true, releaseChecks: 'image, npm' })
-// ensure() never updates an existing Product: set the check `production.yml` reports once, never overwrite a changed value.
 if (!product.productionChecks) await payload.update({ collection: 'products', id: product.id, data: { productionGate: true, productionChecks: 'production' }, ...o })
-// Same for the release: pre-releases v0.1.0-rc.N, the factory waits for the `image` and `npm` jobs of release.yml.
 if (!product.releaseChecks) await payload.update({ collection: 'products', id: product.id, data: { releaseMode: 'factory', releasePrerelease: true, releaseChecks: 'image, npm' }, ...o })
 await scoped('repositories', { fullName: 'getbauherr/bauherr' }, { product: product.id })
 await scoped('ticket_sources', { repo: 'getbauherr/bauherr', product: product.id }, { connection: github.id })
-// The shipped factory file is the Workspace's first version; a re-seed never overwrites an applied one.
 if (!(await activeVersion(payload, Number(workspace)))) await applyFactory(payload, Number(workspace), packSource(), { by: 'seed', via: 'seed' })
 
 const smoke = process.env.BAUHERR_SMOKE_REPO

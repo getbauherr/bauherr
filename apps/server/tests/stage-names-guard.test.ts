@@ -6,14 +6,12 @@ import { expect, it } from 'vitest'
 const root = fileURLToPath(new URL('../../..', import.meta.url))
 const roots = [join(root, 'apps/server/src'), join(root, 'packages/runner/src')]
 const N = '(triage|plan|parent|build|review|release|done)'
-/** A quoted default stage NAME used as a stage: a comparison, a `stage:` value or filter, a `moveStage` target, a `waitingFor` value (a union type of gate names, `stage: 'plan' | 'release'`, is not one). Kinds, triage outcomes, human gates and labels are not stage names and do not match. */
 const PATTERNS = [
   new RegExp(`\\.stage\\s*[!=]==?\\s*'${N}'`),
   new RegExp(`stage:\\s*(\\{\\s*equals:\\s*)?'${N}'(?!\\s*\\|)`),
   new RegExp(`moveStage\\([^()]*,\\s*'${N}'`),
   /waitingFor:\s*'(plan|build|review|release)'/,
 ]
-/** Files allowed to name a default stage, each with the reason. */
 const ALLOWED: Record<string, string> = {
   'apps/server/src/lib/workflow.ts': 'the one module that derives stage names',
   'apps/server/src/lib/stage-text.ts': 'maps stage names to kinds for text columns',

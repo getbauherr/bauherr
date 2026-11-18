@@ -13,10 +13,8 @@ const PACK = () => resolve(process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd()
 const CHUNK_CHARS = 3200
 const id = (v: unknown): number => Number(v && typeof v === 'object' ? (v as { id: number }).id : v)
 
-/** One hit of a search: where the text lives and the commit it was indexed at. */
 export interface Citation { source: string; path: string; heading: string; commit: string; text: string }
 
-/** Splits a document into chunks of whole lines at headings (markdown only) and at ~800 tokens; concatenated they reproduce the document. */
 export const chunk = (text: string, markdown = true): { heading: string; text: string }[] => {
   const out: { heading: string; text: string }[] = []
   let heading = ''
@@ -37,7 +35,6 @@ export const chunk = (text: string, markdown = true): { heading: string; text: s
   return out
 }
 
-/** Where a path of a source sits in the resolution order core -> workspace -> product; `logical` is the path without the layer prefix. Docs of a Product's own repo (`repoProduct` = its slug) are product layer under `repo-docs/`. */
 export const layerOf = (path: string, core = false, repoProduct?: string): { layer: Layer; logical: string; product: string | null } => {
   if (core) return { layer: 'core', logical: path, product: null }
   if (repoProduct) return { layer: 'product', logical: `repo-docs/${path}`, product: repoProduct }
@@ -46,7 +43,6 @@ export const layerOf = (path: string, core = false, repoProduct?: string): { lay
   return { layer: 'workspace', logical: path.replace(/^workspace\//, ''), product: null }
 }
 
-/** The repo a source key belongs to: Product sources are `<repo>#<product id>` so Products on one repo never share chunks. */
 export const repoOf = (source: string): string => source.split('#')[0]!
 
 const isMd = (path: string) => /\.md$/.test(path)
@@ -85,7 +81,6 @@ const save = async (payload: Payload, workspace: number, indexed: Record<string,
 
 const DOCS = /^(README\.md|docs\/.*\.md)$/
 
-/** Re-indexes the core pack (when its content changed), the Knowledge repo and each Product's README.md + docs/**\/*.md (when the default-branch commit changed); a repo that fails keeps its old index and is not retried for 10 minutes; chunks of any other repo are dropped. Returns whether anything was indexed. */
 export const resync = async (payload: Payload, workspaceId: number | string): Promise<boolean> => {
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspaceId, depth: 0, overrideAccess: true })) as Doc
   const indexed: Record<string, string> = { ...ws.knowledgeIndexed }
@@ -168,7 +163,6 @@ const visible = (alias: string, product?: string) => sql`(${sql.raw(alias)}."lay
 const rank = (alias: string) => sql.raw(`CASE ${alias}."layer" WHEN 'product' THEN 2 WHEN 'workspace' THEN 1 ELSE 0 END`)
 const vector = sql`to_tsvector('simple', coalesce(c."heading", '') || ' ' || coalesce(c."text", ''))`
 
-/** Full-text search over the Workspace's index. Layers resolve core -> workspace -> product (the reader's `product` slug); `excludeCore` drops the core pack before the limit; a document shadowed by a later layer at the same logical path is not returned. */
 export const search = async (payload: Payload, workspace: number | string, q: string, limit = 20, product?: string, excludeCore = false): Promise<Citation[]> => {
   const ws = id(workspace)
   await indexedOnce(payload, ws)
@@ -185,7 +179,6 @@ export const search = async (payload: Payload, workspace: number | string, q: st
   return r.rows as unknown as Citation[]
 }
 
-/** A document by logical path (`rules/evidence.md`): the highest visible layer wins. Null when the index has none. */
 export const read = async (payload: Payload, workspace: number | string, path: string, product?: string): Promise<{ source: string; text: string } | null> => {
   const ws = id(workspace)
   await indexedOnce(payload, ws)
@@ -199,7 +192,6 @@ export const read = async (payload: Payload, workspace: number | string, path: s
   return r.rows.length ? { source: (r.rows[0] as any).source, text: r.rows.map((x: any) => x.text).join('') } : null
 }
 
-/** Markdown documents of the Workspace's index, per source (core pack first), with the commit they were indexed at. */
 export const documents = async (payload: Payload, workspace: number | string): Promise<{ source: string; path: string; commit: string; heading: string }[]> => {
   const ws = id(workspace)
   await indexedOnce(payload, ws)
@@ -211,7 +203,6 @@ export const documents = async (payload: Payload, workspace: number | string): P
   return r.rows as unknown as { source: string; path: string; commit: string; heading: string }[]
 }
 
-/** One document by its source and full path (no layer resolution); null when the index has none. */
 export const readDocument = async (payload: Payload, workspace: number | string, source: string, path: string): Promise<string | null> => {
   const r = await payload.db.drizzle.execute(sql`
     SELECT "text" FROM "knowledge_chunks" WHERE "workspace_id" = ${id(workspace)} AND "source" = ${source} AND "path" = ${path} ORDER BY "id"`)

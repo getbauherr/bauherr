@@ -19,7 +19,6 @@ let needs: typeof import('../src/lib/needs-you')
 const o = { overrideAccess: true } as const
 const repo = 'acme/web'
 
-/** `undefined` = the real pack/workflow.yaml. */
 const usePack = (name?: 'gated-pack' | 'bare-pack') => {
   if (name) process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
   else delete process.env.BAUHERR_PACK_DIR
@@ -65,7 +64,6 @@ const PLAN = '## Goal\n- Ship it\n\n## Steps\n1. Do it'
 const CRITICAL = `${PLAN}\n\n## Decisions\n- **D1 Storage, critical**. Default: postgres. Alternative: files.`
 const SUBS = `${PLAN}\n\n## Sub-tickets\n- **Part A** — first.\n- **Part B** — second.\n`
 
-/** A plan Ticket whose plan Run succeeded and whose plan Comment is posted. */
 const planTicket = async (title: string, markdown = PLAN) => {
   const issue = await fake.tickets(repo).create({ title, labels: ['bauherr:stage:plan'] })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'plan', labels: ['bauherr:stage:plan'], product, workspace: ws }, ...o })
@@ -74,7 +72,6 @@ const planTicket = async (title: string, markdown = PLAN) => {
   return { id: t.id as number, n: String(issue.number) }
 }
 
-/** A merged Ticket in release, its merge commit green on staging. */
 const releaseTicket = async (title: string) => {
   const issue = await fake.tickets(repo).create({ title, labels: ['bauherr:stage:release'] })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'release', product, workspace: ws, mergeSha: `sha-${issue.number}`, releaseAt: new Date().toISOString(), releaseState: 'waiting' }, ...o })

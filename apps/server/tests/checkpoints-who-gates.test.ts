@@ -21,7 +21,6 @@ const o = { overrideAccess: true } as const
 const REPOS = { a: 'acme/web', b: 'acme/api' }
 let testDb: TestDb
 
-/** `undefined` = the real pack. */
 const usePack = (name?: 'gated-pack' | 'owner-pack') => {
   if (name) process.env.BAUHERR_PACK_DIR = fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url))
   else delete process.env.BAUHERR_PACK_DIR
@@ -67,7 +66,6 @@ const touchesOf = async (ticket: number) => (await payload.find({ collection: 'h
 const product = (p: 'a' | 'b') => (p === 'a' ? productA : productB)
 
 const PLAN = '## Goal\n- Ship it\n\n## Steps\n1. Do it'
-/** A plan Ticket whose plan Run succeeded and whose plan Comment is posted. */
 const planTicket = async (p: 'a' | 'b', title: string, markdown = PLAN) => {
   const issue = await fake.tickets(REPOS[p]).create({ title, labels: ['bauherr:stage:plan'] })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: `${p}${issue.number}`, number: issue.number, url: issue.url, state: 'open', stage: 'plan', labels: ['bauherr:stage:plan'], product: product(p), workspace: ws }, ...o })
@@ -75,7 +73,6 @@ const planTicket = async (p: 'a' | 'b', title: string, markdown = PLAN) => {
   await actions.submitPlan(payload, admin, { ticket: t.id as number, markdown })
   return { id: t.id as number, n: String(issue.number) }
 }
-/** A Ticket on staging (`on_staging`), or waiting for the production approval. */
 const releaseTicket = async (p: 'a' | 'b', title: string, data: Record<string, unknown> = { releaseState: 'on_staging' }) => {
   const issue = await fake.tickets(REPOS[p]).create({ title, labels: ['bauherr:stage:release'] })
   const t = await payload.create({ collection: 'tickets', data: { title, externalId: `${p}${issue.number}`, number: issue.number, url: issue.url, state: 'open', stage: 'release', product: product(p), workspace: ws, mergeSha: `sha-${issue.number}`, releaseAt: new Date().toISOString(), ...data } as never, ...o })
@@ -162,7 +159,6 @@ describe('a gate addressed to the Product owner (owner-pack: plan, staging and t
         refused(actions.approvePlan(payload, po, { ticket: 999_999, ...w })),
       ]),
     ).toEqual(Array(8).fill('NotInWorkspace'))
-    // the other Product owner is the one who may
     await actions.approvePlan(payload, poOther, { ticket: plan.id, workspaceId: ws })
     expect(await labelsOf('b', plan.n)).toContain('bauherr:approved:plan')
     expect(await touchesOf(rel.id)).toEqual([])
@@ -197,14 +193,12 @@ describe('a decision sheet with rows for different people (default: the checkpoi
     expect(all.points.map((p) => [p.id, p.for])).toEqual([['D1', 'bauherr'], ['D2', 'product-owner'], ['D3', 'product-owner']])
     expect(all.models).toHaveLength(3)
 
-    // the Product owner answers theirs through the conversation, and cannot touch the Bauherr's row
     expect((await refine.refineOption(payload, po, { ...w, point: 'D2', option: 0 })).points.map((p) => [p.id, p.status])).toEqual([['D2', 'answered'], ['D3', 'open']])
     await expect(refine.refineOption(payload, po, { ...w, point: 'D1', option: 0 })).rejects.toThrow('unknown point')
     await expect(refine.refineModel(payload, po, { ...w, tier: 'strong' })).rejects.toThrow()
     expect(await refused(actions.postDecisions(payload, po, { ...w, answers: [{ id: 'D1', title: 'Pricing', answer: 'free' }] }))).toBe('NotAddressed')
     expect(await refused(actions.postDecisions(payload, po, { ...w, answers: [], reopen: ['D1'] }))).toBe('NotAddressed')
     expect(await refused(actions.postDecisions(payload, po, { ...w, answers: [], added: [{ id: 'D9', title: 'Budget?', critical: true, default: 'x', options: ['x'], for: 'bauherr' }] }))).toBe('NotAddressed')
-    // the row the Bauherr has not answered holds sending: critical points stay open for everyone
     await expect(actions.finishRefinement(payload, po, w)).rejects.toThrow('Answer the critical points first: D1')
     await actions.postDecisions(payload, bauherr, { ...w, answers: [{ id: 'D1', title: 'Pricing', answer: 'free' }] })
     expect((await refine.loadRefine(payload, bauherr, w))!.points.map((p) => p.status)).toEqual(['answered', 'answered', 'open'])
@@ -238,7 +232,6 @@ describe('the gate sweep says who is asked, and the Inbox follows', () => {
     expect((await reload(a.id)).needsYou).toBe('Approve plan')
     expect((await reload(aStaging.id)).needsYou).toBe('Accept on staging')
 
-    // the forge notice mentions the Product owner's login where it asks them, the gate owners (Admin) where it asks the Bauherr
     const notice = async (p: 'a' | 'b', n: string) => (await fake.tickets(REPOS[p]).listComments(n)).find((c) => c.body.startsWith('<!-- bauherr:gate:'))?.body ?? ''
     expect(await notice('a', a.n)).toContain('@the-po')
     expect(await notice('a', a.n)).not.toContain('@the-admin')
@@ -333,14 +326,12 @@ describe('rows for the Product owner on a checkpoint that asks the Bauherr (gate
       expect(await ids(poOther)).toEqual(expect.arrayContaining([b.id]))
       expect(await ids(poOther)).not.toContain(a.id)
       expect(await ids(bauherr)).toEqual(expect.arrayContaining([a.id, none.id, b.id]))
-      // the badge: the same `where` as the layout's count
       const { asksOwner } = await import('../src/lib/addressee')
       const { productScope } = await import('../src/lib/people')
       const badge = (u: Record<string, any>) => payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: ws } }, { state: { equals: 'open' } }, { needsYou: { exists: true } }, asksOwner, productScope(u, ws)] }, ...o }).then((r) => r.totalDocs)
       const [before, beforeOther] = [await badge(po), await badge(poOther)]
       expect(before).toBe((await ids(po)).length)
       expect(beforeOther).toBe((await ids(poOther)).length)
-      // answering the row takes the Ticket out again
       const refine = await import('../src/lib/refine/engine')
       await refine.refineOption(payload, po, { ticket: a.id, workspaceId: ws, point: 'D2', option: 0 })
       expect((await reload(a.id)).openOwnerRows).toBe(0)
@@ -348,7 +339,6 @@ describe('rows for the Product owner on a checkpoint that asks the Bauherr (gate
       expect(await ids(po)).not.toContain(a.id)
       expect(await badge(po)).toBe(before - 1)
 
-      // the typed turn route follows the same rule as the other refine actions: rows addressed to the person, not the checkpoint's addressee
       const again = await held('a', 'rows A again')
       expect(await refine.hasRows(payload, po, { ticket: again.id, workspaceId: ws })).toBe(true)
       expect(await refine.hasRows(payload, po, { ticket: none.id, workspaceId: ws })).toBe(false)

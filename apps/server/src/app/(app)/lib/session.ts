@@ -19,7 +19,6 @@ export const payloadClient = async () => {
   return payload
 }
 
-/** The signed-in account of any role: a Product owner too. Use it only where a page or action is open to both. */
 export const getPerson = cache(async (): Promise<Person | null> => {
   const { user } = await (await payloadClient()).auth({ headers: await headers() })
   return user as Person | null
@@ -27,24 +26,20 @@ export const getPerson = cache(async (): Promise<Person | null> => {
 
 export const requirePerson = async (): Promise<Person> => (await getPerson()) ?? redirect('/login')
 
-/** The signed-in Admin or Bauherr; null for a Product owner, whose every page, action and route built on this stays closed. */
 export const getBauherr = cache(async (): Promise<Bauherr | null> => {
   const person = await getPerson()
   return isBauherr(person) ? (person as Bauherr) : null
 })
 
-/** Redirects to /login without a session; a Product owner gets a 404 (the page does not exist for them). */
 export const requireBauherr = async (): Promise<Bauherr> => {
   const person = await requirePerson()
   return isProductOwner(person) || !isBauherr(person) ? notFound() : (person as Bauherr)
 }
 
-/** Remembers (or with null clears) the Board/Runs epic filter of the acting Bauherr. */
 export const rememberEpic = async (user: Bauherr, epic: number | null): Promise<void> => {
   await (await payloadClient()).update({ collection: 'bauherren', id: user.id, data: { uiPrefs: { ...user.uiPrefs, epic } }, overrideAccess: true, depth: 0 })
 }
 
-/** Admin: all Workspaces; a Bauherr those in their `tenants`; a Product owner those they have an assignment in. */
 export const workspacesOf = cache(async (user: Person): Promise<Workspace[]> => {
   const payload = await payloadClient()
   const ids = (user.tenants ?? []).map((t) => (typeof t.tenant === 'object' ? t.tenant?.id : t.tenant)).filter((id) => id != null)
@@ -60,7 +55,6 @@ export const workspacesOf = cache(async (user: Person): Promise<Workspace[]> => 
   return (docs as unknown as Workspace[]).filter((w) => !isProductOwner(user) || assignmentOf(user, w.id))
 })
 
-/** Selected Workspace (cookie slug), falling back to the first; null when the Bauherr has none. */
 export const currentWorkspace = async (): Promise<{ user: Bauherr; workspace: Workspace | null; workspaces: Workspace[] }> => {
   const user = await requireBauherr()
   const workspaces = await workspacesOf(user)
@@ -68,7 +62,6 @@ export const currentWorkspace = async (): Promise<{ user: Bauherr; workspace: Wo
   return { user, workspaces, workspace: workspaces.find((w) => w.slug === slug) ?? workspaces[0] ?? null }
 }
 
-/** Like `currentWorkspace`, for the pages and actions open to a Product owner too: their Workspace is one they are assigned in (the cookie's, else the first). */
 export const currentPersonWorkspace = async (): Promise<{ user: Person; workspace: Workspace | null; workspaces: Workspace[] }> => {
   const user = await requirePerson()
   if (!isBauherr(user) && !isProductOwner(user)) notFound()

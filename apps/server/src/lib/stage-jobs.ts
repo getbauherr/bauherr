@@ -15,14 +15,12 @@ type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 const STOPPED = ['needs_human', 'failed', 'budget_exhausted']
 
-/** The `job`, `kind` and `role` a Run of an explicit Job is created with; empty for a stage's own Job. */
 export const jobExtra = (run: Doc): Record<string, unknown> => {
   if (!run.job) return {}
   const role = jobOf(stageDef(workflowFor(run.workspace), run.stage)!, run)?.role
   return { job: run.job, kind: 'agent', ...(role && { role }) }
 }
 
-/** The Run to show for a visit: of each Job's latest Run (`runs` newest first), one that stopped for a human, else the newest. */
 export const worstRun = (runs: Doc[]): Doc | undefined => {
   const latest = [...new Map([...runs].reverse().map((r) => [r.job ?? null, r])).values()]
   return latest.find((r) => STOPPED.includes(r.status)) ?? runs[0]
@@ -57,7 +55,6 @@ const served = (job: string, found: Finding[], open: OpenItem[]): Candidates[num
   return kept
 }
 
-/** The findings and open items of the latest succeeded Run of each Job `run` needs, in this visit of the stage; a review stage's Jobs report them, the Jobs that need them read them. */
 export const candidatesOf = async (payload: Payload, t: Doc, run: Doc): Promise<Candidates> => {
   const def = stageDef(workflowFor(t.workspace), run.stage)
   const needs = (def && jobOf(def, run)?.needs) ?? []
@@ -84,7 +81,6 @@ const closeAndAdvance = async (payload: Payload, t: Doc, to: string, claim: Retu
 
 const blockedClaim = (stage: string, run: number) => sql`"stage" = ${stage} AND ("stage_since" IS NULL OR "stage_since" <= (SELECT "created_at" FROM "runs" WHERE "id" = ${run}))`
 
-/** Whether a plan stage's extra Jobs (the agent Jobs besides its own Run, e.g. the agent-experience scan) or a release stage's Jobs (the staging walk) are not all done in this visit; the plan cannot be approved or advance, and staging cannot be accepted, meanwhile. */
 export const jobsOpen = async (payload: Payload, t: Doc): Promise<boolean> => {
   const def = stageDef(workflowFor(t.workspace), t.stage)
   if ((def?.kind !== 'plan' && def?.kind !== 'release') || !def.jobs) return false
@@ -92,11 +88,6 @@ export const jobsOpen = async (payload: Payload, t: Doc): Promise<boolean> => {
   return def.jobs.some((j) => j.id !== def.name && !skipped.has(j.id) && !runs.some((r) => r.job === j.id && r.status === 'succeeded' && r.outcome))
 }
 
-/**
- * Starts every Job of the Ticket's stage that is ready (all `needs` done or skipped, `when` matching) and has no Run in this visit; a Job whose `when` does not match is skipped and recorded.
- * A Job is done when its Run succeeded with an outcome that maps to `done`. A blocking Job whose recorded outcome maps to a stage outcome applies it (the recovery of a `finishJob` that did not finish).
- * When all Jobs are done the stage applies its first outcome; one conditional UPDATE of `stage_since` decides which concurrent caller advances.
- */
 export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<boolean> => {
   const t = (await payload.findByID({ collection: 'tickets', id: ticket.id, ...o })) as Doc
   const def = stageDef(workflowFor(t.workspace), t.stage)
@@ -146,10 +137,6 @@ export const startReadyJobs = async (payload: Payload, ticket: Doc): Promise<boo
   return started
 }
 
-/**
- * The end of a Job Run that reported `outcome` (validated, recorded on the Run): a blocking Job whose outcome is not `done` applies the stage outcome it maps to now and cancels the other live Runs of the stage;
- * anything else only starts the Jobs that became ready. A Run of an earlier visit (the stage was already left) changes nothing.
- */
 export const finishJob = async (payload: Payload, run: Doc, ticket: Doc, outcome: string, note?: string): Promise<void> => {
   const job = jobOf(stageDef(workflowFor(run.workspace), run.stage)!, run)!
   const to = job.outcomes[outcome]!

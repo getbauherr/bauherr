@@ -7,10 +7,6 @@ import { ACCOUNT_LOCKED } from '../../../lib/oidc-session'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/**
- * Usage hook endpoint: `Authorization: Bearer bha_...` (the session's agent key) and the cumulative per-model totals of one Claude Code session.
- * Body: `{ claudeSession, firstAt?, clientKey?, models: { [model]: [input, output, cacheRead, cacheWrite] } }`. Stores the delta since the last report on the Run the session holds (`lib/cost.ts`).
- */
 export const POST = async (req: Request): Promise<Response> => {
   const token = /^Bearer\s+(bha_.+)$/i.exec(req.headers.get('authorization') ?? '')?.[1]
   const payload = await getPayload({ config })

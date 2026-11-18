@@ -9,10 +9,8 @@ type Doc = Record<string, any>
 export type StepRun = {
   id: number
   executor: 'Session' | 'Runner' | 'CI' | null
-  /** Title of the role that worked the Run. */
   role: string | null
   sessionLabel: string | null
-  /** Public id of the agent session (anchor on the Team page). */
   sessionId: string | null
   client: string | null
   model: string | null
@@ -22,17 +20,13 @@ export type StepRun = {
   outcome: string | null
   verdict: string | null
   reason: string | null
-  /** Admin only. */
   cost: string | null
-  /** Admin only: cost and tokens in one short phrase for the compact row. */
   usage: string | null
 }
 export type Step = { id: number; phase: string; label: string; at: string; seconds: number; /** The workflow version the step ran under, only when it is not the one active now. */ workflowVersion: number | null; run: StepRun | null; ci: { provider: string | null; url: string | null } | null; decision: { what: string; actor: string | null } | null; /** "Sent back to <stage> by <person>: <why>" on the step a send back started. */ sentBack: string | null }
 export type Visit = { stage: string; title: string; at: string; seconds: number; steps: Step[]; jobs?: JobRow[] }
-/** One Run of a visit with its phases in order; a phase without a Run (queued before the claim) joins the next Run's row. */
 export type Row = { stage: string; title: string; run: StepRun | null; steps: Step[]; seconds: number; at: string; jobs?: JobRow[] }
 
-/** The sentence for the event a send back recorded (its `note` is the why), else null. */
 export const sentBackText = (wf: Workflow, s: Pick<Span, 'cause' | 'stage' | 'actor' | 'note' | 'outcome'>): string | null =>
   s.cause === 'sendBack' && s.stage ? `Sent back to ${s.outcome === 'backlog' ? 'the backlog' : title(wf, s.stage)} by ${s.actor ?? 'the owner'}${s.note ? `: ${s.note}` : '.'}` : null
 
@@ -66,7 +60,6 @@ export const rowsOf = (v: Visit): Row[] => {
   return rows
 }
 
-/** A conditional step the Ticket passed without entering (no time, no Run); with `job`, one Job of a stage that did not run (shown inside the stage's visit). */
 export type Skipped = { stage: string; title: string; at: string; reason: string; job: string | null }
 export type Steps = { visits: Visit[]; skipped: Skipped[]; path: TicketPath; totals: { lead: number; human: number; working: number; ci: number; queued: number }; rounds: { stage: string; title: string; n: number }[] }
 
@@ -84,12 +77,8 @@ const stepRun = (wf: Workflow, r: Doc, o: { admin: boolean; sessions?: Map<numbe
 export type JobStatus = 'queued' | 'working' | 'done' | 'skipped' | 'failed' | 'cancelled' | 'needs_you' | 'waiting' | 'pending'
 export const JOB_STATUS: Record<JobStatus, string> = { queued: 'Queued', working: 'Working', done: 'Done', skipped: 'Skipped', failed: 'Failed', cancelled: 'Cancelled', needs_you: 'Needs you', waiting: 'Waiting for you', pending: 'Not started' }
 const RUN_STATUS: Record<string, JobStatus> = { queued: 'queued', awaiting_session: 'queued', running: 'working', succeeded: 'done', failed: 'failed', budget_exhausted: 'failed', cancelled: 'cancelled', needs_human: 'needs_you' }
-/** One Job of a stage in one visit of a Ticket: its status, the Run that worked it (executor, cost) and the seconds that Run took (a live Run to `now`). */
 export type JobRow = { id: string; title: string; kind: 'agent' | 'human'; status: JobStatus; reason: string | null; run: StepRun | null; seconds: number | null }
 
-/**
- * The Jobs of the stage of a visit (the window `at` to `until`) from the Ticket's Runs, the Job skips and the human steps of the visit. A Job nobody started shows only while the visit is the Ticket's current one.
- */
 export const jobRowsOf = (wf: Workflow, v: Pick<Visit, 'stage' | 'at' | 'steps'>, until: string | null, runs: Doc[], skips: Skipped[], o: { admin: boolean; sessions?: Map<number, string>; now: number }): JobRow[] | undefined => {
   const def = stageDef(wf, v.stage)
   if (!def || !hasJobs(def)) return undefined
@@ -111,10 +100,6 @@ export const jobRowsOf = (wf: Workflow, v: Pick<Visit, 'stage' | 'at' | 'steps'>
   })
 }
 
-/**
- * The Ticket's route and steps from its history: spans of one stage form a visit, a visit is entered from the previous one (the transitions taken), steps are the phases inside it.
- * Runs add who ran a step, a human step names who decided what (the event after it carries `gate:<what>` and the actor, else the matching `human_touches` row), a CI step names the provider and links the MR.
- */
 export const buildSteps = (wf: Workflow, spans: Span[], runs: Doc[], touches: Doc[], o: { current: string; provider: string | null; admin: boolean; sessions?: Map<number, string>; workflowVersion?: number | null; skips?: { stage: string; at: string; reason: string; job?: string | null }[]; now?: number }): Steps => {
   const skipped: Skipped[] = (o.skips ?? []).map((k) => ({ ...k, job: k.job ?? null, title: title(wf, k.stage) }))
   const byRun = new Map(runs.map((r) => [r.id as number, r]))

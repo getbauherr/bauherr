@@ -116,8 +116,6 @@ function ModelSelectorTrigger({
       onKeyDown={(e) => {
         onKeyDown?.(e);
         if (e.defaultPrevented) return;
-        // ARIA combobox: arrows open the listbox from a focused trigger.
-        // Popover leaves this to the consumer.
         if (e.key === "ArrowDown" || e.key === "ArrowUp") {
           e.preventDefault();
           setOpen(true);
@@ -133,7 +131,6 @@ function ModelSelectorTrigger({
 
 export type ModelSelectorValueProps = {
   placeholder?: ReactNode;
-  /** Show the active effort level next to the model name. */
   showEffort?: boolean;
   className?: string;
 };
@@ -200,20 +197,10 @@ export type ModelSelectorContentProps = Omit<
   ComponentPropsWithoutRef<typeof PopoverContent>,
   "side"
 > & {
-  /**
-   * Preferred side for the initial placement. Once the popover is open, the
-   * rendered side takes over until it closes, so the popup does not jump
-   * between sides while filtering resizes the list.
-   */
   side?: ComponentPropsWithoutRef<typeof PopoverContent>["side"];
   searchable?: boolean;
 };
 
-/**
- * Hidden input that anchors cmdk's keyboard navigation, keeping the list
- * keyboard-operable without a visible search box. ModelSelectorContent renders
- * one automatically when unfiltered.
- */
 function ModelSelectorFocusAnchor() {
   return (
     <div className="sr-only">
@@ -400,10 +387,7 @@ function ModelSelectorItem({
 
 export type ModelSelectorProps = Omit<ModelSelectorRootProps, "children"> &
   VariantProps<typeof modelSelectorTriggerVariants> & {
-    /** Render a search input above the model list. */
     searchable?: boolean;
-    /** Alignment of the dropdown relative to the trigger. Use `"end"` when the
-     * trigger sits at the right edge of its container. */
     align?: ModelSelectorContentProps["align"];
     className?: string;
     contentClassName?: string;

@@ -9,7 +9,6 @@ import { personOf } from './person'
 
 type Doc = Record<string, any>
 
-/** Branch prefix of editor PRs; only PRs of this prefix in the Knowledge repo are merged by `watchKnowledgePrs`. */
 export const EDIT_PREFIX = 'bauherr/edit-'
 export const REBASED = '<!-- bauherr:rebased -->'
 export const SUPERSEDED = '<!-- bauherr:superseded -->'
@@ -18,7 +17,6 @@ export const CHECKS_FAILED = '<!-- bauherr:checks-failed -->'
 
 export class EditRefused extends Error {}
 
-/** Unified-style line diff (`- old`, `+ new`, `  same`) of two texts. */
 export const lineDiff = (a: string, b: string): string => {
   const x = a.split('\n')
   const y = b.split('\n')
@@ -43,7 +41,6 @@ export const lineDiff = (a: string, b: string): string => {
   return [...out, ...x.slice(x.length - tail).map((l) => `  ${l}`)].join('\n')
 }
 
-/** Line range of `b` that differs from `a` (common head and tail trimmed): `[from, toInA)` in `a` replaced by `lines`. */
 const change = (a: string[], b: string[]) => {
   let head = 0
   while (head < a.length && head < b.length && a[head] === b[head]) head++
@@ -52,7 +49,6 @@ const change = (a: string[], b: string[]) => {
   return { from: head, to: a.length - tail, lines: b.slice(head, b.length - tail) }
 }
 
-/** Three-way merge of the user's text and the current text against the text the edit started from. `null` when both changed the same or an adjacent region. */
 export const merge3 = (base: string, mine: string, theirs: string): string | null => {
   if (mine === theirs || theirs === base) return mine
   if (mine === base) return theirs
@@ -64,7 +60,6 @@ export const merge3 = (base: string, mine: string, theirs: string): string | nul
   return [...b.slice(0, first.from), ...first.lines, ...b.slice(first.to, second.from), ...second.lines, ...b.slice(second.to)].join('\n')
 }
 
-/** The Workspace's Knowledge repo and its forge, for a Bauherr who may see the Workspace; a document path must be a plain `.md` path inside that repo. */
 const target = async (payload: Payload, user: Doc, workspace: number | string, path: string) => {
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, user: user as never, overrideAccess: false }).catch(() => null)) as Doc | null
   if (!ws) throw new EditRefused('Workspace not found.')
@@ -74,7 +69,6 @@ const target = async (payload: Payload, user: Doc, workspace: number | string, p
   return { ws, repo: ws.knowledgeRepo as string, forge }
 }
 
-/** Current text and blob sha of a document on the default branch; pass the sha back to `saveDocument` as `baseSha`. */
 export const loadDocument = async (payload: Payload, user: Doc, workspace: number | string, path: string): Promise<{ content: string; sha: string }> => {
   const { repo, forge } = await target(payload, user, workspace, path)
   return forge.getFile(repo, path).catch(() => {
@@ -84,7 +78,6 @@ export const loadDocument = async (payload: Payload, user: Doc, workspace: numbe
 
 export type SaveResult = { pr: { number: number; url: string } } | { stale: { sha: string; diff: string } }
 
-/** The factory-opened edit PR: only recorded PRs, at their recorded head, are ever merged. */
 const record = (payload: Payload, a: { workspace: number | string; person: string; repo: string; path: string; pr: PullRequest; baseContent: string }) =>
   payload.create({
     collection: 'human_touches',
@@ -92,7 +85,6 @@ const record = (payload: Payload, a: { workspace: number | string; person: strin
     overrideAccess: true,
   } as never)
 
-/** Saves `content` as a PR on the Knowledge repo (`bauherr/edit-<ts>`), merged later by `watchKnowledgePrs`. A document that changed since `baseSha` is not written; the result carries the diff from the current text to the submitted one and the current sha. */
 export const saveDocument = async (payload: Payload, user: Doc, a: { workspace: number | string; path: string; content: string; baseSha: string }): Promise<SaveResult> => {
   const { ws, repo, forge } = await target(payload, user, a.workspace, a.path)
   const stale = async (): Promise<SaveResult> => {
@@ -116,7 +108,6 @@ export const saveDocument = async (payload: Payload, user: Doc, a: { workspace: 
   return { pr: { number: pr.number, url: pr.url } }
 }
 
-/** Re-applies the recorded edit of `pr` on the current default head (three-way against the text the edit started from) as a fresh PR; `pr` is closed after a marker comment. Returns the diff when the same region changed on the default branch: nothing is written then. */
 const recreate = async (payload: Payload, forge: Forge, repo: string, pr: PullRequest, rec: Doc): Promise<{ conflict: string } | null> => {
   const path = rec.path as string
   const mine = (await forge.getFile(repo, path, pr.head)).content
@@ -133,7 +124,6 @@ const recreate = async (payload: Payload, forge: Forge, repo: string, pr: PullRe
   return null
 }
 
-/** Merges the open editor PRs the factory recorded (`saveDocument`, `recreate`) once their checks are green: same repo, still at the recorded head, exactly the one recorded `.md` file. Foreign `bauherr/edit-*` PRs are never touched. Red checks: one comment, no merge. A PR that cannot merge is re-applied once on the current head; if the same region changed there, or the recreated PR fails again, it is flagged `needs-you` with the diff. Returns the number of merged PRs. */
 export const watchKnowledgePrs = async (payload: Payload, now = Date.now()): Promise<number> => {
   let merged = 0
   const workspaces = (await payload.find({ collection: 'workspaces', where: { and: [{ knowledgeRepo: { exists: true } }, live] }, limit: 1000, pagination: false, depth: 0, overrideAccess: true })).docs as Doc[]

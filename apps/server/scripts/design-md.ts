@@ -17,7 +17,6 @@ const unquote = (v: string) => v.replaceAll('"', '')
 const plain = (v: Tok['value']) => (typeof v === 'string' ? v : v.light)
 const refOf = (v: string) => v.replace(/^\{(.+)\}$/, '{colors.$1}')
 
-/** Rows of the first-column-backticked tables inside `heading`'s section: name -> cells (backticks stripped). */
 function table(md: string, heading: string): Map<string, string[]> {
   const start = md.indexOf(`\n${heading}\n`)
   const rest = start < 0 ? '' : md.slice(start + heading.length + 2)
@@ -30,7 +29,6 @@ function table(md: string, heading: string): Map<string, string[]> {
   return rows
 }
 
-/** Compares a table against expected name -> cells; every difference is one line. */
 function diffTable(out: string[], path: string, got: Map<string, string[]>, want: Map<string, string[]>, columns: string[]) {
   for (const [name, cells] of want) {
     const row = got.get(name)
@@ -45,7 +43,6 @@ function diffMap(out: string[], path: string, got: Record<string, unknown> = {},
   for (const k of Object.keys(got)) if (!(k in want)) out.push(`${path}.${k}: expected no token, got ${String(got[k])}`)
 }
 
-/** Differences between `tokens.json` and DESIGN.md (front matter, Colors/Layout/Motion tables, component references); empty when equal. */
 export function diffDesign(tokens: Tokens, markdown: string): string[] {
   const out: string[] = []
   const md = markdown.replaceAll('\r\n', '\n')
@@ -57,7 +54,6 @@ export function diffDesign(tokens: Tokens, markdown: string): string[] {
   diffMap(out, 'spacing', fm.spacing as Record<string, string>, Object.fromEntries(tokens.spacing.tokens.map((s) => [s.name, plain(s.value)])))
   diffMap(out, 'rounded', fm.rounded as Record<string, string>, Object.fromEntries(tokens.radius.tokens.map((r) => [r.name.replace(/^radius-/, ''), plain(r.value)])))
 
-  // Extra properties on a style (fontFeature) are hand-edited and tolerated; the set of styles and the token-derived properties must match.
   const styles = tokens.type.groups.flatMap((g) => g.styles.map((s) => [s, g.family] as const))
   const typo = (fm.typography ?? {}) as Record<string, Record<string, unknown>>
   for (const [s, family] of styles) {

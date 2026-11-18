@@ -3,15 +3,12 @@ import type { Payload } from 'payload'
 
 type Doc = Record<string, any>
 
-/** One piece of proof as the page needs it. Files are served by `/api/tickets/<ticket>/artifacts/<id>`; text and URLs are inline data. */
 export type ProofItem = { id: number; kind: 'image' | 'recording' | 'preview' | 'transcript' | 'sample' | 'report'; title: string; pair?: 'before' | 'after'; url?: string; text?: string; file?: boolean }
-/** One line of "What was asked": an acceptance criterion (null: proof tied to no criterion) with its proof; no items means "No proof". */
 export type ProofRow = { criterion: string | null; items: ProofItem[] }
 export type ProofData = { ticket: number; rows: ProofRow[]; /** Rules whose proof was waived with an Evidence line `No artifact: <rule>: <reason>`. */ waived: { rule: string; reason: string }[]; staging: string | null }
 
 const norm = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase()
 
-/** Groups the proof of one commit under the acceptance criteria; a criterion named only by an artifact gets its own row, proof without one goes last. */
 export const buildProof = (a: { ticket: number; criteria: string[]; artifacts: Doc[]; staging?: string | null }): ProofData => {
   const rows = a.criteria.map((criterion): ProofRow => ({ criterion, items: [] }))
   const rowFor = (c: string | null): ProofRow => {
@@ -32,10 +29,6 @@ export const buildProof = (a: { ticket: number; criteria: string[]; artifacts: D
   return { ticket: a.ticket, rows, waived, staging: a.staging ?? null }
 }
 
-/**
- * The proof of each Ticket (database only): its artifacts on the newest commit that has any, grouped under the acceptance criteria of the request that created it.
- * A Ticket without artifacts and without artifact rules on its Product gets no entry, so Products that do not use proof see nothing new. `fallback` supplies criteria for Tickets without a request (the plan's Goal statements).
- */
 export const loadProof = async (payload: Payload, tickets: Doc[], products: Map<number, Doc>, fallback: (t: Doc) => string[] = () => []): Promise<Map<number, ProofData>> => {
   const out = new Map<number, ProofData>()
   if (!tickets.length) return out
@@ -58,10 +51,6 @@ export const loadProof = async (payload: Payload, tickets: Doc[], products: Map<
 
 export type EvidenceStep = { step: number; title?: string; status: 'proved' | 'no_proof'; proof: string }
 
-/**
- * The `| Plan step | done/deferred | Evidence or reason |` table of the Run's evidence (pack/rules/evidence.md) as one entry per step, plus the markdown outside that table.
- * `done` with evidence is proved; `deferred` or no evidence is no proof. Null when no such table parses (the page shows the markdown).
- */
 export const parseEvidence = (md: string | null | undefined, planSteps: { n: number; title: string }[] = []): { steps: EvidenceStep[]; rest: string } | null => {
   const lines = (md ?? '').split('\n')
   const head = lines.findIndex((l, i) => /^\s*\|\s*Plan step\s*\|/i.test(l) && /^\s*\|[\s:|-]+\|?\s*$/.test(lines[i + 1] ?? ''))

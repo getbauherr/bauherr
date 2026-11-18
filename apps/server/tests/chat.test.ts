@@ -154,7 +154,6 @@ it('a read tool round: tool-call, tool-result, then the answer; both write a too
   expect(types(events)).toEqual(['context', 'tool-call', 'tool-result', 'delta', 'done'])
   expect(events[1]).toMatchObject({ name: 'factory_status', kind: 'read' })
   expect(events[2]).toMatchObject({ ok: true })
-  // 'Fix login redirect' is the fake forge's seeded Ticket with a posted plan: the plan gate is on by default, so it waits for the owner.
   expect(JSON.parse(events[2].result).needYou).toEqual([{ number: 700, title: 'Export hangs', need: 'Run needs you' }, { number: expect.any(Number), title: 'Fix login redirect', need: 'Approve plan' }])
   expect(JSON.parse(events[2].result).stages.map((s: Doc) => s.stage)).toContain('Plan')
   expect(events.at(-1).usage.tokensOut).toBeGreaterThan(0)

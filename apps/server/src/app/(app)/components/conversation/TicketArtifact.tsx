@@ -8,7 +8,6 @@ import { cn } from '@/lib/utils'
 import type { View } from '../../../../lib/refine/engine'
 import type { Section } from '../../../../lib/refine/artifact'
 
-/** Markdown-lite of a Ticket section: paragraphs and `-` bullets, enough for what the Ticket text holds. */
 const Text: FC<{ text: string; changed: boolean }> = ({ text, changed }) => {
   const mark = (t: string): ReactNode => (changed ? <mark className="rounded-xs bg-accent px-0.5 text-foreground underline decoration-primary decoration-2 underline-offset-2">{t}</mark> : t)
   return (
@@ -32,10 +31,6 @@ const Block: FC<{ s: Section }> = ({ s }) => (
   </section>
 )
 
-/**
- * The living artifact: the Ticket as it will be sent (title, type), the open points as its checklist, then its sections with what the conversation changed highlighted and a
- * placeholder per open point. `diff` swaps the sections for the reviewable diff of the changed ones.
- */
 export const TicketArtifact: FC<{ view: View; number: number; kind: string | null; locked: boolean; busy: boolean; diff: boolean; onChange(id: string): void }> = ({ view, number, kind, locked, busy, diff, onChange }) => {
   const open = view.points.filter((p) => p.status === 'open')
   const now = open[0]?.id

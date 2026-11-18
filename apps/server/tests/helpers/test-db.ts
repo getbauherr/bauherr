@@ -8,7 +8,6 @@ const DEFAULT_BASE = 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
 
 export type TestDb = { url: string; drop: (payload?: { db: unknown }) => Promise<void> }
 
-/** `$VITEST_DB_SUFFIX`, else empty under `$CI`, else a short hash of the repo root (one per worktree). */
 export const dbSuffix = (repoRoot = root, env: Record<string, string | undefined> = process.env): string =>
   env.VITEST_DB_SUFFIX ?? (env.CI ? '' : createHash('sha1').update(repoRoot).digest('hex').slice(0, 6))
 
@@ -29,13 +28,10 @@ const admin = async (base: string, sql: string, params: unknown[] = []) => {
   }
 }
 
-/** Database with the schema already pushed, built once per run by `global-setup.ts`; test databases are cloned from it and skip Payload's push. */
 export const templateDbName = (suffix = dbSuffix()) => testDbName('template', suffix)
 
-/** The template of this run: `global-setup.ts` sets `BAUHERR_TEST_TEMPLATE_DB` before the workers start; without it (a single file run) the worktree's name. */
 const runTemplateDbName = () => process.env.BAUHERR_TEST_TEMPLATE_DB ?? templateDbName()
 
-/** Builds the template database; returns the function that drops it. */
 export const buildTemplateDb = async (base = process.env.DATABASE_URL ?? DEFAULT_BASE) => {
   const name = runTemplateDbName()
   await admin(base, `DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)
@@ -51,11 +47,9 @@ export const buildTemplateDb = async (base = process.env.DATABASE_URL ?? DEFAULT
   return async () => void (await admin(base, `DROP DATABASE IF EXISTS ${name} WITH (FORCE)`))
 }
 
-/** Tag of a run's databases: `<pid>_<4 hex>`, the end of `bauherr_test_template_<tag>` and `bauherr_test_<suite>_<tag>`. */
 const RUN_TAG = /_(\d+)_([0-9a-f]{4})$/
 const UNTAGGED_MAX_IDLE = '6 hours'
 
-/** Whether a pid is alive on this host: only ESRCH means gone; success or any other error (EPERM) means alive. */
 export const defaultIsAlive = (pid: number): boolean => {
   try {
     process.kill(pid, 0)
@@ -68,12 +62,10 @@ export const defaultIsAlive = (pid: number): boolean => {
 const databasesWithPrefix = async (base: string) => (await admin(base, `SELECT datname, oid::text AS oid FROM pg_database WHERE starts_with(datname, 'bauherr_test_')`)) as { datname: string; oid: string }[]
 const dropDatabase = (base: string, name: string) => admin(base, `DROP DATABASE IF EXISTS "${name.replace(/"/g, '""')}" WITH (FORCE)`)
 
-/** Drops the `bauherr_test_*` databases of the run with this tag (template and suites), e.g. at teardown. */
 export const dropRunTestDbs = async (runTag: string, base = process.env.DATABASE_URL ?? DEFAULT_BASE): Promise<void> => {
   for (const { datname } of await databasesWithPrefix(base)) if (datname.endsWith(`_${runTag}`)) await dropDatabase(base, datname)
 }
 
-/** Drops leftovers of runs that died: a tagged `bauherr_test_*` database whose pid is gone (`isAlive` false); an untagged one with no connection, older than 6 hours (needs `pg_stat_file`: superuser; otherwise untagged databases are kept). Never this run's own, never another name. Returns the dropped names. */
 export const pruneStaleTestDbs = async (isAlive: (pid: number) => boolean = defaultIsAlive, base = process.env.DATABASE_URL ?? DEFAULT_BASE): Promise<string[]> => {
   const ownTag = RUN_TAG.exec(process.env.BAUHERR_TEST_TEMPLATE_DB ?? '')?.slice(1).join('_')
   const [{ may_stat }] = await admin(base, `SELECT has_function_privilege('pg_stat_file(text,boolean)', 'execute') AS may_stat`)
@@ -93,7 +85,6 @@ export const pruneStaleTestDbs = async (isAlive: (pid: number) => boolean = defa
   return dropped
 }
 
-/** Drops and recreates `bauherr_test_<suite>[_<suffix>]` as a clone of the template (unless `blank`, for tests that run migrations on an empty database) when `global-setup.ts` built one; `drop(payload)` silences the payload pool's errors from the forced disconnect and removes it (call after `payload.destroy()`). */
 export const createTestDb = async (suite: string, base = process.env.DATABASE_URL ?? DEFAULT_BASE, { blank = false } = {}): Promise<TestDb> => {
   const name = testDbName(suite)
   const template = runTemplateDbName()

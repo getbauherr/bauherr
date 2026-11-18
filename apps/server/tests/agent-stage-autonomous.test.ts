@@ -7,7 +7,6 @@ import { createTestDb, type TestDb } from './helpers/test-db'
 const exec = vi.hoisted(() => vi.fn())
 vi.mock('@bauherr/runner', async (orig) => ({ ...(await orig<typeof import('@bauherr/runner')>()), runStage: exec }))
 
-/** An autonomous `agent` Run (fixtures/custom-pack, stage security): the Runner reports the outcome file, the job routes the Ticket. */
 let payload: Payload
 let fake: FakeBackend
 let jobs: typeof import('../src/jobs')

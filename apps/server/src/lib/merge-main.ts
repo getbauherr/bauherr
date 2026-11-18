@@ -7,10 +7,6 @@ import { id, prOf } from './release'
 import { workflowFor } from './factory'
 import { nameOf } from './workflow'
 
-/**
- * Merges the base into the open factory MR of a Ticket waiting in review, as the factory bot and in every Run mode.
- * Clean: pushes (a no-op merge is counted per head in `mainMergeNoops`), then the verdict follows the Ticket diff (same patch-id keeps it, a changed one starts a Review Run). Real conflict: back to Build. Any other failure needs a human.
- */
 export const mergeMainIntoMr = async (payload: Payload, ticketId: number, reviewedSha: string | null): Promise<void> => {
   const o = { overrideAccess: true, depth: 0 } as const
   const t = await payload.findByID({ collection: 'tickets', id: ticketId, ...o })

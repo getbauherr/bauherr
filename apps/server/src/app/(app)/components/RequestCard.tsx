@@ -12,7 +12,6 @@ const Read: FC<{ label: string; children: ReactNode }> = ({ label, children }) =
   </div>
 )
 
-/** The request card as the request page shows it: read-only (a draft is edited in its conversation). */
 export const RequestCard: FC<{ card: CardData }> = ({ card }) => (
   <section aria-label="Request card" data-testid="request-card" data-kind={card.kind} data-urgency={card.urgency} data-state={card.sent ? 'sent' : 'read'} className={cn('flex flex-col gap-3 rounded-md border bg-card p-3 text-card-foreground')}>
     <div className="flex flex-wrap items-center gap-2">

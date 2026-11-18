@@ -12,20 +12,16 @@ export type AgentState = {
   toolCalls: ToolCallRecord[];
   steps: StepRecord[];
   result?: SDKResultMessage;
-  /** Result of every query of the Run: build, self-review and fix passes. */
   results: SDKResultMessage[];
   abort: AbortController;
   budgetExhausted?: boolean;
-  /** `ctx.shouldStop` answered true: the agent was aborted at a tool boundary. */
   preempted?: boolean;
-  /** The Run stopped because the agent ran the same Bash command with the same result `SPIN_LIMIT` times in a row. */
   stuck?: string;
   spin?: { key: string; n: number };
 };
 
 export const SPIN_LIMIT = 3;
 
-/** Counts consecutive identical Bash results (command, exit code, output hash); any other tool call resets the streak. Returns the stop reason once the limit is hit. */
 export function trackSpin(state: AgentState, tool: string, input: unknown, exitCode: number, output: unknown): string | undefined {
   if (tool !== 'Bash') {
     state.spin = undefined;
@@ -37,10 +33,8 @@ export function trackSpin(state: AgentState, tool: string, input: unknown, exitC
   return state.spin.n >= SPIN_LIMIT ? `Spinning: \`${command.slice(0, 200)}\` ran ${SPIN_LIMIT} times in a row with exit code ${exitCode} and identical output` : undefined;
 }
 
-/** `build` is the Run's own agent turn; `self-review` and `fix` are the extra passes before the MR is pushed. */
 export type AgentKind = 'build' | 'self-review' | 'fix';
 
-/** Each extra pass may spend at most this share of the Run budget. */
 export const SELF_REVIEW_BUDGET_SHARE = 0.2;
 
 const DISALLOWED = [
@@ -62,7 +56,6 @@ const preToolUse = (d: Decision) => ({
   },
 });
 
-/** The env object handed to the SDK child: replaces, never extends, the process env. */
 export function agentEnv(home: string, proxyUrl: string): Record<string, string> {
   return {
     PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
@@ -147,7 +140,6 @@ export function buildOptions(ctx: RunCtx, o: { cwd: string; home: string; proxyU
     strictMcpConfig: true,
     skills: 'all',
     permissionMode: 'dontAsk',
-    // A Review, Triage or Scan Run has no shell: it reads the pre-computed diff and may write only .bauherr/ (the write-scope guard).
     tools: review ? ['Read', 'Grep', 'Glob', 'Write'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'],
     allowedTools: review
       ? ['Read', 'Grep', 'Glob', 'Write']
@@ -162,7 +154,6 @@ export function buildOptions(ctx: RunCtx, o: { cwd: string; home: string; proxyU
   };
 }
 
-/** Whether a Build Run wrote `.bauherr/outcome.json` with outcome replan: it ends without an MR and without a verified Goal. */
 const replans = (file: string): boolean => {
   try {
     return JSON.parse(readFileSync(file, 'utf8'))?.outcome === 'replan';

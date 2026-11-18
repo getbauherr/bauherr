@@ -5,7 +5,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { isOpen, setOpen, subscribe } from './dock-state'
 import { Chat } from './icons'
 
-/** Header button that opens the dock (icon only on phones); the dock closes itself with its own button. */
 export function ChatButton() {
   const open = useSyncExternalStore(subscribe, isOpen, () => false)
   const [mac, setMac] = useState(false)

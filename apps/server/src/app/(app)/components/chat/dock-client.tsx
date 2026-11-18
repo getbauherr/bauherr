@@ -9,7 +9,6 @@ const MIN = 320
 const MAX = 640
 const clamp = (w: number) => Math.min(MAX, Math.max(MIN, Math.round(w)))
 
-/** The dock column. The heavy part (assistant-ui, markdown) loads on first open and stays mounted afterwards, so a running answer survives closing and navigation. Open state is `html[data-chat]`, shown by CSS. */
 export function ChatDockClient({ userId }: { userId: number | string }) {
   const key = `bauherr-chat:${userId}`
   setStorageKey(key)

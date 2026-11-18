@@ -1,4 +1,3 @@
-/** The texts the factory or its agents write for people; one markdown file each in `pack/templates/`. */
 export const TEMPLATE_NAMES = ['request', 'plan', 'decision', ...['review'], 'staging-summary', 'release-note', 'worklog', 'triage-questions', 'progress'] as const
 export type TemplateName = (typeof TEMPLATE_NAMES)[number]
 export const isTemplateName = (v: string): v is TemplateName => (TEMPLATE_NAMES as readonly string[]).includes(v)
@@ -6,14 +5,11 @@ export const isTemplateName = (v: string): v is TemplateName => (TEMPLATE_NAMES 
 export type Section = { id: string; heading: string; level: number; /** Fixed text of the section without guidance comments; empty when the code fills it. */ text: string }
 export type Parsed = { parsed: Section[]; layout: 'tight' | 'normal'; /** Heading of every id in the pack's own template, for a section the Workspace's template dropped. */ fallback: Record<string, { heading: string; level: number }> }
 
-/** Removes guidance: HTML comments, and the lines that held only a comment. */
 export const stripComments = (s: string): string => s.replace(/^[ \t]*<!--[\s\S]*?-->[ \t]*(?:\n|$)/gm, '').replace(/<!--[\s\S]*?-->/g, '')
-/** The text an agent reads: guidance kept, the `{#id}` anchors dropped. */
 export const forAgent = (body: string): string => body.replace(/[ \t]*\{#[\w-]+\}/g, '')
 
 const HEADING = /^(#{2,3})[ \t]+(.+?)[ \t]*$/
 
-/** Sections of a template body: `## Heading {#id}` (an anchor names what the code puts there; without one the heading text is the id). */
 export const parseSections = (body: string): Section[] => {
   const out: { id: string; heading: string; level: number; lines: string[] }[] = []
   for (const line of body.split('\n')) {
@@ -28,11 +24,6 @@ export const parseSections = (body: string): Section[] => {
 
 const block = (level: number, heading: string, content: string, gap: string) => `${'#'.repeat(level)} ${heading}${gap}${content}`
 
-/**
- * Fills the template's sections, in the template's order and under its heading text, from `sections` (by anchor id).
- * A section the code gives nothing for is left out unless the template has fixed text for it; content for an id the template dropped
- * is appended under the pack's heading. Guidance comments never reach the output.
- */
 export const renderTemplate = (tpl: Parsed, sections: Record<string, string>): string => {
   const gap = tpl.layout === 'tight' ? '\n' : '\n\n'
   const out = tpl.parsed.flatMap((s) => (s.id in sections ? [block(s.level, s.heading, sections[s.id]!, gap)] : s.text ? [block(s.level, s.heading, s.text, gap)] : []))
@@ -45,19 +36,15 @@ export const renderTemplate = (tpl: Parsed, sections: Record<string, string>): s
   return out.join('\n\n')
 }
 
-/** Heading text of the section with this anchor in the Workspace's template (the default text when it is not there). */
 export const headingOf = (tpl: Pick<Parsed, 'parsed' | 'fallback'>, id: string): string => tpl.parsed.find((s) => s.id === id)?.heading ?? tpl.fallback[id]?.heading ?? id
 
 export type Finding = { level: 'error' | 'warn'; message: string }
 
-/** Progress texts, one section per key (`progressOf`); the placeholders a line may use, each with the sample the editor's preview shows. */
 export const PROGRESS_KEYS = ['received', 'question', 'planning', 'approval', 'building', 'reviewing', 'agent', 'human', 'staging', 'waiting', 'released', 'stuck', 'closed', 'split', 'blocked'] as const
 export const PLACEHOLDERS: Record<string, string> = { stage_title: 'Security review', staging_url: 'https://staging.example.com', waiting: 'Waiting for the automated checks to pass.', release_note: 'Download invoices as CSV.', reason: 'the automated checks keep failing', blockers: '#12', children: '2 of 3 are done.' }
-/** Fills `{{name}}` from `vars`; a line whose placeholder has no value is dropped. */
 export const fillPlaceholders = (text: string, vars: Record<string, string | undefined>): string =>
   text.split('\n').filter((l) => ![...l.matchAll(/\{\{(\w+)\}\}/g)].some((m) => !vars[m[1]!])).map((l) => l.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k]!)).join('\n')
 
-/** Per template: the anchors the code fills, headings its parsers locate by text, and literal lines it edits. */
 const RULES: Record<TemplateName, { ids: string[]; exact?: Record<string, string>; contains?: string[] }> = {
   request: { ids: ['problem', 'context', 'acceptance-criteria'], exact: { 'acceptance-criteria': 'Acceptance criteria' } },
   plan: { ids: ['tldr', 'goal', 'steps'], exact: { goal: 'Goal', steps: 'Steps', files: 'Files', decisions: 'Decisions', 'sub-tickets': 'Sub-tickets' }, contains: ['Decision:', 'Recommendation:', 'Why:', 'Risk:'] },
@@ -70,7 +57,6 @@ const RULES: Record<TemplateName, { ids: string[]; exact?: Record<string, string
   progress: { ids: [...PROGRESS_KEYS] },
 }
 
-/** Findings that make a body unfit to save (`error`) or worth a look (`warn`). */
 export const lintTemplate = (name: TemplateName, body: string): Finding[] => {
   const rule = RULES[name]
   const parsed = parseSections(body)
@@ -94,7 +80,6 @@ export const lintTemplate = (name: TemplateName, body: string): Finding[] => {
 }
 
 
-/** Sample content per template for the editor's preview, keyed by anchor id. */
 export const SAMPLES: Record<TemplateName, Record<string, string>> = {
   request: { problem: 'Export totals drift from the invoice.', context: 'Finance, since March, about once a week.', 'acceptance-criteria': '- Totals match the invoice\n- No rounding drift', open: '- Missing: screenshot' },
   plan: {},

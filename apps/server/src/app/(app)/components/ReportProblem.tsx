@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { reportProblem } from '../lib/actions'
 import { Button } from './ui/button'
 
-/** "Report a problem" on a released request: starts a new Bug draft linked to it and opens its conversation. */
 export function ReportProblem({ session, size, variant = 'outline' }: { session: number; size?: 'sm'; variant?: 'outline' | 'default' }) {
   const router = useRouter()
   const [error, setError] = useState('')

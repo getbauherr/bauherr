@@ -1,22 +1,13 @@
-/**
- * Setup blocks per coding tool: how to point it at the gateway, send the key and the session name, and add the factory MCP server.
- * Facts come from each tool's own documentation (checked 2026-11-12, URLs in `docs/gateway.md`); a tool that cannot send a custom header or base URL says so instead of getting a block that would not work.
- * Pure: the key is never a value here (placeholders and `$BAUHERR_GATEWAY_KEY`), so nothing secret is rendered.
- */
 export type Route = 'subscription' | 'api-key'
 export type Block = { title: string; lang: 'bash' | 'json' | 'toml' | 'yaml' | 'text'; text: string }
 export type Ctx = {
-  /** Gateway address as a session on this machine reaches it. */
   gateway: string
-  /** Factory MCP endpoint. */
   mcp: string
   workspace: string
   session: string
   role: string
-  /** Gateway model ids of the Workspace tiers (`ws-<slug>/<connection>/<model>`); null while no LLM Connection exists. */
   models: { cheap: string; standard: string; strong: string } | null
 }
-/** `session`: the gateway tells this tool's sessions apart by name; `key`: only the key is sent, so its calls count under "Unnamed gateway session"; `none`: cannot go through the gateway. */
 export type Level = 'session' | 'key' | 'none'
 export type Harness = { id: string; label: string; level: Level; routes: Route[]; summary: string; docs: string; blocks: (c: Ctx, route: Route) => Block[] }
 
@@ -221,16 +212,11 @@ export const HARNESSES: Harness[] = [
 
 export const harnessOf = (id: string): Harness => HARNESSES.find((h) => h.id === id) ?? HARNESSES[0]!
 
-/** Session names are the role plus four random hex digits, e.g. `engineer-3fa9`; `roll` is that random part. */
 export const sessionName = (role: string, roll: string): string => `${role}-${roll}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 64)
 
-/** What a page hands to the setup block: the person's own values (never a secret) and the gateway's stored health. */
 export type GatewaySetup = Omit<Ctx, 'session' | 'role'> & {
-  /** Random four hex digits for the suggested session name. */
   roll: string
-  /** Stored health check (`watch-gateway`): null before the first one. */
   up: boolean | null
   message: string | null
-  /** Admin: may create a session key and open the gateway UI. */
   admin: boolean
 }

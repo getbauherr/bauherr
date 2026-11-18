@@ -11,10 +11,6 @@ const chipOf = (r: CiRow): { variant: 'ok' | 'destructive' | 'neutral'; text: st
   : PASSED.includes(r.conclusion ?? '') ? { variant: 'ok', text: '✓ Passed' }
   : { variant: 'destructive', text: '× Failed' }
 
-/**
- * The stored checks of the Ticket's open merge request, one row per check (database only, never a live forge call). A row shows its state (the word Failed for a failing one),
- * and "running for N min" while it runs: the summary stores `startedAt` only, so a completed check shows no duration. "Checked" is the age of `updatedAt`, in seconds within 60 s.
- */
 export function CiPanel({ summary, forge, now = Date.now() }: { summary: CiSummary; /** The forge link, when the action bar has no room for it (it holds one secondary). */ forge?: ReactNode; now?: number }) {
   const sec = Math.max(0, Math.round((now - Date.parse(summary.updatedAt)) / 1000))
   return (

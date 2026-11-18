@@ -10,14 +10,12 @@ export const PRESETS = ['solo', 'standard', 'careful'] as const
 export type PresetId = (typeof PRESETS)[number]
 export const isPreset = (v: unknown): v is PresetId => PRESETS.includes(v as PresetId)
 
-/** Card text of each setup preset; roles and approvals on the card come from the compiled file, so they cannot drift from it. */
 export const PRESET_TEXT: Record<PresetId, { title: string; blurb: string }> = {
   solo: { title: 'Solo', blurb: 'One engineer does everything. Plans pass without your approval.' },
   standard: { title: 'Standard', blurb: 'An orchestrator triages, an engineer builds, a reviewer checks. You approve plans; where a Product has a Product owner, they answer Triage questions and accept on staging. Specialists review in parallel (security when a change touches the security paths of the Product), a verifier checks their findings, and an agent walks staging before you accept.' },
   careful: { title: 'Careful', blurb: 'Standard, plus your acceptance on staging. The specialist reviews (security paths, user-facing paths, bug fixes) run when a change needs them. A Product owner, where a Product has one, answers Triage questions.' },
 }
 
-/** `presets/<id>.yaml` of the pack dir, else of the core pack, with the role profiles inlined (read relative to the pack that holds the file). */
 export const presetSource = (id: PresetId): string => {
   const path = [packDir(), corePack()].map((d) => resolve(d, 'presets', `${id}.yaml`)).find(existsSync)
   if (!path) throw new Error(`no preset ${id} in the pack`)
@@ -30,7 +28,6 @@ export const presetSource = (id: PresetId): string => {
 
 export const presetWorkflow = (id: PresetId): Workflow => compile(parseDocument(presetSource(id)).toJS())
 
-/** What a preset does, in plain words: the roles that work a stage (in stage order) and where the owner is asked. */
 export const presetFacts = (wf: Workflow): { roles: { id: string; title: string; avatar: string }[]; asks: string[] } => {
   const used = [...new Set(wf.stages.map((s) => s.role).filter((r): r is string => !!r))]
   const g = gates(wf)
@@ -41,7 +38,6 @@ export const presetFacts = (wf: Workflow): { roles: { id: string; title: string;
   }
 }
 
-/** The roster of a workflow as the Team page's role cards need it, without sessions (the setup preview of a preset). */
 export const rosterOf = (wf: Workflow): TeamRole[] =>
   wf.roles.map((r) => ({
     id: r.id,

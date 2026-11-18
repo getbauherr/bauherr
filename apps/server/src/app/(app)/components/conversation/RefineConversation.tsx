@@ -26,11 +26,6 @@ import { useTurn } from './useTurn'
 type Reply = { view: View | null } | { error: string }
 const attachments = makeAttachments()
 
-/**
- * The refinement conversation of a Ticket in the conversation shell: the participant header, the stream with the open question as a card, the composer with its model and cost
- * chips, and the refined Ticket as the living artifact with the one "Send to planning" at its foot. Every action answers the whole state; the page never merges.
- * `info` is the server-rendered Ticket meta (the artifact header's info popover), `where` says where the Ticket is after sending.
- */
 export const RefineConversation: FC<{ ticket: number; kind: string | null; where: string; info?: ReactNode; /** In the Ticket page's split: no side panel, no "more" menu. */ embedded?: boolean }> = ({ ticket, kind, where, info, embedded = false }) => {
   const router = useRouter()
   const [view, setView] = useState<View | null | undefined>(undefined)

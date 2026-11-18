@@ -7,10 +7,6 @@ export function readGoal(file: string): GoalStatement[] {
 
 export type GoalVerdict = { kind: 'ok' } | { kind: 'block'; reason: string } | { kind: 'needs_human'; reason: string; reasonKind: ReasonKind };
 
-/**
- * Stop-hook logic (#37): unverified statements block the turn once; a second miss or any
- * declared blocker ends the Run needs_human; all verified ends it succeeded.
- */
 export function checkGoal(goal: GoalStatement[], alreadyBlocked: boolean): GoalVerdict {
   const unmet = goal.filter((s) => s.status === 'unverified');
   const blocked = goal.filter((s) => s.status === 'blocked');
@@ -24,7 +20,6 @@ export function checkGoal(goal: GoalStatement[], alreadyBlocked: boolean): GoalV
     return { kind: 'needs_human', reason: `Unmet Goal statements after re-prompt: ${unmet.map((s) => s.text).join('; ')}`, reasonKind: 'stuck' };
   }
   if (blocked.length > 0) {
-    // A blocker without a kind counts as a decision, so a real product question is never retried on a stronger model.
     const kinds = blocked.map((s) => (s.kind === 'access' || s.kind === 'stuck' ? s.kind : 'decision'));
     const reasonKind = kinds.includes('decision') ? 'decision' : kinds.includes('access') ? 'access' : 'stuck';
     return { kind: 'needs_human', reason: blocked.map((s) => `${s.text}: ${s.reason ?? 'blocked'}`).join('; '), reasonKind };

@@ -42,7 +42,6 @@ export default async function Releases({ searchParams }: { searchParams: Promise
   )
 }
 
-/** The forge-backed part (release list, ancestry, Ticket comments for the notes), streamed after the shell; 8 s, then the empty state. */
 async function Draft({ payload, product, admin }: { payload: Payload; product: { id: number; name: string }; admin: boolean }) {
   const draft = await within(releaseDraft(payload, product.id), RELEASES_MS).catch((e) => {
     console.warn('releases: forge unavailable', e)

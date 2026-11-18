@@ -1,4 +1,3 @@
-/** Ticks never wait for running jobs: each tick starts one `runOne` per free slot (at most `max` in flight). */
 export const startRunPool = ({ max, intervalMs, runOne }: { max: number; intervalMs: number; runOne: () => Promise<unknown> }) => {
   let inFlight = 0
   const running = new Set<Promise<unknown>>()

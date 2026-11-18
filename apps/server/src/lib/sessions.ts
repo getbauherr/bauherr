@@ -22,16 +22,12 @@ type Doc = Record<string, any>
 const o = { depth: 0, overrideAccess: true } as const
 
 export const POLL_AFTER_SECONDS = 30
-/** `lastSeenAt` is rewritten at most this often. */
 const TOUCH_EVERY_S = 15
-/** Disconnected sessions stay in `loadTeam` this long. */
 const OFFLINE_KEEP_H = 24
 
-/** Seconds of silence after which a session without a running Run is ended by `sweepSessions`. */
 export const sessionTimeoutS = (): number => Number(process.env.BAUHERR_SESSION_TIMEOUT_S) || 600
 
 const profiles = new Map<string, string>()
-/** The role's profile text: inlined by an applied factory file, else read from the pack dir (a Workspace on the pack default still has `profile_file`). */
 export const profileOf = (role: Role): string => {
   if (role.profile !== undefined) return role.profile
   if (!role.profile_file) return ''
@@ -46,7 +42,6 @@ export const profileOf = (role: Role): string => {
 
 const roleOfSession = (wf: Workflow, session: Doc): Role | undefined => wf.roles.find((r) => r.id === session.role)
 
-/** The model a role names: its explicit provider and model, else the Workspace model of its tier; null when none can be resolved. */
 const modelOf = async (payload: Payload, workspace: number | string, role: Role): Promise<{ model: string; provider?: string } | null> => {
   if (role.provider && role.model) return { model: role.model, provider: role.provider }
   if (!role.tier) return null
@@ -61,7 +56,6 @@ const modelOf = async (payload: Payload, workspace: number | string, role: Role)
 
 const missionOf = (profile?: string): string | undefined => /^Mission:\s*(.+)$/m.exec(profile ?? '')?.[1]
 
-/** Loads a session of the caller by its public id; ended or unknown ones are a clear error (`allowEnded` for `disconnect`). */
 export const resolve = async (c: Ctx, sessionId: unknown, allowEnded = false): Promise<Doc> => {
   const again = 'call connect again to start a new one'
   if (typeof sessionId !== 'string' || !sessionId) throw new Error(`sessionId must be a string; ${again}`)
@@ -72,10 +66,6 @@ export const resolve = async (c: Ctx, sessionId: unknown, allowEnded = false): P
   return row
 }
 
-/**
- * Presence: bumps `lastSeenAt` (skipped while it is younger than 15 s) and, with a `run` this session holds, keeps that Run's span: one span per (session, Run), opened at the claim (`startedAt` = the Run's start), `lastAt` extended by every touch for the Run.
- * `force` writes `lastAt` even inside the throttle window (the Run just ended). A Run that lost its lease keeps its last signal: nothing but a touch of the session extends a span.
- */
 export const touch = async (payload: Payload, session: Doc, a: { run?: number | string; force?: boolean } = {}): Promise<void> => {
   const db = payload.db.drizzle
   const fresh = session.lastSeenAt && Date.now() - new Date(session.lastSeenAt).getTime() < TOUCH_EVERY_S * 1000
@@ -88,17 +78,12 @@ export const touch = async (payload: Payload, session: Doc, a: { run?: number | 
     SELECT "workspace_id", ${session.id}, "id", "ticket_id", COALESCE("started_at", now()), now() FROM "runs" WHERE "id" = ${a.run} AND "session_id" = ${session.id} AND NOT EXISTS (${mine})`)
 }
 
-/** Stamps a Run the session holds but did not claim with it (a legacy claim that now carries `sessionId`). */
 export const stampRun = async (payload: Payload, session: Doc, runId: number | string): Promise<void> => {
   await payload.db.drizzle.execute(sql`UPDATE "runs" SET "session_id" = ${session.id}, "role" = COALESCE("role", ${session.role}), "updated_at" = now() WHERE "id" = ${runId} AND "status" = 'running' AND "session_id" IS NULL`)
 }
 
 type Who = { name: string | null; version: string | null; model: string | null; provider: string | null }
 
-/**
- * Registers (or revives, by `session` = the client's stable key) a connected agent session for a role of the Workspace workflow and returns what it needs to start: the role's profile, its stages and the model it should use.
- * Reviving a row releases the Runs it still holds: the new process has no lease token for them.
- */
 export const connect = async (c: Ctx, a: { role?: unknown; workspace?: unknown; session?: unknown; label?: unknown }, who: Who) => {
   let workspaces = (await c.payload.find({ collection: 'workspaces', pagination: false, depth: 0, overrideAccess: false, user: c.user as never, select: { slug: true, archivedAt: true } })).docs as Doc[]
   if (typeof a.workspace === 'string' && workspaces.some((w) => w.slug === a.workspace && w.archivedAt)) throw new Error('Workspace deleted')
@@ -149,7 +134,6 @@ export const connect = async (c: Ctx, a: { role?: unknown; workspace?: unknown; 
   }
 }
 
-/** What an agent may do about a stuck Ticket, by cause: only repairs that exist as agent tools today; owner decisions are never in the list. */
 const allowedFor = (cause: Cause): { tool: string; args: string }[] => (AGENT_REPAIRED.includes(cause) ? [{ tool: 'return_to_build', args: '{ticket, reason}' }] : AGENT_RELEASED.includes(cause) ? [{ tool: 'release_fast_lane', args: '{ticket}' }] : [])
 
 const PROBLEMS: Partial<Record<Cause, string>> = {
@@ -166,10 +150,6 @@ const PROBLEMS: Partial<Record<Cause, string>> = {
   'fast-lane-held': 'it holds the fast lane while it waits for a human, and another expedite Ticket waits for the lane',
 }
 
-/**
- * The next stuck Ticket of the Workspace for the exceptions role, from the findings the liveness sweep stores in `tickets.liveness` ({cause, need, at}; DB only, no forge call): one an agent can repair first, else the first one.
- * A finding older than `FINDING_FRESH_MS` means the sweep is not keeping up and is ignored. The finding has no time the Ticket got stuck, so `since` is the Ticket's last update.
- */
 const exception = async (c: Ctx, wsId: number | string) => {
   const found = (await c.payload.db.drizzle.execute(sql`SELECT "id", "number", "title", "stage", "url", "updated_at", "liveness" FROM "tickets" WHERE "workspace_id" = ${wsId} AND "state" = 'open' AND "liveness" IS NOT NULL ORDER BY "id"`)).rows as Doc[]
   const fresh = found.filter((t) => Date.now() - Date.parse(t.liveness.at) < FINDING_FRESH_MS)
@@ -186,10 +166,6 @@ const exception = async (c: Ctx, wsId: number | string) => {
   }
 }
 
-/**
- * Presence check-in plus claim: the next Run of a stage the session's role works, through the same claim path as `claim_next` (`claimNext`), respecting the role's `agents` cap.
- * An exceptions role with nothing normal to claim gets the next stuck Ticket.
- */
 export const nextWork = async (c: Ctx, claimNext: (a: { stages: string[]; roles: string[] }) => Promise<Doc | null>) => {
   const session = c.session!
   const wsId = id(session.workspace)
@@ -219,11 +195,9 @@ export const nextWork = async (c: Ctx, claimNext: (a: { stages: string[]; roles:
   if (!stages.length) return none(`${role.title} has no stage in this workflow`)
   const waiting = await c.payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: wsId } }, { state: { equals: 'open' } }, { waitingFor: { in: stages } }] }, limit: 1, ...o })
   const w = waiting.docs[0] as Doc | undefined
-  // A Ticket can wait for a stage for another reason than a full column (it overlaps a Ticket in flight): say that one, not "WIP limit".
   return none(!w ? `Nothing queued for ${role.title}` : w.waitingReason ? `#${w.number} waits for ${stageTitle(wf, w.waitingFor)}: ${w.waitingReason}` : `${stageTitle(wf, w.waitingFor)} is at its WIP limit`)
 }
 
-/** Puts the Runs a session still holds back in the queue (as `release_run` does without the token: the session is gone) and unassigns its login. */
 const releaseRuns = async (c: Ctx, session: Doc): Promise<number> => {
   const rows = (await c.payload.db.drizzle.execute(sql`UPDATE "runs" SET "status" = 'awaiting_session', "session_owner_id" = NULL, "agent_key_id" = NULL, "lease_hash" = NULL, "heartbeat_at" = NULL, "session_id" = NULL, "updated_at" = now() WHERE "session_id" = ${session.id} AND "status" = 'running' RETURNING "id", "ticket_id"`)).rows as { id: number; ticket_id: number }[]
   const login = (c.user.githubLogin as string | undefined) ?? process.env.BAUHERR_BOT_LOGIN
@@ -243,22 +217,16 @@ const releaseRuns = async (c: Ctx, session: Doc): Promise<number> => {
   return rows.length
 }
 
-/** Ends the session and releases its running Runs. */
 export const disconnect = async (c: Ctx, session: Doc) => {
   const ended = (await c.payload.db.drizzle.execute(sql`UPDATE "agent_sessions" SET "disconnected_at" = now(), "end_reason" = 'disconnect', "updated_at" = now() WHERE "id" = ${session.id} AND "disconnected_at" IS NULL RETURNING "id"`)).rows.length > 0
   return { sessionId: session.publicId, disconnected: true, released: ended ? await releaseRuns(c, session) : 0 }
 }
 
-/** Ends sessions with no running Run that were silent for `BAUHERR_SESSION_TIMEOUT_S` (default 600). A Run whose lease expired is abandoned by the lease sweep first; the rule then applies to its session. Returns how many it ended. */
 export const sweepSessions = async (payload: Payload): Promise<number> =>
   (await payload.db.drizzle.execute(sql`UPDATE "agent_sessions" s SET "disconnected_at" = now(), "end_reason" = 'timeout', "updated_at" = now() WHERE s."disconnected_at" IS NULL AND s."last_seen_at" < now() - make_interval(secs => ${sessionTimeoutS()}) AND NOT EXISTS (SELECT 1 FROM "runs" r WHERE r."session_id" = s."id" AND r."status" = 'running') RETURNING s."id"`)).rows.length
 
 export type Health = 'working' | 'idle' | 'stuck' | 'not-responding' | 'disconnected'
 
-/**
- * The one derived state of a session: disconnected; else working or idle by whether it holds a running Run; a session silent past `sessionTimeoutS` is stuck (holds a Run) or not responding (holds none).
- * `lastSeenAt` is the session's last signal; a session that never reported counts as silent.
- */
 export const sessionHealth = (s: { hasRun: boolean; lastSeenAt: string | Date | null; disconnectedAt: string | Date | null }, now = Date.now(), timeoutS = sessionTimeoutS()): Health => {
   if (s.disconnectedAt) return 'disconnected'
   const silent = !s.lastSeenAt || now - new Date(s.lastSeenAt).getTime() > timeoutS * 1000
@@ -276,17 +244,13 @@ export type TeamSession = {
   health: Health
   ticket?: { number: number; title: string; stage: string }
   run?: number
-  /** The verb of the running Run's stage kind ("building"). */
   activity?: string
-  /** Start of the running Run. */
   runStartedAt?: string | null
-  /** The running Run's latest Step is waiting_ci: the Ticket's chip text and the agent's words. */
   waiting?: { chip: string; words: string }
   connectedAt: string | null
   lastSeenAt: string | null
   disconnectedAt: string | null
   endReason: 'disconnect' | 'timeout' | 'replaced' | null
-  /** Email of the agent key's owner. Admin only. */
   keyOwner?: string | null
   activeSecondsToday: number
   activeSecondsTotal: number
@@ -303,7 +267,6 @@ export type TeamRole = {
   agents?: number
   exceptions: boolean
   stages: { name: string; title: string; kind: string; activity: string }[]
-  /** Open Tickets in a session-mode stage of the role whose Run waits for a session. */
   waiting: number
   sessions: TeamSession[]
   autonomous: { run: number; executor: 'runner' | 'ci' | null; ticket: { number: number; title: string; stage: string }; startedAt: string | null; model: string | null }[]
@@ -311,7 +274,6 @@ export type TeamRole = {
 
 const iso = (v: unknown) => (v ? new Date(v as string).toISOString() : null)
 
-/** Session rows with the Run each holds, its Ticket and the active time; `where` picks the sessions. */
 const sessionRows = async (payload: Payload, where: ReturnType<typeof sql>): Promise<Doc[]> =>
   (
     await payload.db.drizzle.execute(sql`
@@ -336,7 +298,6 @@ const waitingOf = (r: Doc): { chip: string; words: string } => {
   return { chip: counts ? waitingChip(counts) : 'Waiting for CI', words: firstLine(r.step_summary) }
 }
 
-/** `hide`: a non-Admin reader; client, model and provider are not sent (Cost panel pattern). */
 const toSession = (wf: Workflow, r: Doc, now: number, admin: boolean, hide = false): TeamSession => ({
   publicId: r.public_id,
   label: r.label,
@@ -356,7 +317,6 @@ const toSession = (wf: Workflow, r: Doc, now: number, admin: boolean, hide = fal
   activeSecondsTotal: r.total,
 })
 
-/** Open Tickets per role whose current stage has a Run waiting for a session (session-mode, no holder). */
 const waitingByRole = async (payload: Payload, wf: Workflow, workspace: number | string): Promise<Map<string, number>> => {
   const rows = (await payload.db.drizzle.execute(sql`SELECT r."stage", count(DISTINCT r."ticket_id")::int AS "n" FROM "runs" r JOIN "tickets" t ON t."id" = r."ticket_id" AND t."state" = 'open' AND t."stage" = r."stage" WHERE r."workspace_id" = ${workspace} AND r."status" = 'awaiting_session' AND r."mode" = 'session' GROUP BY r."stage"`)).rows as { stage: string; n: number }[]
   const out = new Map<string, number>()
@@ -367,10 +327,6 @@ const waitingByRole = async (payload: Payload, wf: Workflow, workspace: number |
   return out
 }
 
-/**
- * DB-only read for the Team page: every role of the Workspace workflow with its sessions (connected ones and those disconnected in the last 24 h), the Tickets waiting for it and the autonomous Runs working for it right now. Sessions whose role left the workflow are in `orphans`.
- * `presence.key`: the person (`userId`) has an unrevoked agent key; `presence.anySession`: a session ever connected to the Workspace. `admin` adds the key owner of each session.
- */
 export const loadTeam = async (payload: Payload, workspace: number | string, opts: { admin?: boolean; userId?: number | string; now?: number } = {}): Promise<{ roles: TeamRole[]; orphans: (TeamSession & { role: string })[]; presence: { key: boolean; anySession: boolean } }> => {
   const wf = workflowFor(workspace)
   const db = payload.db.drizzle
@@ -411,18 +367,12 @@ export type SessionRun = { id: number; ticket: { number: number; title: string }
 export type Usage = { usd: number; tokens: number }
 export type SessionView = {
   session: Omit<TeamSession, 'clientName' | 'clientVersion' | 'model' | 'provider'> & { role: string; clientName?: string | null; clientVersion?: string | null; model?: string | null; provider?: string | null }
-  /** The running Run's checks (passed of total) while some are pending, from the Ticket's stored summary. */
   ci?: { passed: number; total: number }
   runs: SessionRun[]
   milestones: { run: number; seq: number | null; summary: string | null; at: string | null }[]
-  /** Admin only: cost and tokens of the session, today and in the last 30 days. */
   usage?: { today: Usage; d30: Usage }
 }
 
-/**
- * One session of the Workspace by its public id with its Runs (newest first, as far as it was ever on them: a released Run stays through its span), the last 10 milestones across them and, for an Admin, cost and tokens.
- * Null for an unknown id or one of another Workspace. A non-Admin gets no client, model, provider, key owner, cost or tokens fields at all.
- */
 export const loadSession = async (payload: Payload, workspace: number | string, publicId: string, opts: { admin?: boolean; now?: number } = {}): Promise<SessionView | null> => {
   const wf = workflowFor(workspace)
   const db = payload.db.drizzle
@@ -457,7 +407,6 @@ export const loadSession = async (payload: Payload, workspace: number | string, 
   }
 }
 
-/** Active time of the Workspace's sessions since `since`: the sum of their span durations clipped to the window, per session and per role. */
 export const sessionTime = async (payload: Payload, workspace: number | string, since: Date): Promise<{ sessions: { sessionId: string; role: string; seconds: number }[]; roles: { role: string; seconds: number }[] }> => {
   const rows = (
     await payload.db.drizzle.execute(sql`
@@ -471,6 +420,5 @@ export const sessionTime = async (payload: Payload, workspace: number | string, 
   return { sessions: rows.map((r) => ({ sessionId: r.public_id, role: r.role, seconds: r.seconds })), roles: [...roles].map(([role, seconds]) => ({ role, seconds })) }
 }
 
-/** Server `instructions` of the MCP handshake: what the factory is and the connect loop, with the roles of the caller's workflow. */
 export const instructions = (wf: Workflow): string =>
   `Bauherr is a software factory: Tickets move through stages worked by a team of roles (${wf.roles.map((r) => `${r.id}: ${r.title}`).join('; ')}). Call connect first with the role you were started for, then loop next_work. Pass the returned sessionId on every call. Finish each Run with finish_run, call disconnect when you stop.`

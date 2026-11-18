@@ -13,15 +13,10 @@ export class PlankaError extends Error {
 }
 
 export interface PlankaOptions {
-  /** Web origin, e.g. `https://planka.example.com`; the API lives at `<baseUrl>/api`. */
   baseUrl: string;
-  /** API key or access token, sent as a Bearer token. */
   token: string;
-  /** The watched board; every card on it is a Ticket. */
   boardId: string;
-  /** Stage name -> list name: adding `bauherr:stage:<stage>` moves the card to that list. */
   lists?: Record<string, string>;
-  /** List that holds closed cards (default `Done`). */
   closedList?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
@@ -80,7 +75,6 @@ interface Parsed { body: string; meta: Meta; relations: Relations }
 
 const META = /\n*<!-- bauherr:planka -->([\s\S]*?)<!-- \/bauherr:planka -->\s*$/;
 
-/** Description layout: user body, `bauherr:planka` block (number, label log), then the shared relations block. */
 function parseDesc(desc: string | null | undefined): Parsed {
   const { body: rest, relations } = parseRelations(desc ?? '');
   const m = META.exec(rest);
@@ -132,7 +126,6 @@ export class PlankaTicketSource implements TicketSource {
     this.closedList = o.closedList ?? 'Done';
   }
 
-  /** Runs `fn` after every earlier write of this instance: number allocation, label creation and description edits cannot interleave. */
   private serial<T>(fn: () => Promise<T>): Promise<T> {
     const run = this.chain.then(fn);
     this.chain = run.then(() => {}, () => {});
@@ -149,10 +142,6 @@ export class PlankaTicketSource implements TicketSource {
     };
   }
 
-  /**
-   * The next unused number. The high-water mark lives in a hidden counter card on the board and is written before the number is used,
-   * so deleting the highest card, or restarting the process, never frees a number. Call inside `serial`.
-   */
   private async nextNumber(b: Board): Promise<number> {
     const n = Math.max(nextOf(b.counter), ...b.cards.map((c) => (numberOf(c) ?? 0) + 1), 1);
     const description = `<!-- bauherr:planka-next=${n + 1} -->`;
@@ -161,7 +150,6 @@ export class PlankaTicketSource implements TicketSource {
     return n;
   }
 
-  /** Gives every card without a number the next one (oldest first). Call inside `serial` on a fresh board. */
   private async assignNumbers(b: Board): Promise<Board> {
     const missing = b.cards.filter((c) => numberOf(c) === null).sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)) || x.id.localeCompare(y.id));
     for (const c of missing) {
@@ -176,7 +164,6 @@ export class PlankaTicketSource implements TicketSource {
     return this.board().then((b) => this.assignNumbers(b));
   }
 
-  /** The board with every card numbered; the write path is only taken when a card lacks one. */
   private async numbered(): Promise<Board> {
     const b = await this.board();
     return b.cards.every((c) => numberOf(c) !== null) ? b : this.serial(() => this.fresh());
@@ -228,7 +215,6 @@ export class PlankaTicketSource implements TicketSource {
     return l;
   }
 
-  /** The list a stage label maps to, when `lists` maps it. */
   private stageList(b: Board, labels: string[]): any | undefined {
     const stage = labels.filter((l) => l.startsWith(STAGE_PREFIX)).map((l) => l.slice(STAGE_PREFIX.length)).findLast((s) => this.o.lists?.[s]);
     return stage === undefined ? undefined : this.namedList(b, this.o.lists![stage]!);
@@ -278,7 +264,6 @@ export class PlankaTicketSource implements TicketSource {
     await this.edit(id, (p) => void (patch.body !== undefined && (p.body = parseRelations(patch.body).body)), patch.title);
   }
 
-  /** Read-modify-write of the description under the lock, optionally with a new title. */
   private edit(id: string, change: (p: Parsed) => void, name?: string): Promise<void> {
     return this.serial(async () => {
       const c = this.locate(await this.fresh(), id);
@@ -320,7 +305,6 @@ export class PlankaTicketSource implements TicketSource {
     await this.changeLabels(id, labels, 'unlabeled');
   }
 
-  /** Adds or removes card labels (board labels are created on demand), logs the change in the footer, and moves the card for a mapped stage label. */
   private changeLabels(id: string, labels: string[], action: LabelEvent['action']): Promise<void> {
     return this.serial(async () => {
       const b = await this.fresh();
@@ -380,7 +364,6 @@ export class PlankaTicketSource implements TicketSource {
     for (const u of users) await this.h.json('DELETE', `/cards/${c.id}/card-memberships/userId:${u.id}`);
   }
 
-  /** Whether the login is a user of the watched board (only those can be card members). */
   async userExists(login: string) {
     return (await this.board()).users.some((u) => u.username?.toLowerCase() === login.toLowerCase());
   }

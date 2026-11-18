@@ -9,7 +9,6 @@ import type { TeamRole } from '../team/types'
 
 export type PresetCard = { id: string; title: string; blurb: string; roles: { id: string; title: string; avatar: string }[]; asks: string[]; team: TeamRole[] }
 
-/** Three preset cards, the read-only Roles table of the chosen one and the two ways forward: "Use this team" or skip (Standard). Edits of models and agents happen on /team. */
 export function PresetPicker({ presets }: { presets: PresetCard[] }) {
   const [id, setId] = useState('standard')
   const chosen = presets.find((p) => p.id === id)!

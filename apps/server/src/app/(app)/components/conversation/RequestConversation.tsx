@@ -30,7 +30,6 @@ const STARTERS: { kind: Kind; label: string; icon: FC<{ className?: string }>; p
   { kind: 'change', label: 'Change something', icon: Wrench, placeholder: 'What should work differently, and why?' },
 ]
 
-/** The first screen: nothing was said yet, so the stream asks what the team should fix or build, with the three common starts; a start sets the type of the card. */
 const Empty: FC<{ busy: boolean; onStart(kind: Kind): void }> = ({ busy, onStart }) => (
   <div data-testid="empty-state" className="my-auto flex flex-col items-center gap-4 py-8 text-center">
     <h2 className="m-0 text-[22px] leading-8 font-semibold">What should the team fix or build?</h2>
@@ -43,11 +42,6 @@ const Empty: FC<{ busy: boolean; onStart(kind: Kind): void }> = ({ busy, onStart
   </div>
 )
 
-/**
- * Request drafting in the conversation shell: the Factory assistant as the partner, the stream with its question as a card of suggested answers, the composer with attachments, and the
- * living request card as the artifact with "File request" at its foot. A filed request stays here as read-only history with a handoff block. The same for a Product owner (`owner`):
- * the model is a read-only label and there is no cost chip. Every action answers the whole state; the page never merges.
- */
 export const RequestConversation: FC<{ session: number; owner: boolean }> = ({ session, owner }) => {
   const router = useRouter()
   const [view, setView] = useState<RequestView | null | undefined>(undefined)

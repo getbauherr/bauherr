@@ -9,7 +9,6 @@ const REPAIRS: [kind: string, label: string, hint: string][] = [
   ['rank-top', 'Move to top', 'Puts the Ticket first on the Board.'],
 ]
 
-/** Admin-only repair disclosure on the Ticket page; every action is recorded as a `repair:*` human touch (Audit). */
 export function FixState({ wf, ticket, stage, counters }: { wf: Workflow; ticket: number; stage: string; counters: [name: string, value: number][] }) {
   const action = repairTicketAction.bind(null, ticket)
   return (
@@ -32,7 +31,6 @@ export function FixState({ wf, ticket, stage, counters }: { wf: Workflow; ticket
   )
 }
 
-/** Admin-only: link a Build Run to the replacement MR that took over from a closed one. */
 export function RelinkMr({ run }: { run: number }) {
   return (
     <Reveal label="Relink MR">

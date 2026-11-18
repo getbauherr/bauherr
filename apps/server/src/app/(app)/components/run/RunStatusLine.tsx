@@ -4,10 +4,6 @@ import type { RunHealth } from '../../../../lib/run-health'
 import { StatusChip } from '../StatusChip'
 import { Sentence } from './Sentence'
 
-/**
- * Chip, stage and Run id, and the status sentence (left out when the action bar carries it). The sentence is not live; a separate sr-only region
- * is filled only when the derived state changes, so a poll that leaves the state alone announces nothing.
- */
 export function RunStatusLine({ health, status, stage, runId, showSentence }: { health: RunHealth; status: string; stage: string; runId: number; showSentence: boolean }) {
   const first = useRef(health.state)
   const [announced, setAnnounced] = useState('')

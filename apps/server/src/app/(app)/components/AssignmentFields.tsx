@@ -6,7 +6,6 @@ import { NativeSelect } from './ui/native-select'
 
 export type AssignableWorkspace = { id: number; name: string; products: { id: number; name: string }[] }
 
-/** Workspace, scope and (for `products`) a checkbox list of that Workspace's Products, posted as `workspace`, `scope` and `products`. `removable` adds "Remove this assignment" for editing. */
 export function AssignmentFields({ workspaces, workspace, scope = 'products', products = [], removable }: { workspaces: AssignableWorkspace[]; workspace?: number; scope?: string; products?: number[]; removable?: boolean }) {
   const uid = useId()
   const [ws, setWs] = useState(workspace ?? workspaces[0]?.id)

@@ -27,12 +27,10 @@ let testDb: TestDb
 let root: string
 let bare: string
 const work = () => join(root, 'work')
-/** MR branches living in the local bare repo, with the head the forge fake last judged them at. */
 const gitBranches = new Map<string, string>()
 let edits = 0
 const git = (cwd: string, ...a: string[]) =>
   execFileSync('git', a, { cwd, stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_NAME: 'dev', GIT_AUTHOR_EMAIL: 'd@x', GIT_COMMITTER_NAME: 'dev', GIT_COMMITTER_EMAIL: 'd@x' } }).toString().trim()
-/** Puts the MR branch into the local bare repo (branched from main, one commit on `mr`), then moves main with one commit on `main`; the forge fake reports the real head from then on. */
 const gitMr = (branch: string, mr: [string, string], main: [string, string]) => {
   const edit = ([file, text]: [string, string], msg: string) => {
     execFileSync('sh', ['-c', `printf '%s\\n' "$1" > "$2"`, 'sh', `${text}${++edits}`, join(work(), file)])
@@ -98,7 +96,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** A review Ticket with an open factory MR and a claimed session Review Run. */
 const seed = async (o2: { body?: string; checks?: any[] } = {}) => {
   const ts = fake.tickets(repo)
   const issue = await ts.create({ title: 'review me', labels: ['bauherr:stage:review'] })
@@ -111,7 +108,6 @@ const seed = async (o2: { body?: string; checks?: any[] } = {}) => {
   if (o2.checks) fake.setChecks(repo, pr.headSha, o2.checks)
   return { t, pr, n: String(issue.number), branch, id: t.id as number }
 }
-/** Starts and claims the Review Run. Starts it directly: these tests exercise the merge gate on heads whose checks changed after the review began; the entry gate (green heads only) is covered in `green-heads.test.ts`. */
 const review = async (id: number) => {
   const started = await jobs.startRunIfNeeded(payload, (await reload(id)) as any, 'review')
   const { leaseToken } = await claimOnly(payload, call, member, ws, started!.run.id)
@@ -254,7 +250,6 @@ it('submit_review is refused without the lease and on a non-review Run', async (
 })
 
 const blocker = (n: number) => ({ severity: 'high', class: 'security', file: 'a.ts', line: n, msg: 'x', scenario: 'y' })
-/** A claimed build Run on a fresh Ticket, for finish_run. */
 const buildRun = async () => {
   const { t } = await seed()
   const started = await jobs.startRunIfNeeded(payload, t as any, 'build')
@@ -539,7 +534,6 @@ it('a perpetually pending merge keeps its wait clock and escalates after 2 hours
   }
 })
 
-/** The crash window: the review Run holds its verdict, the Ticket never moved. */
 const crashed = async (id: number, pr: { headSha: string }, findings: any[] = [], problem?: string) => {
   const r = await review(id)
   const verdict = findings.some((f) => f.severity !== 'low') ? 'changes' : 'clean'
@@ -685,7 +679,6 @@ const hitCap = async (id: number) => {
   }
 }
 
-/** A review Ticket parked at the round cap (factory's grant already used), the escalation Comment posted. */
 const atCap = async () => {
   const s = await seed({ checks: green })
   await hitCap(s.id)
@@ -785,7 +778,6 @@ it('grant_review_round and stop_review over MCP: an agent key is refused, a huma
 const buildRuns = async (id: number, status?: string) =>
   (await payload.count({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: 'build' } }, ...(status ? [{ status: { equals: status } }] : [])] }, ...o })).totalDocs
 const mergeJobs = async () => (await payload.count({ collection: 'payload-jobs' as never, where: { taskSlug: { equals: 'merge-main' } } as never, ...o })).totalDocs
-/** The factory merged main itself: no Build Run, the Ticket waits in review for the `merge-main` job. */
 const waitsForMergeJob = async (id: number) => {
   expect(await reload(id)).toMatchObject({ stage: 'review', reviewState: 'waiting_checks', mergeFailures: 0, conflictReturns: 0 })
   expect(await buildRuns(id, 'awaiting_session')).toBe(0)
@@ -830,7 +822,6 @@ it('F23: a merge that fails while the MR reads as conflicting takes the merge-ma
   await waitsForMergeJob(id)
 })
 
-/** A clean review of an MR that main moved away from; the two tuples are the file edits of the MR side and the main side. */
 const diverged = async (mr: [string, string], main: [string, string], more: { reviewedPatchId?: string; ticket?: Record<string, unknown> } = {}) => {
   const s = await seed({ checks: green })
   gitMr(s.branch, mr, main)
@@ -913,7 +904,6 @@ it('F28: recovery: Tickets parked on 3 failed merges go back to the merge gate w
   expect(await reload(ok.id)).toMatchObject({ stage: 'review', reviewState: 'needs_human', conflictReturns: 0 })
 })
 
-/** A clean review of `seed()`'s MR with a stored patch-id, still waiting for checks, then a Runner main-merge Build Run (`patchId`) that moved the head and put the Ticket back in review. */
 const mergedByRunner = async (reviewedPatchId: string, patchId: string, pushed: 'head' | 'stale' = 'head', more: Record<string, unknown> = {}) => {
   const s = await seed({ checks: green })
   const r = await review(s.id)
@@ -973,7 +963,6 @@ it('F32: a head pushed by someone else after the Runner merge is not re-bound: t
   expect(await reviewRuns(id)).toBe(2)
 })
 
-/** A reviewed MR whose branch already contains main while the forge keeps reporting it behind (a lagging `mergeable_state`). */
 const lagging = async () => {
   const s = await seed({ checks: green })
   gitMr(s.branch, ['mr.ts', 'x'], ['main.ts', 'y'])
@@ -1014,7 +1003,6 @@ it('F33: a merge that pushes (main moved) resets the no-op counter', async () =>
   expect(await reload(s.id)).toMatchObject({ mainMergeSha: null, mainMergeNoops: 0 })
 })
 
-/** A parked Ticket whose last review Run reviewed the MR head, then the head moves. */
 const parked = async (reviewState: string, rounds = 0) => {
   const s = await seed({ checks: green })
   await crashed(s.id, s.pr)

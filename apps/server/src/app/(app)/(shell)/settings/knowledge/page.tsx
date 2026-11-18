@@ -12,7 +12,6 @@ export const dynamic = 'force-dynamic'
 
 type Settings = Awaited<ReturnType<typeof loadWorkspaceSettings>>
 
-/** The repository list comes from the forge: the picker renders at once and receives it when it arrives. */
 async function LoadedRepo({ w }: { w: Settings }) {
   const repos = w.knowledgeConnection ? await listRepos(Number(w.knowledgeConnection)) : null
   return <KnowledgeRepo connections={w.githubConnections} connection={w.knowledgeConnection} repos={repos} repo={w.knowledgeRepo} />

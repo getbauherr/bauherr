@@ -6,7 +6,6 @@ const src = join(__dirname, '../src')
 const app = join(src, 'app/(app)')
 const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]))
 
-/** Render path: pages, layouts and the loaders they call. A render reads only the database; forge calls belong to a job, a server action or a component streamed through <Suspense>. */
 const rendered = [
   ...walk(app).filter((f) => /\/(page|layout)\.tsx$/.test(f)),
   ...['overview', 'settings', 'run', 'requests', 'setup', 'team', 'cost', 'usage', 'inbox'].map((n) => join(app, `lib/${n}.ts`)),
@@ -16,7 +15,6 @@ const rendered = [
 
 const FORBIDDEN = /(?<!function )\b(ticketsOf|forgeOf|sourceOf|backendFor|prOf|recentChecks|releaseDraft|deadTickets|invisibleDead|suggestOverlapIgnore|listRepos|decisionComments)\(|\.(listComments|listPullRequestFiles|listPullRequests|listChecks|listReleases|listRepositories)\(/g
 
-/** file (relative to src) -> identifiers allowed there, each with the reason it is not on the blocking render path. */
 const ALLOWED: Record<string, { ids: string[]; why: string }> = {
   'app/(app)/(shell)/tickets/[id]/page.tsx': { ids: ['sourceOf', 'decisionComments'], why: 'only inside derive(), awaited by components under <Suspense> with a 5 s within()' },
   'app/(app)/lib/settings.ts': { ids: ['forgeOf', 'backendFor', '.listChecks', '.listRepositories'], why: 'recentChecks/collectChecks run in DeploySectionsStreamed (<Suspense>, 3 s); listRepos is called by a server action and the open exception below' },

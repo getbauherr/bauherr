@@ -1,4 +1,3 @@
-/** The plan's leading `## TL;DR` block: labelled lines the Inbox card is made from. */
 export type PlanTldr = { decision: string; recommendation: string; why: string[]; risk: string; options: string[] }
 
 export const TLDR_HEADING = 'TL;DR'
@@ -8,13 +7,11 @@ const LABEL = new RegExp(`^\\s*(?:[-*]\\s+)?\\**(${LABELS.join('|')})\\**\\s*:\\
 const bullet = (l: string) => /^\s*(?:[-*]|\d+\.)\s+(.*\S)/.exec(l)?.[1]
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** Body of the `## <heading>` section of `md` (up to the next `##`), or null. */
 export const tldrSection = (md: string, heading = TLDR_HEADING): string | null => {
   const m = new RegExp(`^##[ \\t]+${escape(heading)}[ \\t]*$([\\s\\S]*?)(?=^##[ \\t]|(?![\\s\\S]))`, 'im').exec(md)
   return m ? m[1]! : null
 }
 
-/** Parses the TL;DR block; `missing` names every label that is absent or empty, `problems` anything else wrong. */
 export const parseTldr = (md: string, heading = TLDR_HEADING): { tldr: PlanTldr | null; missing: string[]; problems: string[] } => {
   const body = tldrSection(md, heading)
   if (body === null) return { tldr: null, missing: [...LABELS.slice(0, 4)], problems: [`The plan has no \`## ${heading}\` section`] }
@@ -40,7 +37,6 @@ export const parseTldr = (md: string, heading = TLDR_HEADING): { tldr: PlanTldr 
   return { tldr: missing.length ? null : { decision: text.Decision!, recommendation: text.Recommendation!, why: list.Why!, risk: text.Risk!, options: list.Options! }, missing, problems }
 }
 
-/** The error text for a plan without a usable TL;DR, or null when it has one. A `##` heading before the TL;DR breaks "leading". */
 export const tldrError = (md: string, heading = TLDR_HEADING): string | null => {
   const { missing, problems } = parseTldr(md, heading)
   const first = /^##[ \t]+(.+?)[ \t]*$/m.exec(md)?.[1]

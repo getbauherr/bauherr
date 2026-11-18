@@ -64,7 +64,6 @@ const comments = async (number: number) => (await fake.tickets(repo).listComment
 const labelsOf = async (number: number) => (await fake.tickets(repo).get(String(number))).labels
 
 const BODY_WITH_PLAN = '## Problem\nProduction is down.\n\n## Plan\n1. Revert the change.'
-/** An issue whose labels were set by `actor` (the Admin 'maria' unless a test says otherwise). */
 const issue = async (title: string, body = '', labels: string[] = [EXPEDITE_LABEL], actor = 'maria') => {
   fake.actingAs = actor
   try {
@@ -74,7 +73,6 @@ const issue = async (title: string, body = '', labels: string[] = [EXPEDITE_LABE
   }
 }
 
-/** An open Ticket in `stage` with a plan declaring `files`, as in the overlap tests. */
 const inBuild = async (title: string, files: string[], extra: Record<string, unknown> = {}) => {
   const labels = ['bauherr:stage:build']
   const i = await fake.tickets(repo).create({ title, labels })
@@ -136,7 +134,6 @@ describe('bypasses', () => {
     await payload.create({ collection: 'runs', data: { ticket: hot.id, stage: 'build', status: 'running', mode: 'autonomous', workspace: ws }, ...o })
     expect(await overlap.holdOverlap(payload, await reload(hot.id))).toBe(false)
     expect((await reload(hot.id)).waitingFor).toBeFalsy()
-    // a lower rank than `hot`, yet it waits for it
     const later = await inBuild('b', ['src/app/page.tsx'])
     await payload.update({ collection: 'tickets', id: early.id, data: { stage: 'release' }, ...o })
     expect(await overlap.holdOverlap(payload, await reload(later.id))).toBe(true)
@@ -214,7 +211,6 @@ describe('one at a time', () => {
 describe('a parked holder yields the slot', () => {
   const YIELDED = 'gave its fast-lane place to'
   const start = async () => (await import('../src/lib/expedite')).startExpedites(payload)
-  /** A flagged Ticket without a stage, as the poller leaves it while the slot is taken. */
   const waitingTicket = async (title: string) => {
     const i = await fake.tickets(repo).create({ title, labels: [EXPEDITE_LABEL] })
     const t = await payload.create({ collection: 'tickets', data: { title, externalId: String(i.number), number: i.number, url: i.url, state: 'open', labels: [EXPEDITE_LABEL], expedite: true, product, workspace: ws, rank: title }, ...o })

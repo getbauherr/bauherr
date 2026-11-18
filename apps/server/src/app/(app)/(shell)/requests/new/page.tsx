@@ -7,7 +7,6 @@ import { startDraft } from '../../../../../lib/request-conversation'
 
 export const dynamic = 'force-dynamic'
 
-/** The link people bookmark: it opens the conversation on their empty draft (one they left is reused, so this never piles up drafts). `?session=<id>` (an older draft link) opens that draft of theirs, `?product=<id>` starts for that Product. */
 export default async function NewRequest({ searchParams }: { searchParams: Promise<{ session?: string; product?: string }> }) {
   const { session, product } = await searchParams
   const { user, workspace } = await currentPersonWorkspace()

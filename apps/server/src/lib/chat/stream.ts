@@ -1,6 +1,5 @@
 export type Block =
   | { type: 'text'; text: string }
-  /** Stored instead of base64; resolved from the `media` collection right before each model call. */
   | { type: 'image_ref'; mediaId: number | string }
   | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
@@ -11,13 +10,11 @@ export type ToolDef = { name: string; description: string; input_schema: Record<
 export type ModelEvent =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-  /** The input JSON of a tool call as it has arrived so far (a prefix of the final JSON; usually cut mid-token). */
   | { type: 'tool_delta'; id: string; name: string; json: string }
   | { type: 'usage'; tokensIn: number; tokensOut: number; model?: string }
 
 export type ModelCall = (a: { system: string; messages: ModelMessage[]; tools: ToolDef[]; noTools?: boolean; /** Name of the one tool the model must call. */ forceTool?: string; signal?: AbortSignal }) => AsyncIterable<ModelEvent>
 
-/** Anthropic Messages API stream (`stream: true`) as normalised events: text deltas, finished tool_use blocks (input_json_delta joined and parsed at content_block_stop) and the usage of the message. Throws on an `error` event. */
 export async function* parseAnthropicStream(body: ReadableStream<Uint8Array>): AsyncGenerator<ModelEvent> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
@@ -81,10 +78,6 @@ export async function* parseAnthropicStream(body: ReadableStream<Uint8Array>): A
 
 const ESCAPES: Record<string, string> = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '"': '"', '\\': '\\', '/': '/' }
 
-/**
- * The `reply` string (or `key`'s) of a tool input that is still arriving, as far as it has come. Reads only a `reply` that is the first property (the schema asks for that order);
- * an escape or a surrogate pair cut off at the end is held back until it is whole. Returns null while no `reply` has started and the whole string once its closing quote is in.
- */
 export const partialReply = (json: string, key = 'reply'): string | null => {
   const head = new RegExp(`^\\s*\\{\\s*"${key}"\\s*:\\s*"`).exec(json)
   if (!head) return null
@@ -111,10 +104,8 @@ export const partialReply = (json: string, key = 'reply'): string | null => {
   return /[\ud800-\udbff]$/.test(out) ? out.slice(0, -1) : out
 }
 
-/** What the system prompt gets when a call must end in one tool: current Claude models (Sonnet 5.5, Opus 5.5, Fable 5.x) answer a forced `tool_choice` (`tool`, `any`) with HTTP 400, so the tool is asked for in words and the caller checks that it came. */
 export const mustCall = (tool: string): string => `\n\nEnd this turn by calling the \`${tool}\` tool exactly once. Write no text before or after the call; everything you want to say goes into the tool's fields.`
 
-/** The request body of one chat call. `forceTool` never sends a forced `tool_choice` (see `mustCall`): `auto`, one call at most, and the instruction in the system prompt. */
 export const chatBody = (model: string, a: { system: string; messages: ModelMessage[]; tools: ToolDef[]; noTools?: boolean; forceTool?: string }): Record<string, unknown> => ({
   model,
   max_tokens: 16000,
@@ -126,7 +117,6 @@ export const chatBody = (model: string, a: { system: string; messages: ModelMess
   ...(a.forceTool && { tool_choice: { type: 'auto', disable_parallel_tool_use: true } }),
 })
 
-/** The provider's own words for a failed call (`error.message` of the JSON answer), shortened; never the request. */
 export const upstreamReason = (body: string): string => {
   try {
     const j = JSON.parse(body) as { error?: { message?: unknown }; message?: unknown }
@@ -137,7 +127,6 @@ export const upstreamReason = (body: string): string => {
   }
 }
 
-/** One streaming Messages-API call through the gateway as the Workspace. */
 export const gatewayChatModel = (a: { slug: string; key: string; model: string }): ModelCall =>
   async function* ({ system, messages, tools, noTools, forceTool, signal }) {
     const res = await fetch(`${process.env.GATEWAY_URL}/v1/messages`, {

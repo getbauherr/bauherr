@@ -24,7 +24,6 @@ afterAll(async () => {
 })
 
 const account = (email: string) => payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
-/** `ip` arrives as the last hop behind a spoofed first one; `xff` sets the raw header instead (null = none). */
 const login = (email: string, password = 'pw-123456', ip?: string, xff?: string | null) => {
   const header = xff !== undefined ? xff : ip && `203.0.113.9, ${ip}`
   return POST(new Request('http://localhost/api/bauherren/login', { method: 'POST', headers: { 'content-type': 'application/json', ...(header && { 'x-forwarded-for': header }) }, body: JSON.stringify({ email, password }) }), { params: Promise.resolve({ slug: ['bauherren', 'login'] }) })
@@ -67,7 +66,6 @@ it('an IP over the limit of failed sign-ins is refused at once while another IP 
   const { loginLimits } = await import('../src/lib/login-lock')
   const email = 'rest-ip@x.io'
   await account(email)
-  // Failures spread over unknown accounts, like credential stuffing (one account would hit Payload's own lockout first).
   for (let i = 0; i < loginLimits().maxIpFailures; i++) expect((await login(`nobody-${i}@x.io`, 'nope', '203.0.113.7')).status).toBe(401)
   const refused = await login(email, 'pw-123456', '203.0.113.7')
   expect(refused.status).toBe(429)
@@ -95,7 +93,6 @@ it('requests that skip the proxy chain share one bucket: omitting or forging x-f
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   process.env.TRUSTED_PROXY_HOPS = '2'
   try {
-    // Earlier tests without a header already drew from the same bucket: at most maxIpFailures failures with varying, forged or absent headers reach the limit.
     let failed = 0
     while (failed <= loginLimits().maxIpFailures && (await login(`ghost-${failed}@x.io`, 'nope', undefined, failed % 2 ? `198.51.100.${failed}` : null)).status === 401) failed++
     expect(failed).toBeLessThanOrEqual(loginLimits().maxIpFailures)

@@ -15,7 +15,6 @@ const login = async (page: Page, who: string) => {
 }
 
 test('the hotfix switch is visible with its sentence and saves right away (Admin)', async ({ page }) => {
-  // Flips a Workspace switch no other spec reads and puts it back.
   await login(page, email)
   await page.goto('/workflow/edit')
   await expect(page.getByRole('heading', { name: 'Workflow', exact: true, level: 1 })).toBeVisible()

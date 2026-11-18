@@ -10,18 +10,14 @@ import { payloadClient } from './session'
 export type VersionRow = { version: number; at: string; by: string | null; via: string | null; note: string | null; /** Null for a version the seed wrote without a file. */ source: string | null }
 export type EditorData = {
   slug: string
-  /** The Workspace's factory file with the old WIP overrides folded into the stages. */
   base: string
   baseVersion: number | null
-  /** `shipped`: the version is the file Bauherr ships. */
   active: { version: number; at: string; by: string | null; via: string | null; shipped: boolean } | null
   versions: VersionRow[]
   shipped: string
   presets: { id: string; title: string; blurb: string; source: string }[]
-  /** Open Tickets per stage name. */
   counts: Record<string, number>
   skills: string[]
-  /** Path sets (`touches` of a conditional step) that Products of the Workspace declare with paths, by set name: the Products' names. */
   pathSets: Record<string, string[]>
   expediteLane: boolean
   preemptForHotfix: boolean
@@ -29,18 +25,15 @@ export type EditorData = {
 
 const MAX_VERSIONS = 50
 
-/** The path sets that have paths, by name, with the names of the Products that declare them. */
 const declaredSets = (products: { name: string; pathSets?: Record<string, string[]> | null }[]): Record<string, string[]> => {
   const out: Record<string, string[]> = {}
   for (const p of products) for (const [n, g] of Object.entries(p.pathSets ?? {})) if (g.length) (out[n] ??= []).push(p.name)
   return out
 }
 
-/** Skills a step may use: directories of `skills/` in the pack dir and the core pack that hold a SKILL.md. */
 const skillsOfPack = (): string[] =>
   [...new Set([packDir(), corePack()].flatMap((d) => (existsSync(resolve(d, 'skills')) ? readdirSync(resolve(d, 'skills')) : []).filter((n) => existsSync(resolve(d, 'skills', n, 'SKILL.md')))))].sort()
 
-/** Everything the workflow editor page shows, from the database and the pack files only. */
 export async function loadEditor(workspace: { id: number; slug: string }): Promise<EditorData> {
   const payload = await payloadClient()
   const db = payload.db.drizzle

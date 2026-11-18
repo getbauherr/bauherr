@@ -32,7 +32,6 @@ import { notFound } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
-/** Phone order of the panels (Links right after the header); written out so Tailwind finds the classes. */
 const ORDER = { links: 'max-sm:order-1', ci: 'max-sm:order-2', timeline: 'max-sm:order-3', proof: 'max-sm:order-4', goal: 'max-sm:order-5', agent: 'max-sm:order-6', relations: 'max-sm:order-7', times: 'max-sm:order-8' }
 
 export default async function RunPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ bars?: string; notice?: string }> }) {

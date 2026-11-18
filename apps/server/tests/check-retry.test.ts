@@ -38,7 +38,6 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-/** A review Ticket with an open factory MR whose head has `checks`. */
 const seed = async (checks: any[]) => {
   const issue = await fake.tickets(repo).create({ title: 'retry me', labels: ['bauherr:stage:review'] })
   const t = await payload.create({ collection: 'tickets', data: { title: 'retry me', externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'review', product, workspace: ws }, ...o })

@@ -47,7 +47,6 @@ afterAll(async () => {
 })
 
 const poll = () => (jobs.pollTickets.handler as (a: unknown) => Promise<unknown>)({ req: { payload } })
-/** Sweeps until every triageable Ticket has a Run (each sweep starts at most 5 per Workspace). */
 const drain = async () => {
   while (await jobs.triageSweep(payload)) {}
 }
@@ -230,7 +229,6 @@ it('a session claim hands over title, body and goal fenced as data', async () =>
   expect(r.ticket.title).toContain('Ignore previous instructions')
 })
 
-/** A Triage Run that ends without an outcome: the Ticket is untriaged again, as the Run's end does. */
 const failLast = async (id: number) => {
   await payload.update({ collection: 'runs', id: (await triageRuns(id)).at(-1)!.id, data: { status: 'failed', error: 'no outcome' }, ...o })
   await jobs.untriage(payload, id)

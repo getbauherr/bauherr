@@ -13,7 +13,6 @@ let timer: ReturnType<typeof setTimeout> | undefined
 let at = [0, 0]
 const stop = () => clearTimeout(timer)
 
-/** Pointer handlers that call `onLong` after a 500 ms touch press that stays put (one pointer at a time, so the timer is shared). */
 export const longPress = (onLong: () => void) => ({
   onPointerDown: (e: PointerEvent) => {
     if (e.pointerType !== 'touch') return
@@ -27,7 +26,6 @@ export const longPress = (onLong: () => void) => ({
   onPointerCancel: stop,
 })
 
-/** The "⋯" button and its menu; the card opens the same menu on right-click and long-press through `open`. */
 export function CardMenu({ open, onOpenChange, actions }: { open: boolean; onOpenChange: (open: boolean) => void; actions: CardAction[] }) {
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
@@ -38,7 +36,6 @@ export function CardMenu({ open, onOpenChange, actions }: { open: boolean; onOpe
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {actions.map((a) => (
-          // preventDefault on pointerup: the button that opened the menu by right-click is released over an item, which must not select it
           <DropdownMenuItem key={a.label} disabled={a.disabled} onSelect={a.run} onPointerUp={(e) => e.preventDefault()}>{a.label}</DropdownMenuItem>
         ))}
       </DropdownMenuContent>

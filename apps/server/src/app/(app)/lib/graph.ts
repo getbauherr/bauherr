@@ -7,13 +7,6 @@ export type GraphEdge = { from: number; to: number; critical: boolean; implicit?
 
 const LEASED = ['running', 'awaiting_session']
 
-/**
- * Left-to-right layout of open Tickets: column = length of the longest blocker chain leading to the Ticket,
- * row = execution order (stage, rank, number) inside the column among connected Tickets. Edges run blocker -> blocked.
- * The critical path is the longest chain (lowest numbers win ties). Back edges of a cycle are ignored and `cycle` is set.
- * A Build held for overlapping paths (`overlaps` = the holder's number) lays out like a blocked Ticket and gets an `implicit` edge from the holder (never critical).
- * Isolated Tickets (no edge between shown Tickets) get `isolated` and no row.
- */
 export function layoutGraph(wf: Workflow, tickets: GraphTicket[]): { nodes: GraphNode[]; edges: GraphEdge[]; cycle: boolean } {
   const byId = new Map(tickets.map((t) => [t.id, t]))
   const blockers = new Map<number, number[]>()

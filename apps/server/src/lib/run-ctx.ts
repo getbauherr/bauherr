@@ -27,14 +27,12 @@ import { byKind, is, jobOf, nameOf, roleOfRun, stage as stageOf } from './workfl
 export { tierModels }
 
 export const DEFAULT_GOAL = { plan: 'a plan comment is posted', build: 'MR linked on the Ticket', review: 'the MR is reviewed and the verdict is recorded', triage: 'the Ticket has a triage outcome (plan, refine or skip)', agent: 'the stage outcome is reported', scan: 'the scan findings are recorded' }
-/** Autonomous Runs open the MR after the agent turn, so their agent cannot verify "MR linked"; deviation from #99. */
 const AUTONOMOUS_BUILD_GOAL = 'the change is implemented and the checks pass'
 export type GoalStage = keyof typeof DEFAULT_GOAL
 const WORKLOG_MARKER = '<!-- bauherr:worklog -->'
 const PLAN_MARKER = '<!-- bauherr:plan -->'
 const PACK_DIR = process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack')
 
-/** Statements from a body's `## Acceptance criteria` bullets (or paragraph); empty when the section is missing. */
 const acceptance = (body: string): string[] => {
   const section = /^##\s+Acceptance criteria\s*$([\s\S]*?)(?=^##\s|(?![\s\S]))/im.exec(body)?.[1] ?? ''
   const items = [...section.matchAll(/^\s*(?:[-*]|\d+\.)\s+(?:\[.\]\s+)?(.+)$/gm)].map((m) => m[1]!.trim())
@@ -42,7 +40,6 @@ const acceptance = (body: string): string[] => {
   return items.length ? items : text ? [text] : []
 }
 
-/** Own acceptance criteria, else the parent's, else the stage default. */
 export const goalOf = (body: string, stage: GoalStage = 'plan', parentBody = ''): string[] => {
   const found = acceptance(body)
   const inherited = found.length ? found : acceptance(parentBody)
@@ -51,7 +48,6 @@ export const goalOf = (body: string, stage: GoalStage = 'plan', parentBody = '')
 
 type Doc = Record<string, any>
 
-/** `goalOf` for a Ticket row; loads the parent Ticket's body only when this one has no criteria, same Workspace only. Any failure falls back to the stage default. */
 export const goalFor = async (payload: Payload, ticket: Doc, body: string, stage: GoalStage): Promise<string[]> => {
   if (acceptance(body).length || !ticket.parent) return goalOf(body, stage)
   try {
@@ -63,13 +59,11 @@ export const goalFor = async (payload: Payload, ticket: Doc, body: string, stage
   }
 }
 
-/** What the Runner's git commands need to reach the forge. */
 export const gitAccess = (github: ConnectionInput) => {
   const gitBaseUrl = process.env.BAUHERR_GIT_BASE_URL || (github.kind === 'gitlab' ? webOrigin(github) : undefined)
   return { gitToken: github.secret!, ...(gitBaseUrl && { gitBaseUrl }), ...(github.kind === 'gitlab' && { gitUser: 'oauth2' }) }
 }
 
-/** The provider preset behind a gateway model id (`ws-<workspace>/<connection>/<model>`); null when no Connection of the Workspace has that slug. */
 export const providerOf = async (payload: Payload, workspace: number | string, model: string | undefined): Promise<string | null> => {
   const slug = model?.split('/')[1]
   if (!slug) return null
@@ -77,7 +71,6 @@ export const providerOf = async (payload: Payload, workspace: number | string, m
   return conn ? presetOf(conn.config) : null
 }
 
-/** The epic/slice fields of the RunCtx (branch, MR title, slice range, epic worklog): a slice gets its epic's branch and range, an epic parent the branch and slices; empty for every other Ticket. */
 const epicFields = async (payload: Payload, ticket: Doc, tickets: { listComments: (n: string) => Promise<{ body: string }[]> }): Promise<Pick<RunCtx, 'branch' | 'prTitle' | 'slice' | 'epic'>> => {
   const slice = ticket.slice as SliceField | null | undefined
   const parent = slice ? ((await payload.findByID({ collection: 'tickets', id: slice.epic, depth: 0, overrideAccess: true })) as Doc) : ticket.epic ? ticket : null
@@ -98,7 +91,6 @@ const epicFields = async (payload: Payload, ticket: Doc, tickets: { listComments
   return slice ? { branch: slice.branch, prTitle: parent.title, slice: { prev: slice.prev, mergeMain: slice.prev != null }, epic: ctx } : { branch: epic.branch, epic: ctx }
 }
 
-/** Builds the runner's RunCtx; tool calls attach to the latest persisted Step. */
 export const buildRunCtx = async (
   payload: Payload,
   d: { run: Doc; ticket: Doc; repo: string; github: ConnectionInput; gatewayKey: string; defaultBranch?: string },
@@ -124,7 +116,6 @@ export const buildRunCtx = async (
   const modelByTier = await tierModels(payload, ws)
   const mr = kind === 'plan' || kind === 'triage' || kind === 'scan' || kind === 'docs' ? null : await prOf(payload, ticket)
   const existingPr = mr?.pr.state === 'open' ? { number: mr.pr.number, url: mr.pr.url, branch: mr.pr.head, title: mr.pr.title, body: mr.pr.body } : undefined
-  // A Build Run pushes to this MR: a queued entry must be taken out first, a push would invalidate it.
   if (kind === 'build' && mr?.pr.state === 'open' && ticket.reviewState === 'queued') await dequeueBeforeChange(payload, ticket, mr)
   if (kind === 'review' && !existingPr) throw new Error('the Ticket has no open factory MR to review')
   const productDoc = (await payload.findByID({ collection: 'products', id: id(ticket.product), depth: 0, ...opts })) as Doc
@@ -191,7 +182,6 @@ export const buildRunCtx = async (
           ...opts,
         })
         lastStep = row.id
-        // The model the Run actually used: the last non-empty one the agent reported.
         if (s.model && s.model !== lastModel) await payload.update({ collection: 'runs', id: run.id, data: { model: (lastModel = s.model) }, ...opts })
       },
       toolCall: async (t) => {

@@ -8,7 +8,6 @@ import { createTestDb, type TestDb } from './helpers/test-db'
 const exec = vi.hoisted(() => vi.fn())
 vi.mock('@bauherr/runner', async (orig) => ({ ...(await orig<typeof import('@bauherr/runner')>()), runStage: exec }))
 
-/** The `audit` stage of fixtures/jobs-pack: security, ux (touches ui, non-blocking) and test in parallel, verify needs all three. */
 let payload: Payload
 let fake: FakeBackend
 let ws: number
@@ -56,7 +55,6 @@ const statuses = async (ticket: number) => Object.fromEntries((await runsOf(tick
 const events = async (ticket: number) => (await payload.find({ collection: 'ticket_events', where: { ticket: { equals: ticket } }, sort: ['at', 'id'], depth: 0, pagination: false, ...o })).docs as Record<string, any>[]
 const green = [{ name: 'ci', status: 'completed', conclusion: 'success' }]
 
-/** A Ticket in build with an MR that changes `files`, taken to `audit` by Build's `done`. */
 const audited = async (title: string, files: string[]) => {
   const issue = await fake.tickets(repo).create({ title, labels: ['bauherr:stage:build'] })
   const id = (await payload.create({ collection: 'tickets', data: { title, externalId: String(issue.number), number: issue.number, url: issue.url, state: 'open', stage: 'build', product, workspace: ws }, ...o })).id as number

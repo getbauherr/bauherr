@@ -36,7 +36,6 @@ function Confirm({ label, title, text, confirm, onConfirm, testId }: Props) {
   )
 }
 
-/** Admin only: the page renders this for an Admin and never otherwise. */
 export function AgentActions({ name, disconnect, release }: { name: string; disconnect?: () => Promise<SaveResult>; release?: () => Promise<SaveResult> }) {
   return (
     <div className="flex flex-wrap gap-2">

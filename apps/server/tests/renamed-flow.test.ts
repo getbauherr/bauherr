@@ -6,7 +6,6 @@ import { DEFAULT } from '../src/lib/workflow'
 import { claimOnly } from './helpers/claim'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-/** The default factory with every stage renamed (fixtures/renamed-pack): triage=intake, plan=design, parent=epic, build=code, review=check, release=ship, done=shipped. Built-in behaviour binds to the stage kind, so the flow must not notice. */
 let payload: Payload
 let fake: FakeBackend
 let ws: number
@@ -103,7 +102,6 @@ it('one Ticket goes through the whole renamed flow', async () => {
   await poll()
   const id = ((await payload.find({ collection: 'tickets', where: { number: { equals: issue.number } }, limit: 1, depth: 0, ...o })).docs[0] as Record<string, any>).id as number
 
-  // triage -> design
   expect(await runsOf(id)).toMatchObject([{ stage: 'intake', kind: 'triage' }])
   const triage = await claim(id, 'intake')
   expect(await call(member, 'submit_triage', { ...triage, outcome: 'plan', reason: 'clear' })).toEqual({ outcome: 'plan' })
@@ -112,7 +110,6 @@ it('one Ticket goes through the whole renamed flow', async () => {
   expect(await reload(id)).toMatchObject({ stage: 'design' })
   expect(await kinds(id)).toEqual([['intake', 'triage'], ['design', 'plan']])
 
-  // design -> code
   const plan = await claim(id, 'design')
   await call(member, 'submit_plan', { ...plan, markdown: '## TL;DR\nDecision: d\nRecommendation: r\nWhy:\n- w\nRisk: none\n\n## Goal\nrename everything' })
   await call(member, 'finish_run', { ...plan, status: 'succeeded' })
@@ -121,7 +118,6 @@ it('one Ticket goes through the whole renamed flow', async () => {
   expect(await labelsOf(n)).toContain('bauherr:stage:code')
   expect(await kinds(id)).toEqual([['intake', 'triage'], ['design', 'plan'], ['code', 'build']])
 
-  // code -> check
   const mrFor = async () => {
     const head = `bauherr/${issue.number}-feat`
     if (!(await fake.forge.listBranches(repo)).some((b) => b.name === head)) await fake.forge.createBranch(repo, head)
@@ -136,13 +132,11 @@ it('one Ticket goes through the whole renamed flow', async () => {
   expect(await labelsOf(n)).toContain('bauherr:stage:check')
   expect((await runsOf(id)).at(-1)).toMatchObject({ stage: 'check', kind: 'review', status: 'awaiting_session' })
 
-  // a review with changes returns to code and counts a round
   const review1 = await claim(id, 'check')
   expect(await call(member, 'submit_review', { ...review1, verdict: 'changes', findings: [{ severity: 'medium', class: 'security', file: 'a.ts', line: 3, msg: 'off by one', scenario: 'when n is 0, then it returns -1' }], checked, markdown: 'the review' })).toMatchObject({ verdict: 'changes', outcome: 'build' })
   expect(await reload(id)).toMatchObject({ stage: 'code', reviewRounds: 1 })
   expect(await labelsOf(n)).toContain('bauherr:stage:code')
 
-  // second round: clean review merges
   const build2 = await claim(id, 'code')
   const pr2 = await mrFor()
   fake.setChecks(repo, pr2.headSha, green)
@@ -150,7 +144,6 @@ it('one Ticket goes through the whole renamed flow', async () => {
   const review2 = await claim(id, 'check')
   expect(await call(member, 'submit_review', { ...review2, verdict: 'clean', findings: [], checked, markdown: 'clean' })).toMatchObject({ verdict: 'clean', outcome: 'merged' })
 
-  // check -> ship -> shipped
   expect(await release.watchRelease(payload)).toMatchObject({ released: 1 })
   expect(await reload(id)).toMatchObject({ stage: 'ship', releaseState: 'waiting' })
   expect(await labelsOf(n)).toContain('bauherr:stage:ship')

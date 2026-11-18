@@ -40,7 +40,6 @@ const shoot = async (page: Page, name: string, viewports = [{ width: 1440, heigh
   await page.setViewportSize(viewports[0]!)
 }
 
-// Own seeded Ticket (#41, Triage hold with one question).
 test('the Inbox card opens the conversation; the recommended answer resolves the question, sending it on drops the card and the Inbox count', async ({ page }) => {
   await login(page)
   await page.goto('/inbox')

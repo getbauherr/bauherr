@@ -9,7 +9,6 @@ const SPLIT_DEFAULT = 480
 const STEP = 16
 const KEY = 'bauherr.ticket-split'
 
-/** Clamps a Now pane width to the allowed range. */
 export const clampWidth = (w: number): number => Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, Math.round(w)))
 
 const SPLIT_TABS = [['conversation', 'Conversation'], ['status', 'Status']] as const
@@ -29,17 +28,11 @@ const write = (s: Saved) => {
   } catch {}
 }
 
-/**
- * The Ticket page's split: the conversation left, the Now pane right. At container width of 960px and up both show, the handle between them resizes the Now pane
- * (360-640px, drag or arrow keys; Enter collapses) and width and collapsed state are remembered. Below 960px two tabs switch between them.
- * `bar` is the Now pane's ActionBar: it stays on screen on every tab (fixed to the bottom at 640px and below).
- */
 export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: { conversation: ReactNode; bar: ReactNode; now: ReactNode; defaultTab?: 'conversation' | 'status' }) {
   const [saved, setSaved] = useState<Saved>({ width: SPLIT_DEFAULT, collapsed: false })
   const [tab, setTab] = useState(defaultTab)
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => setSaved(read()), [])
-  // A link to #details shows the Now tab of the Now pane with About open.
   useEffect(() => {
     const show = () => {
       setTab('status')
@@ -151,7 +144,6 @@ export function TicketSplit({ conversation, bar, now, defaultTab = 'status' }: {
   )
 }
 
-/** The Now pane's tabs (Now, Plan, Proof, History): documents never share the screen with the status. The pane never switches by itself. */
 export function PaneTabs({ tabs }: { tabs: { id: string; label: string; body: ReactNode }[] }) {
   const [current, setCurrent] = useState(tabs[0]!.id)
   const move = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {

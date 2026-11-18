@@ -3,7 +3,6 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { LinkPending } from '../LinkPending'
 
-/** Link tabs: each tab is a route, the current one carries `aria-current` (roles stay link, not tab). */
 export function Tabs({ className, ...props }: ComponentProps<'nav'>) {
   return <nav data-slot="tabs" className={cn('flex gap-4', className)} {...props} />
 }

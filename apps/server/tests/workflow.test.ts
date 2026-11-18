@@ -54,7 +54,6 @@ describe('derived lists reproduce the constants they replace', () => {
 
 describe('gates match tests/human-gates.test.ts', () => {
   it.each([
-    // the shipped file asks the Product owner for staging acceptance per Product: the gate exists but is not on for every Product (`stagingGateOn`)
     [undefined, { plan: true, staging: true, production: true }, ['refine', 'plan', 'production']],
     ['gated-pack', { plan: true, staging: true, production: false }, ['refine', 'plan', 'staging']],
     ['bare-pack', { plan: false, staging: false, production: false }, ['refine']],

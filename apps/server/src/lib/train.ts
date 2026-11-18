@@ -13,10 +13,8 @@ type Doc = Record<string, any>
 const o = { overrideAccess: true, depth: 0 } as const
 
 export type TrainMember = { ticket: number | string; pr: number; headSha: string }
-/** `probe` is the prefix length under test while bisecting (null when the whole train is); `results` the verdict per tested prefix length; `tip` the train branch's commit under test. */
 export type TrainState = { baseSha: string; members: TrainMember[]; phase: 'testing' | 'bisect'; probe: number | null; results: Record<string, { ok: boolean; link?: string }>; tip: string; since: string }
 
-/** Smallest prefix length of a train of `k` PRs that fails, given that the whole train fails; binary search, `passes(m)` runs the checks of the first `m` PRs. */
 export const bisectFirstFailure = async (k: number, passes: (m: number) => Promise<boolean>): Promise<number> => {
   let [lo, hi] = [0, k]
   while (hi - lo > 1) {
@@ -27,14 +25,12 @@ export const bisectFirstFailure = async (k: number, passes: (m: number) => Promi
   return hi
 }
 
-/** Thrown by the replayed bisect when it needs a prefix nobody has tested yet. */
 class NeedsProbe extends Error {
   constructor(readonly length: number) {
     super(`prefix ${length} untested`)
   }
 }
 
-/** Compare-and-set of a Product's `trainState` (jsonb equality), like `cas` in release.ts: true when this call changed it. */
 const casTrain = async (payload: Payload, product: number | string, next: TrainState | null, prev: TrainState | null): Promise<boolean> =>
   (
     await payload.db.drizzle.execute(
@@ -44,7 +40,6 @@ const casTrain = async (payload: Payload, product: number | string, next: TrainS
 
 type Ctx = Awaited<ReturnType<typeof forgeOf>> & { product: Doc; base: string }
 
-/** Verdict of the train tip: the Product's `deployChecks` (all when empty); none registered yet is pending. `link` is the failed check's run, else the train branch's runs. */
 const tipChecks = async (c: Ctx, tip: string): Promise<{ state: 'green' | 'pending' | 'red'; link?: string }> => {
   const names = String(c.product.deployChecks ?? '').split(',').map((n) => n.trim()).filter(Boolean)
   const latest = latestChecks(await c.backend.forge.listChecks(c.repo, tip))
@@ -56,7 +51,6 @@ const tipChecks = async (c: Ctx, tip: string): Promise<{ state: 'green' | 'pendi
 
 const mrOf = async (c: Ctx, m: TrainMember) => ({ backend: c.backend, repo: c.repo, tickets: c.tickets, pr: await c.backend.forge.getPullRequest(c.repo, m.pr) })
 
-/** Resets the train branch to the base and merges the first `n` members; the tip, or null when one no longer merges cleanly. */
 const buildPrefix = async (c: Ctx, state: TrainState, n: number): Promise<string | null> => {
   await c.backend.forge.resetBranch(c.repo, TRAIN_BRANCH, state.baseSha)
   let tip = state.baseSha
@@ -68,7 +62,6 @@ const buildPrefix = async (c: Ctx, state: TrainState, n: number): Promise<string
   return tip
 }
 
-/** Squash-merges the members in order onto main, each pinned to its tested head. A failure stops here: the rest stays queued and re-trains. Counts like a failed direct merge. */
 const mergeMembers = async (payload: Payload, c: Ctx, members: TrainMember[]): Promise<void> => {
   for (const m of members) {
     try {
@@ -84,7 +77,6 @@ const mergeMembers = async (payload: Payload, c: Ctx, members: TrainMember[]): P
   }
 }
 
-/** One step of a running train. `done` when the train is over (merged, failed or invalidated) and a new one may start, `wait` while checks run. */
 const advance = async (payload: Payload, c: Ctx, state: TrainState, at: number): Promise<'wait' | 'done'> => {
   const end = async () => (await casTrain(payload, c.product.id, null, state), 'done' as const)
   const review = nameOf(workflowFor(c.product.workspace), 'review')
@@ -129,7 +121,6 @@ const advance = async (payload: Payload, c: Ctx, state: TrainState, at: number):
   return 'done'
 }
 
-/** Builds a train from the queued Tickets: by Board order, at most `trainConcurrency`, each merged into `bauherr/train` on top of the base; one that conflicts goes back to Build. */
 const start = async (payload: Payload, c: Ctx, at: number): Promise<void> => {
   const queued = (await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: c.product.id } }, { state: { equals: 'open' } }, { stage: { equals: nameOf(workflowFor(c.product.workspace), 'review') } }, { reviewState: { equals: 'queued' } }] }, limit: 200, pagination: false, ...o })).docs as Doc[]
   queued.sort((a, b) => executionOrder(a as FrontierTicket, b as FrontierTicket))
@@ -156,10 +147,6 @@ const start = async (payload: Payload, c: Ctx, at: number): Promise<void> => {
   if (state.members.length) await casTrain(payload, c.product.id, state, null)
 }
 
-/**
- * Per minute, for every `train` Product (Tickets are `queued` by the merge gate): advances its running train by one step, or starts one from the queued Tickets.
- * One train per Product at a time; every state write is a compare-and-set, a failing Product does not stop the others.
- */
 export const runTrains = async (payload: Payload, at = Date.now()): Promise<void> => {
   const products = (await payload.find({ collection: 'products', where: { mergeMode: { equals: 'train' } }, pagination: false, ...o })).docs as Doc[]
   for (const product of products) {

@@ -27,19 +27,15 @@ export const CLIENT_RESULT_CHARS = 4000
 const MODEL_RESULT_CHARS = 30_000
 const MAX_HISTORY = 40
 
-/** The assistant skill of `BAUHERR_PACK_DIR`; a pack override without one (the gated test pack) falls back to the built-in pack. */
 const skill = async (): Promise<string> => {
   const read = async (dir: string) => (await readFile(resolve(dir, 'skills/assistant/SKILL.md'), 'utf8')).replace(/^---[\s\S]*?---\s*/, '')
   const builtIn = resolve(process.cwd(), '../../pack')
   return process.env.BAUHERR_PACK_DIR ? read(process.env.BAUHERR_PACK_DIR).catch(() => read(builtIn)) : read(builtIn)
 }
 
-/** Skill + today + the page block; the person's words and tool results never enter it. */
 const systemPrompt = async (ctx: PageContext): Promise<string> =>
   `${await skill()}\n\nToday is ${new Date().toISOString().slice(0, 10)}.\n\n<page label="${ctx.label.replace(/"/g, "'")}">\n${ctx.markdown.replace(/<\/?page/gi, '')}\n</page>`
 
-/** The model for the person's Workspace (standard tier), or the scripted one under CHAT_FAKE / INTAKE_FAKE. */
-/** The model a Workspace's tier names (`standard` by default). */
 export const tierModels = (w: Doc): Record<'cheap' | 'standard' | 'strong', string> => ({ ...DEFAULT_MODEL_BY_TIER, ...w.modelByTier })
 
 export const chatModelFor = async (payload: Payload, workspace: number, tier: 'cheap' | 'standard' | 'strong' = 'standard'): Promise<ModelCall> => {
@@ -49,14 +45,12 @@ export const chatModelFor = async (payload: Payload, workspace: number, tier: 'c
   return gatewayChatModel({ slug: w.slug, key: decrypt(w.gatewayKey), model })
 }
 
-/** The client's turns as model turns; empty ones are dropped. Images stay references until the call. */
 const history = (messages: ChatInput[]): ModelMessage[] =>
   messages.slice(-MAX_HISTORY).flatMap((m) => {
     const content = m.content.flatMap((p): Block[] => (p.type === 'text' ? (p.text.trim() ? [{ type: 'text', text: p.text }] : []) : [{ type: 'image_ref', mediaId: p.mediaId }]))
     return content.length ? [{ role: m.role, content }] : []
   })
 
-/** image_ref -> base64 image of a file in the person's Workspace. */
 export const withImages = async (payload: Payload, workspace: number, messages: ModelMessage[]): Promise<ModelMessage[]> =>
   Promise.all(
     messages.map(async (m) => ({
@@ -78,7 +72,6 @@ type Env = { who: Who; ctx: Ctx; thread: Doc; page: PageContext; model: ModelCal
 const shorten = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s)
 const asText = (v: unknown): string => (typeof v === 'string' ? v : JSON.stringify(v ?? null))
 
-/** Runs one tool call to a tool_result block plus the events the client sees. */
 async function* callTool(env: Env, use: { id: string; name: string; input: Record<string, unknown> }, tally: Answer['toolCalls']): AsyncGenerator<ChatEvent, Block> {
   const kind = kindOf(use.name, env.ctx.user)
   const done = (ok: boolean, text: string): Block => ({ type: 'tool_result', tool_use_id: use.id, content: shorten(text, MODEL_RESULT_CHARS), ...(!ok && { is_error: true }) })
@@ -108,7 +101,6 @@ async function* callTool(env: Env, use: { id: string; name: string; input: Recor
   }
 }
 
-/** The agent loop: model turn, tools, model turn; ends with an answer, or at the first `confirm` tool (stores it, emits the card). */
 async function* loop(env: Env, s: State, answerId: string, t0: number, tally: Answer['toolCalls']): AsyncGenerator<ChatEvent> {
   const usage = { model: '', tokensIn: 0, tokensOut: 0 }
   const system = await systemPrompt(env.page)
@@ -198,7 +190,6 @@ const envOf = (a: { payload: Payload; user: Doc; workspace: number; thread: Doc;
   signal: a.signal,
 })
 
-/** One chat turn: the page context, then the answer as events. The model sees the client's text and images as user turns only; a pending confirmation of an earlier turn is dropped. */
 export async function* runChat(a: { payload: Payload; user: Doc; workspace: number; thread: Doc; messages: ChatInput[]; context: PageContext & { path: string }; model: ModelCall; signal?: AbortSignal }): AsyncGenerator<ChatEvent> {
   const env = envOf({ ...a, page: a.context })
   yield { type: 'context', label: a.context.label }
@@ -208,9 +199,6 @@ export async function* runChat(a: { payload: Payload; user: Doc; workspace: numb
   yield* loop(env, { messages: history(a.messages), results: [], rounds: 0 }, answerId, Date.now(), [])
 }
 
-/**
- * The person's answer to the pending card. Resolves to null when there is nothing to confirm: no pending call, another id, or already answered (the claim clears it in one statement, so a double click runs once). On approve it runs EXACTLY the stored name and input as the confirming person; on decline the model is told.
- */
 export const resumeChat = async (a: { payload: Payload; user: Doc; workspace: number; thread: Doc; toolCallId: string; approved: boolean; reason?: string; context: PageContext; model: ModelCall; signal?: AbortSignal }): Promise<AsyncGenerator<ChatEvent> | null> => {
   const env = envOf({ ...a, page: a.context })
   const pending = await claimPending(env.who, a.thread.id, a.toolCallId)

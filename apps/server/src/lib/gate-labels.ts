@@ -14,18 +14,14 @@ const o = { overrideAccess: true, depth: 0 } as const
 
 export const APPROVED_STAGING = 'bauherr:approved:staging'
 
-/** Labels that approve a human gate. Only a linked Bauherr/Admin (or, where the gate asks the Product owner, a linked Product owner of the Product), or an approval the factory recorded itself, may set them; while a gate is off, a `strictWhenOff` label (staging: it would skip the production gate) counts only as the factory's own `auto:staging` path and is stripped otherwise; the plan label of an off gate is stripped as well (the factory writes it only while the gate is on; gate-off Tickets advance through `advancePlan`, which needs no label). */
 export const GATE_LABELS = [
   { gate: 'plan', label: APPROVED_PLAN, kind: 'approve:plan', recorded: ['approve:plan', 'approve:inherited'], strictWhenOff: true },
   { gate: 'staging', label: APPROVED_STAGING, kind: 'accept:staging', recorded: ['accept:staging', 'auto:staging', EXPEDITE_SKIP_TOUCH], strictWhenOff: true },
-  // The Expedite lane is not a gate, but its label skips Triage and the plan approval, so it is held to the same rule: a linked Bauherr or Admin, or the factory's own Expedite action (`expedite` touch).
   { gate: 'expedite', label: EXPEDITE_LABEL, kind: 'expedite', recorded: ['expedite'], strictWhenOff: true },
 ] as const
 
-/** Whether the workflow has the gate on (#175). */
 export const gateIsOn = (wf: Workflow, gate: (typeof GATE_LABELS)[number]['gate']) => gate === 'expedite' || humanGates(wf).includes(gate)
 
-/** A recorded touch legitimises a factory-login label only when it was recorded shortly before the label event. */
 export const TOUCH_WINDOW_MS = 10 * 60_000
 const SKEW_MS = 60_000
 
@@ -42,15 +38,12 @@ interface Forge {
 export interface GateVerdict {
   accepted: string[]
   rejected: string[]
-  /** Actor unknown: neither approval nor removed; the next poll retries. */
   pending: string[]
 }
 
-/** Verifies every gate label in `labels` against the forge's label events (spec workflow.md, "Gate labels"). */
 export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: string[], ts: Forge, gates: readonly (typeof GATE_LABELS)[number][] = GATE_LABELS): Promise<GateVerdict> => {
   const verdict: GateVerdict = { accepted: [], rejected: [], pending: [] }
   const wf = workflowFor(ticket.workspace)
-  // Acceptance on staging that asks the Product owner is on per Product: the Ticket's own gates, else the workflow's.
   const mine = (await gatesOf(payload, wf, ticket)) ?? humanGates(wf)
   const gateIsOn = (_: Workflow, gate: (typeof GATE_LABELS)[number]['gate']) => gate === 'expedite' || mine.includes(gate)
   const inPlay = gates.filter((g) => labels.includes(g.label))
@@ -83,7 +76,6 @@ export const verifyGateLabels = async (payload: Payload, ticket: Doc, labels: st
       ...o,
     })).totalDocs > 0
     const on = gateIsOn(wf, g.gate)
-    // A Bauherr or Admin always counts; a Product owner only where this gate asks the Product owner of the Ticket's Product.
     const as = factory ? null : speaksAs(voices, actor)
     const asked = g.gate === 'expedite' ? 'bauherr' : askedFor(ticket, g.gate === 'plan' ? 'Approve plan' : 'Accept on staging', voices)
     if (factory ? touched : on && (as === 'bauherr' || (as === 'product-owner' && asked === 'product-owner'))) {

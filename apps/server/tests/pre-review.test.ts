@@ -45,7 +45,6 @@ beforeEach(async () => {
   await payload.update({ collection: 'products', id: product, data: { reviewChecks: RULES }, ...o })
 })
 
-/** A claimed session build Run on Ticket #1 and an open factory MR holding `files`. */
 const seed = async (files: Record<string, string>) => {
   const ticket = await payload.create({ collection: 'tickets', data: { title: 't', externalId: `p-${++n}`, number: 1, state: 'open', labels: [], stage: 'build', product, workspace: ws }, ...o })
   const run = await payload.create({ collection: 'runs', data: { ticket: ticket.id, stage: 'build', mode: 'session', status: 'awaiting_session', workspace: ws }, ...o })
@@ -153,7 +152,6 @@ const VARIANTS = ['light-desktop', 'dark-desktop']
 const uiProduct = (pathSets: Record<string, string[]> | null) => payload.update({ collection: 'products', id: product, data: { reviewChecks: null, pathSets }, ...o })
 const shoot = (a: object, variant: string, pair: 'before' | 'after') => call(member, 'attach_artifact', { ...a, kind: 'image', rule: UI_RULE, pair, title: `${variant}: Settings ${pair}`, file: { name: 'a.png', base64: PNG } })
 const UI_FILES = { 'src/ui/a.tsx': 'x' }
-/** Earlier tests leave Tickets in review; the WIP limit would keep the next one in build. */
 const emptyReview = () => payload.update({ collection: 'tickets', where: { stage: { equals: 'review' } }, data: { stage: 'done' }, ...o })
 
 it('a ui diff is refused without the light and dark before/after pair, naming what is missing', async () => {

@@ -12,20 +12,14 @@ type Doc = Record<string, any>
 export const MAX_STAGE_COMMENT = 60_000
 export const stageMarker = (name: string) => `<!-- bauherr:stage:${name} -->`
 
-/** The outcome keys an `agent` stage accepts. */
 export const outcomesOf = (run: Doc): string[] => ((d) => (d && jobOf(d, run)?.outcomeOrder) ?? [])(stageDef(workflowFor(run.workspace), run.stage))
 
-/** Throws unless `outcome` is one of the stage's outcome keys. */
 export const assertOutcome = (run: Doc, outcome: unknown): string => {
   const keys = outcomesOf(run)
   if (typeof outcome !== 'string' || !keys.includes(outcome)) throw new Error(`outcome must be one of ${keys.join(', ')}`)
   return outcome
 }
 
-/**
- * The end of an `agent` Run that reported `outcome` (already validated; the Run row is already `succeeded`): posts the one stage comment (marked `<!-- bauherr:stage:<name> -->`),
- * records `runs.outcome` and takes the Ticket along the stage's outcome with `advance`; the comment is the hand-back instruction when the outcome leads back to Build.
- */
 export const finishAgentRun = async (payload: Payload, run: Doc, ticket: Doc, outcome: string, comment?: string | null): Promise<void> => {
   const text = comment?.trim().slice(0, MAX_STAGE_COMMENT)
   const { ts, n } = await sourceOf(payload, ticket)

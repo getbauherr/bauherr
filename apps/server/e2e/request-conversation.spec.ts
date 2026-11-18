@@ -4,7 +4,6 @@ import { give, PNG } from './paste'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-// Own Workspace (slug `rc`), own Bauherr and Product owner (seed-e2e.ts): only this spec signs in as them and it runs in one worker.
 const bauherr = 'rc-bauherr@example.com'
 const owner = 'rc-owner@example.com'
 const shots = process.env.SHOTS_DIR && `${process.env.SHOTS_DIR}/conv2`
@@ -24,7 +23,6 @@ const signIn = async (page: Page, who: string) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 
-/** One screenshot per scheme and size into the shots directory (nothing without `SHOTS_DIR`). */
 const shoot = async (page: Page, name: string, sizes: [number, number][] = [[1440, 900], [390, 844]]) => {
   if (!shots) return
   const { width: w0, height: h0 } = page.viewportSize()!
@@ -51,7 +49,6 @@ const panel = (page: Page) => page.getByTestId('artifact-panel')
 const field = (page: Page, name: string) => panel(page).locator(`[data-field=${name}]`)
 const composer = (page: Page) => page.getByRole('textbox', { name: 'Your answer' })
 
-/** Sends a message and waits for the agent's answer to be the last message and the turn to be over. */
 const say = async (page: Page, text: string, reply: string | RegExp) => {
   await expect(page.getByTestId('stop')).toHaveCount(0)
   await composer(page).fill(text)
@@ -73,7 +70,6 @@ test('a Bauherr drafts a request in the conversation: empty start, living card, 
   await expect(page).toHaveURL(/\/requests\/\d+$/)
   const url = page.url()
 
-  // The page IS the conversation: rail, one partner, no dock, no card on the page behind it.
   await expect(page.getByTestId('conversation-shell')).toBeVisible()
   await expect(page.locator('[data-slot=sidebar][data-state=collapsed]')).toBeVisible()
   await expect(page.getByTestId('chat-dock')).toBeHidden()
@@ -83,14 +79,12 @@ test('a Bauherr drafts a request in the conversation: empty start, living card, 
   await expect(page.getByTestId('empty-state')).toContainText('What should the team fix or build?')
   for (const s of ['Report a bug', 'Ask for a feature', 'Change something']) await expect(page.getByTestId('empty-state').getByRole('button', { name: s })).toBeVisible()
 
-  // The model is one short name everywhere (the full id in a title); a Bauherr also sees the cost.
   const model = (await page.getByTestId('header-model').innerText()).trim()
   expect(model).toMatch(/^claude-[\w.-]+$/)
   await expect(page.getByTestId('model-chip')).toHaveText(model)
   await expect(page.getByTestId('header-model')).toHaveAttribute('title', /\//)
   await expect(page.getByTestId('cost-chip')).toBeVisible()
 
-  // The empty card: every field a dashed placeholder, the Product to choose (two Products), File request off.
   await expect(panel(page)).toContainText('Request card')
   await expect(field(page, 'title')).toHaveAttribute('data-placeholder', '')
   await expect(field(page, 'problem')).toHaveAttribute('data-placeholder', '')
@@ -105,7 +99,6 @@ test('a Bauherr drafts a request in the conversation: empty start, living card, 
   await page.getByTestId('start-bug').click()
   await expect(panel(page).getByTestId('card-kind')).toHaveText('Bug')
 
-  // The first message: streamed, the agent's question with suggested answers (once, not repeated in the card), the card filled and the changes marked.
   await say(page, 'The export button on the invoices page does nothing', 'Who is affected, and since when?')
   await expect(page.getByTestId('empty-state')).toHaveCount(0)
   await expect(page.getByTestId('speaker').last().getByTestId('speaker-model')).toHaveText(model)
@@ -127,7 +120,6 @@ test('a Bauherr drafts a request in the conversation: empty start, living card, 
   await expect(page.getByTestId('cost-chip')).toContainText('tokens')
   await shoot(page, 'request-draft')
 
-  // One click on a suggested answer sends it; only what that turn changed is marked.
   await options.getByRole('button', { name: /Everyone, since last week/ }).click()
   await expect(page.getByTestId('speaker').last().getByTestId('reply-text')).toContainText('How should it work once it is fixed?', { timeout: 30_000 })
   await expect(field(page, 'context')).toContainText('Finance team, since last week.')
@@ -135,7 +127,6 @@ test('a Bauherr drafts a request in the conversation: empty start, living card, 
   await expect(field(page, 'problem')).not.toHaveAttribute('data-changed', 'true')
   await expect(page.getByTestId('current-point')).toHaveCount(0) // this question has no suggestions
 
-  // A pasted screenshot goes with the next message and lands on the card; the engine is satisfied.
   await give(composer(page), 'paste', { name: 'shot.png', type: 'image/png', base64: PNG })
   await expect(page.getByTestId('attachment').locator('img')).toBeVisible()
   await say(page, 'Totals should match', 'Anything to add before I send this?')
@@ -146,19 +137,16 @@ test('a Bauherr drafts a request in the conversation: empty start, living card, 
   await expect(page.getByTestId('file-request')).toBeEnabled()
   await shoot(page, 'request-ready')
 
-  // A hand edit is kept.
   await field(page, 'title').getByRole('button', { name: 'Edit Title' }).click()
   await page.getByRole('textbox', { name: 'Title' }).fill(`Export does nothing on invoices ${stamp}`)
   await field(page, 'title').getByRole('button', { name: 'Save' }).click()
   await expect(page.getByTestId('card-edit')).toHaveCount(0) // saved: the editor closes with the answer
   await expect(field(page, 'title')).toContainText(`Export does nothing on invoices ${stamp}`)
 
-  // After a reload the conversation is where it was.
   await page.reload()
   await expect(thread(page).getByTestId('speaker')).toHaveCount(3)
   await expect(field(page, 'title')).toContainText(`Export does nothing on invoices ${stamp}`)
 
-  // File request: the page becomes read-only history with the handoff, no composer, no cost.
   await page.getByTestId('file-request').click()
   await expect(page).toHaveURL(/\/requests\/\d+\?view=conversation$/)
   await expect(page.getByTestId('read-only')).toContainText('read-only history')
@@ -173,7 +161,6 @@ test('a Bauherr drafts a request in the conversation: empty start, living card, 
   await expect(field(page, 'title').getByRole('button')).toHaveCount(0) // nothing is editable any more
   await shoot(page, 'request-filed')
 
-  // The request page keeps its own view and links back to the conversation; Requests lists it as sent.
   await page.goto(url.replace(/^.*\/requests/, '/requests'))
   await expect(page.getByRole('heading', { name: `Export does nothing on invoices ${stamp}` })).toBeVisible()
   await page.getByRole('link', { name: 'Open the conversation' }).click()
@@ -191,7 +178,6 @@ test('a Product owner has the same conversation: a read-only model, no cost, the
   await expect(page.getByTestId('participant')).toContainText('Factory assistant')
   await expect(page.getByTestId('empty-state')).toBeVisible()
 
-  // No factory internals: the model is a label (no choice), there is no cost chip, no dock, no helper.
   await expect(page.getByTestId('header-model')).toHaveText(/^claude-[\w.-]+$/)
   await expect(page.getByTestId('model-chip')).toHaveText(/^claude-[\w.-]+$/)
   await expect(page.getByRole('combobox', { name: /^Model/ })).toHaveCount(0)
@@ -216,7 +202,6 @@ test('a Product owner has the same conversation: a read-only model, no cost, the
   await expect(page.getByTestId('handoff-request')).toBeVisible()
   await shoot(page, 'request-po-filed')
 
-  // Their requests list shows it, and another Product's conversation is not theirs.
   await page.goto('/requests')
   await expect(page.getByTestId('factory-row').filter({ hasText: `The invoice total is wrong ${stamp}` })).toHaveCount(1)
 })
@@ -232,7 +217,6 @@ test('a request with several problems is filed as one Ticket each, a draft can b
   await page.getByTestId('file-request').click()
   await expect(page.getByTestId('handoff')).toContainText(/Filed as #\d+, #\d+, #\d+/)
 
-  // A second draft: left, listed under Drafts, continued from there, then discarded from the menu after a question.
   await page.goto('/requests/new')
   const title = `Discard check ${Date.now()}`
   await say(page, title, 'Who is affected, and since when?')

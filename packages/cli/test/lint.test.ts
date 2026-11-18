@@ -9,7 +9,6 @@ const factory = (tier: string) => `version: 1\nteam:\n  roles:\n    engineer: {t
 const SPEC = '| Role | Tier |\n|---|---|\n| engineer | cheap |\n'
 const CONTEXT = '**Bauherr**:\nA person.\n_Avoid_: Project owner, owner (bare), Operator\n'
 
-/** A small clean pack plus the glossary and the spec; `files` adds or replaces pack files. */
 const fixture = (files: Record<string, string> = {}, spec = SPEC) => {
   const root = mkdtempSync(join(tmpdir(), 'bauherr-lint-'))
   const all: Record<string, string> = { 'factory.yaml': factory('cheap'), 'rules/a.md': '# A\nSee `skills/s/SKILL.md`.\n', 'skills/s/SKILL.md': '# S\n', ...files }

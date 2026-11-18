@@ -19,13 +19,10 @@ const idOf = (r: Ref | null | undefined) => (typeof r === 'object' ? r?.id : r)
 
 export const REQUESTS_LIMIT = 100
 
-/** Who a request waits for, from the viewer's side: the requester's own steps, the Bauherr's, or nobody's (the factory works). */
 export type Waits = 'You' | 'The requester' | 'The Bauherr' | 'The factory'
-/** The needs the person who asked answers (questions about the request, the result on staging); every other need is the Bauherr's. */
 const REQUESTER_NEEDS: readonly Need[] = ['Answer questions', 'Answer decisions', 'Accept on staging']
 const STATUS_BY_KIND: Partial<Record<StageKind, string>> = { triage: 'Being looked at', plan: 'Being planned', container: 'Being planned', build: 'Being built', agent: 'Being built', review: 'Being reviewed', release: 'Going live', human: 'Waiting for the Bauherr' }
 
-/** One plain-word status and who it waits for, from the stage KIND (never its name), the need and the Run's progress key. `mine`: the viewer asked for it. */
 export const lifecycleOf = (wf: Workflow, t: Record<string, any>, key: Progress['key'] | null, mine: boolean): { status: string; waits: Waits; lane: 'proposed' | 'fast' | null } => {
   const kind = (t.stage && kindOf(wf, t.stage)) || 'triage'
   const need = t.needsYou ?? null
@@ -47,20 +44,15 @@ export type RequestRow = {
   productId: number
   kind: Kind | null
   urgent: boolean
-  /** Who asked (name or email), for the By column. */
   by: string
   mine: boolean
-  /** Same-origin target of the title link: the request page. */
   href: string
   updatedAt: string
   ticket: { number: number; id?: number } | null
   status: string
   waits: Waits | null
-  /** `proposed`: asked for the fast lane, the Bauherr has not decided; `fast`: on it. */
   lane: 'proposed' | 'fast' | null
-  /** What the viewer does about it now (the need), when it is theirs. */
   need: Need | null
-  /** Released: the release note line; declined: why. */
   note: string | null
   progress: (Progress & { since: string | null }) | null
 }
@@ -74,10 +66,8 @@ const titleOf = (s: Pick<Session, 'title' | 'draft'>) => (s.title?.trim() || s.d
 export type Filters = { product?: number; kind?: Kind; mine?: boolean }
 export type Workbench = { needs: RequestRow[]; factory: RequestRow[]; done: RequestRow[]; products: { id: number; name: string }[]; multiProduct: boolean; showBy: boolean; total: number }
 
-/** Whether `need` is the viewer's to act on: the requester's steps on their own request, or a Bauherr's step they may decide (an Expedite is an Admin's; a Product owner has no Bauherr step until the decisions slice). */
 const needsViewer = (user: Viewer, need: Need | null, mine: boolean): boolean => !!need && (REQUESTER_NEEDS.includes(need) ? mine : !isProductOwner(user) && canDecide(user, need))
 
-/** Sent requests of a Workspace for the Requests page, in three sections (Needs you, In the factory, Done), without conversation text. Database only. */
 export async function loadWorkbench(workspaceId: number, user: Viewer, filters: Filters = {}): Promise<Workbench> {
   const payload = await payloadClient()
   const o = { overrideAccess: true, pagination: false } as const
@@ -145,7 +135,6 @@ export async function loadWorkbench(workspaceId: number, user: Viewer, filters: 
 
 export type DraftRow = { id: number; title: string; product: string; productId: number; updatedAt: string; kind: Kind | null; urgent: boolean; /** Plain words of what is missing to send; empty when it can be sent. */ missing: string[]; canSend: boolean }
 
-/** Every open draft of the person in a Workspace that has been written to (newest first, no cut-off): the title is the card's title, the draft's problem or the first message. */
 export async function loadDrafts(user: Viewer & { id: number | string }, workspaceId: number): Promise<DraftRow[]> {
   const payload = await payloadClient()
   const { docs } = await payload.find({
@@ -160,13 +149,11 @@ export async function loadDrafts(user: Viewer & { id: number | string }, workspa
   })
 }
 
-/** Whether the session is one of the person's open drafts in the Workspace (the `?session=` link of `/requests/new`). */
 export async function ownsDraft(userId: number, workspaceId: number, id: number): Promise<boolean> {
   const payload = await payloadClient()
   return (await payload.count({ collection: 'intake_sessions', where: { and: [{ id: { equals: id } }, { user: { equals: userId } }, { persona: { equals: 'product-user' } }, { status: { equals: 'open' } }, { workspace: { equals: workspaceId } }] }, overrideAccess: true })).totalDocs > 0
 }
 
-/** Number of the caller's open Drafts with messages in a Workspace (the Requests nav badge). */
 export async function countOwnDrafts(userId: number, workspaceId: number) {
   const payload = await payloadClient()
   const { docs } = await payload.find({
@@ -181,7 +168,6 @@ export type RequestTicket = { id: number; number: number; title: string; status:
 export type TimelineEntry = { at: string; text: string }
 type EventRow = { at: string; stageKind?: string | null; phase?: string | null; cause?: string | null }
 
-/** The plain-word history of a request from its Ticket's events, oldest first, each step once (a build and review loop says "Built" once): no Runs, no stage names, no agents. `sentAt` opens it. */
 export const timelineOf = (sentAt: string, events: EventRow[], closedWithChange: boolean): TimelineEntry[] => {
   const out: TimelineEntry[] = [{ at: sentAt, text: 'Sent' }]
   const add = (at: string, text: string) => out.some((e) => e.text === text) || out.push({ at, text })
@@ -205,7 +191,6 @@ export const timelineOf = (sentAt: string, events: EventRow[], closedWithChange:
   return out
 }
 
-/** The card as the request page reads it (editing happens in the conversation); a Product owner's images come through the signed-in route instead of the public link. */
 const cardFor = (user: Viewer, card: CardData): CardData => (isProductOwner(user) ? { ...card, images: card.images.map((i) => ({ ...i, url: `/intake/api/media/${i.id}` })) } : card)
 
 export type RequestPage = {
@@ -213,18 +198,14 @@ export type RequestPage = {
   title: string
   product: string
   sent: boolean
-  /** The caller can continue this Draft in the chat. */
   own: boolean
-  /** The caller started this request. */
   mine: boolean
   card: CardData
   tickets: RequestTicket[]
   timeline: TimelineEntry[]
-  /** The first Ticket is closed and shipped: "Report a problem" is offered. */
   released: boolean
 }
 
-/** One Request for its page, or null when it does not exist, is an owner session, belongs to another Workspace or is not visible to the viewer. Linked Tickets are `ticketNumbers` (fallback `ticketNumber`) of the same Product. */
 export async function loadRequest(workspaceId: number, id: number, user: Viewer & { id: number | string }): Promise<RequestPage | null> {
   const payload = await payloadClient()
   const o = { overrideAccess: true, pagination: false, depth: 0 } as const
@@ -257,7 +238,6 @@ export async function loadRequest(workspaceId: number, id: number, user: Viewer 
 
 export type OwnerTicket = { ticket: RequestTicket; product: { id: number; name: string }; /** The request that created it, when it has one. */ request: number | null; card: CardData | null; timeline: TimelineEntry[]; released: boolean; note: string | null }
 
-/** The Ticket as a Product owner sees it, or null when it does not exist, is in another Workspace or its Product is not assigned to them (one answer for all three: a 404). Database only: no Runs, steps, cost or plan are read. */
 export async function loadOwnerTicket(workspaceId: number, id: number, user: Viewer & { id: number | string }): Promise<OwnerTicket | null> {
   const payload = await payloadClient()
   const o = { overrideAccess: true, pagination: false, depth: 0 } as const

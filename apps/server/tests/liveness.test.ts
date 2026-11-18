@@ -56,7 +56,6 @@ const reload = async (id: number) => (await payload.findByID({ collection: 'tick
 const runs = async (id: number, stage: string) => (await payload.find({ collection: 'runs', where: { and: [{ ticket: { equals: id } }, { stage: { equals: stage } }] }, sort: 'createdAt', depth: 0, ...o })).docs as Record<string, any>[]
 const causeOf = async (id: number) => (await liveness.deadTickets(payload, ws)).find((d) => d.ticket.id === id)?.cause
 
-/** An open Ticket in `stage` with the Runs given (oldest first) and, for review, an MR the fake forge knows. */
 const seed = async (stage: 'plan' | 'build' | 'review', o2: { reviewState?: string; runs?: Record<string, any>[]; mr?: 'open' | 'closed' | 'none'; checks?: any[] } = {}) => {
   const ts = fake.tickets(repo)
   const issue = await ts.create({ title: `dead ${stage}`, labels: [`bauherr:stage:${stage}`] })
@@ -131,7 +130,6 @@ it('a repair that throws leaves no marker: the next pass retries it', async () =
   const real = fake.forge.listChecks
   let calls = 0
   fake.forge.listChecks = async (...a) => {
-    // 1st call classifies the Ticket, the 2nd is the repair's own read
     if (++calls === 2) throw new Error('forge down')
     return real(...a)
   }
