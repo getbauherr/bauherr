@@ -34,6 +34,7 @@ rules:
   - {path: rules/evidence.md, purpose: Required content of the MR ## Evidence section}
   - {path: rules/security-context.md, purpose: Per-Product SECURITY-CONTEXT.md in the Knowledge repo, and template}
   - {path: rules/no-comments.md, purpose: No code comments; the allowlist, and encode the reason as a name, type, test or check}
+  - {path: rules/autonomy.md, purpose: Finish everything you can on your own; hand over only decisions and actions only a human can do}
 hooks:
   manifest: hooks/hooks.yaml
   items:
