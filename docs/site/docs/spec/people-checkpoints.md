@@ -1,0 +1,1 @@
+../../../spec/people-checkpoints.md

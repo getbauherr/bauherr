@@ -1,16 +1,19 @@
 # Embed the Intake widget
 
-A Product's users can report a problem from your own site; the answers become a Ticket in Triage.
+A Product's users can report a problem from your own site. The answers become a Ticket in Triage.
 
-1. Settings > Workspace > Products > (the Product) > **Widget**: enter a name, the origins that may embed the widget (e.g. `https://shop.example.com`), optionally the sessions per hour (empty: 20), then **Add widget**. The script tag is shown once; only a hash is stored. **Revoke** ends a token at once.
+1. Open Settings > Workspace > Products > your Product > **Widget**. Enter a name and the origins that may embed the widget, such as `https://shop.example.com`. Optionally set the sessions per hour; empty means 20. Choose **Add widget**. The script tag is shown once and only a hash is stored. **Revoke** ends a token at once.
 2. Paste the tag before `</body>` on the site:
 
 ```html
 <script src="https://BAUHERR_HOST/intake/widget.js" data-token="bemb_..."></script>
 ```
 
-Requests from any other origin, or with a revoked token, get 403. A token is bound to its Product and capped at 20 new sessions per hour. `/intake-embed-test.html?token=bemb_...` is a host page for trying it on the Bauherr origin itself (add that origin to the token).
+Requests from any other origin, or with a revoked token, get 403. A token is bound to its Product and capped at 20 new sessions per hour. `/intake-embed-test.html?token=bemb_...` is a host page for trying it on the Bauherr origin itself. Add that origin to the token first.
 
-`/intake/widget.js` is a static bundle built from `apps/server/src/app/intake/widget` (`pnpm --filter server build:widget`, part of `dev` and `build`). It holds React and assistant-ui and renders in a shadow root; `tests/widget-size.test.ts` keeps it within 250 KB gzip.
-The widget resumes an open interview after a page load (the session id is kept in the browser's localStorage per token).
-After the 6th question the assistant stops asking and only acknowledges and updates the draft; the visitor can keep adding detail and **Submit request** stays available. A session accepts at most 40 visitor messages.
+## Behaviour
+
+- `/intake/widget.js` is a static bundle built from `apps/server/src/app/intake/widget` by `pnpm --filter server build:widget`, part of `dev` and `build`. It renders in a shadow root. `tests/widget-size.test.ts` keeps it within 250 KB gzip.
+- The widget resumes an open interview after a page load. The session id stays in the browser's localStorage per token.
+- After the 6th question the assistant only acknowledges and updates the draft. The visitor can keep adding detail, and **Submit request** stays available.
+- A session accepts at most 40 visitor messages.

@@ -1,48 +1,78 @@
 # Releasing
 
-Images exist only for versions. Merges to `main` publish no image; a version goes out in two manual steps from `main`, with a test on your own deployment in between: cut a release candidate, then promote it.
+Images exist only for versions. Merges to `main` publish no image. A version goes out in two manual steps from `main`, with a test on your own deployment in between: cut a release candidate, then promote it.
 
-Primary path: the **Releases page** of Bauherr (`/releases`, Admin only). It works through the forge adapter, so it is the same for GitHub and GitLab Products; CI only builds and deploys the tag.
+The primary path is the **Releases page**, `/releases`, Admin only. It works through the forge adapter, so it is the same for GitHub and GitLab Products. CI only builds and deploys the tag.
 
-1. **Cut release candidate**: tick the done Tickets, pick the version from the select (`X.Y.Z-rc.1` of the patch, minor or major bump; for an open line only `rc.N+1`), confirm. Bauherr tags the newest merge sha and creates the release (pre-release), and records `releasedIn = vX.Y.Z-rc.N` on the Tickets. An `rc.N+1` must contain the previous rc's commit (else refused), its notes cover the Tickets since that rc and say it supersedes it.
-2. **Deploy the RC and test it**, on your own instance: `BAUHERR_VERSION=X.Y.Z-rc.N docker compose pull app && BAUHERR_VERSION=X.Y.Z-rc.N docker compose up -d`. A fix after a bad RC: merge it, cut again.
-3. **Promote**: choose "Promote vX.Y.Z-rc.N" in the action select next to the button and confirm. Allowed only for the newest rc of an open line while `vX.Y.Z` does not exist on another commit. Bauherr tags `vX.Y.Z` on the same sha as the rc, publishes the final release with the notes of every rc of the line, sets the Tickets to `releasedIn = vX.Y.Z` (Comment "Released in vX.Y.Z (tested as vX.Y.Z-rc.N)"), opens the CHANGELOG MR and updates the Product's last release. A retry finishes what is left; it creates no second tag, release, Comment or MR.
+1. **Cut release candidate.** Tick the done Tickets, pick the version `X.Y.Z-rc.1` of the patch, minor or major bump, and confirm. For an open line only `rc.N+1` is offered. Bauherr tags the newest merge sha, creates a pre-release and records `releasedIn = vX.Y.Z-rc.N` on the Tickets. An `rc.N+1` must contain the previous rc's commit. Its notes cover the Tickets since that rc.
+2. **Deploy the RC and test it** on your own instance:
 
-The open line and the last final are read from the **tags** (also tags without a release, as the CLI fallback makes them). GitLab has no pre-release flag: a tag `X.Y.Z-<suffix>` (every `-rc.N`) is the pre-release convention, reported as pre-release by the GitLab adapter and never `latest`. The tag pipeline of the Product (GitLab CI on tags) builds the image from the tag. The forge contract cannot list GitHub drafts; `createRelease` on GitHub publishes an existing draft of the tag (left by `cut-rc.yml`) instead of creating a second release. If a promote fails after the release was published, the page keeps offering "Finish promoting vX.Y.Z-rc.N" while a Ticket still says rc, or the final release or its CHANGELOG MR is missing; running it again completes the rest.
+   ```bash
+   BAUHERR_VERSION=X.Y.Z-rc.N docker compose pull app && BAUHERR_VERSION=X.Y.Z-rc.N docker compose up -d
+   ```
+
+   After a bad RC, merge the fix and cut again.
+3. **Promote.** Choose "Promote vX.Y.Z-rc.N" in the action select and confirm. It is allowed only for the newest rc of an open line, while `vX.Y.Z` does not exist on another commit. Bauherr then does five things:
+   - tags `vX.Y.Z` on the rc's sha
+   - publishes the final release with the notes of every rc of the line
+   - sets `releasedIn = vX.Y.Z` on the Tickets, with the Comment "Released in vX.Y.Z (tested as vX.Y.Z-rc.N)"
+   - opens the CHANGELOG MR
+   - updates the Product's last release
+
+   A retry finishes what is left and creates no second tag, release, Comment or MR.
+
+The open line and the last final are read from the **tags**, including tags without a release. A tag `X.Y.Z-<suffix>` is the pre-release convention, because GitLab has no pre-release flag. The GitLab adapter reports it as pre-release and never `latest`. The Product's tag pipeline builds the image from the tag.
+
+The forge contract cannot list GitHub drafts. On GitHub `createRelease` publishes an existing draft of the tag, left by `cut-rc.yml`, instead of creating a second release.
+
+If a promote fails after publishing, the page offers "Finish promoting vX.Y.Z-rc.N" while a Ticket still says rc, or the final release or CHANGELOG MR is missing. Run it again.
 
 ## Release notes format
 
-One line per Ticket (at most 15 words: the first "what you get" bullet of its staging summary, else the Ticket title), linked to the Ticket, grouped by feature area:
+One line per Ticket, at most 15 words, linked to the Ticket. The line is the first "what you get" bullet of its staging summary, else the Ticket title. Lines are grouped by feature area:
 
-- **Changed behaviour** on top: a `!` in the conventional type or the label `breaking`.
-- **One group per feature area**, biggest first, `Other` last. A Ticket's area is the area of the feature whose `source` paths its merge request changed (most hits win; no hit: `Other`). The map is `products/<slug>/feature-map.yaml` of the Knowledge repo, else `docs/feature-map.yaml` of the Product's own repo (default branch). Without a map the group is `Changes`.
-- **`Internal: N changes`** as the last line: types `ci`, `test`, `refactor`, `chore`, `build`, `deps`, and `docs` without an area. `/release-notes` expands it and filters by area; the staging-summary bullets stay on the Ticket.
+- **Changed behaviour** comes first: a `!` in the conventional type, or the label `breaking`.
+- **One group per feature area**, biggest first, `Other` last. A Ticket's area is the area of the feature whose `source` paths its merge request changed. Most hits win; no hit gives `Other`. Without a map the group is `Changes`.
+- **`Internal: N changes`** comes last. It holds the types `ci`, `test`, `refactor`, `chore`, `build`, `deps`, and `docs` without an area. `/release-notes` expands it and filters by area.
 
-`pnpm --filter server regen-release-notes [<product-slug>]` strips the bullet floods from `CHANGELOG.md`; with a Product slug it also rewrites each released version from the stored Ticket data and the Ticket's `releaseNotes`.
+The map is `products/<slug>/feature-map.yaml` of the Knowledge repo, else `docs/feature-map.yaml` of the Product's own repo.
 
-The Product needs release mode `manual` (Settings > Product > Release notes) so that the factory does not tag on its own.
+`pnpm --filter server regen-release-notes [<product-slug>]` strips the bullet floods from `CHANGELOG.md`. With a slug it also rewrites each released version from the stored Ticket data and `releaseNotes`.
 
-## CLI fallback (GitHub Actions)
+The Product needs release mode `manual` under Settings > Product > Release notes, so the factory does not tag on its own.
 
-If the Releases page is unavailable, the same two steps run from the workflows (they start `release.yml` themselves):
+## CLI fallback on GitHub Actions
+
+If the Releases page is unavailable, the workflows run the same two steps and start `release.yml` themselves:
 
 ```bash
-gh workflow run cut-rc.yml -f bump=minor     # patch | minor | major; tags vX.Y.Z-rc.N, publishes :X.Y.Z-rc.N
-gh workflow run promote.yml                  # tags vX.Y.Z on the RC's commit, publishes :X.Y.Z and :latest
+gh workflow run cut-rc.yml -f bump=minor
+gh workflow run promote.yml
 ```
 
-[`cut-rc.yml`](https://github.com/getbauherr/bauherr/blob/main/.github/workflows/cut-rc.yml) computes the next version from the `v*` tags: if an unpromoted RC line for the target exists it is `rc.N+1`, else the latest final tag is bumped and it starts at `rc.1`. It tags `main` HEAD, starts `release.yml` for the tag and creates (or updates) the draft GitHub Release `vX.Y.Z` with generated notes since the last final tag.
+`bump` is `patch`, `minor` or `major`. `cut-rc.yml` tags `vX.Y.Z-rc.N` and publishes `:X.Y.Z-rc.N`. `promote.yml` tags `vX.Y.Z` on the RC's commit and publishes `:X.Y.Z` and `:latest`.
 
-[`promote.yml`](https://github.com/getbauherr/bauherr/blob/main/.github/workflows/promote.yml) takes an RC tag (default the newest). It refuses unless the tag is an RC, the newest RC of its `X.Y.Z`, and `vX.Y.Z` does not exist. It tags `vX.Y.Z` on the same commit and starts `release.yml`, which rebuilds from that commit and, when image and npm are done, publishes the draft GitHub Release (if there is one) as the latest release.
+[`cut-rc.yml`](https://github.com/getbauherr/bauherr/blob/main/.github/workflows/cut-rc.yml) computes the next version from the `v*` tags. If an unpromoted RC line exists it is `rc.N+1`. Otherwise it bumps the latest final tag and starts at `rc.1`. It tags `main` HEAD, starts `release.yml` and creates or updates the draft GitHub Release with generated notes.
 
-Both workflows start `release.yml` with `gh workflow run --ref <tag>`, because a tag pushed with `GITHUB_TOKEN` triggers no workflow. A tag pushed by the Releases page (GitHub App token) or by hand triggers it directly.
+[`promote.yml`](https://github.com/getbauherr/bauherr/blob/main/.github/workflows/promote.yml) takes an RC tag, default the newest. It refuses unless the tag is the newest RC of its `X.Y.Z` and `vX.Y.Z` does not exist. It tags `vX.Y.Z` on the same commit and starts `release.yml`. That rebuilds from the commit and then publishes the draft as the latest release.
 
-[`release.yml`](https://github.com/getbauherr/bauherr/blob/main/.github/workflows/release.yml) (runs on every `v*` tag; environment `release`, tag must be on `main`) first pushes the multi-arch image `ghcr.io/getbauherr/bauherr:<version>` (`latest` only for versions without a `-pre` suffix), then stages npm `bauherr@<version>` from `packages/cli` with provenance via trusted publishing (`npm stage publish`; no token stored, so setup-node has no `registry-url` (it would write a token placeholder into `.npmrc` and break OIDC; `NODE_AUTH_TOKEN` is unset before publish); the npm package settings name this repository and `release.yml` and allow staged publishing only). Pre-releases get the npm tag `next`. A maintainer approves the staged version (`npm stage approve <stage-id>` or on npmjs.com) to make it installable. The CLI pins the image tag to its own version.
+Both start `release.yml` with `gh workflow run --ref <tag>`, because a tag pushed with `GITHUB_TOKEN` triggers no workflow. A tag pushed by the Releases page or by hand triggers it directly.
+
+[`release.yml`](https://github.com/getbauherr/bauherr/blob/main/.github/workflows/release.yml) runs on every `v*` tag. It needs the environment `release` and the tag on `main`. It does two things in order:
+
+1. Pushes the multi-arch image `ghcr.io/getbauherr/bauherr:<version>`. `latest` is only for versions without a `-pre` suffix.
+2. Stages npm `bauherr@<version>` from `packages/cli` with provenance, using `npm stage publish` and trusted publishing.
+
+No npm token is stored. `setup-node` has no `registry-url`, since it would write a token placeholder into `.npmrc` and break OIDC. `NODE_AUTH_TOKEN` is unset before publish. The npm package settings name this repository and `release.yml`, and allow staged publishing only.
+
+Pre-releases get the npm tag `next`. A maintainer approves the staged version with `npm stage approve <stage-id>` or on npmjs.com. The CLI pins the image tag to its own version.
 
 ## Staging and production checks
 
-[`staging.yml`](https://github.com/getbauherr/bauherr/blob/main/.github/workflows/staging.yml) runs on every push to `main` (one run per sha). It builds the image, starts it once against a throw-away Postgres (it migrates on start, like `compose.yaml`) and requires `GET /api/health` to return `{"ok":true}`, then reports the check `staging` on that sha. It pushes no image. [`production.yml`](https://github.com/getbauherr/bauherr/blob/main/.github/workflows/production.yml) reports the check `production` on a Ticket's merge sha after the owner's approval; the change ships with the next release.
+[`staging.yml`](https://github.com/getbauherr/bauherr/blob/main/.github/workflows/staging.yml) runs on every push to `main`, one run per sha. It builds the image and starts it once against a throw-away Postgres. The app migrates on start, like `compose.yaml`. The run requires `GET /api/health` to return `{"ok":true}` and reports the check `staging` on that sha. It pushes no image.
 
-Run any version locally with `BAUHERR_VERSION=<version> docker compose up -d` (compose.yaml's image is `ghcr.io/getbauherr/bauherr:${BAUHERR_VERSION:-dev}`); a checkout builds its own `dev` image.
+[`production.yml`](https://github.com/getbauherr/bauherr/blob/main/.github/workflows/production.yml) reports the check `production` on a Ticket's merge sha after the owner's approval. The change ships with the next release.
 
-To let merged Tickets move to "on staging" by themselves, an Admin sets the bauherr Product's Deploy tab once: deploy mode "checks", deploy checks `staging`, staging site empty. The setting lives in the factory database, not in this repository.
+Run any version locally with `BAUHERR_VERSION=<version> docker compose up -d`. The image is `ghcr.io/getbauherr/bauherr:${BAUHERR_VERSION:-dev}`. A checkout builds its own `dev` image.
+
+To let merged Tickets move to "on staging" by themselves, an Admin sets the bauherr Product's Deploy tab once: deploy mode "checks", deploy checks `staging`, staging site empty. The setting lives in the factory database.
