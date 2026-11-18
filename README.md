@@ -90,7 +90,7 @@ The team also has an **AX** role (Agent experience engineer) that keeps a Produc
 
 ## ✨ Features
 
-Every feature, where you reach it and how well it is reachable, is in [docs/features.md](docs/features.md). It is generated from [docs/feature-map.yaml](docs/feature-map.yaml), which also lists the source files and tests behind each feature; a test fails when the two drift.
+Every feature, where you reach it and how well it is reachable, is on [Features](https://getbauherr.dev/features/), generated at the docs build from [docs/feature-map.yaml](docs/feature-map.yaml), which also lists the source files and tests behind each feature.
 
 Standing on the shoulders of others: [Credits](docs/references.md).
 
@@ -204,7 +204,7 @@ pnpm verify inbox            # the tests of one feature of docs/feature-map.yaml
 
 ## 🧭 Status and roadmap
 
-Pre-release. The factory builds Bauherr itself. Every feature with its page: [docs/features.md](docs/features.md).
+Pre-release. The factory builds Bauherr itself. Every feature with its page: [Features](https://getbauherr.dev/features/).
 - **Live:** the Workflow graph, one factory file per Workspace with custom agent and human stages and plan approval on by default, agent roles and sessions that connect as a role, the Agent team page (pick roles, see live sessions and who works where), the five-step setup wizard with team presets (Solo, Standard, Careful), plain-word progress comments on the issue, Tickets with Path and Steps, the Inbox with prepared decisions, editable templates, Insights, the docked chat, requests and the website widget, the knowledge repo, self-review and merge, release train and notes, security scan, fast lane, request card with types and the Requests workbench, WIP limits, AI gateway with budgets, audit, OIDC.
 - **Planned:** provider auth beyond API keys ([#80](https://github.com/getbauherr/bauherr/issues/80)).
 
