@@ -13,8 +13,8 @@ export const isPreset = (v: unknown): v is PresetId => PRESETS.includes(v as Pre
 /** Card text of each setup preset; roles and approvals on the card come from the compiled file, so they cannot drift from it. */
 export const PRESET_TEXT: Record<PresetId, { title: string; blurb: string }> = {
   solo: { title: 'Solo', blurb: 'One engineer does everything. Plans pass without your approval.' },
-  standard: { title: 'Standard', blurb: 'An orchestrator triages, an engineer builds, a reviewer checks. You approve plans; where a Product has a Product owner, they answer Triage questions and accept on staging. A security review runs when a change touches the security paths of the Product.' },
-  careful: { title: 'Careful', blurb: 'Standard, plus specialist reviews when a change needs them (security paths, user-facing paths, bug fixes) before the code review, and your acceptance on staging. A Product owner, where a Product has one, answers Triage questions.' },
+  standard: { title: 'Standard', blurb: 'An orchestrator triages, an engineer builds, a reviewer checks. You approve plans; where a Product has a Product owner, they answer Triage questions and accept on staging. Specialists review in parallel (security when a change touches the security paths of the Product), a verifier checks their findings, and an agent walks staging before you accept.' },
+  careful: { title: 'Careful', blurb: 'Standard, plus your acceptance on staging. The specialist reviews (security paths, user-facing paths, bug fixes) run when a change needs them. A Product owner, where a Product has one, answers Triage questions.' },
 }
 
 /** `presets/<id>.yaml` of the pack dir, else of the core pack, with the role profiles inlined (read relative to the pack that holds the file). */

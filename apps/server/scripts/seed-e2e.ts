@@ -519,6 +519,11 @@ await ensure('ticket_events', { ticket: approving, cause: 'e2e:stage:4:3' }, { t
 await stageRun(approving, null, 'succeeded', { startedAt: stageAt(228), finishedAt: stageAt(220), gatewayCostUsd: 0.4 })
 await stageRun(approving, 'ax-scan', 'succeeded', { startedAt: stageAt(215), finishedAt: stageAt(212), outcome: 'pass', gatewayCostUsd: 0.12 })
 await payload.update({ collection: 'tickets', id: approving, data: { historyKey: 'plan|human' }, ...o })
+for (const w of [briefWs, who]) {
+  for (const t of (await payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: w } }, { stage: { equals: 'release' } }, { releaseState: { equals: 'on_staging' } }] }, pagination: false, depth: 0, ...o })).docs) {
+    await ensure('runs', { ticket: t.id, stage: 'release', job: 'staging-walk' }, { ticket: t.id, stage: 'release', kind: 'agent', job: 'staging-walk', role: 'ax', status: 'succeeded', outcome: 'pass', mode: 'autonomous', workspace: w })
+  }
+}
 for (const t of (await payload.find({ collection: 'tickets', pagination: false, depth: 0, ...o })).docs as Record<string, any>[]) {
   const latest = (await payload.find({ collection: 'runs', where: { ticket: { equals: t.id } }, sort: '-createdAt', limit: 1, depth: 0, ...o })).docs[0] as unknown as { stage: string; status: string; reasonKind?: string | null } | undefined
   const productDoc = (await payload.findByID({ collection: 'products', id: t.product, depth: 0, ...o })) as Record<string, any>
