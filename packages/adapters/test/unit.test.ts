@@ -173,6 +173,23 @@ describe('github reviewPullRequest', () => {
   });
 });
 
+describe('github review threads', () => {
+  it('lists threads over GraphQL and resolves one by id', async () => {
+    const calls: { url: string; body: any }[] = [];
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u, init) => {
+        calls.push({ url: new URL(String(u)).pathname, body: JSON.parse(String(init?.body)) });
+        return json({ data: { repository: { pullRequest: { reviewThreads: { nodes: [{ id: 'T1', isResolved: false, comments: { nodes: [{ body: 'x' }] } }] } } } } });
+      },
+    });
+    assert.deepEqual(await b.forge.listReviewThreads('o/r', 5), [{ id: 'T1', body: 'x', resolved: false }]);
+    await b.forge.resolveReviewThread('o/r', 5, 'T1');
+    assert.equal(calls[1]!.url, '/graphql');
+    assert.deepEqual(calls[1]!.body.variables, { id: 'T1' });
+  });
+});
+
 describe('github mergePullRequest', () => {
   const run = async (headRepo: string, del: Response = new Response(null, { status: 204 }), stacked: number[] = [], patch: Response | null = null) => {
     const calls: { method: string; url: string; body: any }[] = [];

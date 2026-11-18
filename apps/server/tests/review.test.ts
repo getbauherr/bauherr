@@ -558,6 +558,35 @@ it('Important findings go inline on the MR with the summary as the review body; 
   expect((await fake.forge.listPullRequestComments(repo, pr.number)).filter((c) => c.body.startsWith(actions.REVIEW_MARKER))).toHaveLength(1)
 })
 
+const other = { severity: 'high', class: 'security', file: 'c.ts', line: 7, msg: 'drops the last row', scenario: 'when the list has one row, then it is empty' }
+
+it('a later round resolves the thread of a fixed finding and leaves the one still reported open', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await submit(await review(id), [medium, other], 'round one')
+  expect(await fake.forge.listReviewThreads(repo, pr.number)).toMatchObject([{ resolved: false }, { resolved: false }])
+  await payload.update({ collection: 'tickets', id, data: { stage: 'review', reviewState: null }, ...o })
+  await submit(await review(id), [other], 'round two')
+  const threads = await fake.forge.listReviewThreads(repo, pr.number)
+  expect(threads.filter((x) => x.resolved).map((x) => x.body)).toEqual([expect.stringContaining('off by one')])
+  expect(threads.filter((x) => !x.resolved).map((x) => x.body)).toEqual(Array(2).fill(expect.stringContaining('drops the last row')))
+})
+
+it('a failing forge while resolving does not fail the review', async () => {
+  const { id, pr } = await seed({ checks: green })
+  await submit(await review(id), [medium], 'round one')
+  const spy = fake.forge.resolveReviewThread
+  fake.forge.resolveReviewThread = async () => {
+    throw new Error('403')
+  }
+  try {
+    await payload.update({ collection: 'tickets', id, data: { stage: 'review', reviewState: null }, ...o })
+    expect(await submit(await review(id), [], 'round two')).toMatchObject({ outcome: expect.any(String) })
+  } finally {
+    fake.forge.resolveReviewThread = spy
+  }
+  expect((await fake.forge.listReviewThreads(repo, pr.number)).every((x) => !x.resolved)).toBe(true)
+})
+
 it('a forge that rejects the inline review gets the single summary comment instead', async () => {
   const { id, pr } = await seed({ checks: green })
   const spy = fake.forge.reviewPullRequest

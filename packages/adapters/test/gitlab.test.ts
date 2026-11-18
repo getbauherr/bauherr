@@ -275,6 +275,16 @@ describe('gitlab forge', () => {
     assert.equal(c.body, 'sum');
   });
 
+  it('listReviewThreads keeps positioned discussions and resolveReviewThread resolves one', async () => {
+    const { forge, calls } = setup(() => [
+      { id: 'd1', notes: [{ body: 'x', position: {}, resolvable: true, resolved: false }] },
+      { id: 'd2', notes: [{ body: 'plain', resolvable: false }] },
+    ]);
+    assert.deepEqual(await forge.listReviewThreads('g/p', 196), [{ id: 'd1', body: 'x', resolved: false }]);
+    await forge.resolveReviewThread('g/p', 196, 'd1');
+    assert.deepEqual([calls.at(-1)!.method, calls.at(-1)!.path], ['PUT', `${P}/merge_requests/196/discussions/d1?resolved=true`]);
+  });
+
   it('listPullRequestComments lists MR notes without system notes', async () => {
     const { forge, calls } = setup(() => fx('notes'));
     assert.deepEqual((await forge.listPullRequestComments('g/p', 196)).map((c) => [c.id, c.author]), [['12', 'bauherr-bot'], ['13', 'sebastian']]);
