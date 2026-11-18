@@ -13,6 +13,8 @@ const LABEL = { live: 'Live', 'hard-to-find': 'Live, hard to find', 'no-ui': 'No
 
 export const loadMap = (): FeatureMap => parseMap(readFileSync(mapFile, 'utf8'))
 
+export const escapeTags = (text: string): string => text.split(/(`[^`]*`)/).map((part, i) => (i % 2 ? part : part.replace(/</g, '&lt;'))).join('')
+
 export const render = (map: FeatureMap): string => {
   const areas = [...new Set(map.features.map((f) => f.area))]
   const sections = areas.map((area) => {
@@ -21,14 +23,14 @@ export const render = (map: FeatureMap): string => {
     return [`## ${area}`, table, map.notes[area]].filter(Boolean).join('\n\n')
   })
   const gaps = map.notes['Known gaps'] ? [`## Known gaps\n\n${map.notes['Known gaps']}`] : []
-  return [
+  return escapeTags([
     'Generated from docs/feature-map.yaml by `pnpm --filter server feature-map`; do not edit.',
     '# Features',
     map.intro,
     map.legend,
     ...sections,
     ...gaps,
-  ].join('\n\n') + '\n'
+  ].join('\n\n')) + '\n'
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
