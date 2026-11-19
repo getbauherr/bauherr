@@ -44,7 +44,10 @@ const eventSchema = z.discriminatedUnion('type', [
   event('owner.note', z.object({ note: id })),
   event('ticket.closed', z.object({ reason: z.literal('discarded') })),
   event('verify.overridden', z.object({ patchId: id, headSha: id })),
-  event('question.asked', z.object({ reason: id, options: z.array(id).min(2).max(4) })),
+  event(
+    'question.asked',
+    z.object({ reason: id, options: z.array(id).min(2).max(4), text: z.string().trim().min(1).max(200).optional() }),
+  ),
   event('question.answered', z.object({ option: id })),
   event('forge.write.started', z.object(write)),
   event('forge.write.done', z.object(write)),

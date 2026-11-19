@@ -1,6 +1,7 @@
 import type { AppEvent } from './events'
 
 export type DecisionInput = { note: string; patchId: string; headSha: string }
+export type AgentCard = { options: string[]; text?: string }
 export type DecisionEntry = { needsNote: boolean; events: (input: DecisionInput) => AppEvent[] }
 
 const answered = (option: string): AppEvent => ({ type: 'question.answered', data: { option } })
@@ -62,3 +63,21 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
     'approve-production': one({ type: 'production.approved', data: {} }),
   },
 }
+
+export const AGENT_ASK = 'question:agent'
+
+export const agentEntry = (card: AgentCard | null, choice: string): DecisionEntry | undefined =>
+  card?.options.includes(choice)
+    ? {
+        needsNote: false,
+        events: ({ note }) => [
+          answered(choice),
+          {
+            type: 'owner.note',
+            data: {
+              note: [`Question: ${card.text ?? ''}`, `Answer: ${choice}`, note].filter((l) => l !== '').join('\n'),
+            },
+          },
+        ],
+      }
+    : undefined
