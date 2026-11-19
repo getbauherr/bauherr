@@ -11,6 +11,7 @@ import { parsePathSets, type PathSets } from '../../../../lib/path-sets'
 import { rotateKey } from '../../../../lib/gateway'
 import { refreshPrices } from '../../../../lib/prices'
 import { PRESET_FIELDS } from '../../../../lib/providers'
+import { deleteProductMirror, deleteSourceMirror } from '../../../../core/mirror/store'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
 import { deployErrors } from '../../lib/product-setup'
 import { listRepos, only, presetFor, run, type FormState } from '../../lib/settings'
@@ -170,6 +171,8 @@ export const removeDoc = act({}, async (c, fd) => {
     const blocked = await blockedBy(c.payload, 'products', id(fd))
     if (blocked) throw new Error(`Still referenced by ${blocked}.`)
   }
+  if (collection === 'ticket_sources') await deleteSourceMirror(c.payload, id(fd))
+  if (collection === 'products') await deleteProductMirror(c.payload, id(fd))
   await c.payload.delete({ collection, id: id(fd), ...c.w } as never)
   if (collection === 'products') redirect('/settings/products')
 })

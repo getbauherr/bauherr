@@ -241,3 +241,21 @@ export const clearGone = async (payload: Payload, source: number, number: number
     UPDATE "mirror_items" SET "gone_at" = NULL, "updated_at" = now()
     WHERE "source_id" = ${source} AND "number" = ${number} AND "gone_at" IS NOT NULL`)
 }
+
+const MIRROR_TABLES = ['mirror_checks', 'mirror_comments'] as const
+
+const deleteMirror = async (payload: Payload, items: ReturnType<typeof sql>): Promise<void> => {
+  const db = payload.db.drizzle
+  await db.transaction(async (tx: typeof db) => {
+    for (const table of MIRROR_TABLES) {
+      await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE "item_id" IN (${items})`)
+    }
+    await tx.execute(sql`DELETE FROM "mirror_items" WHERE "id" IN (${items})`)
+  })
+}
+
+export const deleteSourceMirror = (payload: Payload, source: number): Promise<void> =>
+  deleteMirror(payload, sql`SELECT "id" FROM "mirror_items" WHERE "source_id" = ${source}`)
+
+export const deleteProductMirror = (payload: Payload, product: number): Promise<void> =>
+  deleteMirror(payload, sql`SELECT "id" FROM "mirror_items" WHERE "product_id" = ${product}`)
