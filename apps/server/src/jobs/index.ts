@@ -1,5 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
+import { mirrorSyncTask } from '../core/jobs'
 import { checkGateway } from '../lib/gateway-health'
 import { resync } from '../lib/knowledge'
 import { refreshPrices } from '../lib/prices'
@@ -86,4 +87,11 @@ export const purgeWorkspacesTask: TaskConfig<{ input: Record<string, never>; out
   },
 }
 
-export const TASKS = [reclaimJobs, resyncKnowledge, watchGatewayTask, refreshPricesTask, purgeWorkspacesTask]
+export const TASKS = [
+  reclaimJobs,
+  resyncKnowledge,
+  watchGatewayTask,
+  refreshPricesTask,
+  purgeWorkspacesTask,
+  mirrorSyncTask(scheduled('0 * * * * *')),
+]

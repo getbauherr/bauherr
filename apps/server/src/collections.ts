@@ -426,6 +426,8 @@ export const collections: CollectionConfig[] = [
     text('name', { required: true }),
     text('slug', { required: true }),
     text('stagingUrl'),
+    text('state', { required: true, defaultValue: 'observing' }),
+    date('connectedAt'),
     select('deployMode', ['observe-ci', 'webhook'], { defaultValue: 'observe-ci', required: true }),
     text('deployWebhookUrl'),
     text('deployChecks', { admin: { description: 'Comma-separated check names that must be green; empty = all.' } }),
@@ -462,6 +464,9 @@ export const collections: CollectionConfig[] = [
     text('cursor'),
     date('lastPolledAt'),
     text('lastError'),
+    date('lookbackAt'),
+    date('reconciledAt'),
+    date('importedAt'),
   ]),
   col('knowledge_chunks', [
     text('source', { required: true, index: true }),
