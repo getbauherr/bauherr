@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { parse } from 'yaml'
 import { CliError, portFree, preflight } from '../src/preflight.js'
 import { projectName, readEnv, renderCompose, writeProject } from '../src/render.js'
 

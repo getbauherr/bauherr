@@ -11,7 +11,7 @@ const DIRECTIVES: [string, RegExp][] = [
   ['ts-directive', /@ts-(expect-error|nocheck)/],
   ['triple-slash', /^\/\/\/\s*<reference/],
   ['shebang', /^#!/],
-  ['eslint', /eslint-disable/],
+  ['eslint', /eslint-disable[^\n]*\s--\s+\S/],
   ['coverage', /\b(c8|istanbul) ignore/],
   ['bundler-hint', /webpackChunkName|@vite-ignore/],
   ['license', /license|copyright|SPDX-License/i],
@@ -41,7 +41,8 @@ export function scanComments(file: string, text = readFileSync(join(repoRoot, fi
     const children = node.getChildren(sf)
     if (children.length) return children.forEach(visit)
     if (node.kind === ts.SyntaxKind.JsxText) return
-    for (const r of ts.getLeadingCommentRanges(text, node.pos) ?? []) {
+    const ranges = [...(ts.getLeadingCommentRanges(text, node.pos) ?? []), ...(ts.getTrailingCommentRanges(text, node.end) ?? [])]
+    for (const r of ranges) {
       if (seen.has(r.pos)) continue
       const line = sf.getLineAndCharacterOfPosition(r.pos).line + 1
       seen.set(r.pos, { start: r.pos, end: r.end, line, text: text.slice(r.pos, r.end), allowed: classify(file, text, r.pos, r.end) })

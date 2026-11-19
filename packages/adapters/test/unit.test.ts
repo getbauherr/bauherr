@@ -142,7 +142,7 @@ describe('appAuth (fake key, fake GitHub)', () => {
     assert.equal(await auth.token(), 'ghs_1');
     clock += 30 * 60_000;
     assert.equal(await auth.token(), 'ghs_1');
-    clock += 26 * 60_000; // inside the 5 min refresh window
+    clock += 26 * 60_000;
     assert.equal(await auth.token(), 'ghs_2');
     assert.equal(calls[0]!.url, 'https://api.github.com/app/installations/7/access_tokens');
     const [h, p, s] = calls[0]!.auth.replace('Bearer ', '').split('.') as [string, string, string];
@@ -475,7 +475,7 @@ describe('github merge queue', () => {
     assert.ok(!calls.some((c) => c.method === 'PUT'));
   });
   it('isQueued reads mergeQueueEntry; dequeue mutates only a queued PR', async () => {
-    const entry = (e: unknown) => (m: string, path: string) => (path === '/graphql' ? gql({ repository: { pullRequest: { mergeQueueEntry: e } } }) : json(pull()));
+    const entry = (e: unknown) => (_m: string, path: string) => (path === '/graphql' ? gql({ repository: { pullRequest: { mergeQueueEntry: e } } }) : json(pull()));
     assert.equal((await run(entry({ id: 'E' }), (f) => f.isQueued('o/r', 7))).res, true);
     assert.equal((await run(entry(null), (f) => f.isQueued('o/r', 7))).res, false);
     const idle = await run(entry(null), (f) => f.dequeuePullRequest('o/r', 7));

@@ -23,7 +23,6 @@ Options: --dir <path> (default ./bauherr)  --port <n>  --gateway-port <n> (defau
          --anthropic-key-file <path>  --admin-password-file <path>  (seed)
 `
 
-const pick = <T extends object>(o: T) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as { [K in keyof T]?: Exclude<T[K], undefined> }
 
 const compose = (dir: string, args: string[]) => {
   const r = spawnSync('docker', ['compose', '--project-directory', dir, ...args], { stdio: 'inherit' })

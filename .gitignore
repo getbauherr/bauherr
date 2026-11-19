@@ -10,3 +10,4 @@ docs/site/site
 .uv-cache
 .venv
 apps/server/src/migrations/index.ts
+apps/server/src/app/(app)/tokens.css

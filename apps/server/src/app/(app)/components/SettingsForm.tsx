@@ -23,7 +23,7 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
     setRound((n) => n + 1)
     if (state.saved) {
       setDirty(false)
-      ref.current?.querySelectorAll<HTMLInputElement>('input[type=password]').forEach((i) => { i.value = '' }) // write-only secrets are not kept in the page after a save
+      ref.current?.querySelectorAll<HTMLInputElement>('input[type=password]').forEach((i) => { i.value = '' })
     }
     if (reset && state.saved) ref.current?.reset()
   }, [reset, state])
@@ -98,7 +98,7 @@ export function Field({ name, label, hint, example, explain, options, empty, row
 }
 
 const OTHER = '__other'
-const NONE = '__none' // Radix items cannot have an empty value
+const NONE = '__none'
 
 function Picker({ name, label, options, defaultValue, empty, hint, example, required }: { name: string; label: string; options: Opt[]; defaultValue: string; empty?: string; hint?: string; example?: string; required?: boolean }) {
   const error = useContext(Ctx).fields?.[name]

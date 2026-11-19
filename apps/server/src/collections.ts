@@ -37,7 +37,6 @@ const unitOf = (conns: Record<string, any>[]) => (conns.every((c) => PRESETS[pre
 const rel = (name: string, to: string, extra: Partial<Field> = {}): Field =>
   ({ name, type: 'relationship', relationTo: to, ...extra }) as Field
 const text = (name: string, extra: Partial<Field> = {}): Field => ({ name, type: 'text', ...extra }) as Field
-const num = (name: string): Field => ({ name, type: 'number' })
 const date = (name: string): Field => ({ name, type: 'date' })
 const json = (name: string): Field => ({ name, type: 'json' })
 const select = (name: string, options: string[], extra: Partial<Field> = {}): Field =>
@@ -215,7 +214,7 @@ const workspaces = col(
   {
     access: {
       create: isAdmin,
-      update: isAdmin, // budget, model tiers, run modes and the rest of a Workspace are Admin settings, over /api as in the UI
+      update: isAdmin,
       delete: isAdmin,
       read: ({ req }) =>
         req.user?.role === 'admin'

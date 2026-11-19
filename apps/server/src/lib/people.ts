@@ -4,13 +4,16 @@ export const ROLES = ['admin', 'bauherr', 'product-owner'] as const
 export type Role = (typeof ROLES)[number]
 export type Assignment = { scope: 'workspace' } | { scope: 'products'; products: number[] }
 
-const RANK: Record<string, number> = { admin: 3, bauherr: 2, 'product-owner': 1 }
+const RANK: Record<Role, number> = { admin: 3, bauherr: 2, 'product-owner': 1 }
 const id = (v: unknown): number | undefined => {
   const n = Number(v && typeof v === 'object' ? (v as Doc).id : v)
   return Number.isFinite(n) && v != null && v !== '' ? n : undefined
 }
 
-export const isBauherr = (user: Doc | null | undefined): boolean => (RANK[user?.role as string] ?? 0) >= RANK.bauherr
+export const isBauherr = (user: Doc | null | undefined): boolean => {
+  const role = ROLES.find((r) => r === user?.role)
+  return role !== undefined && RANK[role] >= RANK.bauherr
+}
 export const isProductOwner = (user: Doc | null | undefined): boolean => user?.role === 'product-owner'
 
 export const tenantIds = (user: Doc): number[] => ((user.tenants as { tenant: unknown }[] | undefined) ?? []).flatMap((t) => id(t.tenant) ?? [])

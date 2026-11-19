@@ -69,7 +69,7 @@ describe('gitlab tickets', () => {
   });
 
   it('comments: system notes dropped, since filters on updated_at, create/update shape', async () => {
-    const { ts, calls } = setup((m, path) => (m === 'GET' ? fx('notes') : { id: 12, body: 'x', author: { username: 'bauherr-bot' }, created_at: '2026-10-30T09:10:00.000Z' }));
+    const { ts, calls } = setup((m) => (m === 'GET' ? fx('notes') : { id: 12, body: 'x', author: { username: 'bauherr-bot' }, created_at: '2026-10-30T09:10:00.000Z' }));
     assert.deepEqual((await ts.listComments('7')).map((c) => [c.id, c.author, c.createdAt]), [['12', 'bauherr-bot', '2026-10-30T09:10:00Z'], ['13', 'sebastian', '2026-10-30T09:20:00Z']]);
     assert.deepEqual((await ts.listComments('7', '2026-10-30T09:40:00Z')).map((c) => c.id), ['13']);
     await ts.comment('7', 'hi');
@@ -99,7 +99,7 @@ describe('gitlab tickets', () => {
 
   it('claim throws when the user is unknown or the assignee did not stick', async () => {
     await assert.rejects(setup((_m, path) => (path.startsWith('/users') ? [] : {})).ts.claim('7', 'nobody'), { status: 422 });
-    const notApplied = setup((m, path) => (path.startsWith('/users') ? fx('users') : { assignees: [] }));
+    const notApplied = setup((_m, path) => (path.startsWith('/users') ? fx('users') : { assignees: [] }));
     await assert.rejects(notApplied.ts.claim('7', 'bauherr-bot'), { status: 422 });
   });
 
@@ -133,7 +133,7 @@ describe('gitlab tickets', () => {
   });
 
   it('release, unassign, userExists', async () => {
-    const { ts, calls } = setup((m, path) => (path.startsWith('/users') ? (path.endsWith('ghost') ? [] : fx('users')) : fx('issue')));
+    const { ts, calls } = setup((_m, path) => (path.startsWith('/users') ? (path.endsWith('ghost') ? [] : fx('users')) : fx('issue')));
     await ts.release('7');
     await ts.unassign('7', ['Sebastian']);
     await ts.unassign('7', []);
@@ -240,7 +240,7 @@ describe('gitlab forge', () => {
   });
 
   it('merge requests: open / get / list / comment', async () => {
-    const { forge, calls } = setup((m, path) => {
+    const { forge, calls } = setup((_m, path) => {
       if (path === '/projects/99') return { path_with_namespace: 'fork/p' };
       if (path.includes('merge_requests?')) return [fx('mr'), fx('mr_merged'), fx('mr_fork')];
       if (path.endsWith('/notes')) return { id: 1, body: 'c', author: { username: 'bot' }, created_at: '2026-10-30T09:00:00.000Z' };
@@ -264,7 +264,7 @@ describe('gitlab forge', () => {
   });
 
   it('reviewPullRequest opens one positioned discussion per line on the head diff_refs, then the summary note', async () => {
-    const { forge, calls } = setup((m, path) => {
+    const { forge, calls } = setup((_m, path) => {
       if (path.endsWith('/merge_requests/196')) return { diff_refs: { base_sha: 'b', start_sha: 's', head_sha: 'h' } };
       if (path.endsWith('/notes')) return { id: 1, body: 'sum', author: { username: 'bot' }, created_at: '2026-10-30T09:00:00.000Z' };
       return {};

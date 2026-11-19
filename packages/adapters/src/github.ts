@@ -89,7 +89,7 @@ export class Http {
     const url = path.startsWith('http') ? path : this.base + path;
     for (let attempt = 0; ; attempt++) {
       const res = await timedFetch(this.doFetch, url, {
-        cache: 'no-store', // Next patches fetch; a cached poll response never advances the cursor
+        cache: 'no-store',
         method,
         headers: {
           authorization: `Bearer ${await this.o.auth.token()}`,
@@ -203,7 +203,7 @@ class GithubTickets implements TicketSource {
   async comment(id: string, body: string) {
     return comment(await this.h.json('POST', `${this.p}/issues/${id}/comments`, { body }));
   }
-  async updateComment(id: string, commentId: string, body: string) {
+  async updateComment(_id: string, commentId: string, body: string) {
     return comment(await this.h.json('PATCH', `${this.p}/issues/comments/${commentId}`, { body }));
   }
   async listComments(id: string, since?: string) {
@@ -434,7 +434,7 @@ class GithubForge implements Forge {
       await this.h.json('PUT', `/repos/${repo}/pulls/${n}/merge-async`, { merge_action: 'merge_queue', sha: o.expectSha });
     } catch (e) {
       if (e instanceof GithubError && [400, 405].includes(e.status)) throw new NotQueueableError(e.message);
-      if (!(e instanceof GithubError && e.status === 409)) throw e; // 409: already pending in the queue
+      if (!(e instanceof GithubError && e.status === 409)) throw e;
     }
     return { state: 'queued' as const };
   }
@@ -452,7 +452,7 @@ class GithubForge implements Forge {
     try {
       await this.h.json('PATCH', `/repos/${repo}/git/refs/heads/${ref}`, { sha, force: true });
     } catch (e) {
-      if (!(e instanceof GithubError && [404, 422].includes(e.status))) throw e; // no such ref yet
+      if (!(e instanceof GithubError && [404, 422].includes(e.status))) throw e;
       await this.h.json('POST', `/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
     }
   }
@@ -464,7 +464,7 @@ class GithubForge implements Forge {
   async mergeIntoBranch(repo: RepoRef, branch: string, headSha: string) {
     try {
       const m = await this.h.json('POST', `/repos/${repo}/merges`, { base: branch, head: headSha, commit_message: `bauherr train: merge ${headSha.slice(0, 7)}` });
-      return { sha: m ? (m.sha as string) : (await this.h.json('GET', `/repos/${repo}/git/ref/heads/${branch.split('/').map(enc).join('/')}`)).object.sha as string }; // 204: already contained
+      return { sha: m ? (m.sha as string) : (await this.h.json('GET', `/repos/${repo}/git/ref/heads/${branch.split('/').map(enc).join('/')}`)).object.sha as string };
     } catch (e) {
       if (e instanceof GithubError && e.status === 409) return { conflict: true as const };
       throw e;
@@ -477,7 +477,7 @@ class GithubForge implements Forge {
   }
   async getFile(repo: RepoRef, path: string, ref?: string) {
     const f = await this.h.json('GET', `/repos/${repo}/contents/${path.split('/').map(enc).join('/')}${ref ? `?ref=${enc(ref)}` : ''}`);
-    const data = f.encoding === 'base64' ? f.content : (await this.h.json('GET', `/repos/${repo}/git/blobs/${f.sha}`)).content; // contents API omits files over 1 MB
+    const data = f.encoding === 'base64' ? f.content : (await this.h.json('GET', `/repos/${repo}/git/blobs/${f.sha}`)).content;
     return { content: Buffer.from(data, 'base64').toString('utf8'), sha: f.sha as string };
   }
   async putFile(repo: RepoRef, o: { branch: string; path: string; content: string; message: string; expectSha?: string }) {

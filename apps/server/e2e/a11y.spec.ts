@@ -22,7 +22,7 @@ const scan = async (page: Page) => {
   return [...violations, ...review].map((v) => `${v.id} (${v.impact}): ${v.help}. ${v.helpUrl}\n${v.nodes.map((n) => `  ${n.target.join(' ')}\n    ${n.failureSummary?.replace(/\n/g, '\n    ')}`).join('\n')}`)
 }
 
-const setTheme = (page: Page, id: 'light' | 'dark') => page.evaluate((t) => { localStorage.setItem('bauherr-theme', t); document.documentElement.dataset.theme = t; return Promise.all(document.getAnimations().filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime)).map((a) => a.finished.catch(() => {}))) }, id) // axe must not read colours mid-transition
+const setTheme = (page: Page, id: 'light' | 'dark') => page.evaluate((t) => { localStorage.setItem('bauherr-theme', t); document.documentElement.dataset.theme = t; return Promise.all(document.getAnimations().filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime)).map((a) => a.finished.catch(() => {}))) }, id)
 
 const signIn = async (page: Page) => {
   await page.goto('/login')
@@ -98,7 +98,7 @@ test.describe('keyboard', () => {
         const ring = (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0) || (s.boxShadow !== 'none' && s.boxShadow !== '')
         return { ring, hidden: r.width === 0 || r.height === 0, name: `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''} ${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 40)}` }
       })
-      if (stop === null || stop === 'seen') break // back at the document or the first stop: one full lap
+      if (stop === null || stop === 'seen') break
       if (!stop.hidden) expect(stop.ring, `focus indicator on ${stop.name}`).toBe(true)
       stops.push(stop.name)
     }
@@ -138,7 +138,7 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
       const want = redirects[route]
       if (want) expect(landed, `${url} must redirect`).toMatch(want)
       else expect(landed, `${url} redirected: a scan must cover the page it names`).toBe(url.split('?')[0])
-      await page.locator('h1').first().waitFor({ timeout: 10_000 }).catch(() => {}) // client-rendered pages: axe reports a missing h1 itself
+      await page.locator('h1').first().waitFor({ timeout: 10_000 }).catch(() => {})
       for (const t of ['light', 'dark'] as const) {
         await setTheme(page, t)
         expect(await scan(page), `${url} (${t})`).toEqual([])

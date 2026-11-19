@@ -21,7 +21,7 @@ export function FormPending() {
   return <span ref={ref} hidden />
 }
 
-export function NextStepBar({ sentence, primary, children, live }: { sentence: ReactNode; primary?: NextStepPrimary; children?: ReactNode; /** The sentence is a live status (the Ticket page's state), announced when it changes; off for static hints like "Unsaved changes". */ live?: boolean }) {
+export function NextStepBar({ sentence, primary, children, live }: { sentence: ReactNode; primary?: NextStepPrimary; children?: ReactNode; live?: boolean }) {
   const uid = useId()
   const [armed, setArmed] = useState(false)
   const [submitting, setSubmitting] = useState(false)

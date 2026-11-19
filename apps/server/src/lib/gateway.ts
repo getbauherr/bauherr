@@ -37,7 +37,7 @@ const call = async <T>(method: string, path: string, body?: unknown): Promise<T>
       const res = await fetch(process.env.GATEWAY_ADMIN_URL + path, {
         method,
         headers: { 'content-type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        ...(body !== undefined && { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(Number(process.env.GATEWAY_ADMIN_TIMEOUT_MS ?? 10_000)),
       })
       if (res.ok) return (await res.json()) as T
@@ -278,7 +278,7 @@ export const completeCheap = async (w: { slug: string; gatewayKey: string; model
   return ((await res.json()) as { content: { type: string; text?: string }[] }).content.find((c) => c.type === 'text')?.text ?? ''
 }
 
-export const verifyProvider = async (slug: string, key: string, model: string /* `<connection>/<model>` */): Promise<{ verifiedAt: string } | { lastError: string }> => {
+export const verifyProvider = async (slug: string, key: string, model: string): Promise<{ verifiedAt: string } | { lastError: string }> => {
   let last = 'network error'
   for (let i = 0; i < 3; i++) {
     if (i) await new Promise((r) => setTimeout(r, 500))

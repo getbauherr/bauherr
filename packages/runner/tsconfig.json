@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "es2023", "module": "nodenext", "moduleResolution": "nodenext",
-    "strict": true, "outDir": "dist", "rootDir": ".", "declaration": true,
+    "strict": true, "noUnusedLocals": true, "noUnusedParameters": true, "noImplicitOverride": true, "outDir": "dist", "rootDir": ".", "declaration": true,
     "skipLibCheck": true, "types": ["node"]
   },
   "include": ["src", "test"]
