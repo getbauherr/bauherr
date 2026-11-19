@@ -1,5 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { decide, type Decision, InvalidDecision, NOTE_MAX, StaleDecision } from '../../src/core/decide'
+import {
+  decide,
+  InvalidDecision,
+  mayDecide,
+  NOTE_MAX,
+  NotAllowedToDecide,
+  StaleDecision,
+  type Decision,
+} from '../../src/core/decide'
 import { DECISIONS } from '../../src/core/decisions'
 import { advance } from '../../src/core/engine'
 import { readEvents } from '../../src/core/record/store'
@@ -73,9 +81,8 @@ const atResultCard = async () => {
   await e.work(id, 'verifier', { passed: true, patchId: 'p1', headSha: 'h1' })
   return id
 }
-const owner = { id: 'u7' }
 const answer = async (id: number, d: Omit<Decision, 'seq'>) =>
-  decide(id, owner, { ...d, seq: await e.seq(id) }, e.deps())
+  decide(id, e.owner, { ...d, seq: await e.seq(id) }, e.deps())
 const eventCount = async (id: number) => (await readEvents(e.db.payload, id)).length
 
 describe('decide', () => {
@@ -124,5 +131,32 @@ describe('decide', () => {
     const id = await atResultCard()
     await answer(id, { ask: 'result', choice: 'accept' })
     await expect(answer(id, { ask: 'result', choice: 'accept' })).rejects.toThrow(StaleDecision)
+  })
+})
+
+describe('who may decide', () => {
+  const person = (role: string, workspaceIds: number[]) => ({ id: 'u1', role, workspaceIds })
+
+  it('allows an Admin or a Bauherr of the Workspace and nobody else', () => {
+    expect(mayDecide(person('admin', [1, 2]), 1)).toBe(true)
+    expect(mayDecide(person('bauherr', [1]), 1)).toBe(true)
+    expect(mayDecide(person('product-owner', [1]), 1)).toBe(false)
+    expect(mayDecide(person('bauherr', [2]), 1)).toBe(false)
+    expect(mayDecide(person('admin', []), 1)).toBe(false)
+    expect(mayDecide(person('stranger', [1]), 1)).toBe(false)
+  })
+
+  it('refuses a Product owner and a member of another Workspace before touching anything', async () => {
+    const id = await atResultCard()
+    const before = await eventCount(id)
+    const d = { ask: 'result', choice: 'accept', seq: await e.seq(id) }
+    const ws = e.db.workspace
+    const refused = [person('product-owner', [ws]), person('bauherr', [e.db.otherWorkspace]), person('admin', [])]
+    for (const who of refused) {
+      await expect(decide(id, who, d, e.deps())).rejects.toThrow(NotAllowedToDecide)
+    }
+    expect(await eventCount(id)).toBe(before)
+    await decide(id, person('admin', [ws]), d, e.deps())
+    expect(await e.view(id)).toMatchObject({ stage: 'done' })
   })
 })

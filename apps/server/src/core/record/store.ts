@@ -26,6 +26,7 @@ export type StoredCard = z.infer<typeof cardSchema>
 
 export type StoredRecord = {
   id: number
+  workspace: number
   version: number
   stage: Stage
   waitingOn: WaitingOn
@@ -47,6 +48,7 @@ export type StoredEvent = AppEvent & {
 
 const rowSchema = z.object({
   id: z.coerce.number(),
+  workspace_id: z.coerce.number(),
   version: z.coerce.number(),
   stage: stageSchema,
   waiting_on: z.enum(WAITING_ON),
@@ -82,13 +84,15 @@ const parseRecord = (id: number, data: unknown): TicketRecord => {
 
 export const readRecord = async (payload: Conn, id: number): Promise<StoredRecord> => {
   const result = await payload.db.drizzle.execute(
-    sql`SELECT "id", "version", "stage", "waiting_on", "rank", "card", "data" FROM "records" WHERE "id" = ${id}`,
+    sql`SELECT "id", "workspace_id", "version", "stage", "waiting_on", "rank", "card", "data"
+      FROM "records" WHERE "id" = ${id}`,
   )
   const row = result.rows[0]
   if (!row) throw new RecordNotFound(`Record ${id} does not exist: check the id.`)
   const parsed = rowSchema.parse(row)
   return {
     id: parsed.id,
+    workspace: parsed.workspace_id,
     version: parsed.version,
     stage: parsed.stage,
     waitingOn: parsed.waiting_on,

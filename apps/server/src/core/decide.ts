@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isBauherr } from '../lib/people'
 import { inLockedRecord } from './conn'
 import { DECISIONS, type DecisionEntry } from './decisions'
 import { advance, type AdvanceDeps } from './engine'
@@ -15,6 +16,12 @@ export class DecisionError extends Error {
 }
 export class StaleDecision extends DecisionError {}
 export class InvalidDecision extends DecisionError {}
+export class NotAllowedToDecide extends DecisionError {}
+
+export type Person = { id: string; role: string; workspaceIds: number[] }
+
+export const mayDecide = (person: Person, workspace: number): boolean =>
+  isBauherr({ role: person.role }) && person.workspaceIds.includes(workspace)
 
 export type Decision = { ask: string; choice: string; seq: number; note?: string }
 
@@ -46,19 +53,22 @@ const entryOf = (asked: string | null, seq: number | undefined, decision: Decisi
 
 export const decide = async (
   recordId: number,
-  by: { id: string },
+  person: Person,
   decision: Decision,
   deps: AdvanceDeps,
 ): Promise<void> => {
   const config = await deps.configFor(recordId)
   await inLockedRecord(deps.payload, recordId, async (tx) => {
     const stored = await readRecord(tx, recordId)
+    if (!mayDecide(person, stored.workspace)) {
+      throw new NotAllowedToDecide(`Person ${person.id} may not decide on record ${recordId}: ask a Bauherr of it.`)
+    }
     const state = fold(await readEvents(tx, recordId), { productionGate: config.productionGate })
     const asked = askedOf(next(stored.record, state, config), state)
     const { entry, note } = entryOf(asked, stored.card?.seq, decision)
     const patch = state.patch
     const events = entry.events({ note, patchId: patch?.id ?? '', headSha: patch?.headSha ?? '' })
-    for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: by.id })
+    for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
   })
   await advance(recordId, deps)
 }

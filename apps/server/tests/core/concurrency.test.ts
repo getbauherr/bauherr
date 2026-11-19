@@ -17,9 +17,8 @@ beforeEach(async () => {
   await e.drain()
 })
 
-const owner = { id: 'u7' }
 const answer = async (id: number, d: Omit<Decision, 'seq'>) =>
-  decide(id, owner, { ...d, seq: await e.seq(id) }, e.deps())
+  decide(id, e.owner, { ...d, seq: await e.seq(id) }, e.deps())
 const count = async (id: number, type: string) => (await e.view(id)).types.filter((t) => t === type).length
 
 const toBrief = async (open: boolean, id?: number) => {
@@ -37,7 +36,7 @@ describe('decide', () => {
     const id = await toBrief(true)
     const seq = await e.seq(id)
     const same = { ask: 'brief', choice: 'approve', seq }
-    const results = await Promise.allSettled([decide(id, owner, same, e.deps()), decide(id, owner, same, e.deps())])
+    const results = await Promise.allSettled([decide(id, e.owner, same, e.deps()), decide(id, e.owner, same, e.deps())])
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
     const refused = results.filter((r) => r.status === 'rejected')
     expect(refused).toHaveLength(1)
@@ -54,9 +53,9 @@ describe('decide', () => {
     const later = await e.seq(id)
     expect(later).toBeGreaterThan(earlier)
     const stale = { ask: 'brief', choice: 'approve', seq: earlier }
-    await expect(decide(id, owner, stale, e.deps())).rejects.toThrow(StaleDecision)
+    await expect(decide(id, e.owner, stale, e.deps())).rejects.toThrow(StaleDecision)
     expect(await count(id, 'brief.approved')).toBe(0)
-    await decide(id, owner, { ...stale, seq: later }, e.deps())
+    await decide(id, e.owner, { ...stale, seq: later }, e.deps())
     expect(await count(id, 'brief.approved')).toBe(1)
   })
 

@@ -21,9 +21,8 @@ beforeEach(async () => {
   await e.drain()
 })
 
-const owner = { id: 'u7' }
 const answer = async (id: number, d: Omit<Decision, 'seq'>) =>
-  decide(id, owner, { ...d, seq: await e.seq(id) }, e.deps())
+  decide(id, e.owner, { ...d, seq: await e.seq(id) }, e.deps())
 const begin = async () => {
   const id = await e.db.fresh()
   await advance(id, e.deps())
