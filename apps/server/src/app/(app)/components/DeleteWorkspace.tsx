@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from './ui/input'
 import { Label } from './ui/label'
 
-type Impact = { products: number; tickets: number; runs: number; sessions: number; keys: number; connections: number }
+type Impact = { products: number; sessions: number; connections: number }
 
 export function DeleteWorkspace({ name, impact, until }: { name: string; impact: Impact; until: string }) {
   const [open, setOpen] = useState(false)
@@ -23,14 +23,14 @@ export function DeleteWorkspace({ name, impact, until }: { name: string; impact:
     if (res.error) setError(res.error)
     else setOpen(false)
   }
-  const rows: [number, string][] = [[impact.products, 'Products'], [impact.tickets, 'Tickets'], [impact.runs, 'active Runs'], [impact.sessions, 'agent sessions'], [impact.keys, 'agent keys (Workspace keys and embed tokens)'], [impact.connections, 'Connections']]
+  const rows: [number, string][] = [[impact.products, 'Products'], [impact.sessions, 'agent sessions'], [impact.connections, 'Connections']]
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setTyped(''); setError('') } }}>
       <DialogTrigger asChild><Button type="button" variant="outline" className="text-destructive">Delete workspace</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Delete {name}?</DialogTitle>
-          <DialogDescription>Its work stops now and it disappears from every list. Restorable until {until}.</DialogDescription>
+          <DialogDescription>It disappears from every list. Restorable until {until}.</DialogDescription>
         </DialogHeader>
         <ul className="small flex flex-col gap-1">
           {rows.map(([n, label]) => <li key={label}>{n} {label}</li>)}

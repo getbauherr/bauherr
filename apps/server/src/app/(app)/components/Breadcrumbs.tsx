@@ -5,33 +5,18 @@ import { usePathname } from 'next/navigation'
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from './ui/breadcrumb'
 import { usePageTitle } from './PageTitle'
 
-const sections: Record<string, { label: string; one: string }> = {
-  inbox: { label: 'Inbox', one: 'Inbox' },
-  requests: { label: 'Requests', one: 'Request' },
-  releases: { label: 'Releases', one: 'Release' },
-  knowledge: { label: 'Knowledge', one: 'Document' },
-  runs: { label: 'Runs', one: 'Run' },
-  team: { label: 'Agent team', one: 'Agent team' },
-  insights: { label: 'Insights', one: 'Insights' },
-  tickets: { label: 'Workflow', one: 'Ticket' },
-  settings: { label: 'Settings', one: 'Settings' },
-  'release-notes': { label: 'Release notes', one: 'Release notes' },
-  setup: { label: 'Set up', one: 'Set up' },
-  workflow: { label: 'Workflow', one: 'Workflow' },
-}
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-const settingsPage: Record<string, string> = { profile: 'Profile', workspace: 'General', products: 'Products', bauherren: 'People', usage: 'AI usage', workflow: 'Workflow', models: 'Models & budget', knowledge: 'Knowledge', health: 'Health', connections: 'Connections', 'api-key': 'API keys', audit: 'Audit', templates: 'Templates', 'chat-feedback': 'Chat feedback' }
+const settingsPage: Record<string, string> = { profile: 'Profile', workspace: 'General', products: 'Products', bauherren: 'People', models: 'Models & budget', health: 'Health', connections: 'Connections', 'api-key': 'API keys', audit: 'Audit' }
 
 type Crumb = { label: string; href?: string }
 
-export function Breadcrumbs({ owner }: { owner?: boolean }) {
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+export function Breadcrumbs() {
   const path = usePathname()
   const title = usePageTitle()
   const [first, second, third] = path.split('/').filter(Boolean)
-  const section = owner && first === 'tickets' ? { label: 'Requests', one: 'Ticket' } : first ? (sections[first] ?? { label: first, one: first }) : sections.tickets
-  const crumbs: Crumb[] = [{ label: section.label, href: first === 'settings' ? undefined : owner && first === 'tickets' ? '/requests' : first && first !== 'tickets' && first !== 'workflow' ? `/${first}` : '/' }]
+  const crumbs: Crumb[] = first === 'settings' ? [{ label: 'Settings' }] : [{ label: 'Home', href: '/' }]
   if (first === 'settings' && second) crumbs.push({ label: settingsPage[second] ?? cap(second), href: third ? `/settings/${second}` : undefined })
-  else if (second) crumbs.push({ label: /^\d+$/.test(second) ? section.one : cap(second) })
   if (third) crumbs.push({ label: /^\d+$/.test(third) ? 'Product' : cap(third) })
   if (title && crumbs.length > 1) crumbs[crumbs.length - 1] = { label: title }
   return (

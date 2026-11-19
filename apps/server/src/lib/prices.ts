@@ -3,9 +3,9 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { modelName, priceOf, reloadCatalog } from './cost'
-import { workflowFor } from './factory'
 import { syncManagedConfig, tierModels } from './gateway'
+
+const modelName = (m: string | null | undefined): string => (m ?? '').replace(/\[.*\]$/, '').split('/').pop() || 'unknown'
 
 export const PRICES_URL = 'https://raw.githubusercontent.com/agentgateway/agentgateway/main/catalog/model-catalog.json'
 export const BASE_FILE = 'base-costs.json'
@@ -110,18 +110,6 @@ export const setState = async (payload: Payload, key: string, value: unknown): P
 export const loadPriceStatus = (payload: Payload): Promise<PriceStatus | null> => getState<PriceStatus>(payload, 'prices')
 export const loadModelList = async (payload: Payload): Promise<ListedModel[]> => (await getState<ListedModel[]>(payload, 'price-models')) ?? []
 
-export const repriceUnpriced = async (payload: Payload): Promise<number> => {
-  const rows = (await payload.db.drizzle.execute(sql`SELECT "id", "model", COALESCE("tokens_in", 0)::float8 AS tin, COALESCE("tokens_out", 0)::float8 AS tout, COALESCE("cache_read", 0)::float8 AS cr, COALESCE("cache_write", 0)::float8 AS cw FROM "usage_entries" WHERE "cost_usd" IS NULL AND COALESCE("tokens_in", 0) + COALESCE("tokens_out", 0) > 0 AND "source" <> 'chat' ORDER BY "id" LIMIT 5000`)).rows as { id: number; model: string; tin: number; tout: number; cr: number; cw: number }[]
-  let done = 0
-  for (const r of rows) {
-    const cost = priceOf(r.model, { tokensIn: r.tin, tokensOut: r.tout, cacheRead: r.cr, cacheWrite: r.cw })
-    if (cost == null) continue
-    await payload.db.drizzle.execute(sql`UPDATE "usage_entries" SET "cost_usd" = ${cost}, "updated_at" = now() WHERE "id" = ${r.id} AND "cost_usd" IS NULL`)
-    done++
-  }
-  return done
-}
-
 const readCatalog = async (path: string): Promise<Catalog | undefined> => {
   try {
     return JSON.parse(await readFile(path, 'utf8')) as Catalog
@@ -147,10 +135,6 @@ export const modelsInUse = async (payload: Payload): Promise<string[]> => {
       for (const m of Object.values(await tierModels(payload, ws as never))) out.add(modelName(m))
     } catch {
       for (const m of Object.values(ws.modelByTier ?? {})) out.add(modelName(m))
-    }
-    try {
-      for (const r of workflowFor(ws.id).roles) if (r.model) out.add(modelName(r.model))
-    } catch {
     }
   }
   return [...out]
@@ -214,12 +198,10 @@ export const refreshPrices = async (payload: Payload, o: { force?: boolean; now?
   await rm(tmp, { force: true })
   await writeFile(tmp, JSON.stringify(converted.catalog), { mode: 0o644 })
   await rename(tmp, path)
-  reloadCatalog()
   await syncManagedConfig().catch((e) => payload.logger.warn({ err: e }, 'listing the price catalog in the gateway config failed'))
   const status: PriceStatus = { fetchedAt: stamp, attemptedAt: stamp, source, generatedAt: converted.catalog.metadata.generatedAt, models: converted.list.length, error: null, changed: priceChanges(prev, converted.catalog, await modelsInUse(payload).catch(() => [])), version: 1 }
   await setState(payload, 'price-models', converted.list.map(({ provider, id, name, deprecated }) => ({ provider, id, name, deprecated })))
   await setState(payload, 'prices', status)
-  const repriced = await repriceUnpriced(payload)
-  payload.logger.info({ models: status.models, repriced, source }, 'price refresh')
+  payload.logger.info({ models: status.models, source }, 'price refresh')
   return status
 }

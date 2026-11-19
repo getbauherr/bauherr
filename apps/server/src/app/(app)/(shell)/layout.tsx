@@ -1,50 +1,13 @@
 import { cookies } from 'next/headers'
 import type { ReactNode } from 'react'
 import { AppShell } from '../components/AppShell'
-import { ChatDock } from '../components/chat/ChatDock'
 import { SIDEBAR_COOKIE } from '../components/ui/sidebar-cookie'
 import { logout, selectWorkspace } from '../lib/actions'
-import { countOwnDrafts } from '../lib/requests'
-import { isProductOwner, productScope } from '../../../lib/people'
-import { asksOwner } from '../../../lib/addressee'
-import { currentPersonWorkspace, currentWorkspace, payloadClient, requirePerson, type Person } from '../lib/session'
-import { isAdmin } from '../lib/settings'
-import { loadPresence } from '../../../lib/presence'
-import { loadHolds } from '../lib/holds-strip'
-import { loadSetup, SETUP_STEPS } from '../lib/setup'
+import { currentPersonWorkspace } from '../lib/session'
 import { appVersion } from '../lib/version'
 
-const countNeedsYou = async (workspace: number, admin: boolean, owner?: Person): Promise<number> => {
-  const payload = await payloadClient()
-  const [tickets, skills] = await Promise.all([
-    payload.count({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { needsYou: { exists: true } }, ...(owner ? [asksOwner, productScope(owner, workspace)] : [])] }, overrideAccess: true }),
-    admin ? payload.count({ collection: 'skill_proposals', where: { workspace: { equals: workspace }, status: { in: ['proposed', 'replayed'] }, pr: { exists: true } }, overrideAccess: true }) : { totalDocs: 0 },
-  ])
-  return tickets.totalDocs + skills.totalDocs
-}
-
-const setupOf = async (workspace: number) => {
-  const first = await (await payloadClient()).find({ collection: 'tickets', where: { workspace: { equals: workspace } }, limit: 1, pagination: false, depth: 0, select: {}, overrideAccess: true })
-  if (first.docs.length) return { done: SETUP_STEPS.length, total: SETUP_STEPS.length, complete: true }
-  const s = await loadSetup(workspace)
-  return { done: s.count, total: SETUP_STEPS.length, complete: s.complete }
-}
-
-async function ProductOwnerShell({ person, children }: { person: Person; children: ReactNode }) {
-  const { workspace } = await currentPersonWorkspace()
-  const [drafts, needsYou] = workspace ? await Promise.all([countOwnDrafts(person.id as number, workspace.id), countNeedsYou(workspace.id, false, person)]) : [0, 0]
-  return (
-    <AppShell defaultOpen={(await cookies()).get(SIDEBAR_COOKIE)?.value !== 'false'} minimal email={person.email} admin={false} workspaces={[]} presence={{ working: 0, idle: 0 }} version={appVersion()} needsYou={needsYou} drafts={drafts} hasKnowledge={false} logout={logout} selectWorkspace={selectWorkspace}>
-      {children}
-    </AppShell>
-  )
-}
-
 export default async function Layout({ children }: { children: ReactNode }) {
-  const person = await requirePerson()
-  if (isProductOwner(person)) return <ProductOwnerShell person={person}>{children}</ProductOwnerShell>
-  const { user, workspaces, workspace } = await currentWorkspace()
-  const [needsYou, drafts, setup, presence, holds] = workspace ? await Promise.all([countNeedsYou(workspace.id, user.role === 'admin'), countOwnDrafts(user.id as number, workspace.id), isAdmin(user) ? setupOf(workspace.id) : undefined, payloadClient().then((p) => loadPresence(p, workspace.id)), loadHolds(workspace.id)]) : [0, 0, undefined, { working: 0, idle: 0 }, []]
+  const { user, workspaces, workspace } = await currentPersonWorkspace()
   return (
     <AppShell
       defaultOpen={(await cookies()).get(SIDEBAR_COOKIE)?.value !== 'false'}
@@ -52,14 +15,7 @@ export default async function Layout({ children }: { children: ReactNode }) {
       admin={user.role === 'admin'}
       workspaces={workspaces.map(({ slug, name }) => ({ slug, name }))}
       current={workspace?.slug}
-      presence={presence}
-      holds={holds}
       version={appVersion()}
-      needsYou={needsYou}
-      drafts={drafts}
-      setup={setup}
-      hasKnowledge={!!(workspace?.knowledgeRepo && workspace.knowledgeConnection)}
-      dock={<ChatDock userId={user.id} />}
       logout={logout}
       selectWorkspace={selectWorkspace}
     >

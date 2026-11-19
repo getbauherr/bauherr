@@ -3,21 +3,16 @@ import { cookies, headers } from 'next/headers'
 import { notFound, redirect } from 'next/navigation'
 import { getPayload, type TypedUser } from 'payload'
 import { cache } from 'react'
-import { loadWorkflows } from '../../../lib/factory'
 import { live } from '../../../lib/workspace-delete'
 import { assignmentOf, isBauherr, isProductOwner, type Role } from '../../../lib/people'
 
 export type Workspace = { id: number; name: string; slug: string; knowledgeRepo?: string | null; knowledgeConnection?: unknown }
-export type Person = TypedUser & { email: string; role: Role; uiPrefs?: { epic?: number | null } | null; tenants?: { tenant: Workspace | number | null }[]; assignments?: unknown[] }
+export type Person = TypedUser & { email: string; role: Role; tenants?: { tenant: Workspace | number | null }[]; assignments?: unknown[] }
 export type Bauherr = Person & { role: 'admin' | 'bauherr' }
 
 export const WS_COOKIE = 'bauherr-ws'
 
-export const payloadClient = async () => {
-  const payload = await getPayload({ config })
-  await loadWorkflows(payload)
-  return payload
-}
+export const payloadClient = () => getPayload({ config })
 
 export const getPerson = cache(async (): Promise<Person | null> => {
   const { user } = await (await payloadClient()).auth({ headers: await headers() })
@@ -34,10 +29,6 @@ export const getBauherr = cache(async (): Promise<Bauherr | null> => {
 export const requireBauherr = async (): Promise<Bauherr> => {
   const person = await requirePerson()
   return isProductOwner(person) || !isBauherr(person) ? notFound() : (person as Bauherr)
-}
-
-export const rememberEpic = async (user: Bauherr, epic: number | null): Promise<void> => {
-  await (await payloadClient()).update({ collection: 'bauherren', id: user.id, data: { uiPrefs: { ...user.uiPrefs, epic } }, overrideAccess: true, depth: 0 })
 }
 
 export const workspacesOf = cache(async (user: Person): Promise<Workspace[]> => {

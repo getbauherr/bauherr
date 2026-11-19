@@ -2,30 +2,18 @@ import { isDeepStrictEqual } from 'node:util'
 import { sql } from '@payloadcms/db-postgres'
 import { addDataAndFileToRequest, APIError, generatePayloadCookie, headersWithCors, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
 import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, ensureRouterKey, gatewayEnabled, newKey, removeProvider, revokeRouterKey, syncRouterKey, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
-import { monitoringErrors, renderTracing, SERVICES, type Service } from './lib/monitoring'
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
 import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests, oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
 import { clientIp, LoginBusy, signInWithPassword } from './lib/login-lock'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
-import { wipLimitsError } from './lib/wip-limits'
-import { runKind, runStageError, waitingForError } from './lib/stage-text'
-import { chatCollections } from './lib/chat/collections'
-import { workflowFor } from './lib/factory'
-import { TEMPLATE_NAMES } from './lib/template-text'
 import { assignmentRows, isBauherr, ROLES, tenantIds } from './lib/people'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
 export const bauherrOnly = ({ req }: { req: { user?: object | null } }): boolean => isBauherr(req.user as Doc | null)
 
 type Doc = Record<string, any>
-const wfOfDoc = (data?: Doc, sibling?: Doc) => {
-  const w = sibling?.workspace ?? data?.workspace
-  return w ? workflowFor(w) : undefined
-}
-
 const AMBIENT_LOCK = 143
 const ACCOUNT_LOCK = 144
-const MONITORING_LOCK = 145
 
 const lockAmbient = async (req: PayloadRequest, key = AMBIENT_LOCK): Promise<void> => {
   const db = req.payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> }; sessions: Record<string, { db: typeof db.drizzle }> }
@@ -64,9 +52,7 @@ const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {
   access: { read: bauherrOnly, create: bauherrOnly, update: bauherrOnly, delete: bauherrOnly, ...extra.access },
 })
 
-const ownRow = ({ req }: { req: { user?: object | null } }) => (isBauherr(req.user as Doc | null) ? { user: { equals: (req.user as Doc).id } } : false)
-
-const SELF_FIELDS = ['uiPrefs', 'password', 'githubLogin']
+const SELF_FIELDS = ['uiPrefs', 'password']
 
 const bauherren: CollectionConfig = {
   slug: 'bauherren',
@@ -111,12 +97,7 @@ const bauherren: CollectionConfig = {
         }
         if (operation === 'update' && req.user?.role === 'product-owner') {
           const other = Object.keys(data).filter((k) => ![...SELF_FIELDS, 'updatedAt', 'createdAt'].includes(k) && !isDeepStrictEqual(data[k] ?? null, originalDoc?.[k] ?? null))
-          if (other.length) throw fail(other[0], 'A Product owner can change only the password, display preferences and forge login')
-        }
-        if (data.githubLogin && data.githubLogin !== originalDoc?.githubLogin) {
-          const mine = String(data.githubLogin).split(',').map((l) => l.trim().toLowerCase()).filter(Boolean)
-          const others = await req.payload.find({ collection: 'bauherren', where: { and: [{ githubLogin: { exists: true } }, ...(originalDoc?.id != null ? [{ id: { not_equals: originalDoc.id } }] : [])] }, pagination: false, depth: 0, overrideAccess: true, select: { githubLogin: true }, req })
-          if (others.docs.some((u) => String(u.githubLogin).split(',').some((l) => mine.includes(l.trim().toLowerCase())))) throw fail('githubLogin', 'This forge login is already linked to another account')
+          if (other.length) throw fail(other[0], 'A Product owner can change only the password and display preferences')
         }
         if ((data.role ?? originalDoc?.role) === 'product-owner') {
           if ((data.enableAPIKey && !originalDoc?.enableAPIKey) || (data.apiKey && data.apiKey !== originalDoc?.apiKey)) throw fail('enableAPIKey', 'A Product owner cannot have an API key')
@@ -180,7 +161,6 @@ const bauherren: CollectionConfig = {
       admin: { description: 'Product owner only: per Workspace, all its Products (scope workspace) or the listed ones (scope products; an empty list grants nothing). Keeps `tenants` equal to the Workspaces listed here.' },
       fields: [rel('workspace', 'workspaces', { required: true }), select('scope', ['workspace', 'products'], { required: true }), rel('products', 'products', { hasMany: true })],
     },
-    text('githubLogin', { admin: { description: 'The forge login (GitHub, or GitLab username) linked to this account: a gate label or answers comment from it counts as this person\'s decision, and it is assigned to Tickets when this Bauherr claims a session Run (falls back to BAUHERR_BOT_LOGIN). One account per login, case ignored.' } }),
     text('oidcSubject', { index: true, access: { create: isAdmin, update: isAdmin }, admin: { description: 'issuer|sub of the OIDC identity (Keycloak: <issuer>|<user ID>). Set on first SSO sign-in; Admins can set it to link an existing Bauherr.' } }),
     { name: 'sessionVersion', type: 'number', defaultValue: 0, access: { create: () => false, update: () => false }, admin: { hidden: true } },
     { name: 'oidcSynced', type: 'date', access: { create: () => false, update: () => false }, admin: { readOnly: true, description: 'Last OIDC sign-in that synced role and Workspaces.' } },
@@ -224,24 +204,11 @@ const workspaces = col(
       access: { read: () => false, update: () => false },
       hooks: { beforeChange: [({ value }) => (typeof value === 'string' && value && !isEncrypted(value) ? encrypt(value) : value)] },
     },
-    {
-      name: 'wipLimits',
-      type: 'json',
-      validate: (v: unknown, { id }: { id?: number | string }) => wipLimitsError(v, id ? workflowFor(id) : undefined) ?? true,
-      access: { update: ({ req }) => req.user?.role === 'admin' },
-      admin: { description: 'Override of the factory file: tickets per Board column, e.g. {"plan":3,"build":2,"review":3,"release":5}. A missing key means no limit; empty = the `wip` of each stage in the factory file (applying a file clears it).' },
-    },
-    rel('workflowVersion', 'workflow_versions', { admin: { description: 'The active factory file version; empty = the pack default. Set by applyFactory.' } }),
-    { name: 'expediteLane', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > Factory > Workflow: off ignores the bauherr:expedite label.' } },
-    { name: 'preemptForHotfix', type: 'checkbox', defaultValue: true, access: { update: isAdmin }, admin: { description: 'Settings > Factory > Workflow: a hotfix pauses one running session of its role when none is free; off keeps the hotfix waiting.' } },
-    { name: 'progressComments', type: 'checkbox', defaultValue: true, admin: { description: 'Settings > General: keep one plain-word progress Comment on each issue and mention its author at the moments that matter.' } },
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
     { name: 'budgetTokens30d', type: 'number', defaultValue: 20000000, min: 0 },
     { name: 'routerBudgetShare', type: 'number', defaultValue: 20, min: 1, max: 99, admin: { description: 'Percent of the budget for `auto` traffic while a router Connection exists.' } },
     { name: 'modelByTier', type: 'json', defaultValue: DEFAULT_MODEL_BY_TIER },
-    select('defaultMode', ['session', 'autonomous'], { admin: { description: 'Run mode for all stages; empty = BAUHERR_DEFAULT_MODE, then pack/factory.yaml, then autonomous.' } }),
-    { name: 'modeByStage', type: 'json', admin: { description: 'Per-stage override, e.g. {"plan":"session","build":"session"}.' } },
     rel('knowledgeConnection', 'connections', { admin: { description: 'GitHub Connection used to read the Knowledge repo.' } }),
     text('knowledgeRepo', { admin: { description: 'Knowledge repo as owner/name.' } }),
     { name: 'archivedAt', type: 'date', access: { update: () => false }, admin: { readOnly: true, description: 'Set by Delete workspace (lib/workspace-delete.ts): the Workspace is hidden everywhere and does no work.' } },
@@ -312,35 +279,11 @@ const workspaces = col(
 const presetField = (name: (typeof PRESET_FIELDS)[number]): Field =>
   text(name, { admin: { condition: (data: Record<string, any>) => PRESETS[(data.provider as Preset) ?? 'anthropic'].required.includes(name) } })
 
-const exceptMonitoring = ({ req }: { req: { user?: object | null } }) => (isAdmin({ req }) ? true : bauherrOnly({ req }) ? { kind: { not_equals: 'monitoring' } } : false)
-
-const validateMonitoring = async ({ data, originalDoc, req }: { data?: Doc; originalDoc?: Doc; req: PayloadRequest }): Promise<Doc | undefined> => {
-  const fail = (path: string, message: string): never => {
-    throw new ValidationError({ collection: 'connections', errors: [{ path, message }] })
-  }
-  if (req.user && !isAdmin({ req })) throw new APIError('Only an Admin can change monitoring', 403)
-  const service = (data?.service ?? originalDoc?.service) as Service | undefined
-  if (originalDoc?.service && service !== originalDoc.service) fail('service', 'cannot change after create')
-  const keys = service === 'grafana' ? ['url'] : service === 'prometheus' ? ['url', 'tokenHash'] : ['host', 'protocol', 'headerName', 'uiUrl']
-  const merged = { ...originalDoc?.config, ...data?.config } as Record<string, unknown>
-  const config = Object.fromEntries(keys.flatMap((k) => (typeof merged[k] === 'string' && merged[k].trim() ? [[k, (merged[k] as string).trim()]] : [])))
-  if (service === 'otlp') config.protocol ??= 'grpc'
-  const written = typeof data?.secret === 'string' && data.secret && !isEncrypted(data.secret) ? data.secret : undefined
-  const kept = data?.secret === undefined && originalDoc?.id ? (await req.payload.count({ collection: 'connections', where: { and: [{ id: { equals: originalDoc.id } }, { secret: { exists: true } }] }, overrideAccess: true, req })).totalDocs > 0 : false
-  const errors = monitoringErrors(service, config, written, !!data?.secret || kept)
-  if (errors.length) throw new ValidationError({ collection: 'connections', errors })
-  await lockAmbient(req, MONITORING_LOCK)
-  const others = await req.payload.count({ collection: 'connections', where: { and: [{ kind: { equals: 'monitoring' } }, { service: { equals: service } }, ...(originalDoc?.id ? [{ id: { not_equals: originalDoc.id } }] : [])] }, overrideAccess: true, req })
-  if (others.totalDocs) fail('service', 'this service is already connected on this instance')
-  return { ...data, kind: 'monitoring', service, config, ...(service === 'otlp' && !config.headerName ? { secret: null } : {}) }
-}
-
 const connections = col(
   'connections',
   [
     text('name', { required: true }),
-    select('kind', ['github', 'gitlab', 'llm-provider', 'monitoring'], { required: true }),
-    select('service', [...SERVICES], { admin: { description: 'monitoring Connections only: which service (one per service on the instance).' } }),
+    select('kind', ['github', 'gitlab', 'llm-provider'], { required: true }),
     json('config'),
     text('slug', { admin: { description: 'Names the Connection in model IDs (ws-<workspace>/<slug>/<model>) and tiers (<slug>/<model>). [a-z0-9-]; default: the provider; fixed after create.' } }),
     select('provider', Object.keys(PRESETS), {
@@ -368,7 +311,6 @@ const connections = col(
     json('capabilities'),
   ],
   {
-    access: { read: exceptMonitoring, update: exceptMonitoring, delete: exceptMonitoring },
     indexes: [{ fields: ['workspace', 'slug'], unique: true }],
     hooks: {
       beforeDelete: [
@@ -383,8 +325,6 @@ const connections = col(
       ],
       beforeValidate: [
         async ({ data, originalDoc, req }) => {
-          if (originalDoc?.kind === 'monitoring' && data?.kind && data.kind !== 'monitoring') throw new ValidationError({ collection: 'connections', errors: [{ path: 'kind', message: 'cannot change after create' }] })
-          if ((data?.kind ?? originalDoc?.kind) === 'monitoring') return validateMonitoring({ data, originalDoc, req })
           if ((data?.kind ?? originalDoc?.kind) !== 'llm-provider') return data
           const config = { ...originalDoc?.config, ...data?.config } as Record<string, string>
           for (const k of ['provider', ...PRESET_FIELDS]) {
@@ -432,7 +372,6 @@ const connections = col(
       ],
       afterChange: [
         async ({ doc, previousDoc, operation, req }) => {
-          if (doc.kind === 'monitoring') return void (doc.service === 'otlp' && gatewayEnabled() && (await renderTracing(req.payload, req)))
           if (doc.kind !== 'llm-provider' || req.context.skipVerify) return
           const raw = (await req.payload.findByID({ collection: 'connections', id: doc.id, depth: 1, overrideAccess: true, req })) as unknown as {
             secret?: string
@@ -487,7 +426,6 @@ const connections = col(
       ],
       afterDelete: [
         async ({ doc, req }) => {
-          if (doc.kind === 'monitoring') return void (doc.service === 'otlp' && gatewayEnabled() && (await renderTracing(req.payload, req)))
           if (doc.kind !== 'llm-provider') return
           const wsId = typeof doc.workspace === 'object' ? doc.workspace.id : doc.workspace
           const ws = await req.payload.findByID({ collection: 'workspaces', id: wsId, depth: 0, overrideAccess: true, req })
@@ -503,110 +441,6 @@ const connections = col(
   },
 )
 
-const tickets = col('tickets', [
-  text('title', { required: true }),
-  rel('product', 'products', { required: true }),
-  text('externalId', { required: true, index: true }),
-  num('number'),
-  text('url'),
-  select('state', ['open', 'closed']),
-  text('labels', { hasMany: true }),
-  text('assignee'),
-  text('assignees'),
-  date('sourceUpdatedAt'),
-  { name: 'triageAttempts', type: 'number', defaultValue: 0, admin: { description: 'Triage Runs started for the current Ticket state; reset when the Ticket changes. The 3rd failure stops Triage.' } },
-  date('triageAttemptAt'),
-  { name: 'gatePendingAttempts', type: 'number', defaultValue: 0, admin: { description: 'Polls in which a gate label could not be verified; the poller re-reads the Ticket until it can, up to a bound.' } },
-  { name: 'factoryStage', type: 'text', admin: { description: 'Stage the factory itself moved the forge label to; one-shot, read by the poller to tell it from a hand-set forward move.' } },
-  { name: 'triagedAt', type: 'date', admin: { description: 'sourceUpdatedAt the last Triage covered; a Ticket is re-triaged only when it changes.' } },
-  text('stage', { index: true }),
-  text('needsYou', { index: true, admin: { readOnly: true, description: 'What the Ticket needs from the owner (needsOf), written by the gate sweep; the top bar counts it. Null = nothing.' } }),
-  text('waitingFor', { validate: (v: unknown, { data, siblingData }: { data?: Doc; siblingData?: Doc }) => waitingForError(wfOfDoc(data, siblingData), v), admin: { description: 'The full column this Ticket waits to enter from an earlier column (never its own stage), or checks (asked for review while the MR head checks run). It stays in its column and has no Run.' } }),
-  { name: 'openOwnerRows', type: 'number', defaultValue: 0, admin: { readOnly: true, description: 'Unanswered rows of the decision sheet that name the Product owner (`for: product-owner`), as last read from the forge comments; with needsYou Answer questions or Answer decisions they put the Ticket in a Product owner\'s Inbox even where the checkpoint asks the Bauherr.' } },
-  text('parkedNeed', { index: true, admin: { readOnly: true, description: 'The `needsYou` value that parks the Ticket (a Run or a decision waits for the owner on something outside an approval and no Run is live): it keeps its card and stage but holds no WIP slot. Written by the gate sweep (parkingNeed); null = not parked.' } }),
-  select('needsBy', ['bauherr', 'product-owner'], { index: true, admin: { readOnly: true, description: 'Who `needsYou` asks (needBy and the Product owner fallback), written with it by the gate sweep; the Inbox and the top bar of a Product owner count only what asks them. Null = nothing.' } }),
-  date('expediteAt'),
-  text('gateNoticeClaim'),
-  { name: 'expedite', type: 'checkbox', defaultValue: false, admin: { description: 'Carries the bauherr:expedite label while the Workspace has the Expedite lane on: skips Triage, bypasses WIP and the overlap hold, no plan gate.' } },
-  { name: 'expediteYieldedTo', type: 'number', admin: { hidden: true, description: 'Ticket id the fast-lane place was yielded to while this Ticket waited for the owner; it keeps the flag, counts for no slot, and takes the place back when unparked and the place is free.' } },
-  text('waitingReason', { admin: { description: 'Why it waits when not a full column, e.g. "overlaps #12" (a Build held for shared paths).' } }),
-  text('rank', { index: true, admin: { description: 'Board order within the Workspace (base-62 fractional index); set by dragging on the Board.' } }),
-  rel('parent', 'tickets'),
-  rel('inheritedApprovalFrom', 'tickets', { admin: { description: 'Parent whose plan listed this Ticket at approval; the plan approval was inherited.' } }),
-  rel('blockedBy', 'tickets', { hasMany: true }),
-  rel('causedBy', 'tickets', { admin: { description: 'The Ticket whose change introduced this bug, named by Triage; read by the escaped-defect count on Insights.' } }),
-  text('mergeSha'),
-  date('stageSince'),
-  date('releaseAt'),
-  date('deployRequestedAt'),
-  select('releaseState', ['waiting', 'on_staging', 'timed_out']),
-  select('productionState', ['awaiting_approval', 'deploying', 'deployed', 'failed', 'timed_out']),
-  text('productionApprovedSha'),
-  date('productionRequestedAt'),
-  date('productionWebhookSentAt'),
-  date('productionLabelAt'),
-  text('releaseUrl'),
-  text('releasedIn', { index: true, admin: { description: 'Tag of the shipped release (e.g. v0.2.0) the Ticket is part of; empty = waiting for a release.' } }),
-  date('releasedAt'),
-  date('releasePublishedAt'),
-  date('releaseChecksSince'),
-  date('releaseRetryAt'),
-  { name: 'releaseAttempts', type: 'number', defaultValue: 0, admin: { description: 'Failed release publishes; the 3rd gives up.' } },
-  text('releaseError'),
-  text('releaseNotes'),
-  text('releaseTag'),
-  text('releaseSha'),
-  select('releaseChecksState', ['waiting', 'passed', 'failed']),
-  text('releaseRunUrl'),
-  select('reviewState', ['waiting_checks', 'queued', 'merged', 'ready_for_human', 'needs_human']),
-  date('reviewWaitingSince'),
-  { name: 'queuedAt', type: 'date', admin: { readOnly: true, description: 'When the MR entered the forge merge queue (`reviewState` queued).' } },
-  { name: 'trainFailures', type: 'number', defaultValue: 0, admin: { description: 'Times the merge queue or train dropped the MR (its checks failed there); the 3rd needs a human.' } },
-  json('epic'),
-  json('slice'),
-  { name: 'parked', type: 'checkbox', defaultValue: false, admin: { description: 'The Ticket (epic) is stopped: nothing merges and it holds no WIP.' } },
-  { name: 'mergeFailures', type: 'number', defaultValue: 0, admin: { description: 'Consecutive failed merge attempts; the 3rd needs a human.' } },
-  text('gateNotified'),
-  date('gateNotifiedAt'),
-  text('gateAssignees'),
-  { name: 'gateUnreachable', type: 'text', admin: { description: 'The gate value whose owners are all rejected by the forge.' } },
-  { name: 'conflictReturnBase', type: 'text', admin: { description: 'The head SHA a review covered before the MR went back to Build to merge the base; the next review covers only the diff from it. Cleared when that review concludes.' } },
-  { name: 'conflictReturns', type: 'number', defaultValue: 0, admin: { description: 'Returns to Build because the MR conflicted; the 4th needs a human.' } },
-  { name: 'mainMergeSha', type: 'text', admin: { readOnly: true, description: 'The MR head on which the factory last found nothing to merge; with `mainMergeNoops` it detects a forge that keeps reporting that head behind or conflicting.' } },
-  { name: 'mainMergeNoops', type: 'number', defaultValue: 0, admin: { readOnly: true, description: 'No-op merges of the base on `mainMergeSha`; the 3rd needs a human. Reset by a merge that pushes.' } },
-  { name: 'reviewRounds', type: 'number', defaultValue: 0, admin: { description: 'Returns from review to build (changes verdicts and red checks); the 3rd needs a human.' } },
-  { name: 'openCriticalDecisions', type: 'number', admin: { readOnly: true, description: 'Unanswered critical decisions of the plan or triage sheet, as last read from the forge comments (plan submit, answers, the gate sweep). Pages read this instead of the forge; null = never read.' } },
-  { name: 'ciSummary', type: 'json', admin: { readOnly: true, description: 'Checks of the open MR head, written by `store-ci-summary`: {total, passed, pending, failed[], url, updatedAt, rows[]}. null = no open MR in build or review.' } },
-  { name: 'liveness', type: 'json', admin: { readOnly: true, description: 'Last `watch-liveness` finding for a Ticket with no live Run: {cause, need, at}. null = not dead at the last sweep.' } },
-  { name: 'decision', type: 'json', admin: { readOnly: true, description: 'The open human checkpoint, prepared for the Inbox and the Ticket page (`buildDecision`): {need, checkpoint, title, ask, recommendation, why, options, next, evidence, details, preparedBy, preparedAt, openSince}. Written by the gate sweep together with `needsYou`; null = nothing is waiting.' } },
-  { name: 'planTldr', type: 'json', admin: { readOnly: true, description: 'Parsed `## TL;DR` of the latest plan: {decision, recommendation, why, risk, options}. Stored when the plan is posted, so no page or sweep reads the forge for it.' } },
-  { name: 'stagingTldr', type: 'json', admin: { readOnly: true, description: 'First two sections of the posted staging summary: {whatYouGet, found}.' } },
-  { name: 'decisionsAtApproval', type: 'json', admin: { readOnly: true, description: 'The decision rows as they stood when the plan was approved: [{id, title, status: answered|default, answer?, default?}]. The read-only chips show these, so later edits of the sheet change nothing.' } },
-  { name: 'approvalBrief', type: 'json', admin: { readOnly: true, description: 'What the owner approves at Accept on staging and Approve production, frozen once per merge commit from the MR body\'s `## Approval brief`: {sha, changes[{text, kind}], notIncluded, risk, proof, noted, checks, links}. Pages read this instead of the forge.' } },
-  { name: 'preExisting', type: 'json', admin: { readOnly: true, description: 'Pre-existing bugs the reviews found that the MR did not introduce: [{file, line, msg, scenario}]. The AX role can move them to the feature map\'s `debt[]`.' } },
-  { name: 'decidedAt', type: 'date', admin: { readOnly: true, description: 'When the owner last decided a checkpoint in the UI; the sweep does not reopen `decidedNeed` for 2 minutes.' } },
-  { name: 'decidedNeed', type: 'text', admin: { readOnly: true } },
-  text('progressHash', { admin: { readOnly: true, description: 'Hash of the body of the progress Comment last written to the issue; unchanged = no forge call. Claimed before the write, released when it fails.' } }),
-  text('progressCommentId', { admin: { readOnly: true, description: 'The forge id of the progress Comment, so an update is one call.' } }),
-  text('progressNotified', { admin: { readOnly: true, description: 'The progress key (question, staging, released, stuck) whose notice Comment was posted for the current stretch in that state; cleared when the Ticket leaves it.' } }),
-  text('historyKey', { admin: { readOnly: true, description: 'The `stage|phase` of the newest ticket_events row; `record` writes an event only when it changes.' } }),
-], {
-  indexes: [{ fields: ['product', 'externalId'], unique: true }, { fields: ['workspace', 'state'] }],
-  hooks: {
-    beforeChange: [
-      ({ data, originalDoc }) => {
-        const stage = 'stage' in data ? data.stage : originalDoc?.stage
-        const waitingFor = 'waitingFor' in data ? data.waitingFor : originalDoc?.waitingFor
-        const reason = 'waitingReason' in data ? data.waitingReason : originalDoc?.waitingReason
-        if (waitingFor && waitingFor === stage && !reason) data.waitingFor = null
-        return data
-      },
-    ],
-  },
-})
-
-export const runStatuses = ['queued', 'awaiting_session', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted', 'abandoned']
-
 export const collections: CollectionConfig[] = [
   bauherren,
   agentKeys,
@@ -617,64 +451,11 @@ export const collections: CollectionConfig[] = [
     text('stagingUrl'),
     select('deployMode', ['observe-ci', 'webhook'], { defaultValue: 'observe-ci', required: true }),
     text('deployWebhookUrl'),
-    text('unlinkedGateOwners', { admin: { readOnly: true, description: 'Forge logins the old `gateOwners` list named that no account has linked (written by the migration); Settings > Health lists them until someone links the login on their profile.' } }),
     text('deployChecks', { admin: { description: 'Comma-separated check names that must be green; empty = all.' } }),
-    { name: 'expediteSkipStaging', type: 'checkbox', defaultValue: false, admin: { description: 'An expedite (Hotfix) Ticket skips the Accept on staging gate once its merge is on staging; the production gate still waits for a human.' } },
-    { name: 'productOwnerTestsStaging', type: 'checkbox', defaultValue: false, admin: { description: 'Where the workflow asks the Product owner to accept on staging: this Product asks them (they need an assigned Product owner), else nobody is asked.' } },
-    text('expediteSkipStagingBy'),
-    date('expediteSkipStagingAt'),
-    { name: 'autoMerge', type: 'checkbox', defaultValue: true, admin: { description: 'Squash-merge the factory MR after a clean review and green checks.' } },
-    select('mergeMode', ['direct', 'queue', 'train'], { defaultValue: 'direct', required: true, admin: { description: 'direct: the factory squash-merges the MR itself. queue: it enqueues the reviewed head in the forge\'s merge queue. train: the factory tests queued MRs together on its own bauherr/train branch and merges them in order.' } }),
-    { name: 'trainState', type: 'json', admin: { readOnly: true, description: 'The running factory train: { baseSha, members: [{ ticket, pr, headSha }], phase, probe, results, tip, since }; null unless one is running.' } },
-    { name: 'mergePreflight', type: 'json', admin: { readOnly: true, description: 'Result of the last repo preflight for queue or train mode: {ok, problems, at}.' } },
     { name: 'productionGate', type: 'checkbox', defaultValue: false, admin: { description: 'Accepting on staging waits for an explicit production approval instead of moving to done; the Product\'s own pipeline deploys.' } },
     text('productionWebhookUrl', { admin: { description: 'Optional: POSTed once on production approval; a pipeline may instead react to the bauherr:approved:production label.' } }),
     select('releaseMode', ['notes-only', 'factory', 'manual'], { defaultValue: 'notes-only', required: true, admin: { description: 'notes-only: the Product\'s own tooling makes the release, the factory adds the notes. factory: the factory tags, releases and opens a CHANGELOG.md MR. manual: no automatic release; a person ships it from the forge release flow.' } }),
-    text('lastReleaseTag', { admin: { description: 'Newest release shipped from the Releases page (or found there once); the Board reads it instead of asking the forge.' } }),
-    text('lastReleaseSha'),
-    date('lastReleaseAt'),
-    { name: 'releaseReminderDays', type: 'number', defaultValue: 7, min: 1, admin: { description: 'manual mode: remind the owner when done Tickets wait longer than this many days for a release.' } },
-    { name: 'releasePrerelease', type: 'checkbox', defaultValue: false, admin: { description: 'factory mode: publish a pre-release v<next>-rc.N instead of a stable version (no CHANGELOG MR).' } },
-    text('releaseChecks', { admin: { description: 'Comma-separated check names on the release commit (for example image, npm); the Ticket shows "Released in" only when they pass. Empty: do not wait.' } }),
-    { name: 'checkRetries', type: 'number', defaultValue: 1, min: 0, max: 1, admin: { description: 'Re-run a failed check once before it counts (1 = on, 0 = off).' } },
     text('productionChecks', { admin: { description: 'Comma-separated check names on the merge commit that report the production deploy; required for the production gate.' } }),
-    {
-      name: 'securityScan',
-      type: 'group',
-      admin: { description: 'Read-only security scan Runs (stage scan). Start one by hand from the Product page or let the hourly tick start one when the cron is due.' },
-      fields: [
-        { name: 'enabled', type: 'checkbox', defaultValue: false, admin: { description: 'Scan this Product on the schedule.' } },
-        text('cron', { defaultValue: '0 0 4 * * 1', admin: { description: 'When the scheduled scan runs, 6-field cron (seconds first). Default: Mondays 04:00.' } }),
-        { name: 'maxBudgetUsd', type: 'number', min: 0, admin: { description: 'Budget of one scan Run in USD. Empty: 2. Never above 10.' } },
-        { name: 'maxTurns', type: 'number', min: 1, admin: { description: 'Turns of one scan Run. Empty: 30.' } },
-        date('lastScanAt'),
-      ],
-    },
-    {
-      name: 'docsCheck',
-      type: 'group',
-      admin: { description: 'Read-only docs check Runs (stage docs). Start one by hand from the Product page; a check with findings files one docs Ticket.' },
-      fields: [
-        {
-          name: 'paths',
-          type: 'json',
-          defaultValue: ['README.md', 'docs/**/*.md'],
-          validate: (v: unknown) => v == null || (Array.isArray(v) && v.every((g) => typeof g === 'string' && g.trim() !== '' && !/\s/.test(g))) || 'must be a list of path globs without spaces',
-          admin: { description: 'Path globs of the Product\'s documentation, e.g. ["README.md","docs/**/*.md"].' },
-        },
-        { name: 'lastCheckAt', type: 'date', admin: { readOnly: true, description: 'Start of the last finished check; the next one counts merged Tickets from here.' } },
-        { name: 'lastCheckRun', type: 'number', admin: { readOnly: true } },
-      ],
-    },
-    { name: 'reviewChecks', type: 'json', admin: { description: 'Path-based checks a Build must pass before it requests review: {tests: [{src: [globs], tests: [globs]}], schema: [{schema: [globs], migration: [globs]}], evidence: true}. Empty: all off.' } },
-    {
-      name: 'overlapIgnore',
-      type: 'json',
-      defaultValue: [],
-      validate: (v: unknown) => v == null || (Array.isArray(v) && v.every((g) => typeof g === 'string' && g.trim() !== '' && !/\s/.test(g))) || 'must be a list of path globs without spaces',
-      access: { update: ({ req }) => req.user?.role === 'admin' },
-      admin: { description: 'Path globs that never hold a Build for overlapping files, e.g. ["CHANGELOG.md","pnpm-lock.yaml"].' },
-    },
     {
       name: 'pathSets',
       type: 'json',
@@ -682,7 +463,6 @@ export const collections: CollectionConfig[] = [
       validate: (v: unknown) => v == null || (typeof v === 'object' && !Array.isArray(v) && Object.entries(v as object).every(([k, g]) => /^[a-z][a-z0-9-]*$/.test(k) && Array.isArray(g) && g.every((x) => typeof x === 'string' && x.trim() !== '' && !/\s/.test(x)))) || 'must map set names (lowercase, dashes) to lists of path globs without spaces',
       admin: { description: 'Named path sets that conditional workflow steps refer to (`when: {touches: security}`): {name: [globs]}, e.g. {"security": ["src/auth/**"], "ui": ["src/app/**"]}. A set that is empty or not declared never matches.' },
     },
-    { name: 'overlapSuggestions', type: 'json', admin: { readOnly: true, description: 'Result of the last "Suggest paths" action: {at, items: [{path, percent}]}. Computed on request, never on page render.' } },
   ], {
     hooks: {
       afterDelete: [
@@ -706,135 +486,6 @@ export const collections: CollectionConfig[] = [
     date('lastPolledAt'),
     text('lastError'),
   ]),
-  tickets,
-  col('runs', [
-    rel('ticket', 'tickets', { required: true }),
-    text('stage', { required: true, index: true, validate: (v: unknown, { data, siblingData }: { data?: Doc; siblingData?: Doc }) => runStageError(wfOfDoc(data, siblingData), v) }),
-    text('kind', { index: true, admin: { description: 'The stage kind the Run ran for (or scan / distill); filled from `stage` on create.' } }),
-    text('job', { index: true, admin: { description: 'The explicit Job of the stage this Run executes; empty for the stage\'s own Job.' } }),
-    select('status', runStatuses, { required: true, defaultValue: 'queued', index: true }),
-    select('mode', ['session', 'autonomous'], { required: true, defaultValue: 'autonomous' }),
-    rel('sessionOwner', 'bauherren'),
-    rel('agentKey', 'agent_keys'),
-    text('sessionLabel'),
-    date('heartbeatAt'),
-    text('lastLeaseCall'),
-    text('lastSeenSha'),
-    text('leaseHash', { hidden: true }),
-    rel('previousRun', 'runs'),
-    { name: 'investigation', type: 'json', admin: { description: 'Set only on an investigation Plan Run: { failedRuns: number[], stage }. The Run runs on the strong tier.' } },
-    { name: 'escalation', type: 'json', admin: { description: 'Set only on an escalated Run: { step: 2 | 3, reason, previousRuns: number[] }. Written with the create; the Run runs on the strong tier with doubled caps.' } },
-    select('reasonKind', ['decision', 'access', 'stuck', 'preempted'], { admin: { description: 'Why a Run stopped: decision (product question) and access (credential, setting) reach the owner, stuck escalates, preempted (a hotfix took the session) never escalates. On failed Runs it is set when the escalation ladder ended at the owner.' } }),
-    { name: 'preemptedBy', type: 'number', admin: { description: 'Id of the expedite Run this Run was paused for (also set on its successor and on a released Run, so it resumes first).' } },
-    { name: 'preemptedFor', type: 'number', admin: { description: 'Number of the hotfix Ticket behind `preemptedBy`, while the Run waits to resume (or ended preempted); cleared when a session claims it again, so it never reads as paused later.' } },
-    { name: 'preemptAt', type: 'date', admin: { description: 'When a hotfix marked this running Run for preemption; the lease sweep ends it 2 minutes later. Cleared when it is released.' } },
-    text('evidence'),
-    json('goal'),
-    select('verdict', ['clean', 'changes']),
-    json('findings'),
-    text('reviewedSha'),
-    text('reviewedPatchId'),
-    text('model'),
-    num('tokensIn'),
-    num('tokensOut'),
-    num('tokensCache'),
-    num('costEstimateUsd'),
-    num('gatewayCostUsd'),
-    num('gatewayTokensIn'),
-    num('gatewayTokensOut'),
-    num('gatewayTokensTotal'),
-    select('costSource', ['sdk-estimate', 'gateway', 'session-reported'], { defaultValue: 'sdk-estimate' }),
-    select('reconcileStatus', ['pending', 'matched', 'mismatch', 'unavailable', 'unpriced'], { defaultValue: 'pending' }),
-    {
-      name: 'costUsd',
-      type: 'number',
-      virtual: true,
-      hooks: { afterRead: [({ siblingData }) => siblingData.gatewayCostUsd ?? siblingData.costEstimateUsd ?? null] },
-    },
-    date('startedAt'),
-    date('finishedAt'),
-    text('error'),
-    json('artifacts'),
-    text('executor', { admin: { description: 'Who ran it: session (an agent session) or runner (the autonomous Runner).' } }),
-    text('role'),
-    text('clientName', { admin: { description: 'The session client (claude-code, ...), from the claim or the MCP User-Agent.' } }),
-    text('clientVersion'),
-    text('provider', { admin: { description: 'The provider preset behind the model.' } }),
-    text('outcome'),
-    rel('session', 'agent_sessions', { admin: { description: 'The connected agent session that works the Run (`next_work`); empty for a legacy claim and for autonomous Runs.' } }),
-  ], {
-    indexes: [{ fields: ['mode', 'status', 'heartbeatAt'] }],
-    hooks: {
-      beforeValidate: [
-        ({ data, operation }) => {
-          if (operation === 'create' && data && !data.kind && typeof data.stage === 'string') data.kind = runKind(wfOfDoc(data, data) ?? workflowFor(null), data.stage)
-          return data
-        },
-      ],
-    },
-  }),
-  col('steps', [
-    rel('run', 'runs', { required: true }),
-    num('seq'),
-    text('messageId'),
-    num('tokensIn'),
-    num('tokensOut'),
-    num('costEstimateUsd'),
-    date('startedAt'),
-    text('summary'),
-    date('finishedAt'),
-    select('state', ['working', 'waiting_ci']),
-  ]),
-  col('tool_calls', [
-    text('toolUseId'),
-    rel('step', 'steps'),
-    rel('run', 'runs'),
-    rel('agentKey', 'agent_keys'),
-    text('name'),
-    text('inputDigest'),
-    select('status', ['ok', 'error']),
-    num('durationMs'),
-  ]),
-  col('human_touches', [
-    text('kind'),
-    rel('ticket', 'tickets'),
-    rel('run', 'runs'),
-    text('actor'),
-    select('as', ['bauherr', 'product-owner'], { admin: { description: 'Who the actor decided as: a Product owner as product-owner, a Bauherr or Admin as bauherr (also for a checkpoint addressed to the Product owner). Absent on touches of the factory and on rows before this field.' } }),
-    select('addressee', ['bauherr', 'product-owner'], { admin: { description: 'Whom the checkpoint or decision row was addressed to when it was decided.' } }),
-    date('at'),
-    text('repo'),
-    text('path'),
-    num('prNumber'),
-    text('headSha'),
-    text('baseContent'),
-    text('status'),
-    json('detail'),
-  ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['kind', 'at'] }] }),
-  col('skill_proposals', [
-    rel('ticket', 'tickets', { required: true, unique: true }),
-    rel('run', 'runs'),
-    select('status', ['proposed', 'replayed', 'accepted', 'rejected', 'skipped'], { required: true, defaultValue: 'proposed' }),
-    num('pr'),
-    text('skillPath'),
-    num('score'),
-    num('baselineScore'),
-    json('results'),
-    text('reason'),
-  ]),
-  col('templates', [
-    select('name', [...TEMPLATE_NAMES], { required: true }),
-    { name: 'body', type: 'textarea', required: true, admin: { description: 'The Workspace\'s version of the pack template `pack/templates/<name>.md`, without front matter. Absent = the pack default.' } },
-    text('updatedBy'),
-  ], { indexes: [{ fields: ['workspace', 'name'], unique: true }] }),
-  col('check_flakes', [
-    rel('ticket', 'tickets', { required: true }),
-    text('checkName', { required: true }),
-    num('checkId'),
-    text('sha', { required: true }),
-    text('runUrl'),
-    select('outcome', ['pending', 'flake', 'failed'], { defaultValue: 'pending', required: true }),
-  ], { indexes: [{ fields: ['ticket', 'sha', 'checkName'], unique: true }] }),
   col('knowledge_chunks', [
     text('source', { required: true, index: true }),
     select('layer', ['core', 'workspace', 'product'], { required: true }),
@@ -845,84 +496,6 @@ export const collections: CollectionConfig[] = [
     text('text', { required: true }),
     text('commit', { required: true }),
   ]),
-  col('intake_sessions', [
-    rel('product', 'products', { required: true }),
-    select('persona', ['product-user', 'owner'], { required: true, defaultValue: 'product-user' }),
-    select('status', ['open', 'submitted', 'abandoned'], { required: true, defaultValue: 'open', index: true }),
-    json('messages'),
-    json('draft'),
-    json('split'),
-    json('turn'),
-    text('title', { admin: { description: 'The request card title: proposed by the interview, editable by the person.' } }),
-    select('kind', ['bug', 'feature', 'change', 'question']),
-    select('urgency', ['normal', 'urgent'], { required: true, defaultValue: 'normal' }),
-    text('urgentReason', { admin: { description: 'What is broken, for whom, since when (urgent requests).' } }),
-    json('edited'),
-    rel('followUpOf', 'intake_sessions'),
-    { name: 'screenshots', type: 'number', defaultValue: 0 },
-    { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket created on submit.' } },
-    json('ticketNumbers'),
-    rel('user', 'bauherren'),
-    rel('embedToken', 'embed_tokens'),
-  ]),
-  col('embed_tokens', [
-    text('name', { required: true }),
-    rel('product', 'products', { required: true }),
-    { name: 'tokenHash', type: 'text', required: true, unique: true, access: { read: () => false }, admin: { hidden: true } },
-    json('allowedOrigins'),
-    { name: 'maxSessionsPerHour', type: 'number', defaultValue: 20, min: 1 },
-    date('revokedAt'),
-  ]),
-  col('media', [
-    rel('session', 'intake_sessions'),
-    rel('product', 'products'),
-    { name: 'ticketNumber', type: 'number', admin: { description: 'Ticket a comment image belongs to.' } },
-    text('name', { required: true }),
-    select('mime', ['image/png', 'image/jpeg', 'image/webp', 'video/webm', 'video/mp4']),
-    { name: 'data', type: 'textarea', admin: { description: 'Legacy base64 rows only; new files live in the upload store.' } },
-    { name: 'attached', type: 'checkbox', defaultValue: false, admin: { description: 'Sent to the forge Ticket.' } },
-  ], { upload: { staticDir: process.env.MEDIA_DIR ?? '/data/media', mimeTypes: ['image/png', 'image/jpeg', 'image/webp', 'video/webm', 'video/mp4'] } }),
-  col('artifacts', [
-    rel('ticket', 'tickets', { required: true, index: true }),
-    rel('run', 'runs'),
-    select('kind', ['image', 'recording', 'preview', 'transcript', 'sample', 'report'], { required: true }),
-    text('title', { required: true }),
-    text('criterion', { admin: { description: 'The acceptance criterion this proves.' } }),
-    text('rule', { admin: { description: 'The Product rule it satisfies.' } }),
-    rel('media', 'media'),
-    text('url'),
-    { name: 'text', type: 'textarea', admin: { description: 'Transcript, sample or report; rendered as text.' } },
-    select('pair', ['before', 'after']),
-    text('sha', { required: true, admin: { description: 'The commit it was made on.' } }),
-    { name: 'waived', type: 'checkbox', defaultValue: false, admin: { description: 'No proof for the rule; `text` is the reason (Evidence line "No artifact: <rule>: <reason>").' } },
-  ], { access: { create: () => false, update: () => false, delete: () => false } }), // read: the `col()` default (Admin or Bauherr); a Product owner gets proof through the page built for them, never over REST
-  col('workflow_versions', [
-    num('version'),
-    rel('product', 'products', { admin: { description: 'Reserved.' } }),
-    { name: 'source', type: 'textarea', admin: { description: 'The factory file with role profiles inlined.' } },
-    json('compiled'),
-    text('hash', { index: true, admin: { description: 'sha256 of the canonical compiled workflow.' } }),
-    text('appliedBy'),
-    text('appliedVia', { admin: { description: 'ui | api | cli | boot | seed' } }),
-    text('note'),
-  ]),
-  col('ticket_events', [
-    rel('ticket', 'tickets'),
-    { name: 'at', type: 'date', required: true },
-    text('stage', { admin: { description: 'The stage the Ticket is in from this moment.' } }),
-    text('stageKind'),
-    text('job'),
-    select('phase', ['working', 'queued', 'human', 'ci', 'closed'], { required: true }),
-    text('fromStage'),
-    text('outcome'),
-    rel('run', 'runs'),
-    select('executor', ['session', 'runner', 'ci', 'human', 'factory']),
-    text('actor'),
-    text('cause', { admin: { description: 'Short machine reason, e.g. moveStage:request_review, run:claimed, gate:approve:plan, sweep.' } }),
-    num('workflowVersion'),
-    text('note', { admin: { description: 'Plain words for a `skip:<stage>` event: why the conditional step was not entered.' } }),
-    { name: 'backfilled', type: 'checkbox', defaultValue: false },
-  ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['ticket', 'at'] }, { fields: ['workspace', 'at'] }] }),
   col('agent_sessions', [
     { name: 'publicId', type: 'text', required: true, unique: true },
     rel('owner', 'bauherren'),
@@ -939,42 +512,13 @@ export const collections: CollectionConfig[] = [
     date('disconnectedAt'),
     select('endReason', ['disconnect', 'timeout', 'replaced']),
   ], { indexes: [{ fields: ['workspace', 'disconnectedAt'] }, { fields: ['lastSeenAt'] }, { fields: ['workspace', 'owner', 'clientKey'], unique: true }] }),
-  col('session_spans', [
-    rel('session', 'agent_sessions'),
-    rel('run', 'runs'),
-    rel('ticket', 'tickets'),
-    date('startedAt'),
-    date('lastAt'),
-  ], { indexes: [{ fields: ['session', 'startedAt'] }] }),
-  col('usage_entries', [
-    rel('run', 'runs'),
-    rel('session', 'agent_sessions'),
-    rel('ticket', 'tickets'),
-    text('stage'),
-    text('role'),
-    text('model', { required: true, defaultValue: 'unknown' }),
-    text('provider'),
-    num('tokensIn'),
-    num('tokensOut'),
-    num('cacheRead'),
-    num('cacheWrite'),
-    num('costUsd'),
-    select('source', ['gateway', 'session-reported', 'chat'], { required: true }),
-    { name: 'at', type: 'date', required: true },
-  ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['run', 'source', 'model'], unique: true }, { fields: ['workspace', 'source', 'at'] }] }),
-  col('usage_cursors', [
-    rel('session', 'agent_sessions', { required: true }),
-    text('claudeSession', { required: true, admin: { description: "The client's own session id (Claude Code `session_id`)." } }),
-    json('totals'),
-  ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['session', 'claudeSession'], unique: true }] }),
-  col('inbox_seen', [
-    rel('user', 'bauherren', { required: true }),
-    rel('ticket', 'tickets', { required: true }),
-    text('need', { required: true }),
-    text('since', { required: true, admin: { description: 'The `openSince` of the decision that was opened; a newer decision of the same need is unread again.' } }),
-    date('seenAt'),
-  ], { access: { read: ownRow, create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['user', 'ticket', 'need', 'since'], unique: true }] }), // written only by `markSeen` (overrideAccess), which ties `user` to the caller
+  col('human_touches', [
+    text('kind'),
+    text('actor'),
+    date('at'),
+    text('status'),
+    json('detail'),
+  ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['kind', 'at'] }] }),
   col('instance_state', [text('key', { required: true, unique: true }), json('value')], { access: { read: () => false, create: () => false, update: () => false, delete: () => false } }),
-  ...chatCollections,
 ]
 

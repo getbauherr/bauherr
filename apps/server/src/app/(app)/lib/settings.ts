@@ -1,22 +1,14 @@
 import type { Check, Forge } from '@bauherr/adapters'
-import { formatReviewChecks, proofRules, UI_PROOF_RULE } from '@bauherr/runner'
 import { ValidationError } from 'payload'
-import { type Cause, FINDING_FRESH_MS } from '../../../lib/liveness'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
-import { gateOn, productionGateOn } from '../../../lib/mode'
-import { gates } from '../../../lib/workflow'
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { modelOptions } from './models'
-import { loadModelList, loadPriceStatus } from '../../../lib/prices'
+import { loadModelList } from '../../../lib/prices'
 import { blockedBy } from '../../../lib/settings-guards'
-import { formatPathSets, missingSuggestions, neverRuns } from '../../../lib/path-sets'
-import { workflowFor } from '../../../lib/factory'
+import { formatPathSets } from '../../../lib/path-sets'
 import { backendFor } from '../../../lib/adapters'
 import { connectionInput } from '../../../lib/connection'
-import { forgeOf } from '../../../lib/release'
-import { gateOwnersOf, logins } from '../../../lib/forge-channel'
-import { DEFAULT_DOCS_PATHS, DOCS_LABEL } from '../../../lib/docs-check'
-import { hasVerifySkill, VERIFY_CREATE_LABEL } from '../../../lib/verify-create'
+import { forgeOf } from '../../../lib/forge'
 import { setupOf } from './product-setup'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
 
@@ -57,7 +49,6 @@ export async function loadWorkspaceSettings(id: number) {
   const payload = await payloadClient()
   const ws = (await payload.findByID({ collection: 'workspaces', id, select: { gatewayKey: false }, ...o } as never)) as unknown as Record<string, any>
   const preset = await presetFor(id)
-  const github = (await payload.find({ collection: 'connections', where: { and: [{ workspace: { equals: id } }, { kind: { equals: 'github' } }] }, select: { name: true }, pagination: false, ...o } as never)).docs as unknown as { id: number; name: string }[]
   const modelByTier0 = (ws.modelByTier ?? {}) as Record<string, string>
   const modelChoices = modelOptions(preset.key, preset.defaultModels ? Object.values(preset.defaultModels) : [], await loadModelList(payload), Object.values(modelByTier0).map((v) => (preset.slugs[0] && v.startsWith(`${preset.slugs[0]}/`) ? v.slice(preset.slugs[0].length + 1) : v)))
   const spend = gatewayEnabled() && process.env.GATEWAY_DATABASE_URL ? await budgetStatus(ws.slug).catch(() => null) : null
@@ -71,30 +62,18 @@ export async function loadWorkspaceSettings(id: number) {
     routerBudgetShare: (ws.routerBudgetShare ?? 20) as number,
     modelByTier: Object.fromEntries(Object.entries((ws.modelByTier ?? {}) as Record<string, string>).map(([t, v]) => [t, preset.slugs[0] && v.startsWith(`${preset.slugs[0]}/`) ? v.slice(preset.slugs[0].length + 1) : v])),
     modelChoices,
-    defaultMode: (ws.defaultMode ?? '') as string,
-    modeByStage: (ws.modeByStage ?? {}) as Record<string, string>,
     placeholders: preset.defaultModels ?? DEFAULT_MODEL_BY_TIER,
     tiersRequired: !preset.defaultModels,
-    githubConnections: github.map((c) => [String(c.id), c.name] as [string, string]),
-    knowledgeConnection: String(typeof ws.knowledgeConnection === 'object' ? ws.knowledgeConnection?.id ?? '' : ws.knowledgeConnection ?? ''),
-    knowledgeRepo: (ws.knowledgeRepo ?? '') as string,
-    progressComments: ws.progressComments !== false,
     spend,
     gatewayOn: gatewayEnabled(),
   }
-}
-
-const overlapOf = (p: Record<string, any>) => {
-  const ignore = (p.overlapIgnore ?? []) as string[]
-  const stored = p.overlapSuggestions as { at: string; items: { path: string; percent: number }[] } | null
-  return { ignore, suggestions: (stored?.items ?? []).filter((x) => !ignore.includes(x.path)), suggestedAt: stored?.at ?? null }
 }
 
 export async function loadProducts(workspace: number) {
   const payload = await payloadClient()
   const where = { workspace: { equals: workspace } }
   const find = async (collection: string, extra: object = {}) => (await payload.find({ collection, where, sort: 'id', ...o, pagination: false, ...extra } as never)).docs as unknown as Record<string, any>[]
-  const [products, repositories, sources, connections, embedTokens] = await Promise.all([find('products'), find('repositories'), find('ticket_sources', { depth: 1 }), find('connections', { select: { secret: false } }), find('embed_tokens')])
+  const [products, repositories, sources, connections] = await Promise.all([find('products'), find('repositories'), find('ticket_sources', { depth: 1 }), find('connections', { select: { secret: false } })])
   return {
     connections: connections.filter((c) => c.kind === 'github' || c.kind === 'gitlab').map((c) => ({ id: c.id as number, name: c.name as string })),
     products: await Promise.all(
@@ -103,52 +82,24 @@ export async function loadProducts(workspace: number) {
           id: p.id as number,
           name: p.name as string,
           slug: p.slug as string,
-          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, autoMerge: p.autoMerge !== false, expediteSkipStaging: !!p.expediteSkipStaging, checkRetries: (p.checkRetries ?? 1) as number, productOwnerTestsStaging: !!p.productOwnerTestsStaging, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string, releaseMode: (p.releaseMode ?? 'notes-only') as string, releaseReminderDays: (p.releaseReminderDays ?? 7) as number, releasePrerelease: !!p.releasePrerelease },
-          merge: { mode: (p.mergeMode ?? 'direct') as string, preflight: (p.mergePreflight ?? null) as { ok: boolean; problems: string[]; at: string } | null },
-          reviewChecks: formatReviewChecks(p.reviewChecks),
-          overlap: overlapOf(p),
-          proofRules: proofRules(p.reviewChecks, p.pathSets).map((r) => ({ name: r.name, globs: r.globs.join(', '), kind: r.kind, command: r.command, before: !!r.before, pathSet: r.pathSet ?? '', pairs: (r.pairs ?? []).join(', '), builtin: r.name === UI_PROOF_RULE })),
-          pathSetNames: Object.keys(p.pathSets ?? {}).sort(),
-          pathSets: { text: formatPathSets(p.pathSets), missing: missingSuggestions(p.pathSets ?? {}), never: neverRuns(workflowFor(workspace), p.pathSets ?? {}) },
-          securityScan: { enabled: !!p.securityScan?.enabled, cron: (p.securityScan?.cron ?? '0 0 4 * * 1') as string, maxBudgetUsd: (p.securityScan?.maxBudgetUsd ?? '') as number | '', maxTurns: (p.securityScan?.maxTurns ?? '') as number | '', lastScanAt: (p.securityScan?.lastScanAt ?? null) as string | null },
-          docsCheck: { paths: ((p.docsCheck?.paths ?? DEFAULT_DOCS_PATHS) as string[]).join('\n'), lastCheckAt: (p.docsCheck?.lastCheckAt ?? null) as string | null },
+          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string },
+          pathSetsText: formatPathSets(p.pathSets),
           blocked: await blockedBy(payload, 'products', p.id),
-          embedTokens: embedTokens
-            .filter((e) => (e.product?.id ?? e.product) === p.id)
-            .map((e) => ({ id: e.id as number, name: e.name as string, origins: ((e.allowedOrigins ?? []) as string[]).join(', '), createdAt: e.createdAt as string, revokedAt: (e.revokedAt ?? '') as string, maxSessionsPerHour: (e.maxSessionsPerHour ?? 20) as number })),
           repositories: repositories.filter((r) => r.product === p.id).map((r) => ({ id: r.id as number, fullName: r.fullName as string })),
           sources: sources
             .filter((s) => (s.product?.id ?? s.product) === p.id)
             .map((s) => ({ id: s.id as number, repo: s.repo as string, connection: (s.connection?.name ?? '') as string, cursor: (s.cursor ?? '') as string, polledAt: s.updatedAt as string })),
         }
-        const productionOn = productionGateOn(workflowFor(workspace), { productionGate: product.deploy.productionGate })
-        return { ...product, productionOn, setup: setupOf(product, productionOn) }
+        return { ...product, setup: setupOf(product) }
       }),
     ),
   }
 }
 
-export async function loadProduct(workspace: number, id: number, viewerIsAdmin = false) {
+export async function loadProduct(workspace: number, id: number) {
   const { products, connections } = await loadProducts(workspace)
-  const wf = workflowFor(workspace)
   const product = products.find((p) => p.id === id)
-  if (!product) return undefined
-  const { docs } = await (await payloadClient()).find({ collection: 'bauherren', where: { and: [{ githubLogin: { exists: true } }, { or: [{ role: { equals: 'admin' } }, { 'tenants.tenant': { equals: workspace } }] }] }, sort: 'email', pagination: false, ...o } as never)
-  const all = (docs as unknown as Record<string, any>[]).filter((b) => b.githubLogin).map((b) => ({ email: b.email as string, login: b.githubLogin as string, admin: b.role === 'admin' }))
-  const members = viewerIsAdmin ? all : all.filter((m) => !m.admin)
-  const payload = await payloadClient()
-  const [lastRun, findings, lastDocsRun, docsTickets, verifyTicket, verifySkill] = await Promise.all([
-    payload.find({ collection: 'runs', where: { and: [{ stage: { equals: 'scan' } }, { 'ticket.product': { equals: id } }] }, sort: '-id', limit: 1, select: { status: true }, ...o } as never),
-    payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: 'bauherr:security' } }] }, sort: '-number', limit: 5, select: { number: true }, ...o } as never),
-    payload.find({ collection: 'runs', where: { and: [{ stage: { equals: 'docs' } }, { 'ticket.product': { equals: id } }] }, sort: '-id', limit: 1, select: { status: true }, ...o } as never),
-    payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: DOCS_LABEL } }] }, sort: '-number', limit: 3, select: { number: true }, ...o } as never),
-    payload.find({ collection: 'tickets', where: { and: [{ product: { equals: id } }, { labels: { equals: VERIFY_CREATE_LABEL } }, { state: { equals: 'open' } }] }, limit: 1, select: { number: true }, ...o } as never),
-    hasVerifySkill(payload, workspace, product.slug),
-  ])
-  const scan = { run: ((lastRun.docs[0] as unknown as { id: number; status: string } | undefined) ?? null), tickets: (findings.docs as unknown as { id: number; number: number }[]).map((t) => ({ id: t.id, number: t.number })) }
-  const docsInfo = { run: ((lastDocsRun.docs[0] as unknown as { id: number; status: string } | undefined) ?? null), tickets: (docsTickets.docs as unknown as { id: number; number: number }[]).map((t) => ({ id: t.id, number: t.number })) }
-  const verify = { skill: verifySkill, ticket: (verifyTicket.docs[0] as unknown as { id: number; number: number } | undefined) ?? null }
-  return { product, scan, docsInfo, verify, connections, members, hasApprover: all.length > 0, workflow: { forcesProduction: productionGateOn(wf), plan: gateOn(wf, 'plan'), staging: gateOn(wf, 'release'), /** The workflow asks the Product owner to accept on staging, decided per Product by its switch. */ stagingOwner: gates(wf).staging && !gateOn(wf, 'release') } }
+  return product ? { product, connections } : undefined
 }
 
 export type RecentCheck = { name: string; seen: number; of: number; lastConclusion: string }
@@ -187,10 +138,8 @@ export async function collectChecks(forge: Forge, repo: string, extraShas: strin
 
 export async function recentChecks(productId: number): Promise<RecentCheck[] | null> {
   try {
-    const payload = await payloadClient()
-    const { backend, repo } = await forgeOf(payload, productId)
-    const merged = await payload.find({ collection: 'tickets', where: { and: [{ product: { equals: productId } }, { mergeSha: { exists: true } }] }, sort: '-id', limit: RECENT_COMMITS, select: { mergeSha: true }, ...o } as never)
-    return await collectChecks(backend.forge, repo, (merged.docs as unknown as { mergeSha?: string }[]).flatMap((t) => t.mergeSha || []))
+    const { backend, repo } = await forgeOf(await payloadClient(), productId)
+    return await collectChecks(backend.forge, repo, [])
   } catch {
     return null
   }
@@ -245,103 +194,31 @@ export async function loadBauherren(user: Bauherr, workspace: number | null) {
 }
 
 type Doc = Record<string, any>
-const ref = (v: any) => (v && typeof v === 'object' ? (v as Doc) : null)
 
-const TICKET_FILTER = /^(?:([^#\s]+)?#)?(\d+)$/
-
-export async function loadAudit(workspace: number, tab: 'touches' | 'calls', f: { ticket?: string; run?: string; actor?: string }) {
-  const payload = await payloadClient()
+export async function loadAudit(workspace: number, f: { actor?: string }) {
   const where: Doc = { workspace: { equals: workspace } }
-  const errors: { ticket?: string; run?: string } = {}
-  const run = f.run?.trim()
-  if (run) /^\d+$/.test(run) ? (where.run = { equals: Number(run) }) : (errors.run = 'Enter a Run id, for example 12.')
-  const ticket = f.ticket?.trim()
-  const m = ticket ? TICKET_FILTER.exec(ticket) : null
-  const prefix = tab === 'touches' ? 'ticket' : 'run.ticket'
-  if (ticket && !m) errors.ticket = 'Enter #12 or repo#12.'
-  else if (m) {
-    where[`${prefix}.number`] = { equals: Number(m[2]) }
-    if (m[1]) {
-      const [repos, products] = await Promise.all([
-        payload.find({ collection: 'repositories', where: { workspace: { equals: workspace }, fullName: { equals: m[1] } }, pagination: false, ...o } as never),
-        payload.find({ collection: 'products', where: { workspace: { equals: workspace }, slug: { equals: m[1] } }, pagination: false, ...o } as never),
-      ])
-      const ids = [...(repos.docs as unknown as Doc[]).map((r) => r.product), ...products.docs.map((p) => p.id)]
-      if (!ids.length) return { rows: [], errors }
-      where[`${prefix}.product`] = { in: ids }
-    }
-  }
-  if (Object.keys(errors).length) return { rows: [], errors }
-  if (tab === 'touches' && f.actor) where.actor = { like: f.actor.replace(/[\\%_]/g, '\\$&') }
-  const [{ docs }, repositories] = await Promise.all([
-    payload.find({ collection: tab === 'touches' ? 'human_touches' : 'tool_calls', where, sort: '-createdAt', limit: 200, depth: 2, pagination: false, overrideAccess: true } as never),
-    payload.find({ collection: 'repositories', where: { workspace: { equals: workspace } }, sort: 'id', pagination: false, select: { fullName: true, product: true }, ...o } as never),
-  ])
-  const repoOf = new Map<unknown, string>()
-  for (const r of repositories.docs as unknown as Doc[]) if (!repoOf.has(ref(r.product)?.id ?? r.product)) repoOf.set(ref(r.product)?.id ?? r.product, r.fullName)
-  const rows = (docs as unknown as Doc[]).map((d) => {
-    const run = ref(d.run)
-    const t = ref(tab === 'touches' ? d.ticket : run?.ticket)
-    const product = ref(t?.product)
-    return {
-      id: d.id as number,
-      at: (d.at ?? d.createdAt) as string,
-      kind: (d.kind ?? d.name) as string,
-      actor: (d.actor ?? '') as string,
-      status: (d.status ?? '') as string,
-      durationMs: d.durationMs as number | null,
-      digest: (d.inputDigest ?? '') as string,
-      runId: (run?.id ?? d.run ?? null) as number | null,
-      ticket: t ? { id: t.id as number, label: `${repoOf.get(product?.id ?? t.product) ?? product?.slug ?? 'ticket'}#${t.number}` } : null,
-    }
-  })
-  return { rows, errors }
+  if (f.actor) where.actor = { like: f.actor.replace(/[\\%_]/g, '\\$&') }
+  const { docs } = await (await payloadClient()).find({ collection: 'human_touches', where, sort: '-createdAt', limit: 200, pagination: false, ...o } as never)
+  return (docs as unknown as Doc[]).map((d) => ({ id: d.id as number, at: (d.at ?? d.createdAt) as string, kind: (d.kind ?? '') as string, actor: (d.actor ?? '') as string }))
 }
 
 export async function loadHealth(workspace: number) {
   const payload = await payloadClient()
   const day = { greater_than_equal: new Date(Date.now() - 864e5).toISOString() }
   const count = async (where: Doc) => (await payload.count({ collection: 'payload-jobs', where: { createdAt: day, ...where }, ...o } as never)).totalDocs
-  const [queued, running, failed, oldest, sources, findings] = await Promise.all([
+  const [queued, running, failed, oldest, sources] = await Promise.all([
     count({ completedAt: { exists: false }, processing: { not_equals: true }, hasError: { not_equals: true } }),
     count({ processing: { equals: true }, completedAt: { exists: false } }),
     count({ hasError: { equals: true } }),
     payload.find({ collection: 'payload-jobs', where: { createdAt: { greater_than_equal: new Date(Date.now() - 7 * 864e5).toISOString() }, completedAt: { exists: false }, processing: { not_equals: true }, hasError: { not_equals: true } }, sort: 'createdAt', limit: 1, pagination: false, select: { createdAt: true }, ...o } as never),
     payload.find({ collection: 'ticket_sources', where: { workspace: { equals: workspace } }, sort: 'id', pagination: false, select: { repo: true, lastPolledAt: true, lastError: true }, ...o } as never),
-    payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { state: { equals: 'open' } }, { liveness: { exists: true } }] }, sort: 'number', pagination: false, select: { number: true, liveness: true }, ...o } as never),
   ])
-  const found = findings.docs as unknown as { id: number; number: number; liveness: { cause: string; need: string | null; at: string } }[]
-  const stale = found.some((t) => Date.now() - Date.parse(t.liveness.at) > FINDING_FRESH_MS)
-  const [approvers, accounts, legacy] = await Promise.all([
-    gateOwnersOf(payload, workspace),
-    payload.find({ collection: 'bauherren', where: { githubLogin: { exists: true } }, pagination: false, select: { githubLogin: true }, ...o } as never),
-    payload.find({ collection: 'products', where: { and: [{ workspace: { equals: workspace } }, { unlinkedGateOwners: { exists: true } }] }, sort: 'name', pagination: false, select: { name: true, unlinkedGateOwners: true }, ...o } as never),
-  ])
-  const linked = new Set((accounts.docs as unknown as Doc[]).flatMap((a) => logins(a.githubLogin)).map((l) => l.toLowerCase()))
-  const flakeRows = (await payload.find({ collection: 'check_flakes', where: { workspace: { equals: workspace }, outcome: { equals: 'flake' }, createdAt: { greater_than_equal: new Date(Date.now() - 30 * 864e5).toISOString() } }, sort: '-createdAt', pagination: false, ...o, depth: 1 } as never)).docs as unknown as Doc[]
-  const byCheck = new Map<string, { check: string; count: number; lastSeen: string; ticket: number | null }>()
-  for (const r of flakeRows) {
-    const f = byCheck.get(r.checkName) ?? { check: r.checkName as string, count: 0, lastSeen: r.createdAt as string, ticket: (r.ticket?.number ?? null) as number | null }
-    byCheck.set(r.checkName, { ...f, count: f.count + 1 })
-  }
-  const flakes = [...byCheck.values()]
-    .sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen))
-    .slice(0, 5)
-  const hotfixes = (await payload.find({ collection: 'tickets', where: { and: [{ workspace: { equals: workspace } }, { expedite: { equals: true } }, { expediteAt: { exists: true } }, { releaseAt: { exists: true } }] }, sort: '-releaseAt', limit: 5, pagination: false, select: { expediteAt: true, releaseAt: true }, ...o } as never)).docs as unknown as Doc[]
-  const leadMs = hotfixes.map((h) => new Date(h.releaseAt).getTime() - new Date(h.expediteAt).getTime()).filter((ms) => ms >= 0)
   return {
-    expediteLeadMs: leadMs.length ? Math.round(leadMs.reduce((a, b) => a + b, 0) / leadMs.length) : null,
     queued,
     running,
     failed,
     oldestQueued: ((oldest.docs[0] as Doc | undefined)?.createdAt ?? null) as string | null,
-    dead: stale ? null : found.filter((t) => !t.liveness.need).map((t) => ({ id: t.id, number: t.number, cause: t.liveness.cause as Cause })),
-    forge: {
-      nobodyLinked: sources.docs.length > 0 && !approvers.length,
-      unlinked: (legacy.docs as unknown as Doc[]).map((p) => ({ product: p.name as string, logins: logins(p.unlinkedGateOwners).filter((l) => !linked.has(l.toLowerCase())) })).filter((r) => r.logins.length),
-    },
     sources: (sources.docs as unknown as Doc[]).map((s) => ({ repo: s.repo as string, polledAt: (s.lastPolledAt ?? null) as string | null, error: (s.lastError ?? null) as string | null })),
-    flakes,
   }
 }
 

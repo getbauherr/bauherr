@@ -1,5 +1,3 @@
-import { rm } from 'node:fs/promises'
-import { basename, join } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import { createLocalReq, type Payload, type Where } from 'payload'
 import { deleteKey, gatewayEnabled, removeWorkspaceProviders, renderModels } from './gateway'
@@ -28,17 +26,10 @@ const assertAdmin = (user: Doc): void => {
   if (user.role !== 'admin') throw new Error('Only an Admin can delete or restore a Workspace.')
 }
 
-export const deleteImpact = async (payload: Payload, workspace: number): Promise<Record<'products' | 'tickets' | 'runs' | 'sessions' | 'keys' | 'connections', number>> => {
+export const deleteImpact = async (payload: Payload, workspace: number): Promise<Record<'products' | 'sessions' | 'connections', number>> => {
   const n = async (collection: string, where: Where) => (await payload.count({ collection, where: { and: [{ workspace: { equals: workspace } }, where] }, overrideAccess: true } as never)).totalDocs
-  const [products, tickets, runs, sessions, tokens, connections] = await Promise.all([
-    n('products', {}),
-    n('tickets', {}),
-    n('runs', { status: { in: ['queued', 'awaiting_session', 'running'] } }),
-    n('agent_sessions', { disconnectedAt: { exists: false } }),
-    n('embed_tokens', { revokedAt: { exists: false } }),
-    n('connections', {}),
-  ])
-  return { products, tickets, runs, sessions, keys: tokens + 1, connections }
+  const [products, sessions, connections] = await Promise.all([n('products', {}), n('agent_sessions', { disconnectedAt: { exists: false } }), n('connections', {})])
+  return { products, sessions, connections }
 }
 
 export const archiveWorkspace = async (payload: Payload, user: Doc, workspace: number, now = new Date()): Promise<void> => {
@@ -52,9 +43,7 @@ export const archiveWorkspace = async (payload: Payload, user: Doc, workspace: n
     if (!ws || ws.archived_at) throw new Error('Workspace not found.')
     if (!(await tx.execute(sql`SELECT 1 FROM "workspaces" WHERE "archived_at" IS NULL AND "id" <> ${workspace} LIMIT 1`)).rows.length) throw new Error('You cannot delete your last Workspace.')
     await tx.execute(sql`UPDATE "workspaces" SET "archived_at" = ${now.toISOString()}, "purge_at" = ${purgeAt.toISOString()}, "gateway_key" = NULL, "router_key" = NULL, "updated_at" = now() WHERE "id" = ${workspace}`)
-    await tx.execute(sql`UPDATE "runs" SET "status" = 'cancelled', "error" = ${ARCHIVE_REASON}, "finished_at" = now(), "updated_at" = now() WHERE "workspace_id" = ${workspace} AND "status" IN ('queued', 'awaiting_session', 'running')`)
     await tx.execute(sql`UPDATE "agent_sessions" SET "disconnected_at" = now(), "end_reason" = 'disconnect', "updated_at" = now() WHERE "workspace_id" = ${workspace} AND "disconnected_at" IS NULL`)
-    await tx.execute(sql`UPDATE "embed_tokens" SET "revoked_at" = now(), "updated_at" = now() WHERE "workspace_id" = ${workspace} AND "revoked_at" IS NULL`)
     await tx.execute(sql`INSERT INTO "human_touches" ("kind", "actor", "at", "detail", "updated_at", "created_at") VALUES ('workspace:delete', ${actor}, now(), ${JSON.stringify({ id: ws.id, slug: ws.slug, name: ws.name })}::jsonb, now(), now())`)
     if (gatewayEnabled()) await deleteKey(ws.slug)
     return ws.slug
@@ -78,18 +67,9 @@ export const restoreWorkspace = async (payload: Payload, user: Doc, workspace: n
 
 type Exec = { execute: (q: ReturnType<typeof sql>) => Promise<{ rows: Doc[] }> }
 const ofWorkspace = (ws: number) => sql`"workspace_id" = ${ws}`
-const mediaOf = (ws: number) => sql`"workspace_id" = ${ws} OR "product_id" IN (SELECT "id" FROM "products" WHERE "workspace_id" = ${ws})`
-const ticketsOf = (ws: number) => sql`(SELECT "id" FROM "tickets" WHERE "workspace_id" = ${ws})`
-
 export const PURGE_ORDER: { table: string; where: (ws: number) => ReturnType<typeof sql> }[] = [
-  ...['usage_entries', 'usage_cursors', 'tool_calls', 'steps', 'session_spans', 'artifacts', 'skill_proposals', 'ticket_events', 'check_flakes', 'inbox_seen'].map((table) => ({ table, where: ofWorkspace })),
-  { table: 'human_touches', where: (ws) => sql`("workspace_id" = ${ws} OR "ticket_id" IN ${ticketsOf(ws)}) AND "kind" NOT LIKE 'workspace:%'` },
-  ...['chat_messages', 'chat_threads', 'runs', 'agent_sessions'].map((table) => ({ table, where: ofWorkspace })),
-  { table: 'media', where: (ws) => mediaOf(ws) },
-  ...['intake_sessions', 'embed_tokens'].map((table) => ({ table, where: ofWorkspace })),
-  { table: 'tickets_rels', where: (ws) => sql`"parent_id" IN ${ticketsOf(ws)} OR "tickets_id" IN ${ticketsOf(ws)}` },
-  { table: 'tickets_texts', where: (ws) => sql`"parent_id" IN ${ticketsOf(ws)}` },
-  ...['tickets', 'ticket_sources', 'repositories', 'workflow_versions', 'products', 'connections', 'templates', 'knowledge_chunks', 'bauherren_assignments'].map((table) => ({ table, where: ofWorkspace })),
+  { table: 'human_touches', where: (ws) => sql`"workspace_id" = ${ws} AND "kind" NOT LIKE 'workspace:%'` },
+  ...['agent_sessions', 'ticket_sources', 'repositories', 'products', 'connections', 'knowledge_chunks', 'bauherren_assignments'].map((table) => ({ table, where: ofWorkspace })),
   { table: 'bauherren_tenants', where: (ws) => sql`"tenant_id" = ${ws}` },
   { table: 'workspaces', where: (ws) => sql`"id" = ${ws}` },
 ]
@@ -111,7 +91,6 @@ export const purgeWorkspace = async (payload: Payload, workspace: number, now = 
   if (!txId) throw new Error('database transactions unavailable')
   req.transactionID = txId
   const tx = (payload.db as unknown as { sessions: Record<string, { db: Exec }> }).sessions[await txId]!.db
-  let files: string[] = []
   let slug = ''
   try {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${ARCHIVE_LOCK}))`)
@@ -121,10 +100,9 @@ export const purgeWorkspace = async (payload: Payload, workspace: number, now = 
       return false
     }
     slug = ws.slug
-    files = (await tx.execute(sql`SELECT "filename" FROM "media" WHERE "filename" IS NOT NULL AND (${mediaOf(workspace)})`)).rows.map((r) => r.filename as string)
     await unlinkPeople(payload, workspace, req)
     await tx.execute(sql`UPDATE "human_touches" SET "workspace_id" = NULL WHERE "workspace_id" = ${workspace} AND "kind" LIKE 'workspace:%'`)
-    await tx.execute(sql`UPDATE "workspaces" SET "workflow_version_id" = NULL, "knowledge_connection_id" = NULL WHERE "id" = ${workspace}`)
+    await tx.execute(sql`UPDATE "workspaces" SET "knowledge_connection_id" = NULL WHERE "id" = ${workspace}`)
     for (const { table, where } of PURGE_ORDER) await tx.execute(sql`DELETE FROM ${sql.identifier(table)} WHERE ${where(workspace)}`)
     await tx.execute(sql`INSERT INTO "human_touches" ("kind", "actor", "at", "detail", "updated_at", "created_at") VALUES ('workspace:purge', 'system', now(), ${JSON.stringify({ id: ws.id, slug: ws.slug, name: ws.name })}::jsonb, now(), now())`)
     await payload.db.commitTransaction(txId)
@@ -132,8 +110,6 @@ export const purgeWorkspace = async (payload: Payload, workspace: number, now = 
     await payload.db.rollbackTransaction(txId)
     throw e
   }
-  const dir = (payload.collections.media.config.upload as { staticDir?: string }).staticDir ?? ''
-  for (const f of files) await rm(join(dir, basename(f)), { force: true }).catch((err) => payload.logger.error({ err, file: f, slug }, 'workspace purged; media file not deleted'))
   if (gatewayEnabled()) {
     await removeWorkspaceProviders(slug).catch((err) => payload.logger.error({ err, slug }, 'workspace purged; provider files not removed'))
     await renderModels(await createLocalReq({}, payload)).catch((err) => payload.logger.error({ err, slug }, 'workspace purged; gateway models not re-rendered'))

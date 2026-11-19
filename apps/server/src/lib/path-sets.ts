@@ -1,6 +1,4 @@
-import { stageTitle } from './workflow-labels'
-import { asList, SET_NAME, SUGGESTED_SETS } from './workflow-when'
-import type { Workflow } from './workflow-rules'
+const SET_NAME = /^[a-z][a-z0-9-]*$/
 
 export type PathSets = Record<string, string[]>
 
@@ -19,19 +17,3 @@ export const parsePathSets = (text: string): PathSets => {
   }
   return out
 }
-
-export const missingSuggestions = (sets: PathSets): string[] => SUGGESTED_SETS.filter((n) => !(n in sets))
-
-export const neverRuns = (wf: Pick<Workflow, 'stages'>, sets: PathSets): { stage: string; title: string; names: string[] }[] =>
-  wf.stages.flatMap((s) => {
-    const never = (when: typeof s.when) => {
-      const names = asList(when?.touches)
-      return names.length && !names.some((n) => sets[n]?.length) ? names : null
-    }
-    const own = never(s.when)
-    const jobs = (s.jobs ?? []).flatMap((j) => {
-      const names = never(j.when)
-      return names ? [{ stage: `${s.name}.${j.id}`, title: `${stageTitle(s)}: ${j.id} Job`, names }] : []
-    })
-    return own ? [{ stage: s.name, title: stageTitle(s), names: own }, ...jobs] : jobs
-  })

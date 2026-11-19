@@ -1,4 +1,3 @@
-import { WAITING_FOR_YOU } from '../../../lib/checkpoints'
 export const shortModel = (id: string): string => id.replace(/^.*\//, '')
 
 export const ago = (iso: string, now = Date.now()): string => {
@@ -17,8 +16,6 @@ export const duration = (sec: number): string => {
   const s = Math.max(0, sec)
   return s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} min` : s < 86400 ? `${Math.round(s / 3600)} h` : `${(s / 86400).toFixed(1)} d`
 }
-
-export const waited = (iso: string): string => `${WAITING_FOR_YOU} · ${ago(iso).replace(/ ago$/, '').replace('just now', 'a moment')}`
 
 export const durationHm = (sec: number): string => {
   const s = Math.max(0, sec)

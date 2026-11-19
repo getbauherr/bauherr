@@ -2,8 +2,6 @@ import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../components/EmptyState'
 import { Field, PickField, SettingsForm } from '../../../components/SettingsForm'
 import { shareOf } from '../../../../../lib/gateway'
-import { workflowFor } from '../../../../../lib/factory'
-import { modeStages } from '../../../../../lib/workflow'
 import { isAdmin, loadWorkspaceSettings } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import { saveModels } from '../actions'
@@ -59,21 +57,11 @@ export default async function Models() {
             ))}
           </div>
         </section>
-        <section id="run-mode" className={SECTION}>
-          <h3 className="heading">Run mode</h3>
-          <div className={TRIPLE}>
-            <Field name="defaultMode" label="Default" options={['session', 'autonomous']} empty="inherit" defaultValue={w.defaultMode} />
-            {modeStages(workflowFor(workspace.id)).map((t) => (
-              <Field key={t} name={`mode_${t}`} label={`Stage ${t}`} options={['session', 'autonomous']} empty="default" defaultValue={w.modeByStage[t] ?? ''} />
-            ))}
-          </div>
-        </section>
       </SettingsForm>
       <PricesStatus prices={prices} admin />
       <section id="gateway" aria-label="Gateway" className="flex flex-col gap-2">
         <h3 className="heading">Gateway</h3>
-        <GatewayStatus status={gateway} admin />
-        <p className="small m-0 text-muted-foreground">To measure your own coding sessions, see <a className="text-primary" href="/settings/usage#measure">Settings, AI usage, Measure session cost</a>.</p>
+        <GatewayStatus status={gateway} />
       </section>
     </>
   )

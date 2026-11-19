@@ -1,5 +1,3 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
@@ -14,7 +12,6 @@ let wsB: number
 let member: Doc
 let snapB: Record<string, number>
 const o = { overrideAccess: true } as const
-const mediaDir = process.env.MEDIA_DIR!
 const rows = async (q: ReturnType<typeof sql>) => (await payload.db.drizzle.execute(q)).rows as Doc[]
 const day = 86_400_000
 const archivedAt = new Date('2026-11-01T00:00:00Z')
@@ -42,44 +39,17 @@ const seed = async (table: string, values: Record<string, unknown> = {}): Promis
 }
 
 const seedWorkspace = async (slug: string, owner: number) => {
-  const workspace = (await payload.create({ collection: 'workspaces', data: { name: slug, slug, defaultMode: 'session', wipLimits: {} }, ...o })).id as number
-  const w = { workspace }
+  const workspace = (await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id as number
   const product = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace }, ...o })).id as number
   const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace }, ...o })).id as number
   await payload.create({ collection: 'ticket_sources', data: { repo: `acme/${slug}`, product, connection, workspace }, ...o })
-  const version = await seed('workflow_versions', { workspace_id: workspace, product_id: product })
-  await rows(sql`UPDATE "workspaces" SET "workflow_version_id" = ${version}, "knowledge_connection_id" = ${connection} WHERE "id" = ${workspace}`)
+  await rows(sql`UPDATE "workspaces" SET "knowledge_connection_id" = ${connection} WHERE "id" = ${workspace}`)
   await seed('repositories', { workspace_id: workspace, product_id: product })
-  await seed('templates', { workspace_id: workspace })
   await seed('knowledge_chunks', { workspace_id: workspace })
-  const t1 = await seed('tickets', { workspace_id: workspace, product_id: product })
-  const t2 = await seed('tickets', { workspace_id: workspace, product_id: product, parent_id: t1, inherited_approval_from_id: t1 })
-  await seed('tickets_rels', { parent_id: t1, tickets_id: t2, path: 'blockedBy', order: 1 })
-  await seed('tickets_texts', { parent_id: t1, path: 'labels', order: 1 })
-  const intake = await seed('intake_sessions', { workspace_id: workspace, product_id: product })
-  await seed('intake_sessions', { workspace_id: workspace, product_id: product, follow_up_of_id: intake })
-  await seed('embed_tokens', { workspace_id: workspace, product_id: product })
-  const thread = await seed('chat_threads', { workspace_id: workspace, ticket_id: t1, intake_session_id: intake, owner_id: owner })
-  await seed('chat_messages', { workspace_id: workspace, thread_id: thread })
-  const session = await seed('agent_sessions', { workspace_id: workspace, owner_id: owner })
-  const run0 = await seed('runs', { workspace_id: workspace, ticket_id: t1, session_id: session })
-  const run = await seed('runs', { workspace_id: workspace, ticket_id: t1, session_id: session, previous_run_id: run0 })
-  const step = await seed('steps', { workspace_id: workspace, run_id: run })
-  await seed('tool_calls', { workspace_id: workspace, run_id: run, step_id: step })
-  await seed('session_spans', { workspace_id: workspace, run_id: run, session_id: session, ticket_id: t1 })
-  await seed('usage_entries', { workspace_id: workspace, run_id: run, session_id: session, ticket_id: t1 })
-  await seed('usage_cursors', { workspace_id: workspace, session_id: session })
-  const file = `${slug}.png`
-  mkdirSync(mediaDir, { recursive: true })
-  writeFileSync(join(mediaDir, file), 'png')
-  const media = await seed('media', { workspace_id: workspace, product_id: product, session_id: intake, filename: file })
-  await seed('artifacts', { workspace_id: workspace, ticket_id: t1, run_id: run, media_id: media })
-  await seed('skill_proposals', { workspace_id: workspace, ticket_id: t1, run_id: run })
-  await seed('ticket_events', { workspace_id: workspace, ticket_id: t1, run_id: run })
-  await seed('check_flakes', { workspace_id: workspace, ticket_id: t1 })
-  await seed('human_touches', { workspace_id: workspace, ticket_id: t1, run_id: run })
+  await seed('agent_sessions', { workspace_id: workspace, owner_id: owner })
+  await seed('human_touches', { workspace_id: workspace })
   await seed('human_touches', { workspace_id: workspace, kind: 'workspace:restore', detail: JSON.stringify({ id: workspace, slug, name: slug }) })
-  return { ...w, product, file }
+  return { workspace, product }
 }
 
 const tables = () => del.PURGE_ORDER.map((p) => p.table).filter((t) => t !== 'workspaces')
@@ -102,9 +72,6 @@ beforeAll(async () => {
   snapB = await counts()
   const a = await seedWorkspace('alpha', member.id)
   wsA = a.workspace
-  mkdirSync(join(mediaDir, 'stuck'), { recursive: true })
-  writeFileSync(join(mediaDir, 'stuck', 'f'), 'x')
-  await seed('media', { workspace_id: wsA, filename: 'stuck' })
   await rows(sql`UPDATE "bauherren" SET "updated_at" = now() WHERE "id" = ${member.id}`)
   await payload.update({ collection: 'bauherren', id: member.id, data: { tenants: [{ tenant: wsA }, { tenant: wsB }] }, ...o })
   await payload.create({ collection: 'bauherren', data: { email: 'po@x.io', password: 'pw-123456', role: 'product-owner', assignments: [{ workspace: wsA, scope: 'products', products: [a.product] }, { workspace: wsB, scope: 'products', products: [b.product] }] }, ...o })
@@ -151,7 +118,7 @@ it('a Restore that wins the lock first leaves every row; a Restore after the loc
   await archive(wsA)
 })
 
-it('an error rolls the whole purge back, keeps media files, and the next run retries', async () => {
+it('an error rolls the whole purge back and the next run retries', async () => {
   const before = await counts()
   await rows(sql`CREATE FUNCTION purge_fail() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'injected'; END $$ LANGUAGE plpgsql`)
   await rows(sql`CREATE TRIGGER purge_fail BEFORE DELETE ON "workspaces" FOR EACH ROW EXECUTE FUNCTION purge_fail()`)
@@ -161,7 +128,6 @@ it('an error rolls the whole purge back, keeps media files, and the next run ret
   expect(err).toHaveBeenCalled()
   expect(await counts()).toEqual(before)
   expect((await payload.findByID({ collection: 'bauherren', id: member.id, ...o })).tenants).toHaveLength(2)
-  expect(existsSync(join(mediaDir, 'alpha.png'))).toBe(true)
   await rows(sql`DROP TRIGGER purge_fail ON "workspaces"`)
   await rows(sql`DROP FUNCTION purge_fail()`)
 })
@@ -187,9 +153,7 @@ it('purges every row of the archived Workspace and none of the other; people and
   expect(audit.map((a) => a.kind)).toEqual(['workspace:restore', 'workspace:purge'])
   expect(audit[1].detail).toMatchObject({ id: wsA, slug: 'alpha', name: 'alpha' })
 
-  expect(existsSync(join(mediaDir, 'alpha.png'))).toBe(false)
-  expect(existsSync(join(mediaDir, 'beta.png'))).toBe(true)
-  expect(err).toHaveBeenCalledWith(expect.objectContaining({ file: 'stuck' }), expect.stringContaining('media file not deleted'))
+  expect(err).not.toHaveBeenCalled()
 })
 
 it('every table that reaches a Workspace, Ticket or Product is covered by the purge, children before parents', async () => {

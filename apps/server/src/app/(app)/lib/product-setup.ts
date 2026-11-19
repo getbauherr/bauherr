@@ -4,26 +4,23 @@ export type Tone = 'ok' | 'warn' | 'muted'
 type SetupInput = {
   repositories: unknown[]
   sources: unknown[]
-  embedTokens: { revokedAt: string }[]
-  deploy: { stagingUrl: string; mode: string; webhookUrl: string; productionChecks: string }
+  deploy: { stagingUrl: string; mode: string; webhookUrl: string; productionGate: boolean; productionChecks: string }
 }
 
-export function setupOf(p: SetupInput, productionOn: boolean) {
+export function setupOf(p: SetupInput) {
   const { deploy: d } = p
   const word = (done: boolean, otherwise: 'Needs setup' | 'Optional' = 'Needs setup') => (done ? 'Done' : otherwise)
   const entries: [id: string, label: string, word: string][] = [
     ['repository', 'Repository and tickets', word(p.repositories.length > 0 && p.sources.length > 0)],
     ['staging', 'Staging', word(!!d.stagingUrl && (d.mode !== 'webhook' || !!d.webhookUrl))],
-    ['approvals', 'Approvals', 'Done'],
-    ['production', 'Production', !productionOn ? 'Optional' : word(!!d.productionChecks)],
-    ['widget', 'Website widget', word(p.embedTokens.some((e) => !e.revokedAt), 'Optional')],
+    ['production', 'Production', !d.productionGate ? 'Optional' : word(!!d.productionChecks)],
   ]
   const tones: Record<string, Tone> = { Done: 'ok', 'Needs setup': 'warn', Optional: 'muted' }
   const rows = entries.map(([id, label, w]) => ({ id, label, word: w, tone: tones[w]! }))
   return {
     rows,
     open: rows.filter((r) => r.word === 'Needs setup').length,
-    production: !productionOn ? 'Off' : d.productionChecks ? 'On' : 'On, needs checks',
+    production: !d.productionGate ? 'Off' : d.productionChecks ? 'On' : 'On, needs checks',
   }
 }
 
@@ -44,16 +41,14 @@ export function deployErrors(d: Deploy): Record<string, string> {
 
 export type Callout = { tone: Tone; lead: string; text: string }
 
-export function productionCallouts({ on, checks, seen, notifiable }: { on: boolean; checks: string[]; seen: string[] | null; notifiable: boolean }): Callout[] {
-  if (!on) return [{ tone: 'muted', lead: 'Off', text: 'Once you accept on staging, the Ticket is done. Nothing waits for you before production.' }]
+export function productionCallouts({ checks, seen }: { checks: string[]; seen: string[] | null }): Callout[] {
   const out: Callout[] = []
   const names = checks.join(', ')
-  if (!checks.length) out.push({ tone: 'warn', lead: 'Not ready', text: 'Pick the check that reports your production deploy. Until then Tickets stop at Configure production checks.' })
+  if (!checks.length) out.push({ tone: 'warn', lead: 'Not ready', text: 'Pick the check that reports your production deploy. Until then production approvals cannot be tracked.' })
   else if (seen && !checks.every((c) => seen.includes(c))) {
     const missing = checks.filter((c) => !seen.includes(c))
     out.push({ tone: 'warn', lead: 'Almost ready', text: `${missing.join(', ')} ${missing.length === 1 ? 'has' : 'have'} not reported on recent commits. After you approve, Bauherr waits 60 minutes for ${missing.length === 1 ? 'it' : 'them'}, then stops the deploy as timed out.` })
-  } else out.push({ tone: 'ok', lead: 'Ready', text: `After you accept on staging, Approve production appears on the Ticket. Bauherr then watches ${names}.${seen ? '' : ' GitHub could not be read, so the names are not confirmed.'}` })
-  if (!notifiable) out.push({ tone: 'warn', lead: 'No approver', text: 'Nobody gets a GitHub notification. Link a forge login on a Bauherr or Admin under People.' })
+  } else out.push({ tone: 'ok', lead: 'Ready', text: `Bauherr watches ${names} after you approve production.${seen ? '' : ' GitHub could not be read, so the names are not confirmed.'}` })
   return out
 }
 

@@ -1,9 +1,8 @@
-import Link from 'next/link'
 import { type ComponentProps, Suspense, cache } from 'react'
 import { namesOf, productionCallouts, productionWorkflow } from '../lib/product-setup'
-import { type loadProduct, type RecentCheck, recentChecks } from '../lib/settings'
+import { type RecentCheck, recentChecks } from '../lib/settings'
 import { CopyField, Field, MultiPick } from './SettingsForm'
-import { GateLadder, RadioCards, SettingsSection, StatusCallout, ToggleRow } from './SettingsParts'
+import { RadioCards, SettingsSection, StatusCallout, ToggleRow } from './SettingsParts'
 
 const CHECKS_UNREADABLE = 'Could not read checks from GitHub right now. Type the check name instead.'
 
@@ -31,13 +30,13 @@ const ChecksPick = (props: PickProps & { product: number }) => (
   </Suspense>
 )
 
-async function LoadedCallouts({ product, checks, notifiable }: { product: number; checks: string[]; notifiable: boolean }) {
+async function LoadedCallouts({ product, checks }: { product: number; checks: string[] }) {
   const seen = (await checksFor(product))?.map((c) => c.name) ?? null
-  return productionCallouts({ checks, seen, notifiable, on: true }).map((c) => <StatusCallout key={c.lead} tone={c.tone} lead={c.lead}>{c.text}</StatusCallout>)
+  return productionCallouts({ checks, seen }).map((c) => <StatusCallout key={c.lead} tone={c.tone} lead={c.lead}>{c.text}</StatusCallout>)
 }
 
-type Data = NonNullable<Awaited<ReturnType<typeof loadProduct>>>
-type SectionProps = { data: Data; admin?: boolean; n?: number; retries?: boolean }
+type Product = { id: number; deploy: { stagingUrl: string; mode: string; webhookUrl: string; checks: string; productionGate: boolean; productionWebhookUrl: string; productionChecks: string } }
+type SectionProps = { data: { product: Product }; n?: number }
 
 export function StagingSection({ data: { product: p }, n }: SectionProps) {
   const d = p.deploy
@@ -57,52 +56,23 @@ export function StagingSection({ data: { product: p }, n }: SectionProps) {
   )
 }
 
-export const CheckRetriesField = ({ value }: { value: number }) => (
-  <Field name="checkRetries" label="Re-run a failed check once" type="number" min={0} max={1} hint="1: a failed check is re-run once before it sends the change back or stops a release. 0 turns this off." defaultValue={value} />
-)
-
-export function ApprovalsSection({ data: { product: p, workflow, members, hasApprover }, admin, n, retries = true }: SectionProps) {
-  const d = p.deploy
-  const names = members.map((m) => `@${m.login}`).join(', ')
-  const notifiable = hasApprover
-  const [off] = productionCallouts({ checks: namesOf(d.productionChecks), seen: null, notifiable, on: false })
+export function ProductionGateSection({ data: { product: p }, n }: SectionProps) {
   return (
-    <SettingsSection id="approvals" n={n} title="Approvals" purpose="Where the process waits for you. Everything else runs on its own.">
-      <GateLadder plan={workflow.plan} staging={workflow.staging || (workflow.stagingOwner && d.productOwnerTestsStaging)}>
-        <ToggleRow name="productionGate" label="Ask me before production" help="Nothing goes live until you press Approve production on the Ticket. Your own pipeline does the deploy." defaultChecked={p.productionOn} disabled={workflow.forcesProduction} reason={workflow.forcesProduction ? 'On for every Product by the workflow.' : undefined} />
-      </GateLadder>
-      <div className="[form:has(input[name=productionGate]:checked)_&]:hidden">
-        <StatusCallout tone="muted" lead={off!.lead}>{off!.text}</StatusCallout>
-      </div>
-      <p className="small text-muted-foreground">The plan and staging approvals are set by the workflow for all Products.{admin && <> <Link href="/workflow/edit">See the workflow</Link>.</>}</p>
-      <ToggleRow name="autoMerge" label="Merge automatically" help="After a clean review and green checks, Bauherr merges the change itself. Off: you merge on GitHub." defaultChecked={d.autoMerge} />
-      {workflow.stagingOwner && (
-        <>
-          <input type="hidden" name="poStagingShown" value="1" />
-          <ToggleRow name="productOwnerTestsStaging" label="Product owner tests on staging" help="The Product owner accepts changes on staging before they move on; needs a Product owner assigned to this Product. Off, or without one, nobody is asked and a change passes staging by itself." defaultChecked={d.productOwnerTestsStaging} />
-        </>
-      )}
-      {workflow.staging && <ToggleRow name="expediteSkipStaging" label="Skip staging approval for Hotfixes" help="A Hotfix Ticket moves on from staging without your Accept. The production approval still waits for you." defaultChecked={d.expediteSkipStaging} />}
-      {retries && <CheckRetriesField value={d.checkRetries} />}
-      <div className="flex flex-col gap-1">
-        <span className="small font-medium text-foreground">Who approves?</span>
-        <span className="small text-muted-foreground">
-          Every Bauherr and Admin with a forge login ({names || 'nobody has linked one yet'}), and a Product owner assigned to this Product where a checkpoint asks them. They are assigned and mentioned on the issue when a Ticket waits for an approval, and a label or answers comment on the forge counts only from them. Link a login on the person&apos;s profile or under People.
-        </span>
-      </div>
+    <SettingsSection id="approvals" n={n} title="Production approval" purpose="Whether production waits for you.">
+      <input type="hidden" name="productionGateShown" value="1" />
+      <ToggleRow name="productionGate" label="Ask me before production" help="Nothing goes live until you approve it. Your own pipeline does the deploy." defaultChecked={p.deploy.productionGate} />
     </SettingsSection>
   )
 }
 
-export function ProductionSection({ data: { product: p, hasApprover }, n }: SectionProps) {
+export function ProductionSection({ data: { product: p }, n }: SectionProps) {
   const d = p.deploy
   const production = namesOf(d.productionChecks)
-  const notifiable = hasApprover
   return (
     <SettingsSection id="production" n={n} title="Production" purpose="How Bauherr knows your production deploy finished." advanced={
       <Field name="productionWebhookUrl" label="Also call this URL when I approve" type="url" hint="Optional. Bauherr POSTs {ticket, sha, environment: production} once per approval. Use it if your pipeline cannot listen for the GitHub label." example="https://ci.acme.com/hooks/prod" defaultValue={d.productionWebhookUrl} />
     }>
-      <Suspense fallback={null}><LoadedCallouts product={p.id} checks={production} notifiable={notifiable} /></Suspense>
+      <Suspense fallback={null}><LoadedCallouts product={p.id} checks={production} /></Suspense>
       <ChecksPick product={p.id} name="productionChecks" legend="Which check reports the production deploy?" hint="Bauherr marks the deploy as done when these checks succeed on the approved commit." value={production} addLabel="Add a check that has not run yet" example="deploy-production" missingMeta="not seen recently" />
       <details className="small text-muted-foreground">
         <summary className="cursor-pointer">How does my pipeline know when to deploy?</summary>
@@ -113,18 +83,5 @@ export function ProductionSection({ data: { product: p, hasApprover }, n }: Sect
         </div>
       </details>
     </SettingsSection>
-  )
-}
-
-export function DeploySections({ data, admin, numbered }: { data: Data; admin: boolean; numbered?: boolean }) {
-  const num = (i: number) => (numbered ? i + 2 : undefined)
-  return (
-    <>
-      <StagingSection data={data} n={num(0)} />
-      <ApprovalsSection data={data} admin={admin} n={num(1)} />
-      <div className="[form:not(:has(input[name=productionGate]:checked))_&]:hidden">
-        <ProductionSection data={data} n={num(2)} />
-      </div>
-    </>
   )
 }
