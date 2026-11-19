@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file. Format: [Keep a
 
 ## Unreleased
 
+## 0.6.0 - 2026-11-19
+
+Promoted from v0.6.0-rc.3 (commit 1233fa4).
+
+
 ## 0.5.0 - 2026-11-17
 
 Promoted from v0.5.0-rc.2 (commit 902a319).
