@@ -37,7 +37,7 @@ const call = async <T>(method: string, path: string, body?: unknown): Promise<T>
       const res = await fetch(process.env.GATEWAY_ADMIN_URL + path, {
         method,
         headers: { 'content-type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        ...(body !== undefined && { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(Number(process.env.GATEWAY_ADMIN_TIMEOUT_MS ?? 10_000)),
       })
       if (res.ok) return (await res.json()) as T

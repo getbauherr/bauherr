@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
+import { LIB_ALLOWLIST } from '../../../eslint.config.mjs'
 import { repoRoot } from './helpers/comments'
 
 const tracked = execFileSync('git', ['ls-files', '-z'], {
@@ -73,4 +74,16 @@ test('no tracked file says it is generated', () => {
 
 test('every generated-file exception states its reason', () => {
   expect(GENERATED_EXCEPTIONS.filter((e) => e.reason.length < 20)).toEqual([])
+})
+
+test('the strict compiler project includes exactly the allowlisted lib files', () => {
+  const { include } = JSON.parse(read('apps/server/tsconfig.core.json')) as { include: string[] }
+  const strictLib = include.filter((f) => f.startsWith('src/lib/')).sort()
+  const allowed = LIB_ALLOWLIST.map((name) => `src/lib/${name}.ts`).sort()
+  expect(
+    strictLib,
+    'LIB_ALLOWLIST in eslint.config.mjs and the src/lib entries in apps/server/tsconfig.core.json ' +
+      'must list the same files. ' +
+      'Fix the strict errors in a file before you allow it, and remove a file from both when it cannot pass.',
+  ).toEqual(allowed)
 })

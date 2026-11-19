@@ -4,5 +4,18 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true
   },
-  "include": ["next-env.d.ts", "src/core", "src/modules"]
+  "include": [
+    "next-env.d.ts",
+    "src/core",
+    "src/modules",
+    "src/lib/secrets.ts",
+    "src/lib/connection.ts",
+    "src/lib/adapters.ts",
+    "src/lib/people.ts",
+    "src/lib/person.ts",
+    "src/lib/gateway.ts",
+    "src/lib/path-sets.ts",
+    "src/lib/knowledge.ts",
+    "src/lib/db-pool.ts"
+  ]
 }
