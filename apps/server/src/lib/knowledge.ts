@@ -136,7 +136,7 @@ const indexedOnce = async (payload: Payload, workspace: number): Promise<void> =
 }
 
 const visible = (alias: string, product?: string) => sql`(${sql.raw(alias)}."layer" <> 'product' OR ${sql.raw(alias)}."product" = ${product ?? null})`
-const rank = (alias: string) => sql.raw(`CASE ${alias}."layer" WHEN 'product' THEN 2 WHEN 'workspace' THEN 1 ELSE 0 END`)
+const rank = (alias: string) => sql.raw(`CASE ${alias}."layer" WHEN 'product' THEN 2 ELSE 1 END`)
 const vector = sql`to_tsvector('simple', coalesce(c."heading", '') || ' ' || coalesce(c."text", ''))`
 
 export const search = async (payload: Payload, workspace: number | string, q: string, limit = 20, product?: string): Promise<Citation[]> => {

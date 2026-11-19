@@ -210,7 +210,7 @@ const workspaces = col(
     text('knowledgeRepo', { admin: { description: 'Knowledge repo as owner/name.' } }),
     { name: 'archivedAt', type: 'date', access: { update: () => false }, admin: { readOnly: true, description: 'Set by Delete workspace (lib/workspace-delete.ts): the Workspace is hidden everywhere and does no work.' } },
     { name: 'purgeAt', type: 'date', access: { update: () => false }, admin: { readOnly: true, description: 'Until then an Admin can restore an archived Workspace.' } },
-    { name: 'knowledgeIndexed', type: 'json', admin: { readOnly: true, description: 'What the Knowledge index was last built from (core pack hash, Knowledge repo commit, `product:<id>` = Product repo `<repo>@<commit>`, failure back-offs).' } },
+    { name: 'knowledgeIndexed', type: 'json', admin: { readOnly: true, description: 'What the Knowledge index was last built from (Knowledge repo commit, `product:<id>` = Product repo `<repo>@<commit>`, failure back-offs).' } },
   ],
   {
     access: {
@@ -465,7 +465,7 @@ export const collections: CollectionConfig[] = [
   ]),
   col('knowledge_chunks', [
     text('source', { required: true, index: true }),
-    select('layer', ['core', 'workspace', 'product'], { required: true }),
+    select('layer', ['workspace', 'product'], { required: true }),
     text('path', { required: true }),
     text('logical', { required: true, index: true }),
     text('product'),
