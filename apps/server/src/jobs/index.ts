@@ -8,6 +8,7 @@ import { refreshPrices } from '../lib/prices'
 import { scheduled } from '../lib/schedule'
 import { live, purgeDueWorkspaces } from '../lib/workspace-delete'
 import { engineDeps } from './engine-deps'
+import { afterSync, intakeSweepTask } from './intake'
 
 export const STALE_JOB_MS = 60 * 60_000
 
@@ -98,5 +99,6 @@ export const TASKS = [
   refreshPricesTask,
   purgeWorkspacesTask,
   expireRunsJob,
-  mirrorSyncTask(scheduled('0 * * * * *')),
+  mirrorSyncTask(scheduled('0 * * * * *'), afterSync),
+  intakeSweepTask(scheduled('0 * * * * *')),
 ]
