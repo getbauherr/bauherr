@@ -20,14 +20,14 @@ const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#logout': 'sign-out',
   '(shell)/settings/profile/actions.ts#saveOwnLogin': 'the profile: links or removes their own forge login; Payload refuses a login another account holds',
 }
-const BAUHERR_ACTIONS = ['lib/actions.ts#selectWorkspace'].concat(
+const BAUHERR_ACTIONS = ['lib/actions.ts#selectWorkspace', '(shell)/settings/state-action.ts#setProductState'].concat(
   ['saveGeneral', 'saveModels', 'savePathSets', 'rotateWorkspaceKey', 'updatePricesNow', 'saveDeploy', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'removeDoc', 'saveConnection', 'verifyConnection', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'deleteWorkspace', 'restoreWorkspaceAction', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey'].map((n) => `(shell)/settings/actions.ts#${n}`),
 )
 const PO_COLLECTIONS: Record<string, Record<string, string>> = {
   bauherren: { read: 'own account only', update: 'own account: uiPrefs, password and the linked forge login (one account per login) only' },
   'payload-preferences': { read: 'own preferences (Payload built-in, keyed to the user)', create: 'own preferences', update: 'own preferences', delete: 'own preferences' },
 }
-const BAUHERR_COLLECTIONS = ['agent_keys', 'agent_sessions', 'connections', 'events', 'human_touches', 'instance_state', 'knowledge_chunks', 'products', 'records', 'repositories', 'stage_runs', 'ticket_sources', 'workspaces', 'payload-kv', 'payload-locked-documents', 'payload-jobs', 'payload-migrations']
+const BAUHERR_COLLECTIONS = ['agent_keys', 'agent_sessions', 'connections', 'events', 'human_touches', 'instance_state', 'knowledge_chunks', 'mirror_checks', 'mirror_comments', 'mirror_items', 'products', 'records', 'repositories', 'stage_runs', 'ticket_sources', 'workspaces', 'payload-kv', 'payload-locked-documents', 'payload-jobs', 'payload-migrations']
 const COLLECTIONS: Record<string, 'closed' | Record<string, string>> = { ...Object.fromEntries(BAUHERR_COLLECTIONS.map((c) => [c, 'closed' as const])), ...PO_COLLECTIONS }
 const OPEN_PAGES = PO_PAGES
 const OPEN_ROUTES = PO_ROUTES
@@ -206,7 +206,7 @@ describe('server actions', () => {
 
   it('every action not listed is refused with a 404 for a Product owner', async () => {
     session.cookie = productOwnerCookie
-    expect(files.length).toBe(3)
+    expect(files.length).toBe(4)
     let checked = 0
     for (const f of files) {
       const rel = f.slice((APP + '(app)/').length)

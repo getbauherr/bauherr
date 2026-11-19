@@ -12,6 +12,17 @@ export async function blockedBy(payload: Payload, collection: 'products' | 'conn
   return why(await Promise.all(PRODUCT_REFS.map(async ([c, label]) => [await count(payload, c, byProduct), label] as [number, string])))
 }
 
+export const recordCountOf = (payload: Payload, product: number): Promise<number> =>
+  count(payload, 'records', { product: { equals: product } })
+
+export const ticketsMessage = (tickets: number): string =>
+  `This Product has ${tickets} ${tickets === 1 ? 'ticket' : 'tickets'} and cannot be deleted.`
+
+export async function assertNoTickets(payload: Payload, product: number): Promise<void> {
+  const tickets = await recordCountOf(payload, product)
+  if (tickets) throw new Error(ticketsMessage(tickets))
+}
+
 export async function assertInWorkspace(payload: Payload, collection: string, ids: (number | undefined)[], workspace: number): Promise<void> {
   const wanted = [...new Set(ids.filter((i): i is number => i != null))]
   if (!wanted.length) return

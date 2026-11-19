@@ -20,11 +20,14 @@ const BAD: [EventType, unknown][] = [
   ['owner.note', { note: ' ' }],
   ['ticket.closed', { reason: 'duplicate' }],
   ['verify.overridden', {}],
+  ['forge.write.started', { kind: 'delete', target: { repo: 'a/b', number: 1 } }],
+  ['forge.write.failed', { kind: 'merge', target: { repo: 'a/b', number: 1 } }],
+  ['forge.write.done', { kind: 'merge', target: { repo: 'a/b', number: 0 } }],
 ]
 
 describe('parseEvent', () => {
   it('has a sample for every event type, and parses each', () => {
-    expect(Object.keys(SAMPLES)).toHaveLength(28)
+    expect(Object.keys(SAMPLES)).toHaveLength(31)
     for (const [type, data] of Object.entries(SAMPLES)) {
       expect(parseEvent({ type, data })).toEqual({ type, data })
     }

@@ -61,6 +61,12 @@ const EXCEPTIONS = [
       'collections cannot declare expression indexes.',
   },
   {
+    prefix: 'index mirror_items_fts_idx ',
+    reason:
+      'The full-text GIN index over title and body exists only through its migration; ' +
+      'collections cannot declare expression indexes.',
+  },
+  {
     prefix: 'enum enum_payload_jobs_',
     reason:
       'Migrated databases keep the slugs of removed job tasks in the job-slug enums; ' +

@@ -20,6 +20,11 @@ export interface TicketSummary {
   assignee: string | null;
   assignees: string[];
   updatedAt: string;
+  createdAt: string;
+  closedAt?: string;
+  author: string;
+  authorTrusted: boolean;
+  authorIsBot: boolean;
   body?: string;
 }
 
@@ -29,7 +34,6 @@ export interface Ticket extends TicketSummary {
   blockedBy: string[];
   links: string[];
   closeReason?: CloseReason | null;
-  author?: string | null;
 }
 
 export interface Comment {
@@ -37,6 +41,7 @@ export interface Comment {
   author: string;
   body: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface InlineComment {
@@ -119,6 +124,15 @@ export interface PullRequest {
   headRepo: string;
   baseRepo: string;
   draft: boolean;
+  author: string;
+  authorTrusted: boolean;
+  authorIsBot: boolean;
+  createdAt: string;
+  updatedAt: string;
+  closedAt?: string;
+  labels: string[];
+  assignees: string[];
+  closes: number[];
   mergeable?: boolean;
   behind?: boolean;
   mergeSha?: string;
@@ -179,6 +193,7 @@ export interface Forge {
   openPullRequest(repo: RepoRef, pr: NewPullRequest): Promise<PullRequest>;
   getPullRequest(repo: RepoRef, number: number): Promise<PullRequest>;
   listPullRequests(repo: RepoRef, state?: 'open' | 'closed' | 'all', head?: string): Promise<PullRequest[]>;
+  listOpenPullRequests(repo: RepoRef, page: number, perPage: number): Promise<PullRequest[]>;
   listMergedPullRequests(repo: RepoRef, limit: number): Promise<PullRequest[]>;
   closePullRequest(repo: RepoRef, number: number): Promise<void>;
   commentOnPullRequest(repo: RepoRef, number: number, body: string): Promise<Comment>;

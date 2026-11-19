@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload'
 import { isBauherr } from '../lib/people'
+import { mirrorCollections } from './mirror/collections'
 
 const closed = () => false
 const readable = ({ req }: { req: { user?: object | null } }): boolean => isBauherr(req.user ?? null)
@@ -19,6 +20,8 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'rank', type: 'number', required: true, defaultValue: 0 },
       { name: 'version', type: 'number', required: true, defaultValue: 1 },
       { name: 'card', type: 'json' },
+      { name: 'statusCommentId', type: 'text' },
+      { name: 'statusCommentHash', type: 'text' },
       { name: 'data', type: 'json', required: true },
     ],
     indexes: [{ fields: ['workspace', 'sourceForge', 'sourceRepo', 'sourceNumber'], unique: true }],
@@ -57,4 +60,5 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'finishedAt', type: 'date' },
     ],
   },
+  ...mirrorCollections,
 ]

@@ -4,6 +4,7 @@ import type {
 } from './contracts.js';
 import { Conflict, type InlineComment, MergePendingError, NotQueueableError, linkLabel } from './contracts.js';
 import { parseRelations, renderRelations } from './body-convention.js';
+import { gitlabAuthorId, gitlabIssueFields, gitlabMergeRequestFields, gitlabNoteUpdatedAt, secs } from './forge-fields.js';
 import { MAX_WAIT_MS } from './github.js';
 import { timedFetch } from './http.js';
 import { closeReasonLabel } from './stage.js';
@@ -14,6 +15,9 @@ export interface GitlabAuth {
 
 /** Personal / group service-account access token (scope `api`), sent as `PRIVATE-TOKEN`. */
 export const gitlabPat = (token: string): GitlabAuth => ({ token: async () => token });
+
+const enc = encodeURIComponent;
+const REPORTER = 20;
 
 export class GitlabError extends Error {
   constructor(readonly status: number, method: string, path: string, detail: string) {
@@ -73,6 +77,26 @@ export class GitlabHttp {
     return (res.status === 204 ? undefined : await res.json()) as T;
   }
 
+  private members = new Map<string, Promise<boolean>>();
+
+  trusted(project: string, userId: number | undefined): Promise<boolean> {
+    if (userId === undefined) return Promise.resolve(false);
+    const key = `${project}/${userId}`;
+    let known = this.members.get(key);
+    if (!known) {
+      known = this.json<{ access_level: number }>('GET', `/projects/${enc(project)}/members/all/${userId}`).then(
+        (member) => member.access_level >= REPORTER,
+        (e: unknown) => {
+          if (e instanceof GitlabError && e.status === 404) return false;
+          this.members.delete(key);
+          throw e;
+        },
+      );
+      this.members.set(key, known);
+    }
+    return known;
+  }
+
   async paginate<T = any>(path: string): Promise<T[]> {
     const out: T[] = [];
     let next: string | undefined = path;
@@ -88,16 +112,18 @@ export class GitlabHttp {
   }
 }
 
-const enc = encodeURIComponent;
-const secs = (iso: string): string => iso.replace(/\.\d+Z$/, 'Z');
 const REASONS: CloseReason[] = ['completed', 'not_planned', 'duplicate'];
 
 const summary = (i: any): TicketSummary => ({
   id: String(i.iid), number: i.iid, url: i.web_url, title: i.title, state: i.state === 'opened' ? 'open' : 'closed',
   labels: i.labels ?? [], assignee: i.assignees?.[0]?.username ?? null, assignees: (i.assignees ?? []).map((a: any) => a.username),
   updatedAt: secs(i.updated_at),
+  ...gitlabIssueFields(i),
 });
-const note = (c: any): Comment => ({ id: String(c.id), author: c.author?.username ?? '', body: c.body ?? '', createdAt: secs(c.created_at) });
+const note = (c: any): Comment => ({
+  id: String(c.id), author: c.author?.username ?? '', body: c.body ?? '', createdAt: secs(c.created_at),
+  updatedAt: gitlabNoteUpdatedAt(c),
+});
 
 export class GitlabBackend implements Backend {
   readonly capabilities: Capabilities = { attachments: false, nativeSubTickets: false, nativeBlocking: false, webhooks: false };
@@ -114,8 +140,11 @@ export class GitlabBackend implements Backend {
 
 class GitlabTickets implements TicketSource {
   private p: string;
-  constructor(private h: GitlabHttp, repo: RepoRef) {
+  constructor(private h: GitlabHttp, private repo: RepoRef) {
     this.p = `/projects/${enc(repo)}`;
+  }
+  private async view(i: unknown): Promise<TicketSummary> {
+    return { ...summary(i), authorTrusted: await this.h.trusted(this.repo, gitlabAuthorId(i)) };
   }
   private issue(id: string) {
     return this.h.json('GET', `${this.p}/issues/${id}`);
@@ -134,21 +163,23 @@ class GitlabTickets implements TicketSource {
   async list(opts: ListOptions = {}) {
     const q = new URLSearchParams({ state: { open: 'opened', closed: 'closed', all: 'all' }[opts.state ?? 'open'], per_page: '100' });
     if (opts.labels?.length) q.set('labels', opts.labels.join(','));
-    return (await this.h.paginate(`${this.p}/issues?${q}`)).map((i) => ({ ...summary(i), body: i.description ?? '' }));
+    return Promise.all((await this.h.paginate(`${this.p}/issues?${q}`)).map(async (i) => ({
+      ...(await this.view(i)), body: i.description ?? '',
+    })));
   }
   async get(id: string): Promise<Ticket> {
     const i = await this.issue(id);
     const { body, relations } = parseRelations(i.description ?? '');
     const closed = i.state !== 'opened';
     return {
-      ...summary(i), body, author: i.author?.username ?? null, parent: relations.parent, blockedBy: relations.blockedBy, links: relations.links,
+      ...(await this.view(i)), body, parent: relations.parent, blockedBy: relations.blockedBy, links: relations.links,
       closeReason: closed ? (REASONS.find((r) => (i.labels as string[]).includes(closeReasonLabel(r))) ?? 'completed') : null,
     };
   }
   async poll(cursor: string | null) {
     const q = new URLSearchParams({ state: 'all', order_by: 'updated_at', sort: 'asc', per_page: '100' });
     if (cursor !== null) q.set('updated_after', new Date(cursor).toISOString());
-    const changes = (await this.h.paginate(`${this.p}/issues?${q}`)).map(summary);
+    const changes = await Promise.all((await this.h.paginate(`${this.p}/issues?${q}`)).map((i) => this.view(i)));
     return { changes, next: changes.at(-1)?.updatedAt ?? cursor };
   }
   async create(t: NewTicket) {
@@ -225,7 +256,7 @@ class GitlabTickets implements TicketSource {
     });
   }
   async listSubTickets(parentId: string) {
-    return (await this.children(parentId)).map(summary);
+    return Promise.all((await this.children(parentId)).map((i) => this.view(i)));
   }
   async addBlockedBy(id: string, blockerId: string) {
     await this.issue(blockerId);
@@ -243,7 +274,7 @@ class GitlabTickets implements TicketSource {
       const { blockedBy } = parseRelations(i.description ?? '').relations;
       return (await Promise.all(blockedBy.map((b) => this.issue(b)))).some((b) => b.state === 'opened');
     }));
-    return open.filter((_, n) => !blocked[n]).map(summary);
+    return Promise.all(open.filter((_, n) => !blocked[n]).map((i) => this.view(i)));
   }
 }
 
@@ -281,6 +312,8 @@ class GitlabForge implements Forge {
       head: m.source_branch, base: m.target_branch, headSha: m.sha,
       headRepo: m.source_project_id == null ? '' : m.source_project_id === m.target_project_id ? repo : await this.pathOf(m.source_project_id),
       baseRepo: repo, draft: !!(m.draft ?? m.work_in_progress),
+      ...gitlabMergeRequestFields(m),
+      authorTrusted: await this.h.trusted(repo, gitlabAuthorId(m)),
       ...(m.detailed_merge_status === 'need_rebase' ? { behind: true } : {}),
       ...(mergeSha ? { mergeSha } : {}),
     };
@@ -322,6 +355,11 @@ class GitlabForge implements Forge {
     const byHead = head ? `&source_branch=${enc(head)}` : '';
     const prs = await Promise.all((await this.h.paginate(`/projects/${enc(repo)}/merge_requests?state=${q}&per_page=100${byHead}`)).map((m) => this.pr(repo, m)));
     return state === 'closed' ? prs.filter((p) => p.state !== 'open') : prs;
+  }
+  async listOpenPullRequests(repo: RepoRef, page: number, perPage: number) {
+    const query = `state=opened&order_by=updated_at&sort=desc&per_page=${perPage}&page=${page}`;
+    const merges = await this.h.json<unknown[]>('GET', `/projects/${enc(repo)}/merge_requests?${query}`);
+    return Promise.all(merges.map((m) => this.pr(repo, m)));
   }
   async listMergedPullRequests(repo: RepoRef, limit: number) {
     const ms = await this.h.json('GET', `/projects/${enc(repo)}/merge_requests?state=merged&order_by=updated_at&sort=desc&per_page=${Math.min(limit, 100)}`);

@@ -1,6 +1,6 @@
 import type { Payload } from 'payload'
 import { z } from 'zod'
-import { LIVE_RUN_INDEX } from '../../src/migrations/20261119_130000_stage_runs'
+import { LIVE_RUN_INDEX } from '../../src/migrations/20261119_140000_stage_runs'
 import { createRecord } from '../../src/core/record/store'
 import { createTestDb, type TestDb } from '../helpers/test-db'
 import { source } from './fixtures'

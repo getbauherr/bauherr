@@ -26,6 +26,11 @@ describe('fold', () => {
     })
   })
 
+  it('ignores the forge write events completely', () => {
+    const writes = [ev('forge.write.started'), ev('forge.write.done'), ev('forge.write.failed')]
+    expect(fold([...inBrief, ...writes])).toEqual(fold(inBrief))
+  })
+
   it('moves the stage on each lifecycle event', () => {
     expect(fold(inBrief).stage).toBe('brief')
     expect(fold(inBuild).stage).toBe('build')

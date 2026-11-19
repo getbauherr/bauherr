@@ -4,7 +4,7 @@ import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../li
 import { PRESETS, presetOf } from '../../../lib/providers'
 import { modelOptions } from './models'
 import { loadModelList } from '../../../lib/prices'
-import { blockedBy } from '../../../lib/settings-guards'
+import { blockedBy, recordCountOf } from '../../../lib/settings-guards'
 import { formatPathSets } from '../../../lib/path-sets'
 import { backendFor } from '../../../lib/adapters'
 import { connectionInput } from '../../../lib/connection'
@@ -82,6 +82,8 @@ export async function loadProducts(workspace: number) {
           slug: p.slug as string,
           deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string },
           pathSetsText: formatPathSets(p.pathSets),
+          state: p.state === 'active' ? ('active' as const) : ('observing' as const),
+          tickets: await recordCountOf(payload, p.id as number),
           blocked: await blockedBy(payload, 'products', p.id),
           repositories: repositories.filter((r) => r.product === p.id).map((r) => ({ id: r.id as number, fullName: r.fullName as string })),
           sources: sources
@@ -157,7 +159,7 @@ export async function loadConnections(workspace: number) {
       name: c.name as string,
       kind: c.kind as string,
       provider: c.kind === 'llm-provider' ? presetOf(c.config) : '',
-      config: Object.fromEntries(['baseUrl', 'awsRegion', 'vertexProject', 'vertexRegion', 'azureResource'].map((k) => [k, (c.config?.[k] ?? '') as string])),
+      config: Object.fromEntries(['baseUrl', 'appId', 'installationId', 'awsRegion', 'vertexProject', 'vertexRegion', 'azureResource'].map((k) => [k, (c.config?.[k] ?? '') as string])),
       status: (c.capabilities?.lastError ? 'failed' : c.capabilities?.verifiedAt ? 'ok' : 'none') as 'failed' | 'ok' | 'none',
       detail: (c.capabilities?.lastError ?? c.capabilities?.verifiedAt ?? '') as string,
     }))
