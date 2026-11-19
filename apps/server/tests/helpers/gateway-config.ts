@@ -12,12 +12,10 @@ const IAM = JSON.stringify({ accessKeyId: 'AKIAXXXXXXXXXXXXXXXX', secretAccessKe
 const root = join(__dirname, '../../../..')
 const tmpl = readFileSync(join(root, 'deploy/gateway/config.yaml.tmpl'), 'utf8')
 
-export const TRACING_LINE = readFileSync(join(root, 'compose.yaml'), 'utf8').match(/T='(tracing: \{[^']+\})'/)![1]!.replaceAll('\\"', '"')
-
 export const AGW_IMAGE = readFileSync(join(root, 'compose.yaml'), 'utf8').match(/cr\.agentgateway\.dev\/[^\s"]+/)![0]
 
-export function buildConfig(dir: string, { tracing = false } = {}): Record<string, any> {
-  const cfg = parse(tmpl.replace('__GATEWAY_DATABASE_URL__', 'postgres://u:p@db:5432/gw').replace('__TRACING__', tracing ? TRACING_LINE : ''))
+export function buildConfig(dir: string): Record<string, any> {
+  const cfg = parse(tmpl.replace('__GATEWAY_DATABASE_URL__', 'postgres://u:p@db:5432/gw'))
   cfg.config.modelCatalog = []
   for (const p of Object.keys(PRESETS) as Preset[]) {
     const file = `${p}.${PRESETS[p].secret.ext}`
