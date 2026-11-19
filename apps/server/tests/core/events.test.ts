@@ -17,6 +17,12 @@ const BAD: [EventType, unknown][] = [
   ['question.asked', { reason: 'x', options: ['only'] }],
   ['question.asked', { reason: 'x', options: ['a', 'b', 'c', 'd', 'e'] }],
   ['question.answered', {}],
+  ['owner.note', { note: ' ' }],
+  ['ticket.closed', { reason: 'duplicate' }],
+  ['verify.overridden', {}],
+  ['verify.overridden', { patchId: 'p1', headSha: ' ' }],
+  ['verify.passed', { runId: 'r2', patchId: 'p1' }],
+  ['build.submitted', { runId: 'r1', patchId: 'p1', pr: 12 }],
   ['forge.write.started', { kind: 'delete', target: { repo: 'a/b', number: 1 } }],
   ['forge.write.failed', { kind: 'merge', target: { repo: 'a/b', number: 1 } }],
   ['forge.write.done', { kind: 'merge', target: { repo: 'a/b', number: 0 } }],
@@ -24,7 +30,7 @@ const BAD: [EventType, unknown][] = [
 
 describe('parseEvent', () => {
   it('has a sample for every event type, and parses each', () => {
-    expect(Object.keys(SAMPLES)).toHaveLength(27)
+    expect(Object.keys(SAMPLES)).toHaveLength(31)
     for (const [type, data] of Object.entries(SAMPLES)) {
       expect(parseEvent({ type, data })).toEqual({ type, data })
     }

@@ -20,6 +20,8 @@ describe('fold', () => {
       deployed: false,
       accepted: false,
       productionApproved: false,
+      productionHeld: false,
+      overridden: false,
       note: null,
     })
   })
@@ -63,6 +65,14 @@ describe('fold', () => {
     expect(fold([start('brief', 'r2'), ev('brief.submitted', { runId: 'r1' })]).run?.runId).toBe('r2')
   })
 
+  it('ends a live intake run with the intake event it produced', () => {
+    expect(fold([start('intake'), ev('intake.accepted')]).run).toBeNull()
+    expect(fold([start('intake'), ev('intake.asked')]).run).toBeNull()
+    expect(fold([start('intake'), ev('intake.disputed')]).run).toBeNull()
+    expect(fold([start('intake', 'r1'), fail('intake', 'r1'), start('intake', 'r2'), ev('intake.accepted')]))
+      .toMatchObject({ run: null, failedRuns: 0 })
+  })
+
   it('ends the build run with build.submitted and the verify run with its verdict', () => {
     expect(fold([...inBuild, start('build'), ev('build.submitted')]).run).toBeNull()
     expect(fold([...inVerify, start('verify', 'r2'), ev('verify.changes')]).run).toBeNull()
@@ -96,7 +106,7 @@ describe('fold', () => {
   })
 
   it('records the verdict, merge, deploy and acceptance', () => {
-    expect(fold(inShip).verdict).toBe('p1')
+    expect(fold(inShip).verdict).toEqual({ patchId: 'p1', headSha: 'h1' })
     expect(fold(merged).merged).toBe(true)
     expect(fold([...merged, ev('ship.deployed')]).deployed).toBe(true)
     expect(fold([...merged, ev('result.accepted')]).accepted).toBe(true)
@@ -123,6 +133,46 @@ describe('fold', () => {
     expect(fold([...asked, start('brief', 'r2')]).note).toBeNull()
     expect(fold([...merged, ev('result.sent-back')]).note).toBe('not yet')
     expect(fold([...merged, ev('result.sent-back'), start('build', 'r3')]).note).toBeNull()
+  })
+
+  it('sets the note from the owner until the next run starts', () => {
+    expect(fold([...inBuild, ev('owner.note')]).note).toBe('try the other way')
+    expect(fold([...inBuild, ev('owner.note'), start('build', 'r3')]).note).toBeNull()
+  })
+
+  it('closes the ticket when the owner discards it', () => {
+    expect(fold([...inBuild, ev('ticket.closed')]).closed).toBe('discarded')
+  })
+
+  it('treats an override of the latest patch like a passed verify for the stage change', () => {
+    const changes = [...inVerify, start('verify', 'r2'), ev('verify.changes')]
+    const overridden = fold([...changes, ev('verify.overridden')])
+    const verdict = { patchId: 'p1', headSha: 'h1' }
+    expect(overridden).toMatchObject({ stage: 'ship', verdict, overridden: true, failedRuns: 0 })
+    expect(fold(inShip).overridden).toBe(false)
+  })
+
+  it('ignores an override of a patch that is not the latest', () => {
+    const changes = [...inVerify, start('verify', 'r2'), ev('verify.changes')]
+    expect(fold([...changes, ev('verify.overridden', { patchId: 'old' })])).toMatchObject({
+      stage: 'build',
+      overridden: false,
+    })
+  })
+
+  it('starts the override over with the next patch', () => {
+    const changes = [...inVerify, start('verify', 'r2'), ev('verify.changes'), ev('verify.overridden')]
+    const patched = [start('build', 'r3'), ev('build.submitted', { runId: 'r3', patchId: 'p2' })]
+    expect(fold([...changes, ...patched])).toMatchObject({ stage: 'verify', overridden: false })
+  })
+
+  it('remembers a held production until a new patch', () => {
+    const held = [...merged, ev('result.accepted'), ev('production.held')]
+    expect(fold(held, { productionGate: true })).toMatchObject({ productionHeld: true, stage: 'ship' })
+    const back = fold([...held, ev('result.sent-back')], { productionGate: true })
+    expect(back.productionHeld).toBe(true)
+    const patched = [start('build', 'r3'), ev('build.submitted', { runId: 'r3', patchId: 'p2' })]
+    expect(fold([...held, ev('result.sent-back'), ...patched], { productionGate: true }).productionHeld).toBe(false)
   })
 
   it('opens a question card until it is answered', () => {

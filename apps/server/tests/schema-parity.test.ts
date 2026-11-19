@@ -49,6 +49,12 @@ const EXCEPTIONS = [
       'a collection field can only declare a plain index.',
   },
   {
+    prefix: 'index stage_runs_one_live_per_record_idx ',
+    reason:
+      'The migration makes it unique and partial (WHERE status IN (queued, claimed)): one live run per record; ' +
+      'a collection can only declare a plain index.',
+  },
+  {
     prefix: 'index knowledge_chunks_fts_idx ',
     reason:
       'The full-text GIN index over heading and text exists only through its migration; ' +

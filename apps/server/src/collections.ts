@@ -436,6 +436,12 @@ export const collections: CollectionConfig[] = [
     select('releaseMode', ['notes-only', 'factory', 'manual'], { defaultValue: 'notes-only', required: true, admin: { description: 'notes-only: the Product\'s own tooling makes the release, the factory adds the notes. factory: the factory tags, releases and opens a CHANGELOG.md MR. manual: no automatic release; a person ships it from the forge release flow.' } }),
     text('productionChecks', { admin: { description: 'Comma-separated check names on the merge commit that report the production deploy; required for the production gate.' } }),
     {
+      name: 'riskAreas',
+      type: 'json',
+      defaultValue: [],
+      admin: { description: 'Names of path sets whose changes need an owner-approved Brief.' },
+    },
+    {
       name: 'pathSets',
       type: 'json',
       defaultValue: {},

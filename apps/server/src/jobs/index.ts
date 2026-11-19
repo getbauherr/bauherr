@@ -1,11 +1,13 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
+import { expireRunsTask } from '../core/expire-task'
 import { mirrorSyncTask } from '../core/jobs'
 import { checkGateway } from '../lib/gateway-health'
 import { resync } from '../lib/knowledge'
 import { refreshPrices } from '../lib/prices'
 import { scheduled } from '../lib/schedule'
 import { live, purgeDueWorkspaces } from '../lib/workspace-delete'
+import { engineDeps } from './engine-deps'
 
 export const STALE_JOB_MS = 60 * 60_000
 
@@ -87,11 +89,14 @@ export const purgeWorkspacesTask: TaskConfig<{ input: Record<string, never>; out
   },
 }
 
+export const expireRunsJob = expireRunsTask(scheduled('0 * * * * *'), engineDeps)
+
 export const TASKS = [
   reclaimJobs,
   resyncKnowledge,
   watchGatewayTask,
   refreshPricesTask,
   purgeWorkspacesTask,
+  expireRunsJob,
   mirrorSyncTask(scheduled('0 * * * * *')),
 ]
