@@ -17,11 +17,14 @@ const BAD: [EventType, unknown][] = [
   ['question.asked', { reason: 'x', options: ['only'] }],
   ['question.asked', { reason: 'x', options: ['a', 'b', 'c', 'd', 'e'] }],
   ['question.answered', {}],
+  ['forge.write.started', { kind: 'delete', target: { repo: 'a/b', number: 1 } }],
+  ['forge.write.failed', { kind: 'merge', target: { repo: 'a/b', number: 1 } }],
+  ['forge.write.done', { kind: 'merge', target: { repo: 'a/b', number: 0 } }],
 ]
 
 describe('parseEvent', () => {
   it('has a sample for every event type, and parses each', () => {
-    expect(Object.keys(SAMPLES)).toHaveLength(24)
+    expect(Object.keys(SAMPLES)).toHaveLength(27)
     for (const [type, data] of Object.entries(SAMPLES)) {
       expect(parseEvent({ type, data })).toEqual({ type, data })
     }

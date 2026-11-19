@@ -12,7 +12,7 @@ import { rotateKey } from '../../../../lib/gateway'
 import { refreshPrices } from '../../../../lib/prices'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { deleteProductMirror, deleteSourceMirror } from '../../../../core/mirror/store'
-import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
+import { assertAnotherAdmin, assertInWorkspace, assertNoTickets, blockedBy } from '../../../../lib/settings-guards'
 import { deployErrors } from '../../lib/product-setup'
 import { listRepos, only, presetFor, run, type FormState } from '../../lib/settings'
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
@@ -170,6 +170,7 @@ export const removeDoc = act({}, async (c, fd) => {
   if (collection === 'products') {
     const blocked = await blockedBy(c.payload, 'products', id(fd))
     if (blocked) throw new Error(`Still referenced by ${blocked}.`)
+    await assertNoTickets(c.payload, id(fd))
   }
   if (collection === 'ticket_sources') await deleteSourceMirror(c.payload, id(fd))
   if (collection === 'products') await deleteProductMirror(c.payload, id(fd))

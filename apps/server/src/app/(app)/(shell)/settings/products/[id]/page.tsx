@@ -11,12 +11,14 @@ import { Tab, Tabs } from '../../../../components/ui/tabs'
 import { SettingsSection, SetupChecklist } from '../../../../components/SettingsParts'
 import { isAdmin, loadProduct } from '../../../../lib/settings'
 import { currentWorkspace } from '../../../../lib/session'
+import { ticketsMessage } from '../../../../../../lib/settings-guards'
 import { addRepository, removeDoc, saveDeploy, savePathSets } from '../../actions'
+import { setProductState } from '../../state-action'
 
 export const dynamic = 'force-dynamic'
 
 const TABS = [['repository', 'Repository'], ['deploy', 'Deploy'], ['path-sets', 'Path sets'], ['danger', 'Danger zone']] as const
-const TAB_OF: Record<string, string> = { repository: 'repository', staging: 'deploy', production: 'deploy', 'path-sets': 'path-sets', danger: 'danger' }
+const TAB_OF: Record<string, string> = { repository: 'repository', state: 'repository', staging: 'deploy', production: 'deploy', 'path-sets': 'path-sets', danger: 'danger' }
 
 const when = (iso: string) => iso.slice(0, 16).replace('T', ' ')
 
@@ -59,6 +61,25 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
       <Tabs aria-label="Product" className="max-w-full overflow-x-auto whitespace-nowrap border-b border-border">
         {TABS.filter(([t]) => t !== 'danger' || admin).map(([t, label]) => <Tab key={t} href={t === 'repository' ? base : `${base}?tab=${t}`} aria-current={tab === t ? 'page' : undefined}>{label}</Tab>)}
       </Tabs>
+
+      {tab === 'repository' && (
+        <SettingsSection
+          id="state"
+          title="Observing or active"
+          purpose="Observing Products are only read. Active Products get labels, comments and merges written."
+        >
+          <p className="small">{p.state === 'active' ? 'Active' : 'Observing: nothing is written to the forge'}</p>
+          {admin && (
+            <SettingsForm
+              action={setProductState}
+              submit={p.state === 'active' ? 'Switch back to observing' : 'Switch to active'}
+            >
+              <input type="hidden" name="id" value={p.id} />
+              <input type="hidden" name="state" value={p.state === 'active' ? 'observing' : 'active'} />
+            </SettingsForm>
+          )}
+        </SettingsSection>
+      )}
 
       {tab === 'repository' && (
         <SettingsSection id="repository" title="Repository and tickets" purpose="The code the agents work in and where new Tickets come from." advanced={
@@ -116,7 +137,9 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
 
       {tab === 'danger' && admin && (
         <SettingsSection id="danger" title="Delete Product">
-          {p.blocked ? (
+          {p.tickets > 0 ? (
+            <p className="small text-muted-foreground">{ticketsMessage(p.tickets)}</p>
+          ) : p.blocked ? (
             <p className="small text-muted-foreground">Cannot delete yet: still referenced by {p.blocked}. Remove those first.</p>
           ) : (
             <>
