@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload'
 import { isBauherr } from '../lib/people'
+import { mirrorCollections } from './mirror/collections'
 
 const closed = () => false
 const readable = ({ req }: { req: { user?: object | null } }): boolean => isBauherr(req.user ?? null)
@@ -34,4 +35,5 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'data', type: 'json', required: true },
     ],
   },
+  ...mirrorCollections,
 ]
