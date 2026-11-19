@@ -19,11 +19,11 @@ test('Admin: agent key shown once, Audit, health; no /admin link', async ({ page
   test.setTimeout(90_000)
   await signIn(page, email)
   await page.getByRole('button', { name: 'User menu' }).click()
-  const menu = page.getByRole('menu')
-  await expect(menu).toBeVisible()
-  await expect(menu.getByRole('link', { name: 'Open /admin' })).toHaveCount(0)
-  await page.keyboard.press('Escape')
-  await expect(menu).toBeHidden()
+  const openedMenu = page.getByRole('menu')
+  await expect(openedMenu).toBeVisible()
+  await expect(openedMenu.getByRole('link', { name: 'Open /admin' })).toHaveCount(0)
+  await openedMenu.press('Escape')
+  await expect(openedMenu).toBeHidden()
   await page.getByRole('link', { name: 'Settings', exact: true }).click()
   await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'API keys' }).click()
   await expect(page).toHaveURL(/\/settings\/api-key$/)
@@ -82,8 +82,7 @@ test('by default /admin redirects to /settings, also for an Admin, and /api stay
   expect(new URL(res.headers().location!, 'http://x.test').pathname).toBe('/settings')
   const fn = await page.request.post('/admin', { headers: { 'next-action': '0'.repeat(40), 'content-type': 'text/plain;charset=UTF-8' }, data: '[]', maxRedirects: 0 })
   expect(fn.status()).toBe(307)
-  const anonymousApiProbe = page.request
-  expect((await anonymousApiProbe.get('/api/bauherren/me')).status()).toBe(200)
+  expect((await page.request.get('/api/bauherren/me')).status()).toBe(200) // allow-page-request: only that /api answers; the anonymous answer is 200 too
 })
 
 test('with BAUHERR_ENABLE_ADMIN=1 an Admin reaches Payload and a non-Admin does not', async ({ page }) => {
