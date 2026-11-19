@@ -1,6 +1,6 @@
 import type { AppEvent, EventType, Stage } from './events'
 
-export type Card = { card: 'question'; reason: string; options: string[] }
+export type Card = { card: 'question'; reason: string; options: string[]; text?: string }
 export type Verdict = { patchId: string; headSha: string }
 export type LiveRun = { stage: Stage; runId: string; fingerprint: string }
 
@@ -189,7 +189,15 @@ const ship: Reducer = (state, event, options) => {
 const questions: Reducer = (state, event) => {
   switch (event.type) {
     case 'question.asked':
-      return { ...state, card: { card: 'question', reason: event.data.reason, options: event.data.options } }
+      return {
+        ...state,
+        card: {
+          card: 'question',
+          reason: event.data.reason,
+          options: event.data.options,
+          ...(event.data.text === undefined ? {} : { text: event.data.text }),
+        },
+      }
     case 'question.answered':
       return {
         ...state,

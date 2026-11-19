@@ -18,6 +18,9 @@ export const isProductOwner = (user: Doc | null | undefined): boolean => user?.r
 
 export const tenantIds = (user: Doc): number[] => ((user.tenants as { tenant: unknown }[] | undefined) ?? []).flatMap((t) => id(t.tenant) ?? [])
 
+export const mayWorkIn = (user: Doc, workspace: number): boolean =>
+  user.role === 'admin' || tenantIds(user).includes(workspace)
+
 export const assignmentOf = (user: Doc, workspace: number | string): Assignment | null => {
   if (!isProductOwner(user)) return null
   const row = ((user.assignments as Doc[] | undefined) ?? []).find((a) => id(a.workspace) === Number(workspace))

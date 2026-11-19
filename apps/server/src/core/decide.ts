@@ -1,9 +1,10 @@
 import { z } from 'zod'
 import { isBauherr } from '../lib/people'
 import { inLockedRecord } from './conn'
-import { DECISIONS, type DecisionEntry } from './decisions'
+import { AGENT_ASK, agentEntry, DECISIONS, type DecisionEntry } from './decisions'
 import { advance, type AdvanceDeps } from './engine'
-import { fold, next, type State, type Step } from './lifecycle'
+import { fold, type Card } from './fold'
+import { next, type State, type Step } from './lifecycle'
 import { appendEvent, readEvents, readRecord } from './record/store'
 
 export const NOTE_MAX = 1000
@@ -35,14 +36,17 @@ const askedOf = (step: Step, state: State): string | null => {
   return null
 }
 
+const choiceOf = (asked: string, choice: string, card: Card | null): DecisionEntry | undefined =>
+  asked === AGENT_ASK ? agentEntry(card, choice) : DECISIONS[asked]?.[choice]
+
 type Chosen = { entry: DecisionEntry; note: string }
 
-const entryOf = (asked: string | null, seq: number | undefined, decision: Decision): Chosen => {
+const entryOf = (asked: string | null, seq: number | undefined, decision: Decision, card: Card | null): Chosen => {
   if (asked !== decision.ask || seq !== decision.seq) {
     const now = asked ?? 'nothing'
     throw new StaleDecision(`The ticket is not asking ${decision.ask} (${now}): reload and decide again.`)
   }
-  const entry = DECISIONS[asked]?.[decision.choice]
+  const entry = choiceOf(asked, decision.choice, card)
   if (!entry) throw new InvalidDecision(`${decision.choice} is not an option of ${asked}: pick one of its options.`)
   const note = noteSchema.safeParse(decision.note)
   if ((entry.needsNote || decision.note !== undefined) && !note.success) {
@@ -65,7 +69,7 @@ export const decide = async (
     }
     const state = fold(await readEvents(tx, recordId), { productionGate: config.productionGate })
     const asked = askedOf(next(stored.record, state, config), state)
-    const { entry, note } = entryOf(asked, stored.card?.seq, decision)
+    const { entry, note } = entryOf(asked, stored.card?.seq, decision, state.card)
     const patch = state.patch
     const events = entry.events({ note, patchId: patch?.id ?? '', headSha: patch?.headSha ?? '' })
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })

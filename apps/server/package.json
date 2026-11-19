@@ -27,6 +27,7 @@
   "dependencies": {
     "@bauherr/adapters": "workspace:*",
     "@bauherr/runner": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@payloadcms/db-postgres": "3.92.1",
     "@payloadcms/next": "3.92.1",
     "@payloadcms/plugin-multi-tenant": "3.92.1",

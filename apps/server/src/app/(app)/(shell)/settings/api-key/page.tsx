@@ -1,15 +1,16 @@
 import { hasApiKey, listAgentKeys } from '../../../../../lib/api-key'
 import { Field, SettingsForm } from '../../../components/SettingsForm'
 import { Table } from '../../../components/ui/table'
-import { payloadClient, requireBauherr } from '../../../lib/session'
+import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { mintOwnAgentKey, revokeOwnAgentKey, revokeOwnKey, rotateOwnKey } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ApiKey() {
-  const user = await requireBauherr()
+  const { user, workspace } = await currentWorkspace()
   const payload = await payloadClient()
-  const [has, keys] = await Promise.all([hasApiKey(payload, user.id), listAgentKeys(payload, user)])
+  const mine = workspace ? listAgentKeys(payload, user, workspace.id) : []
+  const [has, keys] = await Promise.all([hasApiKey(payload, user.id), mine])
   return (
     <>
       <h2 className="heading">API keys</h2>
