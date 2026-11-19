@@ -6,6 +6,7 @@ import type {
 import { Conflict, type InlineComment, NotQueueableError, linkLabel } from './contracts.js';
 import { timedFetch } from './http.js';
 import { parseRelations, renderRelations } from './body-convention.js';
+import { githubCommentUpdatedAt, githubIssueFields, githubPullFields, githubReviewStamps } from './forge-fields.js';
 
 export interface GithubAuth {
   kind: 'pat' | 'app';
@@ -139,8 +140,12 @@ const summary = (i: any): TicketSummary => ({
   id: String(i.number), number: i.number, url: i.html_url, title: i.title, state: i.state,
   labels: i.labels.map((l: any) => (typeof l === 'string' ? l : l.name)),
   assignee: i.assignee?.login ?? null, assignees: (i.assignees ?? []).map((a: any) => a.login), updatedAt: i.updated_at,
+  ...githubIssueFields(i),
 });
-const comment = (c: any): Comment => ({ id: String(c.id), author: c.user?.login ?? '', body: c.body ?? '', createdAt: c.created_at });
+const comment = (c: any): Comment => ({
+  id: String(c.id), author: c.user?.login ?? '', body: c.body ?? '', createdAt: c.created_at,
+  updatedAt: githubCommentUpdatedAt(c),
+});
 const isIssue = (i: any): boolean => !i.pull_request;
 
 export class GithubBackend implements Backend {
@@ -180,7 +185,7 @@ class GithubTickets implements TicketSource {
     const [i, blockers] = await Promise.all([this.issue(id), this.blockers(id)]);
     const { body, relations } = parseRelations(i.body ?? '');
     return {
-      ...summary(i), body, author: i.user?.login ?? null,
+      ...summary(i), body,
       parent: i.parent_issue_url ? String(i.parent_issue_url).split('/').at(-1)! : null,
       blockedBy: [...new Set([...blockers.map((b) => String(b.number)), ...relations.blockedBy])],
       links: relations.links,
@@ -283,6 +288,7 @@ const pr = (p: any): PullRequest => ({
   number: p.number, url: p.html_url, title: p.title, body: p.body ?? '',
   state: p.merged_at ? 'merged' : p.state, head: p.head.ref, base: p.base.ref, headSha: p.head.sha,
   headRepo: p.head.repo?.full_name ?? '', baseRepo: p.base.repo?.full_name ?? '', draft: !!p.draft,
+  ...githubPullFields(p),
   ...(p.mergeable === false || p.mergeable_state === 'dirty' ? { mergeable: false } : p.mergeable === true ? { mergeable: true } : {}),
   ...(p.mergeable_state === 'behind' ? { behind: true } : {}),
   ...(p.merge_commit_sha && p.merged_at ? { mergeSha: p.merge_commit_sha } : {}),
@@ -349,6 +355,10 @@ class GithubForge implements Forge {
     const byHead = head ? `&head=${enc(`${repo.split('/')[0]}:${head}`)}` : '';
     return (await this.h.paginate(`/repos/${repo}/pulls?state=${state}&per_page=100${byHead}`)).map(pr);
   }
+  async listOpenPullRequests(repo: RepoRef, page: number, perPage: number) {
+    const query = `state=open&sort=updated&direction=desc&per_page=${perPage}&page=${page}`;
+    return (await this.h.json<unknown[]>('GET', `/repos/${repo}/pulls?${query}`)).map(pr);
+  }
   async listMergedPullRequests(repo: RepoRef, limit: number) {
     const out: PullRequest[] = [];
     for (let page = 1; out.length < limit && page <= 5; page++) {
@@ -368,7 +378,7 @@ class GithubForge implements Forge {
     const x = await this.h.json('POST', `/repos/${repo}/pulls/${n}/reviews`, {
       event: 'COMMENT', body: r.body, comments: r.comments.map((c) => ({ path: c.path, line: c.line, side: 'RIGHT', body: c.body })),
     });
-    return { id: String(x.id), author: x.user?.login ?? '', body: x.body ?? '', createdAt: x.submitted_at ?? '' };
+    return { id: String(x.id), author: x.user?.login ?? '', body: x.body ?? '', ...githubReviewStamps(x) };
   }
   async listReviewThreads(repo: RepoRef, n: number) {
     const [owner, name] = repo.split('/');
@@ -383,7 +393,7 @@ class GithubForge implements Forge {
     const reviews = (await this.h.paginate(`/repos/${repo}/pulls/${n}/reviews?per_page=100`)).filter((x) => x.body);
     return [
       ...(await this.h.paginate(`/repos/${repo}/issues/${n}/comments?per_page=100`)).map(comment),
-      ...reviews.map((x) => ({ id: `review-${x.id}`, author: x.user?.login ?? '', body: x.body as string, createdAt: x.submitted_at ?? '' })),
+      ...reviews.map((x) => ({ id: `review-${x.id}`, author: x.user?.login ?? '', body: x.body as string, ...githubReviewStamps(x) })),
     ];
   }
   async listPullRequestFiles(repo: RepoRef, n: number): Promise<PullRequestFile[]> {

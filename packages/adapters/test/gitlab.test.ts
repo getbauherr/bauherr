@@ -34,7 +34,8 @@ describe('gitlab tickets', () => {
       id: '7', number: 7, url: 'https://gitlab.test/g/p/-/issues/7', title: 'Dark theme', state: 'closed',
       labels: ['bauherr:stage:build', 'bauherr:close-reason:not_planned'], assignee: 'bauherr-bot', assignees: ['bauherr-bot', 'sebastian'],
       updatedAt: '2026-10-30T10:00:00Z', body: 'Body text', parent: '1', blockedBy: ['3'], links: ['https://gitlab.test/g/p/-/merge_requests/2'],
-      closeReason: 'not_planned', author: 'carol',
+      closeReason: 'not_planned', author: 'carol', createdAt: '2026-10-30T08:00:00Z',
+      authorTrusted: false, authorIsBot: false,
     });
   });
 
@@ -172,7 +173,8 @@ describe('gitlab tickets', () => {
 
   it('listSubTickets searches the description then filters exactly; frontier drops blocked ones', async () => {
     const rel = (parent: string, blocked: string[] = []) => `x\n\n<!-- bauherr:relations -->\nParent: #${parent}\n${blocked.map((b) => `Blocked by: #${b}`).join('\n')}\n<!-- /bauherr:relations -->`;
-    const issue = (iid: number, state: string, description: string) => ({ iid, state, description, labels: [], assignees: [], web_url: '', title: '', updated_at: '2026-10-30T09:00:00Z' });
+    const issue = (iid: number, state: string, description: string) => ({ iid, state, description, labels: [], assignees: [], web_url: '', title: '',
+      created_at: '2026-10-30T08:00:00Z', updated_at: '2026-10-30T09:00:00Z' });
     const all: Record<string, any> = {
       2: issue(2, 'opened', rel('1')), 3: issue(3, 'opened', rel('1', ['4'])), 4: issue(4, 'opened', ''), 5: issue(5, 'closed', rel('1')),
       6: issue(6, 'opened', rel('1', ['5'])), 10: issue(10, 'opened', rel('10')), 11: issue(11, 'opened', rel('11')),
@@ -252,6 +254,9 @@ describe('gitlab forge', () => {
     assert.deepEqual(pr, {
       number: 196, url: 'https://gitlab.test/g/p/-/merge_requests/196', title: 'feat: x', body: 'Refs #7', state: 'open', head: 'bauherr/7-1', base: 'main',
       headSha: 'abc123', headRepo: 'g/p', baseRepo: 'g/p', draft: true,
+      author: '', authorTrusted: false, authorIsBot: false,
+      createdAt: '2026-10-30T08:00:00Z', updatedAt: '2026-10-30T08:30:00Z',
+      labels: [], assignees: [], closes: [],
     });
     const fork = await forge.getPullRequest('g/p', 197);
     assert.deepEqual([fork.state, fork.headRepo, fork.baseRepo], ['closed', 'fork/p', 'g/p']);
