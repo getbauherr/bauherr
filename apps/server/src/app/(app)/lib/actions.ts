@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import { createLocalReq, generatePayloadCookie, logoutOperation } from 'payload'
 import { SESSION_COOKIE } from '../../../lib/oidc-session'
 import { clientIp, LoginBusy, signInWithPassword } from '../../../lib/login-lock'
-import { payloadClient, requirePerson, WS_COOKIE, workspacesOf } from './session'
+import { payloadClient, requireBauherr, WS_COOKIE, workspacesOf } from './session'
 
 export async function login(form: FormData) {
   const payload = await payloadClient()
@@ -34,7 +34,7 @@ export async function logout() {
 }
 
 export async function selectWorkspace(slug: string) {
-  if ((await workspacesOf(await requirePerson())).some((w) => w.slug === slug)) {
+  if ((await workspacesOf(await requireBauherr())).some((w) => w.slug === slug)) {
     ;(await cookies()).set(WS_COOKIE, slug, { path: '/', sameSite: 'lax', maxAge: 31536000 })
   }
   redirect('/')
