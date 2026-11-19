@@ -1,4 +1,3 @@
-import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { advance, MAX_ADVANCE_STEPS } from '../../src/core/engine'
@@ -57,7 +56,7 @@ describe('advance', () => {
     await e.work(id, 'builder', { goal: 'Fix it', open: true })
     const view = await e.view(id)
     expect(view).toMatchObject({ stage: 'brief', waitingOn: 'owner' })
-    expect(view.card).toEqual({ card: 'brief', reason: 'open-decision', options: [] })
+    expect(view.card).toEqual({ card: 'brief', reason: 'open-decision', options: [], seq: 4 })
   })
 
   it('waits on agents for the checks, then queues the verify run', async () => {
@@ -76,7 +75,7 @@ describe('advance', () => {
     expect(e.merges).toEqual([1])
     expect(view.types.slice(-2)).toEqual(['verify.passed', 'ship.merged'])
     expect(view).toMatchObject({ stage: 'ship', waitingOn: 'owner' })
-    expect(view.card).toEqual({ card: 'result', reason: 'result', options: [] })
+    expect(view.card).toEqual({ card: 'result', reason: 'result', options: [], seq: 11 })
   })
 
   it('records a failed merge as a failed ship run and tries again', async () => {
@@ -192,36 +191,6 @@ describe('submit', () => {
     expect(second.status).toBe('failed')
     expect((await readRecord(e.db.payload, id)).record.goal).toBe('')
     expect(count((await e.view(id)).types, 'intake.accepted')).toBe(0)
-  })
-
-  it('retries once from a fresh read when the record changed under it', async () => {
-    const id = await started()
-    const { run, token } = await claimed(id)
-    let applied = 0
-    const racing = defineModule({
-      stage: 'intake',
-      role: 'builder',
-      writes: ['handoff'],
-      resultSchema: z.object({ ok: z.boolean() }),
-      apply: () => {
-        applied++
-        return { patch: { handoff: 'done' }, events: [{ type: 'intake.accepted', data: {} }] }
-      },
-    })
-    const other = await e.db.payload.db.pool.connect()
-    await other.query('BEGIN')
-    await other.query('UPDATE "records" SET "version" = "version" + 1 WHERE "id" = $1', [id])
-    const pending = submit(run.id, token, { ok: true }, { ...e.deps(), modules: { intake: racing } })
-    const blocked = sql`SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock'`
-    while (Number((await e.db.payload.db.drizzle.execute(blocked)).rows[0]?.n) === 0) {
-      await new Promise((resolve) => globalThis.setTimeout(resolve, 20))
-    }
-    await other.query('COMMIT')
-    other.release()
-    const result = await pending
-    expect(result).toEqual({ status: 'accepted' })
-    expect(applied).toBe(2)
-    expect((await readRecord(e.db.payload, id)).record.handoff).toBe('done')
   })
 
   it('lets a patch through when the field is in writes', async () => {

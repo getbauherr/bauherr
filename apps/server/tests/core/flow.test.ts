@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { decide, StaleDecision } from '../../src/core/decide'
+import { decide, type Decision, StaleDecision } from '../../src/core/decide'
 import { advance } from '../../src/core/engine'
 import { fingerprint } from '../../src/core/lifecycle'
 import { readRecord } from '../../src/core/record/store'
@@ -22,6 +22,8 @@ beforeEach(async () => {
 })
 
 const owner = { id: 'u7' }
+const answer = async (id: number, d: Omit<Decision, 'seq'>) =>
+  decide(id, owner, { ...d, seq: await e.seq(id) }, e.deps())
 const begin = async () => {
   const id = await e.db.fresh()
   await advance(id, e.deps())
@@ -68,7 +70,7 @@ describe('a ticket from intake to done', () => {
     await e.work(id, 'verifier', { passed: true, patchId: 'p1', headSha: 'h1' })
     await expectView(id, 'ship', 'owner', resultCard)
     expect(e.merges).toEqual([12])
-    await decide(id, owner, { ask: 'result', choice: 'accept' }, e.deps())
+    await answer(id, { ask: 'result', choice: 'accept' })
     await expectView(id, 'done', 'nobody')
     expect((await e.view(id)).types).toEqual([
       'run.started', 'intake.accepted', 'run.started', 'brief.submitted', 'brief.approved', 'run.started',
@@ -80,7 +82,7 @@ describe('a ticket from intake to done', () => {
   it('stops at a Brief card for an open decision until the owner approves', async () => {
     const id = await toBrief(true)
     await expectView(id, 'brief', 'owner', { card: 'brief', reason: 'open-decision', options: [] })
-    await decide(id, owner, { ask: 'brief', choice: 'approve' }, e.deps())
+    await answer(id, { ask: 'brief', choice: 'approve' })
     await expectView(id, 'build', 'agents')
   })
 
@@ -95,7 +97,7 @@ describe('a ticket from intake to done', () => {
     await e.work(id, 'verifier', { passed: false, patchId: 'p3', headSha: 'h3' })
     const ask = { card: 'question', reason: 'verify-rounds', options: ['one-more-round', 'accept-as-is', 'discard'] }
     await expectView(id, 'build', 'owner', ask)
-    await decide(id, owner, { ask: 'question:verify-rounds', choice: 'one-more-round' }, e.deps())
+    await answer(id, { ask: 'question:verify-rounds', choice: 'one-more-round' })
     await expectView(id, 'build', 'agents')
     await patch(id, 4)
     await e.work(id, 'verifier', { passed: false, patchId: 'p4', headSha: 'h4' })
@@ -121,7 +123,7 @@ describe('a ticket from intake to done', () => {
     await expectView(id, 'intake', 'owner', ask)
     const before = (await runRows(id)).map((r) => String(r.fingerprint))
     const guidance = { ask: 'question:failed-runs', choice: 'retry-with-guidance', note: 'use the API' }
-    await decide(id, owner, guidance, e.deps())
+    await answer(id, guidance)
     await expectView(id, 'intake', 'agents')
     const rows = await runRows(id)
     const last = rows[rows.length - 1]
@@ -148,22 +150,23 @@ describe('a ticket from intake to done', () => {
   it('refuses to approve a Brief while the Result card is open', async () => {
     const id = await toResult()
     await expectView(id, 'ship', 'owner', resultCard)
-    await expect(decide(id, owner, { ask: 'brief', choice: 'approve' }, e.deps())).rejects.toThrow(StaleDecision)
+    await expect(answer(id, { ask: 'brief', choice: 'approve' })).rejects.toThrow(StaleDecision)
     await expectView(id, 'ship', 'owner', resultCard)
   })
 
   it('holds production after acceptance until the owner approves it', async () => {
     e.config = { ...e.config, productionGate: true }
     const id = await toResult()
-    await decide(id, owner, { ask: 'result', choice: 'accept' }, e.deps())
+    await answer(id, { ask: 'result', choice: 'accept' })
     const ask = { card: 'question', reason: 'production', options: ['approve', 'hold'] }
     await expectView(id, 'ship', 'owner', ask)
-    await decide(id, owner, { ask: 'question:production', choice: 'hold' }, e.deps())
-    await expectView(id, 'ship', 'owner')
-    await expect(decide(id, owner, { ask: 'question:production', choice: 'approve' }, e.deps())).rejects.toThrow(
+    await answer(id, { ask: 'question:production', choice: 'hold' })
+    const held = { card: 'question', reason: 'production-held', options: ['approve-production'], seq: 15 }
+    await expectView(id, 'ship', 'owner', held)
+    await expect(answer(id, { ask: 'question:production', choice: 'approve' })).rejects.toThrow(
       StaleDecision,
     )
-    await decide(id, owner, { ask: 'production-held', choice: 'approve-production' }, e.deps())
+    await answer(id, { ask: 'production-held', choice: 'approve-production' })
     await expectView(id, 'done', 'nobody')
     expect((await e.view(id)).types.slice(-5)).toEqual([
       'result.accepted', 'question.asked', 'question.answered', 'production.held', 'production.approved',

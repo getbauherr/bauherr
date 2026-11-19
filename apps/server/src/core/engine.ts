@@ -25,7 +25,8 @@ export type AdvanceDeps = {
   merge: MergeFn
 }
 
-type Ctx = { deps: AdvanceDeps; stored: StoredRecord; state: State }
+type Ctx = { deps: AdvanceDeps; stored: StoredRecord; state: State; seq: number }
+type Raised = Omit<StoredCard, 'seq'>
 type Outcome = 'repeat' | 'stop'
 
 const WAITING: Record<Extract<Step, { kind: 'wait' }>['on'], WaitingOn> = {
@@ -36,12 +37,21 @@ const WAITING: Record<Extract<Step, { kind: 'wait' }>['on'], WaitingOn> = {
   owner: 'owner',
 }
 
+const HELD: Raised = { card: 'question', reason: 'production-held', options: ['approve-production'] }
+
 const append = (ctx: Ctx, event: AppEvent) =>
   appendEvent(ctx.deps.payload, ctx.stored.id, { ...event, actor: 'factory' })
 
-const project = async (ctx: Ctx, waitingOn: WaitingOn, card: StoredCard | null, stage: Stage = ctx.state.stage) => {
+const raised = (ctx: Ctx, card: Raised | null, seq: number): StoredCard | null => {
+  if (card === null) return null
+  const held = ctx.stored.card
+  const same = held !== null && JSON.stringify({ ...held, seq: 0 }) === JSON.stringify({ ...card, seq: 0 })
+  return { ...card, seq: same ? held.seq : seq }
+}
+
+const project = async (ctx: Ctx, waitingOn: WaitingOn, card: Raised | null, stage: Stage = ctx.state.stage) => {
   await setProjection(ctx.deps.payload, ctx.stored.id, { stage, waitingOn })
-  await setCard(ctx.deps.payload, ctx.stored.id, card)
+  await setCard(ctx.deps.payload, ctx.stored.id, raised(ctx, card, ctx.seq))
 }
 
 const runStep = async (step: Extract<Step, { kind: 'run' }>, ctx: Ctx): Promise<Outcome> => {
@@ -57,7 +67,10 @@ const runStep = async (step: Extract<Step, { kind: 'run' }>, ctx: Ctx): Promise<
 
 const cardStep = async (step: Extract<Step, { kind: 'card' }>, ctx: Ctx): Promise<Outcome> => {
   const { card, reason, options } = step
-  if (card === 'question') await append(ctx, { type: 'question.asked', data: { reason, options } })
+  if (card === 'question') {
+    await append(ctx, { type: 'question.asked', data: { reason, options } })
+    ctx.seq++
+  }
   await project(ctx, 'owner', { card, reason, options })
   return 'stop'
 }
@@ -76,7 +89,8 @@ const attemptMerge = async (ctx: Ctx): Promise<AppEvent> => {
 }
 
 const waitStep = async (step: Extract<Step, { kind: 'wait' }>, ctx: Ctx): Promise<Outcome> => {
-  await project(ctx, WAITING[step.on], step.on === 'owner' ? ctx.state.card : null)
+  const owner = step.on === 'owner'
+  await project(ctx, WAITING[step.on], owner ? (ctx.state.card ?? HELD) : null)
   return 'stop'
 }
 
@@ -104,8 +118,10 @@ export const advance = async (recordId: number, deps: AdvanceDeps): Promise<void
   const config = await deps.configFor(recordId)
   for (let i = 0; i < MAX_ADVANCE_STEPS; i++) {
     const stored = await readRecord(deps.payload, recordId)
-    const state = fold(await readEvents(deps.payload, recordId), { productionGate: config.productionGate })
-    const outcome = await handle(next(stored.record, state, config), { deps, stored, state })
+    const events = await readEvents(deps.payload, recordId)
+    const state = fold(events, { productionGate: config.productionGate })
+    const ctx = { deps, stored, state, seq: events.length }
+    const outcome = await handle(next(stored.record, state, config), ctx)
     if (outcome === 'stop') return
   }
 }

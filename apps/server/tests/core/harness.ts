@@ -85,6 +85,7 @@ export type Engine = {
   work: (recordId: number, role: Role, result: unknown) => Promise<Awaited<ReturnType<typeof submit>>>
   view: (recordId: number) => Promise<{ stage: string; waitingOn: string; card: unknown; types: string[] }>
   checks: (recordId: number, passed?: boolean) => Promise<void>
+  seq: (recordId: number) => Promise<number>
   drain: () => Promise<void>
   drop: () => Promise<void>
 }
@@ -128,6 +129,7 @@ export const openEngine = async (suite: string, modules: Modules = TEST_MODULES)
       await appendEvent(db.payload, recordId, { type: 'checks.finished', data: { patchId, passed }, actor: 'factory' })
       await advance(recordId, engine.deps())
     },
+    seq: async (recordId) => (await readRecord(db.payload, recordId)).card?.seq ?? -1,
     drop: () => db.drop(),
     drain: async () => {
       const live = sql`UPDATE "stage_runs" SET "status" = 'released' WHERE "status" IN ('queued', 'claimed')`

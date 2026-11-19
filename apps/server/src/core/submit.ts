@@ -1,19 +1,19 @@
 import type { z } from 'zod'
+import { inLockedRecord, type Conn } from './conn'
 import { advance, type AdvanceDeps } from './engine'
-import type { Applied, LifecycleModule, Modules, Problem } from './module'
+import type { LifecycleModule, Modules, Problem } from './module'
 import {
   CriteriaEditNotAllowed,
   FieldNotWritable,
   InvalidPatch,
   ProofRequired,
   StatusChangeNotAllowed,
-  VersionConflict,
 } from './record/errors'
 import { appendEvent, patchRecord, readRecord } from './record/store'
 import { ModuleMissing } from './run/errors'
 import { authorize, expire, release, type Expired } from './run/leases'
 import type { Run } from './run/schema'
-import { finishRun, markRefused } from './run/store'
+import { finishRun, markRefused, readRun } from './run/store'
 
 export type SubmitDeps = AdvanceDeps & { modules: Modules }
 export type SubmitResult = { status: 'accepted' } | { status: 'retry' | 'failed'; problems: Problem[] }
@@ -28,53 +28,53 @@ const refusalOf = (error: unknown): Problem[] | null =>
     ? [{ path: '', message: error.message }]
     : null
 
-const released = (deps: AdvanceDeps, run: { id: number; recordId: number; stage: Run['stage'] }) =>
-  appendEvent(deps.payload, run.recordId, {
+const released = (conn: Conn, run: { id: number; recordId: number; stage: Run['stage'] }) =>
+  appendEvent(conn, run.recordId, {
     type: 'run.released',
     data: { stage: run.stage, runId: String(run.id) },
     actor: 'factory',
   })
 
-const refuse = async (run: Run, problems: Problem[], deps: SubmitDeps): Promise<SubmitResult> => {
+const refuse = async (tx: Conn, run: Run, problems: Problem[], now: Date): Promise<SubmitResult> => {
   if (run.attempt === 0) {
-    await markRefused(deps.payload, run.id)
+    await markRefused(tx, run.id)
     return { status: 'retry', problems }
   }
-  await finishRun(deps.payload, run.id, { status: 'failed', error: JSON.stringify(problems), now: deps.now })
-  await appendEvent(deps.payload, run.recordId, {
+  await finishRun(tx, run.id, { status: 'failed', error: JSON.stringify(problems), now })
+  await appendEvent(tx, run.recordId, {
     type: 'run.failed',
     data: { stage: run.stage, runId: String(run.id), reason: 'invalid-result' },
     actor: 'factory',
   })
-  await advance(run.recordId, deps)
   return { status: 'failed', problems }
 }
 
-const writeOnce = async (run: Run, module: LifecycleModule, data: unknown, deps: SubmitDeps) => {
-  const stored = await readRecord(deps.payload, run.recordId)
-  let applied: Applied
+const write = async (tx: Conn, run: Run, module: LifecycleModule, data: unknown): Promise<Problem[] | null> => {
+  const stored = await readRecord(tx, run.recordId)
   try {
-    applied = module.apply(stored.record, data, run)
+    const applied = module.apply(stored.record, data, run)
     const by = { stage: run.stage, runId: String(run.id) }
     const input = { expectedVersion: stored.version, writes: module.writes, patch: applied.patch, by }
-    await patchRecord(deps.payload, run.recordId, input)
+    await patchRecord(tx, run.recordId, input)
+    for (const event of applied.events) await appendEvent(tx, run.recordId, { ...event, actor: 'agent' })
+    return null
   } catch (error) {
     const problems = refusalOf(error)
     if (problems) return problems
     throw error
   }
-  for (const event of applied.events) await appendEvent(deps.payload, run.recordId, { ...event, actor: 'agent' })
-  return null
 }
 
-const write = async (run: Run, token: string, module: LifecycleModule, data: unknown, deps: SubmitDeps) => {
-  try {
-    return await writeOnce(run, module, data, deps)
-  } catch (error) {
-    if (!(error instanceof VersionConflict)) throw error
-    await authorize(deps.payload, run.id, token)
-    return writeOnce(run, module, data, deps)
-  }
+const submitLocked = async (tx: Conn, run: Run, token: string, rawResult: unknown, deps: SubmitDeps) => {
+  const current = await authorize(tx, run.id, token)
+  const module = deps.modules[current.stage]
+  if (!module) throw new ModuleMissing(`No module is registered for stage ${current.stage}: register one.`)
+  const parsed = module.resultSchema.safeParse(rawResult)
+  if (!parsed.success) return refuse(tx, current, problemsOf(parsed.error), deps.now)
+  const problems = await write(tx, current, module, parsed.data)
+  if (problems) return refuse(tx, current, problems, deps.now)
+  await finishRun(tx, current.id, { status: 'submitted', result: parsed.data, now: deps.now })
+  return { status: 'accepted' } satisfies SubmitResult
 }
 
 export const submit = async (
@@ -83,27 +83,25 @@ export const submit = async (
   rawResult: unknown,
   deps: SubmitDeps,
 ): Promise<SubmitResult> => {
-  const run = await authorize(deps.payload, runId, token)
-  const module = deps.modules[run.stage]
-  if (!module) throw new ModuleMissing(`No module is registered for stage ${run.stage}: register one.`)
-  const parsed = module.resultSchema.safeParse(rawResult)
-  if (!parsed.success) return refuse(run, problemsOf(parsed.error), deps)
-  const problems = await write(run, token, module, parsed.data, deps)
-  if (problems) return refuse(run, problems, deps)
-  await finishRun(deps.payload, run.id, { status: 'submitted', result: parsed.data, now: deps.now })
-  await advance(run.recordId, deps)
-  return { status: 'accepted' }
+  const run = await readRun(deps.payload, runId)
+  const result = await inLockedRecord(deps.payload, run.recordId, (tx) =>
+    submitLocked(tx, run, token, rawResult, deps),
+  )
+  if (result.status !== 'retry') await advance(run.recordId, deps)
+  return result
 }
 
 export const releaseRun = async (runId: number, token: string, deps: AdvanceDeps): Promise<void> => {
   const run = await release(deps.payload, runId, token, deps.now)
-  await released(deps, run)
+  await released(deps.payload, run)
   await advance(run.recordId, deps)
 }
 
 export const expireRuns = async (deps: AdvanceDeps): Promise<Expired[]> => {
   const expired = await expire(deps.payload, deps.now)
-  for (const run of expired) await released(deps, { id: run.runId, recordId: run.recordId, stage: run.stage })
+  for (const run of expired) {
+    await released(deps.payload, { id: run.runId, recordId: run.recordId, stage: run.stage })
+  }
   for (const recordId of new Set(expired.map((run) => run.recordId))) await advance(recordId, deps)
   return expired
 }

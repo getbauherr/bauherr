@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { inLockedRecord } from './conn'
 import { DECISIONS, type DecisionEntry } from './decisions'
 import { advance, type AdvanceDeps } from './engine'
 import { fold, next, type State, type Step } from './lifecycle'
@@ -15,7 +16,7 @@ export class DecisionError extends Error {
 export class StaleDecision extends DecisionError {}
 export class InvalidDecision extends DecisionError {}
 
-export type Decision = { ask: string; choice: string; note?: string }
+export type Decision = { ask: string; choice: string; seq: number; note?: string }
 
 const noteSchema = z.string().trim().min(1).max(NOTE_MAX)
 
@@ -27,8 +28,10 @@ const askedOf = (step: Step, state: State): string | null => {
   return null
 }
 
-const entryOf = (asked: string | null, decision: Decision): { entry: DecisionEntry; note: string } => {
-  if (asked !== decision.ask) {
+type Chosen = { entry: DecisionEntry; note: string }
+
+const entryOf = (asked: string | null, seq: number | undefined, decision: Decision): Chosen => {
+  if (asked !== decision.ask || seq !== decision.seq) {
     const now = asked ?? 'nothing'
     throw new StaleDecision(`The ticket is not asking ${decision.ask} (${now}): reload and decide again.`)
   }
@@ -48,10 +51,14 @@ export const decide = async (
   deps: AdvanceDeps,
 ): Promise<void> => {
   const config = await deps.configFor(recordId)
-  const stored = await readRecord(deps.payload, recordId)
-  const state = fold(await readEvents(deps.payload, recordId), { productionGate: config.productionGate })
-  const { entry, note } = entryOf(askedOf(next(stored.record, state, config), state), decision)
-  const events = entry.events({ note, patchId: state.patch?.id ?? '', headSha: state.patch?.headSha ?? '' })
-  for (const event of events) await appendEvent(deps.payload, recordId, { ...event, actor: 'owner', actorId: by.id })
+  await inLockedRecord(deps.payload, recordId, async (tx) => {
+    const stored = await readRecord(tx, recordId)
+    const state = fold(await readEvents(tx, recordId), { productionGate: config.productionGate })
+    const asked = askedOf(next(stored.record, state, config), state)
+    const { entry, note } = entryOf(asked, stored.card?.seq, decision)
+    const patch = state.patch
+    const events = entry.events({ note, patchId: patch?.id ?? '', headSha: patch?.headSha ?? '' })
+    for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: by.id })
+  })
   await advance(recordId, deps)
 }

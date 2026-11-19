@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { sql } from '@payloadcms/db-postgres'
-import type { Payload } from 'payload'
+import type { Conn } from '../conn'
 import type { Stage } from '../events'
 import type { Role } from '../lifecycle'
 import { RecordNotFound } from '../record/errors'
@@ -19,7 +19,7 @@ const hashOf = (token: string): string => createHash('sha256').update(token).dig
 const leaseEnd = (now: Date): string => new Date(now.getTime() + LEASE_MS).toISOString()
 
 export const enqueue = async (
-  payload: Payload,
+  payload: Conn,
   recordId: number,
   input: NewRun,
 ): Promise<{ run: Run; created: boolean }> => {
@@ -46,7 +46,7 @@ export const enqueue = async (
   return { run: existing, created: false }
 }
 
-export const claim = async (payload: Payload, input: ClaimInput): Promise<Claimed | null> => {
+export const claim = async (payload: Conn, input: ClaimInput): Promise<Claimed | null> => {
   const token = randomBytes(32).toString('hex')
   const updated = await payload.db.drizzle.execute(sql`
     UPDATE "stage_runs" SET "status" = 'claimed', "leased_by" = ${input.by}, "lease_token_hash" = ${hashOf(token)},
@@ -61,7 +61,7 @@ export const claim = async (payload: Payload, input: ClaimInput): Promise<Claime
   return row ? { run: toRun(row), token } : null
 }
 
-const refusal = async (payload: Payload, runId: number): Promise<never> => {
+const refusal = async (payload: Conn, runId: number): Promise<never> => {
   const run = await readRun(payload, runId)
   if (run.status !== 'claimed') {
     throw new RunNotClaimed(`Run ${runId} is ${run.status}, not claimed: stop working on it.`)
@@ -69,7 +69,7 @@ const refusal = async (payload: Payload, runId: number): Promise<never> => {
   throw new WrongLeaseToken(`The lease token does not belong to run ${runId}: use the token next_work returned.`)
 }
 
-export const authorize = async (payload: Payload, runId: number, token: string): Promise<Run> => {
+export const authorize = async (payload: Conn, runId: number, token: string): Promise<Run> => {
   const found = await payload.db.drizzle.execute(sql`
     SELECT ${RUN_COLUMNS} FROM "stage_runs"
     WHERE "id" = ${runId} AND "status" = 'claimed' AND "lease_token_hash" = ${hashOf(token)}`)
@@ -78,7 +78,7 @@ export const authorize = async (payload: Payload, runId: number, token: string):
 }
 
 export const heartbeat = async (
-  payload: Payload,
+  payload: Conn,
   runId: number,
   token: string,
   options: { now: Date; step?: string },
@@ -98,7 +98,7 @@ export const heartbeat = async (
   return row ? toRun(row) : refusal(payload, runId)
 }
 
-export const release = async (payload: Payload, runId: number, token: string, now: Date): Promise<Run> => {
+export const release = async (payload: Conn, runId: number, token: string, now: Date): Promise<Run> => {
   const updated = await payload.db.drizzle.execute(sql`
     UPDATE "stage_runs" SET "status" = 'released', "finished_at" = ${now.toISOString()}, "updated_at" = now()
     WHERE "id" = ${runId} AND "status" = 'claimed' AND "lease_token_hash" = ${hashOf(token)}
@@ -107,7 +107,7 @@ export const release = async (payload: Payload, runId: number, token: string, no
   return row ? toRun(row) : refusal(payload, runId)
 }
 
-export const expire = async (payload: Payload, now: Date): Promise<Expired[]> => {
+export const expire = async (payload: Conn, now: Date): Promise<Expired[]> => {
   const updated = await payload.db.drizzle.execute(sql`
     UPDATE "stage_runs" SET "status" = 'released', "finished_at" = ${now.toISOString()}, "updated_at" = now()
     WHERE "status" = 'claimed' AND "lease_expires_at" < ${now.toISOString()}

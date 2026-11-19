@@ -1,5 +1,5 @@
 import { sql } from '@payloadcms/db-postgres'
-import type { Payload } from 'payload'
+import type { Conn } from '../conn'
 import { z } from 'zod'
 import { ACTORS, parseEvent, stageSchema, type Actor, type AppEvent, type Stage } from '../events'
 import { CorruptRecord, InvalidPatch, RecordNotFound, VersionConflict } from './errors'
@@ -20,6 +20,7 @@ export const cardSchema = z.object({
   card: z.enum(['brief', 'result', 'question']),
   reason: z.string(),
   options: z.array(z.string()),
+  seq: z.number().int().min(0),
 })
 export type StoredCard = z.infer<typeof cardSchema>
 
@@ -79,7 +80,7 @@ const parseRecord = (id: number, data: unknown): TicketRecord => {
   throw new CorruptRecord(`Record ${id} does not parse at ${describeIssue(parsed.error)}: repair the stored data.`)
 }
 
-export const readRecord = async (payload: Payload, id: number): Promise<StoredRecord> => {
+export const readRecord = async (payload: Conn, id: number): Promise<StoredRecord> => {
   const result = await payload.db.drizzle.execute(
     sql`SELECT "id", "version", "stage", "waiting_on", "rank", "card", "data" FROM "records" WHERE "id" = ${id}`,
   )
@@ -97,7 +98,7 @@ export const readRecord = async (payload: Payload, id: number): Promise<StoredRe
   }
 }
 
-export const createRecord = async (payload: Payload, input: NewRecord): Promise<StoredRecord> => {
+export const createRecord = async (payload: Conn, input: NewRecord): Promise<StoredRecord> => {
   const { workspace, product, source, type } = input
   const db = payload.db.drizzle
   const inserted = await db.execute(sql`
@@ -115,7 +116,7 @@ export const createRecord = async (payload: Payload, input: NewRecord): Promise<
   return readRecord(payload, idRowSchema.parse(existing.rows[0]).id)
 }
 
-export const patchRecord = async (payload: Payload, id: number, input: PatchInput): Promise<number> => {
+export const patchRecord = async (payload: Conn, id: number, input: PatchInput): Promise<number> => {
   const { expectedVersion, writes, patch, by } = input
   checkWrites(patch, writes)
   const current = await readRecord(payload, id)
@@ -137,7 +138,7 @@ export const patchRecord = async (payload: Payload, id: number, input: PatchInpu
 }
 
 export const setProjection = async (
-  payload: Payload,
+  payload: Conn,
   id: number,
   projection: { stage: Stage; waitingOn: WaitingOn },
 ): Promise<void> => {
@@ -150,7 +151,7 @@ export const setProjection = async (
   if (!updated.rows[0]) throw new RecordNotFound(`Record ${id} does not exist: check the id.`)
 }
 
-export const setCard = async (payload: Payload, id: number, card: StoredCard | null): Promise<void> => {
+export const setCard = async (payload: Conn, id: number, card: StoredCard | null): Promise<void> => {
   const value = card === null ? null : json(cardSchema.parse(card))
   const updated = await payload.db.drizzle.execute(
     sql`UPDATE "records" SET "card" = ${value}::jsonb, "updated_at" = now() WHERE "id" = ${id} RETURNING "id"`,
@@ -158,7 +159,7 @@ export const setCard = async (payload: Payload, id: number, card: StoredCard | n
   if (!updated.rows[0]) throw new RecordNotFound(`Record ${id} does not exist: check the id.`)
 }
 
-export const setRank = async (payload: Payload, id: number, rank: number): Promise<void> => {
+export const setRank = async (payload: Conn, id: number, rank: number): Promise<void> => {
   const updated = await payload.db.drizzle.execute(
     sql`UPDATE "records" SET "rank" = ${z.number().parse(rank)}, "updated_at" = now()
       WHERE "id" = ${id} RETURNING "id"`,
@@ -178,7 +179,7 @@ const toStoredEvent = (row: unknown): StoredEvent => {
   }
 }
 
-export const appendEvent = async (payload: Payload, recordId: number, event: NewEvent): Promise<StoredEvent> => {
+export const appendEvent = async (payload: Conn, recordId: number, event: NewEvent): Promise<StoredEvent> => {
   const valid = parseEvent({ type: event.type, data: event.data })
   const actor = z.enum(ACTORS).parse(event.actor)
   const inserted = await payload.db.drizzle.execute(sql`
@@ -192,7 +193,7 @@ export const appendEvent = async (payload: Payload, recordId: number, event: New
   return toStoredEvent(row)
 }
 
-export const readEvents = async (payload: Payload, recordId: number): Promise<StoredEvent[]> => {
+export const readEvents = async (payload: Conn, recordId: number): Promise<StoredEvent[]> => {
   const result = await payload.db.drizzle.execute(sql`
     SELECT "id", "record_id", "type", "actor", "actor_id", "data", "created_at"
     FROM "events" WHERE "record_id" = ${recordId} ORDER BY "id"`)
