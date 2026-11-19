@@ -27,7 +27,7 @@ x-app: &app
     PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
     BAUHERR_ENABLE_ADMIN: ${BAUHERR_ENABLE_ADMIN:-}
     BAUHERR_MAX_RUNS: ${BAUHERR_MAX_RUNS:-4}
-    # Postgres pool per container (app, worker, poller); see docs/first-run.md "Database connections".
+    # Postgres pool per container (app, poller); see docs/first-run.md "Database connections".
     DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
     DATABASE_POOL_TIMEOUT_MS: ${DATABASE_POOL_TIMEOUT_MS:-10000}
     # Sign-in IP limit, see docs/auth.md: failed sign-ins per IP and minute; proxies in front that append to x-forwarded-for (0 = limit off).
@@ -75,7 +75,7 @@ services:
   gateway:
     # Never downgrade this image: v1.7.0 migrated the request-log database to migration 3 and an older image then crash-loops (docs/gateway.md).
     image: cr.agentgateway.dev/agentgateway:v1.7.0@sha256:60216aafb03d37f94e952ff3d51d2f630a65b10ecaebdc0a864882f92610c45b
-    user: "0" # provider key files are 0600 and written by root in app/worker
+    user: "0" # provider key files are 0600 and written by root in app/poller
     command: [-f, /gateway/config.yaml]
     ports: ["127.0.0.1:${GATEWAY_PORT:-4000}:4000"] # loopback only (never 0.0.0.0), host port from GATEWAY_PORT: sessions on this machine; remote sessions go through a TLS proxy (docs/gateway.md). Admin API :15000 stays internal; only the opt-in `gateway-ui` profile below forwards it, on loopback
     volumes: ["bauherr-gateway:/gateway:ro"]
@@ -91,16 +91,7 @@ services:
       interval: 10s
       retries: 12
       start_period: 30s
-  worker:
-    <<: *app
-    command: [pnpm, jobs]
-    depends_on:
-      app: {condition: service_healthy} # app applies prod migrations on boot
-    healthcheck:
-      test: [CMD-SHELL, "pgrep -f jobs-runs"]
-      interval: 15s
-      retries: 3
-  poller: # own process: a long agent Run in `worker` must not delay polls
+  poller:
     <<: *app
     command: [pnpm, jobs:poll]
     depends_on:
