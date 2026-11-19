@@ -37,6 +37,6 @@ Most of the 118 features are deleted with the legacy engine, and every `guards` 
 ## What a module on the new core needs
 
 - Contracts: Learn writes a guard (check, rule line or owner statement); the module only lists them per feature. It writes nothing on the ticket record.
-- Lift almost unchanged: `parseMap`, `areaOf`, `escapeTags`, `render`, `resolveFeatures`, `classify`, and the path-exists and unique-id checks in `feature-map.test.ts`. `docs/references.md` and its `sources` check stay as they are.
+- Lift almost unchanged: `parseMap`, `areaOf`, `escapeTags`, `render`, `resolveFeatures`, `classify`, and the path-exists and unique-id checks in `feature-map.test.ts`. `docs/references.md` is now a table of source, practice and enforcing file; `repo-files.test.ts` checks its paths, and the `sources` frontmatter check is gone.
 - Redesign: the feature list itself (start from the surviving features, not the 118); `guards` as a link to a Learn entry rather than free text; the route and MCP-tool coverage checks against the nine new tools.
 - Traps: hand-written `source` paths rot, so the map needs the path-exists test (the old one fails on any rename). Coverage of every page and tool forces a feature entry per page, which is why the map grew to 118. `drive` is `null` for 12 features, so `pnpm verify` cannot run them live. Generated page output in two places can disagree (inferred; `docs/features.md` is not in the tree).

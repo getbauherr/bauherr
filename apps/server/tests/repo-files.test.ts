@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import { LIB_ALLOWLIST } from '../../../eslint.config.mjs'
@@ -86,4 +86,16 @@ test('the strict compiler project includes exactly the allowlisted lib files', (
       'must list the same files. ' +
       'Fix the strict errors in a file before you allow it, and remove a file from both when it cannot pass.',
   ).toEqual(allowed)
+})
+
+test('every path in the Enforced by column of docs/references.md exists', () => {
+  const rows = read('docs/references.md').split('\n').filter((l) => l.startsWith('|')).slice(2)
+  const paths = rows.flatMap((row) => [...(row.split('|')[3] ?? '').matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? ''))
+  const missing = paths.filter((p) => !existsSync(join(repoRoot, p)))
+  expect(
+    missing,
+    'docs/references.md names a file that does not exist in the Enforced by column. ' +
+      'Fix the path, or remove the row when no file enforces the practice any more.',
+  ).toEqual([])
+  expect(paths.length).toBeGreaterThan(0)
 })

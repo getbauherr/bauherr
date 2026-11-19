@@ -1,21 +1,18 @@
 # Credits and references
 
-Bauherr collects agent-development practice from these people. Each entry has an id, the author, the title, the link and one line on what it shaped. A skill or rule cites the id in its `sources` frontmatter.
+Bauherr keeps its rules in tools, not in prose. This page credits the outside sources the rules come from and points at the file that checks each one. A practice is listed only when a file in this repository enforces or states it today.
 
-| id | Author | Title | URL | Shaped in Bauherr |
-|---|---|---|---|---|
-| `tan-2026` | Lauren Tan | "All Code Is Slop (Except Mine)", AI Engineer Code Summit 2026 | [ai.engineer](https://ai.engineer/talks/O_zcc6Xl12g-all-code-is-slop-except-mine), [YouTube](https://www.youtube.com/watch?v=O_zcc6Xl12g) | Trust pyramid, comment ban, every correction becomes a check, feature map, proof-based review |
-| `pstack` | poteto | pstack plugin | [github.com/cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack) | Verify skill per Product with launch, doctor, drive, evidence and cleanup steps, feature map fields reach, drive and gotchas, `/correct` order of fixes, comment allowlist, blast radius |
-| `osmani-factories` | Addy Osmani | Software Factories, Light and Dark | [addyosmani.com](https://addyosmani.com/blog/software-factories/) | The factory framing: autonomy bounded by explicit gates and humans at the checkpoints |
-| `osmani-judgment` | Addy Osmani | Human judgment doesn't leave the software factory. It relocates. | [addyosmani.com](https://addyosmani.com/blog/human-judgment-doesnt-leave-the-software/) | Risk zones: judgment moves to plans, proofs and acceptance instead of line-by-line review |
-| `osmani-review` | Addy Osmani | Agentic Code Review | [addyosmani.com](https://addyosmani.com/blog/agentic-code-review/) | Evidence packets on every merge request, maker/checker split between build and review |
-| `osmani-quality` | Addy Osmani | Agentic Code Quality | [addyosmani.com](https://addyosmani.com/blog/agentic-code-quality/) | Verification budget per change and the fake-green guard against checks that pass without proving anything |
-| `osmani-loops` | Addy Osmani | Practical Loop Engineering | [addyosmani.com](https://addyosmani.com/blog/practical-loop-engineering/) | Run outcomes that route Tickets, bounded retries and review rounds |
-| `osmani-orchestration-tax` | Addy Osmani | The Orchestration Tax | [addyosmani.com](https://addyosmani.com/blog/orchestration-tax/) | Fleet sized to the review rate, WIP limits per stage |
-| `osmani-long-running` | Addy Osmani | Long-running Agents | [addyosmani.com](https://addyosmani.com/blog/long-running-agents/) | Worklog, leases and heartbeats so a Run survives a dead session |
-| `osmani-harness` | Addy Osmani | Agent Harness Engineering | [addyosmani.com](https://addyosmani.com/blog/agent-harness-engineering/) | The pack of skills, rules and hooks as the harness every Run starts with |
-| `osmani-skills` | Addy Osmani | Agent Skills | [addyosmani.com](https://addyosmani.com/blog/agent-skills/) | Skills as small, cited, linted files with an eval |
-| `osmani-autonomy` | Addy Osmani | Agentic Autonomy Levels | [addyosmani.com](https://addyosmani.com/blog/agentic-autonomy-levels/) | Run mode per stage and the human checkpoints as a level the owner chooses |
-| `osmani-brownfield` | Addy Osmani | Brownfield Agentic Engineering | [addyosmani.com](https://addyosmani.com/blog/brownfield-agentic-engineering/) | Knowledge repo and path sets so agents learn an existing codebase |
-| `osmani-intent` | Addy Osmani | The Intent Debt | [addyosmani.com](https://addyosmani.com/blog/intent-debt/) | Plans with a TL;DR and acceptance criteria that keep intent written down, trust metrics in Insights |
-| `anthropic-code-review` | Anthropic | Claude Code Review | [code-review](https://code.claude.com/docs/en/code-review.md), [customize](https://code.claude.com/docs/en/code-review-customize) | Find, verify, rank, post review pipeline; Important, Nit and Pre-existing findings; `REVIEW.md` read from the base branch |
+| Source | What Bauherr takes from it | Enforced by |
+|---|---|---|
+| Lauren Tan, talk [All Code Is Slop (Except Mine)](https://www.youtube.com/watch?v=O_zcc6Xl12g), AI Engineer Code Summit, 2026-11-11 | Put a rule into code or a check before prose. Ban comments. Directories are import boundaries. A lint message names the fix. Clean up what an agent could copy. | `eslint.config.mjs`, `apps/server/tests/no-comments.test.ts`, `apps/server/tests/lint-rules.test.ts`, `eslint-suppressions.json`, `AGENTS.md` |
+| Lauren Tan, [pstack](https://github.com/cursor/plugins/tree/main/pstack) | A comment allowlist. A disable directive needs a reason. | `pack/rules/no-comments.md`, `apps/server/tests/no-comments.test.ts` |
+| Addy Osmani, [Agentic Code Quality](https://addyosmani.com/blog/agentic-code-quality/) | Size and complexity limits enforced by lint. | `eslint.config.mjs` |
+| Addy Osmani, [Agent Harness Engineering](https://addyosmani.com/blog/agent-harness-engineering/) | A short agents file. Hooks that are silent on success. | `AGENTS.md`, `apps/server/tests/repo-files.test.ts`, `.githooks/` |
+| Addy Osmani, [Brownfield Agentic Engineering](https://addyosmani.com/blog/brownfield-agentic-engineering/) | Write down only what the code cannot say. Move a rule into a lint rule, hook, type or test. | `apps/server/tests/repo-files.test.ts`, `eslint.config.mjs` |
+| Addy Osmani, [Long-running Agents](https://addyosmani.com/blog/long-running-agents/) | Tests are not skipped or parked. Typecheck and lint run as hooks. | `eslint.config.mjs`, `.githooks/` |
+| Addy Osmani, [Software Factories, Light and Dark](https://addyosmani.com/blog/software-factories/) | Types catch mistakes before review. | `apps/server/tsconfig.core.json` |
+| firsttris, [haben](https://github.com/firsttris/haben) | One place per rule. A limit on function length. | `AGENTS.md`, `eslint.config.mjs` |
+| storytold, [autocraft](https://github.com/storytold/autocraft) | One module writes to the forge, and a check enforces it. | `eslint.config.mjs` |
+| Matt Pocock, [skills](https://github.com/mattpocock/skills) | A mechanical mistake becomes a deterministic check. Ask in one round with a recommended answer. | `eslint.config.mjs`, `AGENTS.md` |
+| storytold, [craft-anything](https://github.com/storytold/craft-anything) | End a turn with a handoff written for a stranger. | `AGENTS.md` |
+| Anthropic, Claude Code [Code Review](https://code.claude.com/docs/en/code-review.md) | A review skips what CI already enforces. | `REVIEW.md` |
