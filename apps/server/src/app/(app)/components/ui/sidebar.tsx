@@ -111,11 +111,11 @@ export function SidebarMenuButton({ asChild, isActive, tooltip, size, className,
   const Comp = asChild ? Slot : 'button'
   const { isMobile, state } = useSidebar()
   const button = <Comp data-slot="sidebar-menu-button" data-sidebar="menu-button" data-active={isActive ?? false} aria-current={isActive ? 'page' : undefined} className={cn(menuButton({ size }), className)} {...props} />
-  if (!tooltip) return button
+  if (!tooltip || state !== 'collapsed' || isMobile) return button
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent side="right" align="center" hidden={state !== 'collapsed' || isMobile}>{tooltip}</TooltipContent>
+      <TooltipContent side="right" align="center">{tooltip}</TooltipContent>
     </Tooltip>
   )
 }
