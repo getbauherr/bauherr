@@ -71,6 +71,7 @@ describe('pacing of backlog Briefs', () => {
   it('lets five backlog Briefs wait on the owner and parks the sixth with a reason', async () => {
     const cards = await withCards(5)
     expect((await view(cards[0] ?? 0)).waitingOn).toBe('owner')
+    expect((await readRecord(e.db.payload, cards[0] ?? 0)).card).toMatchObject({ card: 'brief', reason: 'backlog' })
     const sixth = await toBrief(true)
     expect(await view(sixth)).toMatchObject({ stage: 'brief', waitingOn: 'nobody' })
     expect((await view(sixth)).parked).toMatch(/5 Brief cards/)
