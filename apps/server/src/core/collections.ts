@@ -19,6 +19,8 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'waitingOn', type: 'text', required: true },
       { name: 'rank', type: 'number', required: true, defaultValue: 0 },
       { name: 'version', type: 'number', required: true, defaultValue: 1 },
+      { name: 'statusCommentId', type: 'text' },
+      { name: 'statusCommentHash', type: 'text' },
       { name: 'data', type: 'json', required: true },
     ],
     indexes: [{ fields: ['workspace', 'sourceForge', 'sourceRepo', 'sourceNumber'], unique: true }],

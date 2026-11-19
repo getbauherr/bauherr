@@ -74,6 +74,9 @@ export const SAMPLES: Record<EventType, unknown> = {
   'production.approved': {},
   'question.asked': { reason: 'failed-runs', options: ['retry', 'discard'] },
   'question.answered': { option: 'retry' },
+  'forge.write.started': { kind: 'stage-label', target: { repo: 'acme/app', number: 7 } },
+  'forge.write.done': { kind: 'close', target: { repo: 'acme/app', number: 7 } },
+  'forge.write.failed': { kind: 'merge', target: { repo: 'acme/app', number: 7 }, reason: 'head moved' },
 }
 
 export const ev = <T extends EventType>(type: T, data: Record<string, unknown> = {}): AppEvent =>

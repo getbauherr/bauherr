@@ -163,6 +163,7 @@ const questions: Reducer = (state, event) => {
 const REDUCERS: Reducer[] = [intake, runs, brief, patch, ship, questions]
 
 const reduce = (state: State, event: AppEvent, options: FoldOptions): State => {
+  if (event.type.startsWith('forge.write.')) return state
   for (const reducer of REDUCERS) {
     const next = reducer(state, event, options)
     if (next) return { ...next, last: event.type }
