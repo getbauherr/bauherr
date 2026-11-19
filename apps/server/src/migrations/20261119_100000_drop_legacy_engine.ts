@@ -124,7 +124,7 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
    DROP TYPE IF EXISTS "public"."enum_tickets_state";
    DROP TYPE IF EXISTS "public"."enum_tool_calls_status";
    DROP TYPE IF EXISTS "public"."enum_usage_entries_source";
-   DROP TYPE IF EXISTS "public"."enum_workspaces_default_mode";;`)
+   DROP TYPE IF EXISTS "public"."enum_workspaces_default_mode";`)
   await db.execute(sql.raw(rebuildEnum('enum_connections_kind', 'connections', 'kind', ['github', 'gitlab', 'llm-provider'])))
   await db.execute(sql.raw(rebuildEnum('enum_connections_provider', 'connections', 'provider', ['anthropic', 'openai', 'gemini', 'greenpt', 'bedrock', 'vertex', 'foundry', 'anthropic-compatible', 'openai-compatible', 'bedrock-iam', 'foundry-entra', 'bedrock-ambient', 'vertex-ambient', 'foundry-ambient'], 'anthropic')))
   await db.execute(sql.raw(rebuildEnum('enum_knowledge_chunks_layer', 'knowledge_chunks', 'layer', ['workspace', 'product'])))
