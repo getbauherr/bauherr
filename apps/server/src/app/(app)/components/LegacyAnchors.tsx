@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 
-const MOVED: Record<string, string> = { tiers: '/settings/models#tiers', 'run-mode': '/settings/models#run-mode', knowledge: '/settings/knowledge', health: '/settings/health' }
+const MOVED: Record<string, string> = { tiers: '/settings/models#tiers', health: '/settings/health' }
 
 export function LegacyAnchors() {
   const router = useRouter()

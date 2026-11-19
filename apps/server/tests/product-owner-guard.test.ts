@@ -4,57 +4,30 @@ import { createTestDb, type TestDb } from './helpers/test-db'
 
 const PO_PAGES: Record<string, string> = {
   login: 'public sign-in; a signed-in account is sent to its home',
+  '': 'a static empty state; it reads no data',
   settings: 'redirects to the profile',
   'settings/profile': 'the profile',
-  requests: 'the four sections, limited to requests of assigned Products and their own drafts',
-  'requests/new': 'opens the conversation on their own empty draft for an assigned Product',
-  'requests/[id]': 'one request: the card, timeline, "waits for", comments, and the conversation of their own draft or filed request; 404 outside the assignment',
-  'tickets/[id]': 'the reduced Ticket page and, where a checkpoint asks them, its decision card and the refinement conversation; 404 outside the assignment',
-  inbox: 'only the cards that ask a Product owner (`tickets.needsBy`) on assigned Products',
 }
-const BAUHERR_PAGES = ['', 'insights', 'knowledge', 'knowledge/edit', 'release-notes', 'releases', 'runs', 'runs/[id]', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/chat-feedback', 'settings/connections', 'settings/health', 'settings/knowledge', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/templates', 'settings/templates/[name]', 'settings/usage', 'settings/workflow', 'settings/workspace', 'setup', 'team', 'team/[id]', 'tickets/n/[number]', 'workflow/[stage]', 'workflow/edit']
+const BAUHERR_PAGES = ['settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/connections', 'settings/health', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/workspace']
 const PO_ROUTES: Record<string, string> = {
   'api/health GET': 'unauthenticated health probe',
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
-  'm/[id]/[sig] GET': 'public, signed image link for forge issues; the session is not read',
-  'api/tickets/[id]/artifacts/[artifactId] GET': 'review artifacts of assigned Products; 404 elsewhere',
-  'intake/api/media/[id] GET': 'files of assigned Products through the signed-in route; 404 elsewhere',
-  'api/refine/[ticket]/turn POST': 'a typed answer of the refinement conversation: only rows addressed to the Product owner, on assigned Products (`loadGate`); 404 elsewhere',
-  'api/requests/[id]/turn POST': 'one turn of the interview of their own request; 404 for any other',
-  'api/requests/media POST': 'a screenshot for their own request conversation, stored in their Workspace',
 }
-const BAUHERR_ROUTES = ['api/chat/context GET', 'api/chat/media POST', 'api/chat/threads GET', 'api/chat/threads POST', 'api/chat/threads/[id] DELETE', 'api/chat/threads/[id] GET', 'api/chat/threads/[id] PATCH', 'api/chat/threads/[id]/confirm POST', 'api/chat/threads/[id]/feedback POST', 'api/chat/threads/[id]/messages GET', 'api/chat/threads/[id]/messages PUT', 'api/chat/threads/[id]/run POST', 'api/chat/fake-gate POST', 'api/chat/fake-requests GET', ...['DELETE', 'GET', 'HEAD', 'PATCH', 'POST', 'PUT'].map((m) => `-/gateway/[[...path]] ${m}`), ...['DELETE', 'GET', 'POST'].map((m) => `mcp ${m}`), '-/metrics GET', 'api/changes GET', 'api/tickets/[id]/live GET', 'api/tickets/[id]/events GET', 'api/presence GET', 'api/usage POST', 'api/workspaces/[slug]/factory GET', 'api/workspaces/[slug]/factory PUT', 'intake/api/media-limits OPTIONS', 'intake/api/media-limits POST', 'intake/api/sessions OPTIONS', 'intake/api/sessions POST', 'intake/api/sessions/[id] GET', 'intake/api/sessions/[id] OPTIONS', 'intake/api/sessions/[id] POST', 'intake/api/sessions/[id]/messages OPTIONS', 'intake/api/sessions/[id]/messages POST', 'intake/api/sessions/[id]/screenshots OPTIONS', 'intake/api/sessions/[id]/screenshots POST', 'intake/api/sessions/[id]/submit OPTIONS', 'intake/api/sessions/[id]/submit POST']
+const BAUHERR_ROUTES: string[] = []
 const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
-  'lib/actions.ts#decideAction': 'a card of the Inbox: only decisions addressed to the Product owner on assigned Products (`mayDecide` in every gate function); every other action of a card is refused',
-  'lib/actions.ts#markSeen': 'their own unread marks of the Inbox: only for Tickets of assigned Products (404 elsewhere), only their own row',
   '(shell)/settings/profile/actions.ts#saveOwnLogin': 'the profile: links or removes their own forge login; Payload refuses a login another account holds',
-  ...Object.fromEntries(['refineState', 'refineSay', 'refinePick', 'refineExplain', 'refineRest', 'refineChange', 'refineFinish'].map((n) => [`lib/actions.ts#${n}`, 'the refinement conversation: only rows addressed to the Product owner (`loadGate`, `postDecisions`); no model choice, no cost'])),
-  'lib/actions.ts#discardIntake': 'discards their own open draft; 404 for any other',
-  'lib/actions.ts#requestState': 'the conversation of their own request; null for any other',
-  'lib/actions.ts#requestChange': 'edits their own open draft (card fields, screenshots); refused for any other',
-  'lib/actions.ts#requestSubmit': 'files their own draft; refused for any other',
 }
-const BAUHERR_ACTIONS = [
-  'approvePlanAction', 'expediteAction', 'decideOutcomeAction', 'acceptStagingAction', 'approveProductionAction', 'approveSkillProposalAction', 'rejectSkillProposalAction', 'grantReviewRoundAction', 'stopReviewAction', 'backToBuildAction', 'sendBackAction', 'epicAction', 'backToBacklogAction', 'requestChangesAction',
-  'selectWorkspace', 'reportProblem', 'postDockComment', 'orderRequests', 'refineTier', 'rerunStage', 'releaseRunLock', 'rankTicketAction', 'rankFirstAction', 'saveKnowledgeDocument', 'repairTicketAction', 'relinkRunAction',
-].map((n) => `lib/actions.ts#${n}`).concat([
-  'lib/search.ts#searchTickets', '(shell)/team/actions.ts#saveRole', '(shell)/team/actions.ts#disconnectSession', '(shell)/team/actions.ts#releaseSessionLock',
-  ...['saveGeneral', 'saveModels', 'saveKnowledge', 'saveOverlapIgnore', 'savePathSets', 'suggestOverlapPaths', 'rotateWorkspaceKey', 'createSessionKey', 'updatePricesNow', 'saveDeploy', 'saveMergeMode', 'saveSecurityScan', 'startScan', 'saveDocsCheck', 'startDocsCheckAction', 'startVerifyCreateAction', 'redetectMerge', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'mintEmbedToken', 'revokeEmbedToken', 'removeDoc', 'saveConnection', 'verifyConnection', 'saveMonitoring', 'rotateScrapeToken', 'removeMonitoring', 'testMonitoringAction', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey', 'saveTemplate', 'resetTemplate', 'deleteWorkspace', 'restoreWorkspaceAction'].map((n) => `(shell)/settings/actions.ts#${n}`),
-  ...['reviewDraft', 'applyDraft', 'setExpediteLane', 'setPreemptForHotfix'].map((n) => `(shell)/workflow/edit/actions.ts#${n}`),
-  ...['applyPreset', 'skipSession', 'importIssue', 'generateVerification', 'skipVerify'].map((n) => `(shell)/setup/actions.ts#${n}`),
-  ...['previewRelease', 'summariseRelease', 'shipReleaseAction', 'promoteReleaseAction'].map((n) => `(shell)/releases/actions.ts#${n}`),
-])
-const OPEN_TOOLS: Record<string, string> = {}
-const PO_CHAT_TOOLS: string[] = []
-const BAUHERR_CHAT_TOOLS = ['factory_status', 'list_tickets', 'team_status', 'cost_summary', 'get_run', 'list_frontier', 'get_ticket', 'read_worklog', 'read_knowledge', 'search_knowledge', 'approve', 'accept_staging', 'approve_production', 'decide', 'grant_review_round', 'stop_review', 'request_changes', 'send_back', 'post_comment', 'approve_skill_proposal', 'reject_skill_proposal']
+const BAUHERR_ACTIONS = ['lib/actions.ts#selectWorkspace'].concat(
+  ['saveGeneral', 'saveModels', 'savePathSets', 'rotateWorkspaceKey', 'updatePricesNow', 'saveDeploy', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'removeDoc', 'saveConnection', 'verifyConnection', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'deleteWorkspace', 'restoreWorkspaceAction', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey'].map((n) => `(shell)/settings/actions.ts#${n}`),
+)
 const PO_COLLECTIONS: Record<string, Record<string, string>> = {
   bauherren: { read: 'own account only', update: 'own account: uiPrefs, password and the linked forge login (one account per login) only' },
   'payload-preferences': { read: 'own preferences (Payload built-in, keyed to the user)', create: 'own preferences', update: 'own preferences', delete: 'own preferences' },
 }
-const BAUHERR_COLLECTIONS = ['agent_keys', 'artifacts', 'workspaces', 'products', 'connections', 'repositories', 'ticket_sources', 'tickets', 'runs', 'steps', 'tool_calls', 'human_touches', 'skill_proposals', 'templates', 'check_flakes', 'knowledge_chunks', 'intake_sessions', 'embed_tokens', 'media', 'workflow_versions', 'ticket_events', 'agent_sessions', 'session_spans', 'usage_entries', 'usage_cursors', 'inbox_seen', 'instance_state', 'chat_threads', 'chat_messages', 'payload-kv', 'payload-locked-documents', 'payload-jobs', 'payload-migrations']
+const BAUHERR_COLLECTIONS = ['agent_keys', 'agent_sessions', 'connections', 'human_touches', 'instance_state', 'knowledge_chunks', 'products', 'repositories', 'ticket_sources', 'workspaces', 'payload-kv', 'payload-locked-documents', 'payload-jobs', 'payload-migrations']
 const COLLECTIONS: Record<string, 'closed' | Record<string, string>> = { ...Object.fromEntries(BAUHERR_COLLECTIONS.map((c) => [c, 'closed' as const])), ...PO_COLLECTIONS }
 const OPEN_PAGES = PO_PAGES
 const OPEN_ROUTES = PO_ROUTES
@@ -75,8 +48,6 @@ let payload: Payload
 let testDb: TestDb
 let po: Record<string, any>
 let bauherr: Record<string, any>
-let mine: { workspace: number; ticket: number; request: number }
-let foreign: { otherProduct: { ticket: number; request: number; draft: number }; otherWorkspace: { workspace: number; ticket: number; request: number }; media: number; artifact: number; thread: number }
 let productOwnerCookie: string
 let bauherrCookie: string
 const PASSWORD = 'pw-123456-guard'
@@ -97,8 +68,8 @@ beforeAll(async () => {
   await payload.create({ collection: 'bauherren', data: { email: 'admin@x.io', password: PASSWORD, role: 'admin' }, ...o })
   const [a, b] = await Promise.all(['a', 'b'].map((slug) => payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })))
   const a1 = await payload.create({ collection: 'products', data: { name: 'a1', slug: 'a1', workspace: a.id }, ...o })
-  const b1 = await payload.create({ collection: 'products', data: { name: 'b1', slug: 'b1', workspace: b.id }, ...o })
-  const a2 = await payload.create({ collection: 'products', data: { name: 'a2', slug: 'a2', workspace: a.id }, ...o })
+  await payload.create({ collection: 'products', data: { name: 'b1', slug: 'b1', workspace: b.id }, ...o })
+  await payload.create({ collection: 'products', data: { name: 'a2', slug: 'a2', workspace: a.id }, ...o })
   const mkBauherr = await payload.create({ collection: 'bauherren', data: { email: 'member@x.io', password: PASSWORD, role: 'bauherr', tenants: [{ tenant: a.id }] }, ...o })
   const mkPo = await payload.create({ collection: 'bauherren', data: { email: 'owner@x.io', password: PASSWORD, role: 'product-owner', assignments: [{ workspace: a.id, scope: 'products', products: [a1.id] }] } as never, ...o })
   mkBauherrIdRef.id = mkBauherr.id as number
@@ -107,21 +78,6 @@ beforeAll(async () => {
   po = await asUser(productOwnerCookie)
   bauherr = await asUser(bauherrCookie)
   session.cookie = productOwnerCookie
-  const ticket = async (number: number, product: number, workspace: number) => (await payload.create({ collection: 'tickets', data: { title: `Ticket ${number}`, externalId: `g${number}`, number, url: `https://x/${number}`, state: 'open', labels: [], stage: 'plan', product, workspace }, ...o })).id as number
-  const request = async (product: number, workspace: number, user: number, status = 'submitted') => (await payload.create({ collection: 'intake_sessions', data: { product, workspace, user, status, persona: 'product-user', messages: [], draft: { problem: 'p', context: '', acceptance_criteria: [], type: 'bug', links: [] } } as never, ...o })).id as number
-  mine = { workspace: a.id as number, ticket: await ticket(1, a1.id as number, a.id as number), request: await request(a1.id as number, a.id as number, mkBauherr.id as number) }
-  foreign = {
-    media: 0,
-    artifact: 0,
-    thread: 0,
-    otherProduct: { ticket: await ticket(2, a2.id as number, a.id as number), request: await request(a2.id as number, a.id as number, mkBauherr.id as number), draft: await request(a2.id as number, a.id as number, mkPo.id as number, 'open') },
-    otherWorkspace: { workspace: b.id as number, ticket: await ticket(3, b1.id as number, b.id as number), request: await request(b1.id as number, b.id as number, mkBauherr.id as number) },
-  }
-  const { saveMedia } = await import('../src/lib/intake/media')
-  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
-  foreign.media = (await saveMedia(payload, { bytes: png, name: 'x.png', workspace: a.id as number, product: a2.id as number, ticketNumber: 2 })).id as number
-  foreign.artifact = (await payload.create({ collection: 'artifacts', data: { ticket: foreign.otherProduct.ticket, workspace: a.id, kind: 'report', title: 'R', text: 'x', sha: 'abc' }, ...o })).id as number
-  foreign.thread = (await payload.create({ collection: 'chat_threads', data: { owner: mkBauherr.id, workspace: a.id, title: 'theirs', lastMessageAt: new Date().toISOString() }, ...o })).id as number
 })
 
 afterAll(async () => {
@@ -218,7 +174,7 @@ describe('pages', () => {
   const pages = Object.keys(pageModules).map((f) => ({ file: f, route: f.slice((APP + '(app)/').length).replace(/\/?page\.tsx$/, '').replace(/^\(shell\)\/?/, '') }))
 
   it('the list below decides every page', () => {
-    expect(pages.length).toBeGreaterThan(30)
+    expect(pages.length).toBeGreaterThanOrEqual(14)
     partition('pages', pages.map((p) => p.route), Object.keys(PO_PAGES), BAUHERR_PAGES)
     for (const p of Object.keys(OPEN_PAGES)) expect(pages.map((x) => x.route), `OPEN_PAGES names a page that does not exist: ${p}`).toContain(p)
   })
@@ -239,7 +195,7 @@ describe('pages', () => {
 
   it('the same render as a Bauherr is not a 404 (control for the harness)', async () => {
     session.cookie = bauherrCookie
-    const page = await pageModules['../src/app/(app)/(shell)/inbox/page.tsx']!()
+    const page = await pageModules['../src/app/(app)/(shell)/settings/products/page.tsx']!()
     await expect(page.default({ searchParams: Promise.resolve({}) })).resolves.toBeTruthy()
     session.cookie = productOwnerCookie
   })
@@ -250,7 +206,7 @@ describe('server actions', () => {
 
   it('every action not listed is refused with a 404 for a Product owner', async () => {
     session.cookie = productOwnerCookie
-    expect(files.length).toBeGreaterThanOrEqual(6)
+    expect(files.length).toBe(3)
     let checked = 0
     for (const f of files) {
       const rel = f.slice((APP + '(app)/').length)
@@ -267,7 +223,7 @@ describe('server actions', () => {
         checked++
       }
     }
-    expect(checked).toBeGreaterThan(40)
+    expect(checked).toBe(BAUHERR_ACTIONS.length)
   })
 
   it('the lists decide every action', async () => {
@@ -320,125 +276,7 @@ describe('routes', () => {
       }
     }
     for (const key of Object.keys(OPEN_ROUTES)) expect(seen, `OPEN_ROUTES names a route that does not exist: ${key}`).toContain(key)
-    expect(seen.length).toBeGreaterThan(20)
+    expect(seen.length).toBe(3)
     partition('routes', seen, Object.keys(PO_ROUTES), BAUHERR_ROUTES)
-  })
-
-  it('/mcp refuses a Product owner behind an agent key too', async () => {
-    const { mintAgentKey } = await import('../src/lib/api-key')
-    const key = await mintAgentKey(payload, po as never, 'guard')
-    const { POST } = await import('../src/app/mcp/route')
-    const res = await POST(new Request('http://t/mcp', { method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) }))
-    expect(res.status).toBe(403)
-  })
-})
-
-describe('MCP tools', () => {
-  it('every tool not listed is refused for a Product owner', async () => {
-    const { callTool, tools } = await import('../src/lib/mcp-tools')
-    expect(tools.length).toBeGreaterThan(20)
-    for (const tool of tools) {
-      if (tool.name in OPEN_TOOLS) continue
-      await expect(callTool({ payload, user: po, actor: { kind: 'human' } }, tool.name, {}), tool.name).rejects.toThrow(/forbidden/)
-    }
-  })
-})
-
-describe('what is open to a Product owner answers 404 outside the assignment', () => {
-  const asPo = () => (session.cookie = productOwnerCookie)
-  const render = async (file: string, params: Record<string, string>) => {
-    try {
-      await (await (pageModules[`${APP}(app)/${file}`] as () => Promise<{ default: (p: unknown) => Promise<unknown> }>)()).default({ params: Promise.resolve(params), searchParams: Promise.resolve({}) })
-      return 'rendered'
-    } catch (e) {
-      return notFound(e) ? '404' : `threw ${String(e)}`
-    }
-  }
-
-  it('the request and Ticket pages: an assigned Product renders, Product B (same Workspace) and another Workspace are 404', async () => {
-    asPo()
-    const page = (route: string) => `(shell)/${route}/page.tsx`
-    expect(await render(page('requests/[id]'), { id: String(mine.request) })).toBe('rendered')
-    expect(await render(page('tickets/[id]'), { id: String(mine.ticket) })).toBe('rendered')
-    for (const id of [foreign.otherProduct.request, foreign.otherProduct.draft, foreign.otherWorkspace.request, 999_999]) expect(await render(page('requests/[id]'), { id: String(id) }), `request ${id}`).toBe('404')
-    for (const id of [foreign.otherProduct.ticket, foreign.otherWorkspace.ticket, 999_999]) expect(await render(page('tickets/[id]'), { id: String(id) }), `ticket ${id}`).toBe('404')
-  })
-
-  it('files: media and review artifacts of Product B are 404 for a Product owner', async () => {
-    const get = async (route: string, params: Record<string, string>) => ((await routeModules[`${APP}${route}/route.ts`]!()).GET as (r: Request, c: unknown) => Promise<Response>)(new Request('http://t/x', { headers: { cookie: productOwnerCookie } }), { params: Promise.resolve(params) })
-    expect((await get('intake/api/media/[id]', { id: String(foreign.media) })).status).toBe(404)
-    expect((await get('api/tickets/[id]/artifacts/[artifactId]', { id: String(foreign.otherProduct.ticket), artifactId: String(foreign.artifact) })).status).toBe(404)
-  })
-
-  it('the decision and conversation actions and the turn route open to them answer 404 for Product B, and a Bauherr-only option is refused', async () => {
-    asPo()
-    const actions = await appModules[`${APP}(app)/lib/actions.ts`]!()
-    const call = async (name: string, ...args: unknown[]) => {
-      try {
-        return { returned: await (actions[name] as (...a: unknown[]) => Promise<unknown>)(...args) }
-      } catch (e) {
-        return { outcome: notFound(e) ? '404' : `threw ${String(e)}` }
-      }
-    }
-    for (const id of [foreign.otherProduct.ticket, foreign.otherWorkspace.ticket, 999_999]) {
-      expect(await call('refineState', id), `refineState ${id}`).toEqual({ outcome: '404' })
-      expect(await call('refinePick', id, 'D1', 0), `refinePick ${id}`).toEqual({ outcome: '404' })
-      expect(await call('refineFinish', id), `refineFinish ${id}`).toEqual({ outcome: '404' })
-      expect(await call('decideAction', id, 'Approve plan', 'approvePlan'), `decideAction ${id}`).toEqual({ outcome: '404' })
-      expect(await call('markSeen', { ticket: id, need: 'Approve plan', since: '2026-01-01T00:00:00Z' }), `markSeen ${id}`).toEqual({ outcome: '404' })
-    }
-    expect(await call('decideAction', mine.ticket, 'Run failed', 'rerun')).toEqual({ returned: { error: 'Only a Bauherr can do this.' } })
-    expect(await call('decideAction', mine.ticket, 'Expedite?', 'expedite')).toEqual({ returned: { error: 'Only a Bauherr can do this.' } })
-    expect((await call('refineState', mine.ticket)).outcome).toBeUndefined() // reached: the harness has no forge, so it answers an error text, not a 404
-    expect(await call('refineTier', mine.ticket, 'strong')).toEqual({ outcome: '404' })
-    const { POST } = (await routeModules[`${APP}api/refine/[ticket]/turn/route.ts`]!()) as { POST: (r: Request, c: unknown) => Promise<Response> }
-    for (const id of [foreign.otherProduct.ticket, foreign.otherWorkspace.ticket, 999_999]) {
-      const res = await POST(new Request('http://t/x', { method: 'POST', headers: { cookie: productOwnerCookie, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'hello' }) }), { params: Promise.resolve({ ticket: String(id) }) })
-      expect(res.status, `turn ${id}`).toBe(404)
-    }
-  })
-
-  it('markSeen writes only the caller\'s row, can be undone, and refuses a Ticket of another Workspace', async () => {
-    asPo()
-    const { markSeen } = await import('../src/app/(app)/lib/actions')
-    const key = { ticket: mine.ticket, need: 'Approve plan', since: '2026-01-01T00:00:00Z' }
-    const rows = async () => (await payload.find({ collection: 'inbox_seen', depth: 0, pagination: false, ...o })).docs as Record<string, any>[]
-    await markSeen(key)
-    await markSeen(key)
-    expect((await rows()).map((r) => [r.user, r.ticket, r.need, r.since, r.workspace])).toEqual([[po.id, mine.ticket, 'Approve plan', key.since, mine.workspace]])
-    await expect(markSeen({ ...key, ticket: foreign.otherWorkspace.ticket })).rejects.toSatisfy(notFound)
-    expect(await rows()).toHaveLength(1)
-    await markSeen(key, false)
-    expect(await rows()).toHaveLength(0)
-  })
-
-  it('every chat tool is closed to a Product owner, and every chat route refuses them', async () => {
-    const { chatTools } = await import('../src/lib/chat/tools')
-    partition('chat tools', chatTools({ role: 'admin' }).map((t) => t.name), PO_CHAT_TOOLS, BAUHERR_CHAT_TOOLS)
-    const { GET } = await import('../src/app/api/chat/threads/route')
-    expect((await GET(new Request('http://t/x', { headers: { cookie: productOwnerCookie } }))).status).toBe(403)
-  })
-
-  it('the request conversation: their own draft opens, Product B and a draft of someone else are refused on every door', async () => {
-    asPo()
-    const actions = await import('../src/app/(app)/lib/actions')
-    const a1 = ((await payload.findByID({ collection: 'intake_sessions', id: mine.request, depth: 0, ...o })) as Record<string, any>).product as number
-    const draft = await payload.create({ collection: 'intake_sessions', data: { product: a1, workspace: mine.workspace, user: po.id, persona: 'product-user', status: 'open', messages: [] } as never, ...o })
-    expect(await actions.requestState(draft.id as number)).toMatchObject({ view: { session: draft.id, card: { editable: true } } })
-    expect(await actions.requestState(foreign.otherProduct.draft)).toEqual({ view: null }) // their own draft, but of a Product they are not assigned to
-    expect(await actions.requestState(mine.request)).toEqual({ view: null }) // a request of someone else
-    expect(await actions.requestChange(foreign.otherProduct.draft, { patch: { title: 'x' } })).toMatchObject({ error: expect.stringContaining('not found') })
-    expect(await actions.requestSubmit(mine.request)).toMatchObject({ error: expect.stringContaining('not found') })
-    const turn = (id: number) => (routeModules[`${APP}api/requests/[id]/turn/route.ts`]!() as Promise<{ POST: (r: Request, c: unknown) => Promise<Response> }>).then((m) => m.POST(new Request('http://t/x', { method: 'POST', headers: { cookie: productOwnerCookie, 'content-type': 'application/json' }, body: JSON.stringify({ text: 'Hello' }) }), { params: Promise.resolve({ id: String(id) }) }))
-    expect((await turn(foreign.otherProduct.draft)).status).toBe(404)
-    expect((await turn(mine.request)).status).toBe(404)
-    expect((await turn(draft.id as number)).status).toBe(200)
-    const form = new FormData()
-    form.append('file', new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')], { type: 'image/png' }), 'x.png')
-    const wire = new Request('http://t/x', { method: 'POST', body: form })
-    const body = new Uint8Array(await wire.arrayBuffer())
-    const upload = await (await routeModules[`${APP}api/requests/media/route.ts`]!() as { POST: (r: Request) => Promise<Response> }).POST(new Request('http://t/x', { method: 'POST', headers: { cookie: productOwnerCookie, 'content-type': wire.headers.get('content-type')!, 'content-length': String(body.byteLength) }, body }))
-    expect(upload.status).toBe(201)
-    expect(await render('(shell)/requests/new/page.tsx', {})).toMatch(/threw .*NEXT_REDIRECT/)
   })
 })

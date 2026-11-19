@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto'
 import { NextResponse, type NextRequest } from 'next/server'
 import { getPayload, type Where } from 'payload'
 import { emailOk, finishLogin, OIDC_COOKIE, oidcEnabled, publicUrl, resolveAccount, roleRequired, syncFrom, warnIfMisconfigured, type OidcTransaction } from '../../../../../lib/oidc'
-import { homeOf, resyncRole } from '../../../../../lib/people'
+import { resyncRole } from '../../../../../lib/people'
 import { SESSION_COOKIE, SESSION_TTL_S, signSession } from '../../../../../lib/oidc-session'
 
 const o = { overrideAccess: true, depth: 0 } as const
@@ -50,7 +50,7 @@ export const GET = async (req: NextRequest) => {
       ? await payload.update({ collection: 'bauherren', id: bySubject.id, data, ...o })
       : await payload.create({ collection: 'bauherren', data: { ...data, email, password: randomBytes(32).toString('hex') }, context: { oidc: true }, ...o })
 
-    const res = NextResponse.redirect(new URL(homeOf(user), publicUrl()))
+    const res = NextResponse.redirect(new URL('/', publicUrl()))
     res.cookies.delete({ name: OIDC_COOKIE, path: '/auth/oidc' })
     res.cookies.set(SESSION_COOKIE, signSession(user.id, user.sessionVersion ?? 0), { httpOnly: true, sameSite: 'lax', secure: publicUrl().startsWith('https:'), path: '/', maxAge: SESSION_TTL_S })
     return res

@@ -23,7 +23,7 @@ at the checkpoints. Self-hosted, with an audit trail and a budget per Workspace.
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169e1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker image](https://img.shields.io/badge/ghcr.io-getbauherr%2Fbauherr-2496ed?logo=docker&logoColor=white)](https://github.com/getbauherr/bauherr/pkgs/container/bauherr)
 [![Platforms](https://img.shields.io/badge/platform-amd64%20%7C%20arm64-lightgrey)](https://github.com/getbauherr/bauherr/pkgs/container/bauherr)
-[![MCP](https://img.shields.io/badge/MCP-server-6b4fbb)](docs/session-mode.md)
+![MCP](https://img.shields.io/badge/MCP-server-6b4fbb)
 [![Claude Agent SDK](https://img.shields.io/badge/Claude_Agent_SDK-d97757)](https://docs.claude.com/en/docs/agent-sdk/overview)
 
 [Why?](#-why-bauherr) •
@@ -84,13 +84,13 @@ flowchart LR
 
 By default the Product owner answers **Answer questions** and accepts on staging (**Accept on staging**, for a Product that has a Product owner who tests on staging), and you are asked at **Approve plan** and **Approve production**; where a Product has no Product owner, you are asked everything. Each checkpoint can be addressed to either of you in the workflow editor. Failed runs, failed releases and reviews at their round cap also land in the Inbox.
 
-Each Workspace has one factory file (`factory.yaml`) for its team and workflow. You can add custom `agent` stages (a role works the Ticket and reports an outcome) and `human` stages (a person picks an outcome), and rename, remove or reorder stages. The outcomes route Tickets, and the custom stages show in the graph, the Inbox, Path and Steps and Insights. There is exactly one build, review and release chain. Stages, labels, triggers, retries and budgets: [docs/spec/workflow.md](docs/spec/workflow.md).
+Each Workspace has one factory file (`factory.yaml`) for its team and workflow. You can add custom `agent` stages (a role works the Ticket and reports an outcome) and `human` stages (a person picks an outcome), and rename, remove or reorder stages. The outcomes route Tickets, and the custom stages show in the graph, the Inbox, Path and Steps and Insights. There is exactly one build, review and release chain. Stages, labels, triggers, retries and budgets: docs/spec/workflow.md.
 
 The team also has an **AX** role (Agent experience engineer) that keeps a Product easy and safe for agents to change: it moves rules into code, checks and proof (the trust pyramid) and keeps the feature map and the Product's verify skill current. It works the `ax` find Job of Review and the staging walk before Accept. A **verifier** role (strong tier) re-checks the findings of Review.
 
 ## ✨ Features
 
-Every feature, where you reach it and how well it is reachable, is on [Features](https://getbauherr.dev/features/), generated at the docs build from [docs/feature-map.yaml](docs/feature-map.yaml), which also lists the source files and tests behind each feature.
+Every feature, where you reach it and how well it is reachable, is on Features, generated at the docs build from docs/feature-map.yaml, which also lists the source files and tests behind each feature.
 
 Standing on the shoulders of others: [Credits](docs/references.md).
 
@@ -140,7 +140,7 @@ docker compose run --rm --no-deps -T \
   -e BAUHERR_ADMIN_EMAIL -e GITHUB_TOKEN app sh -c 'cd /repo/apps/server && pnpm seed'
 ```
 
-Open `http://localhost:3000` and sign in. To start a Ticket, label it `bauherr:stage:plan` in the forge, or send a request from the app. A worked example with costs: [docs/first-run.md](docs/first-run.md).
+Open `http://localhost:3000` and sign in. To start a Ticket, label it `bauherr:stage:plan` in the forge, or send a request from the app. A worked example with costs: docs/first-run.md.
 
 ## 🔌 Connect your own Claude Code session
 
@@ -150,13 +150,13 @@ Run stages from your laptop instead of the Runner. Create an agent key under **A
 claude mcp add --transport http bauherr http://localhost:3000/mcp --header "Authorization: Bearer $(cat ~/.config/bauherr/mcp-key)"
 ```
 
-To count the session's cost per Ticket, install the usage hook once (`Stop` and `SubagentStop`, see [docs/cost.md](docs/cost.md#the-usage-hook)):
+To count the session's cost per Ticket, install the usage hook once (`Stop` and `SubagentStop`, see docs/cost.md):
 
 ```bash
 npx bauherr hook install
 ```
 
-The session lists the frontier, claims a Run, works in your worktree and finishes it with evidence. Agent keys cannot pass a human gate. Set the mode per stage and Workspace: [docs/session-mode.md](docs/session-mode.md).
+The session lists the frontier, claims a Run, works in your worktree and finishes it with evidence. Agent keys cannot pass a human gate. Set the mode per stage and Workspace: docs/session-mode.md.
 
 ## 🧑‍💻 Connect a session as a role
 
@@ -166,7 +166,7 @@ The factory file declares the roles (orchestrator, engineer, reviewer, security,
 Connect to the factory as engineer and work until told to stop.
 ```
 
-The session calls `connect {role}`, then loops on `next_work` until nothing is queued for its role. It shows as Working, Idle or Offline with its active time. The orchestrator also receives stuck Tickets. The Ticket status and Steps name who works ("<session> (<role>)", "Runner" or "CI"), and the chat can answer who is working. Details: [docs/session-mode.md](docs/session-mode.md#connect-as-a-role).
+The session calls `connect {role}`, then loops on `next_work` until nothing is queued for its role. It shows as Working, Idle or Offline with its active time. The orchestrator also receives stuck Tickets. The Ticket status and Steps name who works ("<session> (<role>)", "Runner" or "CI"), and the chat can answer who is working. Details: docs/session-mode.md.
 
 ## ⚙️ Configuration
 
@@ -174,9 +174,9 @@ The session calls `connect {role}`, then loops on `next_work` until nothing is q
 |---|---|
 | `PORT`, `PUBLIC_URL`, `BAUHERR_ENABLE_ADMIN`, `OTEL_ENABLED` | environment or `.env` next to [`compose.yaml`](compose.yaml) |
 | OIDC sign-in (`OIDC_ISSUER`, `OIDC_CLIENT_ID`, ...) | [docs/auth.md](docs/auth.md) |
-| Run mode per stage (`BAUHERR_DEFAULT_MODE`, Workspace `modeByStage`) | [docs/session-mode.md](docs/session-mode.md) |
-| Stages, roles, gates: one factory file per Workspace, edited in the workflow editor (Settings, Factory, Workflow), or applied with `bauherr apply -f factory.yaml --workspace <slug> [--dry-run]` (`bauherr export` prints the active file; `BAUHERR_FACTORY_FILE` applies one at boot; `GET`/`PUT /api/workspaces/<slug>/factory`) | [`pack/factory.yaml`](pack/factory.yaml) is the shipped default, [docs/spec/workflow.md](docs/spec/workflow.md) |
-| Metrics and traces (Prometheus, Jaeger) | [docs/observability.md](docs/observability.md) |
+| Run mode per stage (`BAUHERR_DEFAULT_MODE`, Workspace `modeByStage`) | docs/session-mode.md |
+| Stages, roles, gates: one factory file per Workspace, edited in the workflow editor (Settings, Factory, Workflow), or applied with `bauherr apply -f factory.yaml --workspace <slug> [--dry-run]` (`bauherr export` prints the active file; `BAUHERR_FACTORY_FILE` applies one at boot; `GET`/`PUT /api/workspaces/<slug>/factory`) | [`pack/factory.yaml`](pack/factory.yaml) is the shipped default, docs/spec/workflow.md |
+| Metrics and traces (Prometheus, Jaeger) | docs/observability.md |
 | Gateway providers and model catalogs | [`deploy/gateway/`](deploy/gateway) |
 | Budgets, model tiers, Connections | Settings in the UI (Factory › Models & budget, Workspace › Connections) |
 | Provider credentials and data flows | [docs/legal.md](docs/legal.md) |
@@ -204,11 +204,11 @@ pnpm verify inbox            # the tests of one feature of docs/feature-map.yaml
 
 ## 🧭 Status and roadmap
 
-Pre-release. The factory builds Bauherr itself. Every feature with its page: [Features](https://getbauherr.dev/features/).
+Pre-release. The factory builds Bauherr itself. Every feature with its page: Features.
 - **Live:** the Workflow graph, one factory file per Workspace with custom agent and human stages and plan approval on by default, agent roles and sessions that connect as a role, the Agent team page (pick roles, see live sessions and who works where), the five-step setup wizard with team presets (Solo, Standard, Careful), plain-word progress comments on the issue, Tickets with Path and Steps, the Inbox with prepared decisions, editable templates, Insights, the docked chat, requests and the website widget, the knowledge repo, self-review and merge, release train and notes, security scan, fast lane, request card with types and the Requests workbench, WIP limits, AI gateway with budgets, audit, OIDC.
 - **Planned:** provider auth beyond API keys ([#80](https://github.com/getbauherr/bauherr/issues/80)).
 
-Every decision is tracked in [Bauherr v0.1: way to a locked architecture and spec (#1)](https://github.com/getbauherr/bauherr/issues/1). Releasing: [docs/releasing.md](docs/releasing.md).
+Every decision is tracked in [Bauherr v0.1: way to a locked architecture and spec (#1)](https://github.com/getbauherr/bauherr/issues/1). Releasing: docs/releasing.md.
 
 ## ❓ FAQ
 

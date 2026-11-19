@@ -4,7 +4,7 @@ const count = async (payload: Payload, collection: string, where: Record<string,
   (await payload.count({ collection, where, overrideAccess: true } as never)).totalDocs
 const why = (parts: [number, string][]) => parts.filter(([n]) => n).map(([n, s]) => `${n} ${s}`).join(', ')
 
-const PRODUCT_REFS = [['repositories', 'repositories'], ['ticket_sources', 'ticket sources'], ['tickets', 'tickets'], ['workflow_versions', 'workflow versions'], ['embed_tokens', 'widget tokens'], ['intake_sessions', 'intake sessions']] as const
+const PRODUCT_REFS = [['repositories', 'repositories'], ['ticket_sources', 'ticket sources']] as const
 
 export async function blockedBy(payload: Payload, collection: 'products' | 'connections', id: number): Promise<string> {
   if (collection === 'connections') return why([[await count(payload, 'ticket_sources', { connection: { equals: id } }), 'ticket sources']])

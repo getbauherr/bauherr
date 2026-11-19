@@ -18,7 +18,7 @@ it('fakeAllowed: only outside production or in a test build', async () => {
   expect(fakeAllowed({}, false)).toBe(true)
 })
 
-describe.each(['BAUHERR_E2E_FAKE_FORGE', 'INTAKE_FAKE'] as const)('assertFakeAllowed(%s)', (name) => {
+describe.each(['BAUHERR_E2E_FAKE_FORGE'] as const)('assertFakeAllowed(%s)', (name) => {
   const assertWith = async (marker: string, env: Record<string, string>) => {
     await load(marker, { [name]: '', ...env })
     return (await import('../src/lib/fake-guard')).assertFakeAllowed(name)
@@ -34,12 +34,10 @@ describe.each(['BAUHERR_E2E_FAKE_FORGE', 'INTAKE_FAKE'] as const)('assertFakeAll
 })
 
 it('refuses to load the fakes in production without the marker', async () => {
-  await load('', { NODE_ENV: 'production', BAUHERR_E2E_FAKE_FORGE: '1', INTAKE_FAKE: '1' })
+  await load('', { NODE_ENV: 'production', BAUHERR_E2E_FAKE_FORGE: '1' })
   await expect(import('../src/lib/adapters')).rejects.toThrow('must not be set in production')
-  vi.resetModules()
-  await expect(import('../src/lib/intake/fake')).rejects.toThrow('must not be set in production')
 })
 
 it.each(['Dockerfile', 'compose.yaml'])('%s sets neither the marker nor the fake flags', (file) => {
-  expect(readFileSync(path.join(root, file), 'utf8')).not.toMatch(/BAUHERR_TEST_BUILD|BAUHERR_E2E_FAKE_FORGE|INTAKE_FAKE/)
+  expect(readFileSync(path.join(root, file), 'utf8')).not.toMatch(/BAUHERR_TEST_BUILD|BAUHERR_E2E_FAKE_FORGE/)
 })

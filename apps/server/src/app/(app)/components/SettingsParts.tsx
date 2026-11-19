@@ -26,13 +26,6 @@ export function ToggleRow({ name, label, help, defaultChecked, disabled, reason 
   )
 }
 
-export const GateRow = ({ label, help, state }: { label: string; help: string; state: string }) => (
-  <div data-slot="toggle-row" className="flex items-start justify-between gap-4 border-t border-border py-3">
-    <span className="flex min-w-0 flex-col gap-1"><span className="font-medium text-foreground">{label}</span><span className="small text-muted-foreground">{help}</span></span>
-    <span className="small">{state}</span>
-  </div>
-)
-
 export function RadioCards({ name, legend, value, disabled, options }: { name: string; legend: string; value: string; disabled?: boolean; options: { value: string; title: string; text: string }[] }) {
   return (
     <fieldset className="m-0 grid grid-cols-2 gap-3 border-0 p-0 max-sm:grid-cols-1" disabled={disabled}>
@@ -88,16 +81,3 @@ export const SetupChecklist = ({ rows }: { rows: { id: string; label: string; wo
     </ul>
   </Card>
 )
-
-export function GateLadder({ plan, staging, children }: { plan: boolean; staging: boolean; children: ReactNode }) {
-  const word = (on: boolean) => (on ? 'On' : 'Off')
-  return (
-    <div>
-      <GateRow label="Answer questions" help="Before planning, the agent asks you what is unclear. On the Ticket, after Triage." state="Always on" />
-      <GateRow label="Approve the plan" help="You approve the plan before any code is written. On the Ticket, before Build." state={word(plan)} />
-      <GateRow label="Accept on staging" help="You check the change on staging before it moves on. When off, Bauherr accepts automatically once staging is confirmed. On the Ticket, after the merge." state={word(staging)} />
-      {children}
-      <p className="small text-muted-foreground border-t border-border pt-3">Everything else runs on its own.</p>
-    </div>
-  )
-}

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { root } from '../scripts/feature-map'
+import { repoRoot as root } from './helpers/comments'
 
 export const MAX_PAGE_WORDS = 1500
 export const MAX_SENTENCE_WORDS = 30

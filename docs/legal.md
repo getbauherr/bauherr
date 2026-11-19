@@ -52,7 +52,7 @@ For the other coding tools the gateway offers no subscription passthrough. Codex
 
 ## Egress policy
 
-The providers allowed per Workspace are the egress policy. A Workspace reaches only the providers configured for it; the Workspace's credential never reaches an agent. With the optional [router profile](router.md) the router container calls only the gateway, with its own key.
+The providers allowed per Workspace are the egress policy. A Workspace reaches only the providers configured for it; the Workspace's credential never reaches an agent. With the optional router profile the router container calls only the gateway, with its own key.
 
 ## Optional dashboards profile
 

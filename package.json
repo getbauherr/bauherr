@@ -6,9 +6,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "verify": "pnpm --filter server exec tsx scripts/verify.ts",
-    "screenshots": "bash scripts/screenshots.sh",
-    "build:packages": "pnpm --filter @bauherr/adapters --filter @bauherr/runner --filter @bauherr/eval build",
+    "build:packages": "pnpm --filter @bauherr/adapters --filter @bauherr/runner build",
     "typecheck": "pnpm build:packages && pnpm -r typecheck",
     "test": "pnpm build:packages && pnpm -r test"
   },

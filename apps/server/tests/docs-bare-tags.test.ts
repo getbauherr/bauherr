@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { root } from '../scripts/feature-map'
+import { repoRoot as root } from './helpers/comments'
 
 const HTML = /^<\/?(a|br|details|div|figcaption|figure|iframe|img|kbd|p|picture|section|source|span|sub|summary|sup|video)\b/
 

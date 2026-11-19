@@ -1,15 +1,11 @@
-import { createHash } from 'node:crypto'
-import { readFileSync, readdirSync } from 'node:fs'
-import { relative, resolve, sep } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { backendFor } from './adapters'
 import { connectionInput } from './connection'
 
 type Doc = Record<string, any>
-type Layer = 'core' | 'workspace' | 'product'
+type Layer = 'workspace' | 'product'
 
-const PACK = () => resolve(process.env.BAUHERR_PACK_DIR ?? resolve(process.cwd(), '../../pack'))
 const CHUNK_CHARS = 3200
 const id = (v: unknown): number => Number(v && typeof v === 'object' ? (v as { id: number }).id : v)
 
@@ -35,8 +31,7 @@ export const chunk = (text: string, markdown = true): { heading: string; text: s
   return out
 }
 
-export const layerOf = (path: string, core = false, repoProduct?: string): { layer: Layer; logical: string; product: string | null } => {
-  if (core) return { layer: 'core', logical: path, product: null }
+export const layerOf = (path: string, repoProduct?: string): { layer: Layer; logical: string; product: string | null } => {
   if (repoProduct) return { layer: 'product', logical: `repo-docs/${path}`, product: repoProduct }
   const p = /^products\/([^/]+)\/(.+)$/.exec(path)
   if (p) return { layer: 'product', logical: p[2]!, product: p[1]! }
@@ -47,21 +42,10 @@ export const repoOf = (source: string): string => source.split('#')[0]!
 
 const isMd = (path: string) => /\.md$/.test(path)
 
-const packFiles = (): { path: string; text: string }[] => {
-  const root = PACK()
-  return (readdirSync(root, { recursive: true, withFileTypes: true }) as { name: string; parentPath: string; isFile(): boolean }[])
-    .filter((e) => e.isFile() && /\.(md|ya?ml|ts|sh)$/.test(e.name))
-    .map((e) => {
-      const abs = resolve(e.parentPath, e.name)
-      return { path: relative(root, abs).split(sep).join('/'), text: readFileSync(abs, 'utf8') }
-    })
-    .sort((a, b) => a.path.localeCompare(b.path))
-}
-
-const replaceSource = async (payload: Payload, workspace: number, source: string, commit: string, files: { path: string; text: string }[], core: boolean, repoProduct?: string) => {
+const replaceSource = async (payload: Payload, workspace: number, source: string, commit: string, files: { path: string; text: string }[], repoProduct?: string) => {
   const rows = files.flatMap((f) =>
     chunk(f.text, isMd(f.path)).map((c) => {
-      const l = layerOf(f.path, core, repoProduct)
+      const l = layerOf(f.path, repoProduct)
       return sql`(${workspace}, ${source}, ${l.layer}, ${f.path}, ${l.logical}, ${l.product}, ${c.heading}, ${c.text}, ${commit}, now(), now())`
     }),
   )
@@ -86,14 +70,6 @@ export const resync = async (payload: Payload, workspaceId: number | string): Pr
   const indexed: Record<string, string> = { ...ws.knowledgeIndexed }
   let changed = false
 
-  const pack = packFiles()
-  const packKey = createHash('sha1').update(JSON.stringify(pack)).digest('hex')
-  if (indexed.core !== packKey) {
-    await replaceSource(payload, ws.id, 'core', 'core-pack', pack, true)
-    indexed.core = packKey
-    changed = true
-  }
-
   const find = async (collection: 'products' | 'repositories' | 'ticket_sources', where: Record<string, unknown>): Promise<Doc[]> =>
     (await payload.find({ collection, where, pagination: false, depth: 0, overrideAccess: true } as never)).docs as Doc[]
   const products = await find('products', { workspace: { equals: ws.id } })
@@ -109,7 +85,7 @@ export const resync = async (payload: Payload, workspaceId: number | string): Pr
     return repo && connection && repo !== ws.knowledgeRepo ? [{ key: `product:${p.id}`, source: `${repo}#${p.id}`, repo, connection, slug: p.slug as string }] : []
   })
 
-  const keep = ['core', ws.knowledgeRepo ?? '', ...targets.map((t) => t.source)]
+  const keep = [ws.knowledgeRepo ?? '', ...targets.map((t) => t.source)]
   await payload.db.drizzle.execute(sql`DELETE FROM "knowledge_chunks" WHERE "workspace_id" = ${ws.id} AND "source" NOT IN (${sql.join(keep.map((k) => sql`${k}`), sql`, `)})`)
   for (const k of Object.keys(indexed)) {
     if (k.startsWith('product:') && !targets.some((t) => k === t.key || k === `${t.key}:failed`)) {
@@ -128,7 +104,7 @@ export const resync = async (payload: Payload, workspaceId: number | string): Pr
         if (truncated) payload.logger.warn({ workspace: ws.id, repo }, `${repo} tree truncated by GitHub; indexing the files returned`)
         const files: { path: string; text: string }[] = []
         for (const path of paths.filter(pick)) files.push({ path, text: (await forge.getFile(repo, path, commit)).content })
-        await replaceSource(payload, ws.id, source, commit, files, false, slug)
+        await replaceSource(payload, ws.id, source, commit, files, slug)
         indexed[key] = `${repo}@${commit}`
         changed = true
       }
@@ -143,7 +119,7 @@ export const resync = async (payload: Payload, workspaceId: number | string): Pr
     }
   }
 
-  if (ws.knowledgeRepo && ws.knowledgeConnection) await sync('git', 'gitFailed', ws.knowledgeRepo, ws.knowledgeRepo, ws.knowledgeConnection, (path) => isMd(path) || /^products\/[^/]+\/feature-map\.yaml$/.test(path))
+  if (ws.knowledgeRepo && ws.knowledgeConnection) await sync('git', 'gitFailed', ws.knowledgeRepo, ws.knowledgeRepo, ws.knowledgeConnection, isMd)
   else if (indexed.git || indexed.gitFailed) {
     delete indexed.git
     delete indexed.gitFailed
@@ -156,20 +132,20 @@ export const resync = async (payload: Payload, workspaceId: number | string): Pr
 
 const indexedOnce = async (payload: Payload, workspace: number): Promise<void> => {
   const ws = (await payload.findByID({ collection: 'workspaces', id: workspace, depth: 0, overrideAccess: true })) as Doc
-  if (!ws.knowledgeIndexed?.core) await resync(payload, workspace)
+  if (!ws.knowledgeIndexed) await resync(payload, workspace)
 }
 
 const visible = (alias: string, product?: string) => sql`(${sql.raw(alias)}."layer" <> 'product' OR ${sql.raw(alias)}."product" = ${product ?? null})`
-const rank = (alias: string) => sql.raw(`CASE ${alias}."layer" WHEN 'product' THEN 2 WHEN 'workspace' THEN 1 ELSE 0 END`)
+const rank = (alias: string) => sql.raw(`CASE ${alias}."layer" WHEN 'product' THEN 2 ELSE 1 END`)
 const vector = sql`to_tsvector('simple', coalesce(c."heading", '') || ' ' || coalesce(c."text", ''))`
 
-export const search = async (payload: Payload, workspace: number | string, q: string, limit = 20, product?: string, excludeCore = false): Promise<Citation[]> => {
+export const search = async (payload: Payload, workspace: number | string, q: string, limit = 20, product?: string): Promise<Citation[]> => {
   const ws = id(workspace)
   await indexedOnce(payload, ws)
   const r = await payload.db.drizzle.execute(sql`
     SELECT c."source", c."path", c."heading", c."commit", c."text"
     FROM "knowledge_chunks" c
-    WHERE c."workspace_id" = ${ws} AND ${visible('c', product)}${excludeCore ? sql` AND c."source" <> 'core'` : sql``}
+    WHERE c."workspace_id" = ${ws} AND ${visible('c', product)}
       AND ${vector} @@ websearch_to_tsquery('simple', ${q})
       AND NOT EXISTS (
         SELECT 1 FROM "knowledge_chunks" o
@@ -177,34 +153,4 @@ export const search = async (payload: Payload, workspace: number | string, q: st
     ORDER BY ts_rank(${vector}, websearch_to_tsquery('simple', ${q})) DESC, c."path", c."id"
     LIMIT ${limit}`)
   return r.rows as unknown as Citation[]
-}
-
-export const read = async (payload: Payload, workspace: number | string, path: string, product?: string): Promise<{ source: string; text: string } | null> => {
-  const ws = id(workspace)
-  await indexedOnce(payload, ws)
-  const r = await payload.db.drizzle.execute(sql`
-    SELECT c."source", c."text" FROM "knowledge_chunks" c
-    WHERE c."workspace_id" = ${ws} AND c."logical" = ${path} AND ${visible('c', product)}
-      AND NOT EXISTS (
-        SELECT 1 FROM "knowledge_chunks" o
-        WHERE o."workspace_id" = c."workspace_id" AND o."logical" = c."logical" AND ${visible('o', product)} AND ${rank('o')} > ${rank('c')})
-    ORDER BY c."id"`)
-  return r.rows.length ? { source: (r.rows[0] as any).source, text: r.rows.map((x: any) => x.text).join('') } : null
-}
-
-export const documents = async (payload: Payload, workspace: number | string): Promise<{ source: string; path: string; commit: string; heading: string }[]> => {
-  const ws = id(workspace)
-  await indexedOnce(payload, ws)
-  const r = await payload.db.drizzle.execute(sql`
-    SELECT "source", "path", min("commit") AS "commit", (array_agg("heading" ORDER BY "id"))[1] AS "heading" FROM "knowledge_chunks"
-    WHERE "workspace_id" = ${ws} AND "path" LIKE '%.md'
-    GROUP BY "source", "path"
-    ORDER BY ("source" = 'core') DESC, "source", "path"`)
-  return r.rows as unknown as { source: string; path: string; commit: string; heading: string }[]
-}
-
-export const readDocument = async (payload: Payload, workspace: number | string, source: string, path: string): Promise<string | null> => {
-  const r = await payload.db.drizzle.execute(sql`
-    SELECT "text" FROM "knowledge_chunks" WHERE "workspace_id" = ${id(workspace)} AND "source" = ${source} AND "path" = ${path} ORDER BY "id"`)
-  return r.rows.length ? r.rows.map((x: any) => x.text).join('') : null
 }

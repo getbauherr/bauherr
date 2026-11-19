@@ -39,42 +39,22 @@ it('rejects a Connection of a foreign Workspace', async () => {
   await expect(assertInWorkspace(payload, 'connections', [c.id as number], other!.id as number)).resolves.toBeUndefined()
 })
 
-it('a workflow version blocks deleting its Product', async () => {
-  const ws = await payload.create({ collection: 'workspaces', data: { name: 'w', slug: 'w' }, ...o })
-  const product = await payload.create({ collection: 'products', data: { name: 'p', slug: 'p', workspace: ws.id as number }, ...o })
-  expect(await blockedBy(payload, 'products', product.id as number)).toBe('')
-  await payload.create({ collection: 'workflow_versions', data: { version: 1, product: product.id as number, workspace: ws.id as number, compiled: {} }, ...o })
-  expect(await blockedBy(payload, 'products', product.id as number)).toBe('1 workflow versions')
-})
-
 it('stores a gitlab Connection with its base URL', async () => {
   const ws = await payload.create({ collection: 'workspaces', data: { name: 'gl', slug: 'gl' }, ...o })
   const c = await payload.create({ collection: 'connections', data: { name: 'gl', kind: 'gitlab', config: { baseUrl: 'https://git.einsfuenf.de' }, secret: 'glpat', workspace: ws.id as number }, ...o })
   expect(await payload.findByID({ collection: 'connections', id: c.id, ...o })).toMatchObject({ kind: 'gitlab', config: { baseUrl: 'https://git.einsfuenf.de' } })
 })
 
-it('a Ticket, a widget token or an intake session blocks deleting its Product', async () => {
+it('a repository or a ticket source blocks deleting its Product', async () => {
   const ws = await payload.create({ collection: 'workspaces', data: { name: 'bw', slug: 'bw' }, ...o })
   const make = async (slug: string) => (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: ws.id as number }, ...o })).id as number
-  const [a, b, c] = [await make('bt'), await make('bk'), await make('bi')]
-  await payload.create({ collection: 'tickets', data: { title: 't', externalId: 'bw-1', number: 1, url: 'https://x/1', state: 'open', product: a, workspace: ws.id as number }, ...o })
-  await payload.create({ collection: 'embed_tokens', data: { name: 'w', product: b, tokenHash: 'bw-hash', workspace: ws.id as number }, ...o })
-  await payload.create({ collection: 'intake_sessions', data: { product: c, workspace: ws.id as number }, ...o })
-  expect(await blockedBy(payload, 'products', a)).toBe('1 tickets')
-  expect(await blockedBy(payload, 'products', b)).toBe('1 widget tokens')
-  expect(await blockedBy(payload, 'products', c)).toBe('1 intake sessions')
-})
-
-it('overlapIgnore takes a list of path globs without spaces, and only an Admin may change it', async () => {
-  const ws = await payload.create({ collection: 'workspaces', data: { name: 'oi', slug: 'oi' }, ...o })
-  const product = await payload.create({ collection: 'products', data: { name: 'oi', slug: 'oi', workspace: ws.id as number }, ...o })
-  expect(product.overlapIgnore).toEqual([])
-  await expect(payload.update({ collection: 'products', id: product.id, data: { overlapIgnore: ['a b'] }, ...o })).rejects.toThrow()
-  await expect(payload.update({ collection: 'products', id: product.id, data: { overlapIgnore: 'CHANGELOG.md' as never }, ...o })).rejects.toThrow()
-  expect((await payload.update({ collection: 'products', id: product.id, data: { overlapIgnore: ['CHANGELOG.md', 'src/gen/**'] }, ...o })).overlapIgnore).toEqual(['CHANGELOG.md', 'src/gen/**'])
-  const member = await payload.create({ collection: 'bauherren', data: { email: 'oi@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: ws.id as number }] }, ...o })
-  await payload.update({ collection: 'products', id: product.id, data: { overlapIgnore: [] }, user: member, overrideAccess: false }).catch(() => {})
-  expect((await payload.findByID({ collection: 'products', id: product.id, ...o })).overlapIgnore).toEqual(['CHANGELOG.md', 'src/gen/**'])
+  const [a, b] = [await make('br'), await make('bs')]
+  const connection = (await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: ws.id as number }, ...o })).id as number
+  expect(await blockedBy(payload, 'products', a)).toBe('')
+  await payload.create({ collection: 'repositories', data: { fullName: 'acme/br', product: a, workspace: ws.id as number }, ...o })
+  await payload.create({ collection: 'ticket_sources', data: { repo: 'acme/bs', product: b, connection, workspace: ws.id as number }, ...o })
+  expect(await blockedBy(payload, 'products', a)).toBe('1 repositories')
+  expect(await blockedBy(payload, 'products', b)).toBe('1 ticket sources')
 })
 
 it('unlockBauherr and createWorkspace: Admin-only, unlock clears the lock, create adds the tenant and keeps slugs unique', async () => {

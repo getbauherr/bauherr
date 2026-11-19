@@ -23,17 +23,14 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-it('loadProduct answers undefined for a Product of another Workspace and shows the effective production state', async () => {
+it('loadProduct answers undefined for a Product of another Workspace and shows the production state', async () => {
   const { loadProduct } = await import('../src/app/(app)/lib/settings')
   const [mine, other] = await Promise.all(['ps-mine', 'ps-other'].map((slug) => payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })))
   const product = await payload.create({ collection: 'products', data: { name: 'Shop', slug: 'shop', workspace: mine!.id as number }, ...o })
   expect(await loadProduct(other!.id as number, product.id as number)).toBeUndefined()
   const found = await loadProduct(mine!.id as number, product.id as number)
   expect(found?.product.deploy.productionGate).toBe(false)
-  expect(found?.product.productionOn).toBe(true)
-  expect(found?.workflow.forcesProduction).toBe(true)
-  expect(found?.product.deploy.releaseMode).toBe('notes-only')
-  expect(found?.product.setup.production).toBe('On, needs checks')
+  expect(found?.product.setup.production).toBe('Off')
 })
 
 it('loadWorkspaceSettings offers the preset models and shows the first Connection\'s tiers as bare ids', async () => {
@@ -47,15 +44,15 @@ it('loadWorkspaceSettings offers the preset models and shows the first Connectio
   expect(w.modelByTier).toEqual({ cheap: 'claude-haiku-5-5', standard: 'greenpt/glm-5.3', strong: 'claude-opus-5-5' })
 })
 
-const base = { repositories: [{}], sources: [{}], embedTokens: [], deploy: { stagingUrl: 'https://s.example.com', mode: 'observe-ci', webhookUrl: '', productionChecks: 'deploy-prod' } }
+const base = { repositories: [{}], sources: [{}], deploy: { stagingUrl: 'https://s.example.com', mode: 'observe-ci', webhookUrl: '', productionGate: true, productionChecks: 'deploy-prod' } }
 
 it('setupOf counts open steps and words the production approval', () => {
-  expect(setupOf(base, true)).toMatchObject({ open: 0, production: 'On' })
-  const open = setupOf({ ...base, repositories: [], deploy: { ...base.deploy, stagingUrl: '', productionChecks: '' } }, true)
+  expect(setupOf(base)).toMatchObject({ open: 0, production: 'On' })
+  const open = setupOf({ ...base, repositories: [], deploy: { ...base.deploy, stagingUrl: '', productionChecks: '' } })
   expect(open).toMatchObject({ open: 3, production: 'On, needs checks' })
-  expect(open.rows.map((r) => r.word)).toEqual(['Needs setup', 'Needs setup', 'Done', 'Needs setup', 'Optional'])
-  expect(setupOf({ ...base, deploy: { ...base.deploy, productionChecks: '' } }, false)).toMatchObject({ open: 0, production: 'Off' })
-  expect(setupOf({ ...base, deploy: { ...base.deploy, mode: 'webhook' } }, true).rows[1]!.word).toBe('Needs setup')
+  expect(open.rows.map((r) => r.word)).toEqual(['Needs setup', 'Needs setup', 'Needs setup'])
+  expect(setupOf({ ...base, deploy: { ...base.deploy, productionGate: false, productionChecks: '' } })).toMatchObject({ open: 0, production: 'Off' })
+  expect(setupOf({ ...base, deploy: { ...base.deploy, mode: 'webhook' } }).rows[1]!.word).toBe('Needs setup')
 })
 
 it('deployErrors names each invalid field in plain words', () => {
@@ -71,10 +68,9 @@ it('deployErrors names each invalid field in plain words', () => {
   })
 })
 
-const callout = (o: Partial<Parameters<typeof productionCallouts>[0]>) => productionCallouts({ on: true, checks: [], seen: [], notifiable: true, ...o })
+const callout = (o: Partial<Parameters<typeof productionCallouts>[0]>) => productionCallouts({ checks: [], seen: [], ...o })
 
-it('productionCallouts words Off, Not ready, Almost ready and Ready', () => {
-  expect(callout({ on: false, checks: ['deploy-production'] })).toMatchObject([{ tone: 'muted', lead: 'Off' }])
+it('productionCallouts words Not ready, Almost ready and Ready', () => {
   expect(callout({})).toMatchObject([{ tone: 'warn', lead: 'Not ready' }])
   const almost = callout({ checks: ['deploy-production'], seen: ['lint'] })
   expect(almost).toMatchObject([{ tone: 'warn', lead: 'Almost ready' }])
@@ -85,10 +81,8 @@ it('productionCallouts words Off, Not ready, Almost ready and Ready', () => {
   expect(partial[0]!.text).toContain('a has not reported')
 })
 
-it('productionCallouts calls a check ready when the forge cannot be read, and warns when nobody can be notified', () => {
+it('productionCallouts calls a check ready when the forge cannot be read', () => {
   expect(callout({ checks: ['deploy-production'], seen: null })).toMatchObject([{ lead: 'Ready', text: expect.stringContaining('not confirmed') }])
-  expect(callout({ checks: ['deploy-production'], seen: null, notifiable: false }).map((c) => c.lead)).toEqual(['Ready', 'No approver'])
-  expect(callout({ on: false, notifiable: false }).map((c) => c.lead)).toEqual(['Off'])
 })
 
 it('productionWorkflow reports the picked check on the Ticket merge commit', () => {
@@ -147,14 +141,4 @@ it('recentChecks answers null for a Product without a ticket source, so the pick
   const ws = await payload.create({ collection: 'workspaces', data: { name: 'rc', slug: 'rc-ws' }, ...o })
   const product = await payload.create({ collection: 'products', data: { name: 'Plain', slug: 'plain', workspace: ws.id as number }, ...o })
   expect(await recentChecks(product.id as number)).toBeNull()
-})
-
-it('loadProducts shows the stored overlap suggestions (minus listed paths) with their time and makes no forge call', async () => {
-  const { loadProducts } = await import('../src/app/(app)/lib/settings')
-  const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'wf', slug: 'wf-ws' }, ...o })).id as number
-  const at = '2026-11-10T10:00:00.000Z'
-  await payload.create({ collection: 'products', data: { name: 'None', slug: 'wf-none', workspace }, ...o })
-  await payload.create({ collection: 'products', data: { name: 'Some', slug: 'wf-some', workspace, overlapIgnore: ['pnpm-lock.yaml'], overlapSuggestions: { at, items: [{ path: 'pnpm-lock.yaml', percent: 40 }, { path: 'CHANGELOG.md', percent: 30 }] } }, ...o } as never)
-  const { products } = await loadProducts(workspace)
-  expect(products.map((p) => [p.name, p.overlap.suggestedAt, p.overlap.suggestions])).toEqual([['None', null, []], ['Some', at, [{ path: 'CHANGELOG.md', percent: 30 }]]])
 })

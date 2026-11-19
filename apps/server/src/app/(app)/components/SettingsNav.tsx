@@ -7,7 +7,7 @@ import { SidebarMenu, SidebarMenuItem, SidebarMenuSubButton } from './ui/sidebar
 
 export function SettingsNav({ admin }: { admin: boolean }) {
   const path = usePathname()
-  const current = (href: string) => path === href || (['/settings/products', '/settings/templates'].includes(href) && path.startsWith(`${href}/`))
+  const current = (href: string) => path === href || (href === '/settings/products' && path.startsWith(`${href}/`))
   return (
     <nav aria-label="Settings" className="flex flex-col gap-4 max-sm:flex-row max-sm:overflow-x-auto">
       {settingsGroups(admin).map((g) => (

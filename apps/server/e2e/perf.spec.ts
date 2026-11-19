@@ -23,37 +23,23 @@ const settings = (page: Page) => page.getByRole('navigation', { name: 'Settings'
 
 type Content = { sel: string; text?: string }
 type Target = { route: string; from: string; click: (page: Page) => Promise<void>; content: Content }
-const h1 = (text: string): Content => ({ sel: 'h1.title', text: `^${text}$` })
 const h2 = (text: string): Content => ({ sel: 'h2.heading', text: `^${text}$` })
 
 const targets: Target[] = [
-  { route: '/requests', from: '/', click: (p) => main(p).getByRole('link', { name: /^Requests/ }).click(), content: h1('Requests') },
-  { route: '/inbox', from: '/', click: (p) => main(p).getByRole('link', { name: /^Inbox/ }).click(), content: h1('Inbox') },
-  { route: '/', from: '/requests', click: (p) => main(p).getByRole('link', { name: /^Workflow/ }).click(), content: h1('Workflow') },
-  { route: '/team', from: '/', click: (p) => main(p).getByRole('link', { name: /^Agent team/ }).click(), content: h1('Agent team') },
-  { route: '/releases', from: '/', click: (p) => main(p).getByRole('link', { name: 'Releases' }).click(), content: h1('Releases') },
-  { route: '/knowledge', from: '/', click: (p) => main(p).getByRole('link', { name: 'Knowledge' }).click(), content: h1('Knowledge') },
-  { route: '/insights', from: '/', click: (p) => main(p).getByRole('link', { name: 'Insights' }).click(), content: h1('Insights') },
-  { route: '/runs', from: '/', click: (p) => main(p).getByRole('link', { name: 'Runs' }).click(), content: h1('Runs') },
   { route: '/settings/profile', from: '/', click: (p) => p.getByRole('link', { name: 'Settings', exact: true }).click(), content: h2('Profile') },
   ...(
     [
       ['General', '/settings/workspace'],
       ['People', '/settings/bauherren'],
       ['Products', '/settings/products'],
-      ['AI usage', '/settings/usage'],
       ['Models & budget', '/settings/models'],
-      ['Templates', '/settings/templates'],
       ['Connections', '/settings/connections'],
-      ['Knowledge', '/settings/knowledge'],
       ['Health', '/settings/health'],
       ['API keys', '/settings/api-key'],
       ['Audit', '/settings/audit'],
     ] as const
   ).map(([link, route]): Target => ({ route, from: '/settings/profile', click: (p) => settings(p).getByRole('link', { name: link, exact: true }).click(), content: h2(link) })),
-  { route: '/workflow/edit', from: '/settings/profile', click: (p) => settings(p).getByRole('link', { name: 'Workflow', exact: true }).click(), content: h1('Workflow') },
-  { route: '/tickets/[id]', from: '/', click: (p) => p.locator('[data-testid=workflow] a[href^="/tickets/"]').first().click(), content: { sel: '[data-testid=action-bar]' } },
-  { route: '/runs/[id]', from: '/runs', click: (p) => p.locator('main a[href^="/runs/"]').first().click(), content: { sel: 'h1.title', text: '^#\\d+ ' } },
+  { route: '/', from: '/settings/profile', click: (p) => main(p).getByRole('link', { name: 'Home' }).click(), content: { sel: 'main p.body', text: '^No project is connected' } },
 ]
 
 const observe = (c: Content) => {
@@ -75,10 +61,8 @@ const observe = (c: Content) => {
 for (const t of targets) {
   test(`${t.route}: pending within ${PENDING_MS} ms, content within ${CONTENT_MS} ms`, async ({ page }) => {
     await signIn(page)
-    if (t.route === '/knowledge') await page.goto('/knowledge') // the first view of a Workspace builds its index (about a second, once)
     await page.goto(t.from)
     await page.waitForLoadState('networkidle')
-    test.skip(t.route === '/knowledge' && !(await main(page).getByRole('link', { name: 'Knowledge' }).count()), 'the seed has no Knowledge repo')
     await page.evaluate(observe, t.content)
     await t.click(page)
     await page.waitForFunction(() => (window as unknown as { __perf: { content: number | null } }).__perf.content !== null, undefined, { timeout: 15_000 })

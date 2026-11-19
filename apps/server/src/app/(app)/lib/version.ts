@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import path from 'node:path'
 
 const stamp = (iso?: string): string | undefined => {
@@ -28,5 +28,3 @@ export const appVersion = (): string => {
   if (built) return ['dev', `${built} UTC`, revision].filter(Boolean).join(' · ')
   return revision ? `dev+${revision}` : 'dev'
 }
-
-export const changelog = (): string => readFileSync(path.resolve(process.cwd(), '../../CHANGELOG.md'), 'utf8')

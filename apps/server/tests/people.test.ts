@@ -1,17 +1,15 @@
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { roleFrom, syncFrom } from '../src/lib/oidc'
-import { assignmentOf, assignmentWords, canSeeProduct, homeOf, isBauherr, isProductOwner, mediaVisibleTo, productScope, productsVisibleTo, rank, requestsVisibleTo, resyncRole } from '../src/lib/people'
+import { assignmentOf, assignmentWords, isBauherr, isProductOwner, resyncRole } from '../src/lib/people'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 const owner = (assignments: unknown[]) => ({ role: 'product-owner', assignments })
 
 describe('rank and roles', () => {
-  it('orders admin > bauherr > product-owner and refuses anything else', () => {
-    expect([rank({ role: 'admin' }), rank({ role: 'bauherr' }), rank({ role: 'product-owner' }), rank({ role: 'x' }), rank(null)]).toEqual([3, 2, 1, 0, 0])
+  it('only an Admin or Bauherr is a Bauherr, only a product-owner a Product owner', () => {
     expect([{ role: 'admin' }, { role: 'bauherr' }, { role: 'product-owner' }, { role: 'x' }, null].map(isBauherr)).toEqual([true, true, false, false, false])
     expect([isProductOwner({ role: 'product-owner' }), isProductOwner({ role: 'bauherr' })]).toEqual([true, false])
-    expect([homeOf({ role: 'product-owner' }), homeOf({ role: 'admin' })]).toEqual(['/requests', '/'])
   })
 })
 
@@ -23,17 +21,6 @@ describe('assignments', () => {
     expect(assignmentOf(u, 3)).toEqual({ scope: 'products', products: [] })
     expect(assignmentOf(u, 4)).toBeNull()
     expect(assignmentOf({ role: 'bauherr', assignments: u.assignments }, 1)).toBeNull()
-    expect([7, 8, 9].map((id) => canSeeProduct(u, { id, workspace: 2 }))).toEqual([true, true, false])
-    expect(canSeeProduct(u, { id: 1, workspace: 1 })).toBe(true)
-    expect(canSeeProduct(u, { id: 1, workspace: 3 })).toBe(false)
-    expect(canSeeProduct(u, { id: 1, workspace: 4 })).toBe(false)
-  })
-
-  it('a Bauherr sees every Product of their Workspaces, an Admin all', () => {
-    const b = { role: 'bauherr', tenants: [{ tenant: 1 }, { tenant: { id: 2 } }] }
-    expect([1, 2, 3].map((workspace) => canSeeProduct(b, { id: 5, workspace }))).toEqual([true, true, false])
-    expect(canSeeProduct({ role: 'admin' }, { id: 5, workspace: 99 })).toBe(true)
-    expect(canSeeProduct({ role: 'nobody' }, { id: 5, workspace: 1 })).toBe(false)
   })
 
   it('words for the People table', () => {
@@ -41,45 +28,6 @@ describe('assignments', () => {
     expect(assignmentWords([{ workspace: 'Acme', scope: 'products', products: ['Acme Shop', 'Acme Web'] }])).toBe('Acme Shop, Acme Web')
     expect(assignmentWords([{ workspace: 'Acme', scope: 'products', products: [] }])).toBe('No Products in Acme')
     expect(assignmentWords([])).toBe('Nothing assigned')
-  })
-})
-
-describe('what a person sees of a Workspace (the one filter)', () => {
-  const none = { equals: -1 }
-  const po = { id: 9, ...owner([{ workspace: 1, scope: 'products', products: [{ id: 7 }, 8] }, { workspace: 2, scope: 'workspace' }, { workspace: 3, scope: 'products', products: [] }]) }
-  const bauherr = { id: 1, role: 'bauherr', tenants: [{ tenant: 1 }] }
-
-  it('productScope: a Bauherr or Admin the Workspace, a Product owner the assigned Products, nobody else nothing', () => {
-    expect(productScope(bauherr, 1)).toEqual({ 'product.workspace': { equals: 1 } })
-    expect(productScope({ role: 'admin' }, 5, 'ticket.product')).toEqual({ 'ticket.product.workspace': { equals: 5 } })
-    expect(productScope(po, 1)).toEqual({ product: { in: [7, 8] } })
-    expect(productScope(po, 2)).toEqual({ 'product.workspace': { equals: 2 } })
-    expect(productScope(po, 3)).toEqual({ product: none })
-    expect(productScope(po, 4)).toEqual({ product: none })
-    expect(productScope({ role: 'nobody' }, 1)).toEqual({ product: none })
-  })
-
-  it('productsVisibleTo narrows the products collection the same way', () => {
-    expect(productsVisibleTo(bauherr, 1)).toEqual({ and: [{ workspace: { equals: 1 } }] })
-    expect(productsVisibleTo(po, 1)).toEqual({ and: [{ workspace: { equals: 1 } }, { id: { in: [7, 8] } }] })
-    expect(productsVisibleTo(po, 2)).toEqual({ and: [{ workspace: { equals: 2 } }] })
-    expect(productsVisibleTo(po, 3)).toEqual({ and: [{ workspace: { equals: 3 } }, { id: none }] })
-  })
-
-  it('requestsVisibleTo: a Bauherr every request, a Product owner the sent requests of their Products and their own drafts', () => {
-    expect(requestsVisibleTo(bauherr, 1)).toEqual({ and: [{ 'product.workspace': { equals: 1 } }] })
-    expect(requestsVisibleTo(po, 1)).toEqual({ and: [{ product: { in: [7, 8] } }, { or: [{ status: { equals: 'submitted' } }, { user: { equals: 9 } }] }] })
-    expect(requestsVisibleTo(po, 3)).toEqual({ and: [{ product: none }, { or: [{ status: { equals: 'submitted' } }, { user: { equals: 9 } }] }] })
-  })
-
-  it('mediaVisibleTo: files of an assigned Product only, a draft\'s files only to its author', () => {
-    const comment = (product: number) => ({ id: 1, product, workspace: 1 })
-    expect([7, 8, 6].map((p) => mediaVisibleTo(po, comment(p)))).toEqual([true, true, false])
-    expect(mediaVisibleTo(po, { id: 1, product: 7, workspace: 3 })).toBe(false)
-    expect(mediaVisibleTo(po, { id: 1, workspace: 1 })).toBe(false)
-    const shot = (status: string, user: number) => ({ id: 2, session: { workspace: 1, product: 7, status, user } })
-    expect([mediaVisibleTo(po, shot('submitted', 4)), mediaVisibleTo(po, shot('open', 9)), mediaVisibleTo(po, shot('open', 4))]).toEqual([true, true, false])
-    expect(mediaVisibleTo(bauherr, shot('open', 4))).toBe(true)
   })
 })
 

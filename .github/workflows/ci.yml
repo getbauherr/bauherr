@@ -33,7 +33,7 @@ jobs:
         run: pnpm --filter server a11y:coverage
       - run: pnpm --filter server test --shard=1/3
 
-  # The server suite is CPU-bound (941 tests, one Payload per file): `check` runs shard 1, these run shards 2 and 3 (shard 3 also runs the package tests), each with its own Postgres.
+  # The server suite is CPU-bound (one Payload per file): `check` runs shard 1, these run shards 2 and 3 (shard 3 also runs the package tests), each with its own Postgres.
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -163,13 +163,7 @@ jobs:
       LOGIN_IP_MAX_ATTEMPTS: "1000" # every e2e worker signs in from one IP
       DATABASE_URL: postgres://bauherr:bauherr@localhost:54330/bauherr
       BAUHERR_E2E_FAKE_FORGE: "1"
-      INTAKE_FAKE: "1"
-      CHAT_FAKE: "1"
       E2E_FAKE_FORGE: "1"
-      OTEL_ENABLED: "0"
-      BAUHERR_PACK_DIR: ${{ github.workspace }}/apps/server/tests/fixtures/gated-pack
-      E2E_GATED_PACK: "1"
-      MEDIA_DIR: /tmp/bauherr-e2e-media
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -209,7 +203,7 @@ jobs:
         run: >
           docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)"
           -v "$PWD:/work" -v "$E2E_PASSWORD_FILE:/pw:ro" -w /work/apps/server
-          -e BASE_URL=http://localhost:3000 -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e INTAKE_FAKE -e CHAT_FAKE -e E2E_GATED_PACK -e HOME=/tmp -e E2E_WORKERS=3 -e E2E_RETRIES=1
+          -e BASE_URL=http://localhost:3000 -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e HOME=/tmp -e E2E_WORKERS=3 -e E2E_RETRIES=1
           -e PLAYWRIGHT_JSON_OUTPUT_NAME=e2e/results/report-${{ matrix.shard }}.json
           mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test --reporter=line,html,json --shard=${{ matrix.shard }}/2
       - name: Flaky tests (passed only on retry)
@@ -243,7 +237,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:packages
       - run: pnpm --filter bauherr test
-      - name: Pack lint (size caps, cited paths, glossary, tiers, stack names, hook citations)
+      - name: Pack lint
         run: node packages/cli/dist/cli.js pack lint
       - run: pnpm --filter bauherr exec npm pack --dry-run
 
@@ -268,10 +262,6 @@ jobs:
           echo pulled=false >> "$GITHUB_OUTPUT"
       - if: steps.pull.outputs.pulled == 'true'
         run: pnpm --filter server test:gateway
-      - name: Check the Prometheus config
-        run: |
-          img=$(grep -o 'prom/prometheus:[^ "]*' compose.yaml)
-          docker run --rm -v "$PWD/deploy/prometheus:/p:ro" --entrypoint promtool "$img" check config /p/prometheus.yml
 
   cli-smoke:
     runs-on: ubuntu-latest

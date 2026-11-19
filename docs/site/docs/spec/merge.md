@@ -1,1 +1,0 @@
-../../../spec/merge.md

@@ -1,3 +1,0 @@
-@import '../../(app)/tailwind.css';
-@source '../../(app)/components';
-@source not '../../(app)/components/{conversation,assistant-ui}';

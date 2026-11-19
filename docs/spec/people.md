@@ -1,6 +1,6 @@
 # People: roles and assignments
 
-One auth collection, `bauherren`, holds every account. Related pages: [Addressed checkpoints](people-checkpoints.md), [Forge channel and guard test](people-forge.md).
+One auth collection, `bauherren`, holds every account. Related pages: Addressed checkpoints, Forge channel and guard test.
 
 ## Roles
 
@@ -61,7 +61,7 @@ Besides the table above, a Product owner reaches only `/login`, sign-out, the OI
 
 ## Addressed checkpoints
 
-Every human checkpoint asks the Bauherr or the Product owner. Rules, defaults and `mayDecide` are on [Addressed checkpoints](people-checkpoints.md).
+Every human checkpoint asks the Bauherr or the Product owner. Rules, defaults and `mayDecide` are on Addressed checkpoints.
 
 ## Not built yet
 

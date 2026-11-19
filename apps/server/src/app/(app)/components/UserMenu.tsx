@@ -1,7 +1,5 @@
 'use client'
-import Link from 'next/link'
-import { ChevronsUpDown, FileText, LogOut } from './icons'
-import { LinkPending } from './LinkPending'
+import { ChevronsUpDown, LogOut } from './icons'
 import { ThemeRow } from './ThemeToggle'
 import { Avatar, AvatarFallback } from './ui/avatar'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown-menu'
@@ -9,7 +7,7 @@ import { SidebarMenuButton, useSidebar } from './ui/sidebar'
 
 const initials = (email: string) => email.slice(0, 2).toUpperCase()
 
-export function UserMenu({ email, logout, minimal }: { email: string; logout: () => Promise<void>; minimal?: boolean }) {
+export function UserMenu({ email, logout }: { email: string; logout: () => Promise<void> }) {
   const { isMobile } = useSidebar()
   return (
     <DropdownMenu>
@@ -25,11 +23,6 @@ export function UserMenu({ email, logout, minimal }: { email: string; logout: ()
         <DropdownMenuSeparator />
         <ThemeRow />
         <DropdownMenuSeparator />
-        {!minimal && (
-          <DropdownMenuItem asChild>
-            <Link href="/release-notes"><FileText />Release notes<LinkPending /></Link>
-          </DropdownMenuItem>
-        )}
         <form action={logout}>
           <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
             <button><LogOut />Sign out</button>

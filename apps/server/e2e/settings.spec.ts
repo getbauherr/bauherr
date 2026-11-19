@@ -7,8 +7,6 @@ const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim
 
 const ownWorkspace = (page: Page) => page.context().addCookies([{ name: 'bauherr-ws', value: 'settingsco', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
 
-const fake = !!process.env.E2E_FAKE_FORGE // the fake forge lists repositories; the real one fails with the dummy token (the fallback)
-
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
 test('Admin edits budget, adds a Connection with a missing field and a Bauherr', async ({ page }) => {
@@ -98,7 +96,7 @@ test('at 390 px the Next step bar does not cover the last field of the Models & 
   expect(box.y + box.height).toBeLessThanOrEqual((await bar.boundingBox())!.y)
 })
 
-test('Models & budget: model tiers are selects with Other...; Knowledge: the repository is a select or, with a failing forge, text', async ({ page }) => {
+test('Models & budget: model tiers are selects with Other...', async ({ page }) => {
   await ownWorkspace(page)
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
@@ -112,31 +110,9 @@ test('Models & budget: model tiers are selects with Other...; Knowledge: the rep
   await expect(page.getByRole('option')).toHaveText(['Preset default (claude-sonnet-5-5)', 'claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'Other...'])
   await page.getByRole('option', { name: 'Other...' }).click()
   await expect(page.getByLabel('Standard, other')).toBeVisible()
-  await page.reload()
-
-  await page.goto('/settings/knowledge')
-  const repo = page.getByLabel('Repository', { exact: true })
-  if (fake) {
-    await expect(repo).toHaveRole('combobox')
-    await expect(repo).toHaveText('acme/knowledge')
-    await repo.click()
-    await page.getByRole('option', { name: 'Other...' }).focus() // by keyboard: the pointer click can land outside the viewport
-    await page.keyboard.press('Enter')
-    await page.getByLabel('Repository, other').fill('acme/knowledge') // the typed value must post under the field name
-  } else {
-    await expect(page.getByText('Could not list repositories; type owner/name.')).toBeVisible()
-    await expect(repo).toHaveJSProperty('tagName', 'INPUT')
-    await expect(repo).toHaveValue('acme/knowledge')
-  }
-  await page.getByRole('button', { name: 'Save' }).first().click()
-  await expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
-  await page.reload()
-  const saved = page.getByLabel('Repository', { exact: true })
-  if (fake) await expect(saved).toHaveText('acme/knowledge')
-  else await expect(saved).toHaveValue('acme/knowledge')
 })
 
-test('the Settings nav is grouped by scope, the sidebar link opens Profile, and the old URLs and anchors still land', async ({ page }) => {
+test('the Settings nav is grouped by scope, the sidebar link opens Profile, and the old anchors still land', async ({ page }) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
@@ -145,8 +121,8 @@ test('the Settings nav is grouped by scope, the sidebar link opens Profile, and 
   await page.getByRole('link', { name: 'Settings', exact: true }).click()
   await expect(page).toHaveURL(/\/settings\/profile$/)
   const nav = page.getByRole('navigation', { name: 'Settings' })
-  await expect(nav.getByRole('group')).toHaveCount(4)
-  for (const [group, links] of [['Account', ['Profile', 'API keys']], ['Factory', ['Workflow', 'Templates', 'Models & budget', 'AI usage']], ['Workspace', ['General', 'Products', 'Connections', 'People', 'Knowledge']], ['Admin', ['Health', 'Audit', 'Chat feedback']]] as const) {
+  await expect(nav.getByRole('group')).toHaveCount(3)
+  for (const [group, links] of [['Account', ['Profile', 'API keys']], ['Workspace', ['General', 'Products', 'Connections', 'Models & budget', 'People']], ['Admin', ['Health', 'Audit']]] as const) {
     await expect(nav.getByRole('group', { name: group }).getByRole('link')).toHaveText([...links])
   }
   await expect(nav.getByRole('link', { name: 'Profile' })).toHaveAttribute('aria-current', 'page')
@@ -158,14 +134,12 @@ test('the Settings nav is grouped by scope, the sidebar link opens Profile, and 
   await expect(page).toHaveURL(/\/settings\/models#tiers$/)
   await page.goto('/settings/workspace#health')
   await expect(page).toHaveURL(/\/settings\/health$/)
-  await page.goto('/settings/workspace#knowledge')
-  await expect(page).toHaveURL(/\/settings\/knowledge$/)
   await page.goto('/settings/workspace#new-workspace')
   await expect(page).toHaveURL(/\/settings\/workspace#new-workspace$/)
   await expect(page.locator('section#new-workspace')).toBeVisible()
 
   await page.keyboard.press('Control+k')
   const dialog = page.getByRole('dialog', { name: 'Command palette' })
-  await expect(dialog.getByRole('option', { name: 'Settings: Factory › Workflow' })).toBeVisible()
+  await expect(dialog.getByRole('option', { name: 'Settings: Workspace › Models & budget' })).toBeVisible()
   await expect(dialog.getByRole('option', { name: 'Settings: Admin › Health' })).toBeVisible()
 })

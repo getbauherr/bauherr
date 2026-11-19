@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Lists the Playwright tests that passed only on a retry (status "flaky") of one shard's JSON report: a table in $GITHUB_STEP_SUMMARY,
-# and, when GH_TOKEN, GITHUB_REPOSITORY and SHA are set, a non-required check run `e2e-flaky (shard N)` whose output.text is the JSON [{shard,file,title}] the factory records in check_flakes.
+# and, when GH_TOKEN, GITHUB_REPOSITORY and SHA are set, a non-required check run `e2e-flaky (shard N)` whose output.text is the JSON [{shard,file,title}].
 # Usage: e2e-flakes.sh <shard> <report.json>. Never fails the job.
 set -uo pipefail
 shard=${1:?shard}; report=${2:?report}

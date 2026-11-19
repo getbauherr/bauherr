@@ -79,14 +79,9 @@ it('the guards refuse too few models, a big drop and an implausible price move; 
   expect(refusal(c(400), c(380, { 'claude-new-1': { rates: { input: '9', output: '41' } } }))).toBeNull()
 })
 
-it('a refresh writes the base catalog atomically, stores status and model list, lists the file and reprices unpriced usage', async () => {
+it('a refresh writes the base catalog atomically, stores status and model list and lists the file', async () => {
   const { refreshPrices, loadPriceStatus, loadModelList } = await import('../src/lib/prices')
-  const { reloadCatalog, priceOf } = await import('../src/lib/cost')
   writeFileSync(join(dir, 'config.yaml'), 'config: {}\nllm: {models: []}\n')
-  const ws = (await payload.create({ collection: 'workspaces', data: { name: 'p', slug: 'p' }, ...o })).id
-  await payload.db.drizzle.execute((await import('@payloadcms/db-postgres')).sql`INSERT INTO "usage_entries" ("workspace_id", "model", "tokens_in", "tokens_out", "cache_read", "cache_write", "cost_usd", "source", "at") VALUES (${ws}, 'claude-new-1', 1000000, 100000, 0, 0, NULL, 'gateway', now()), (${ws}, 'claude-new-1', 1000000, 0, 0, 0, 9, 'gateway', now())`)
-  reloadCatalog()
-  expect(priceOf('claude-new-1', { tokensIn: 1e6, tokensOut: 0, cacheRead: 0, cacheWrite: 0 })).toBeNull()
   const urls: string[] = []
   const inits: RequestInit[] = []
   const status = await refreshPrices(payload, { fetcher: (async (u: unknown, init: RequestInit) => (urls.push(String(u)), inits.push(init), new Response(JSON.stringify(source()), { status: 200 }))) as typeof fetch })
@@ -98,8 +93,6 @@ it('a refresh writes the base catalog atomically, stores status and model list, 
   expect(readFileSync(join(dir, 'config.yaml'), 'utf8')).toContain('base-costs.json')
   expect(await loadPriceStatus(payload)).toMatchObject({ models: 401 })
   expect((await loadModelList(payload)).find((m) => m.id === 'claude-new-1')).toEqual({ provider: 'anthropic', id: 'claude-new-1', name: 'Claude New 1', deprecated: false })
-  const rows = (await payload.db.drizzle.execute((await import('@payloadcms/db-postgres')).sql`SELECT "cost_usd"::float8 AS c FROM "usage_entries" WHERE "workspace_id" = ${ws} ORDER BY "id"`)).rows as { c: number }[]
-  expect(rows.map((r) => r.c)).toEqual([12, 9])
 })
 
 it('a bad answer keeps the previous file and reports the error; a daily pace skips a fresh status and Update now forces', async () => {
@@ -129,21 +122,6 @@ it('an oversized answer is refused and BAUHERR_PRICES_REFRESH=0 switches the fet
   let calls = 0
   await refreshPrices(payload, { force: true, fetcher: (async () => (calls++, new Response('{}'))) as unknown as typeof fetch })
   expect(calls).toBe(0)
-})
-
-it('the price lookup reads the refreshed base over the shipped one, and overlays without metadata win over both', async () => {
-  const { reloadCatalog, priceOf } = await import('../src/lib/cost')
-  const { mkdirSync } = await import('node:fs')
-  mkdirSync(join(dir, 'catalogs'), { recursive: true })
-  const model = (input: string) => ({ providers: { anthropic: { models: { 'claude-x': { rates: { input, output: '10' } } } } } })
-  writeFileSync(join(dir, 'catalogs', 'a-old.json'), JSON.stringify({ metadata: { generatedAt: '2026-01-01T00:00:00Z' }, ...model('1') }))
-  writeFileSync(join(dir, 'catalogs', 'base-costs.json'), JSON.stringify({ metadata: { generatedAt: '2026-11-01T00:00:00Z' }, ...model('2') }))
-  reloadCatalog()
-  const u = { tokensIn: 1e6, tokensOut: 0, cacheRead: 0, cacheWrite: 0 }
-  expect(priceOf('claude-x', u)).toBe(2)
-  writeFileSync(join(dir, 'catalogs', 'z-overlay.json'), JSON.stringify(model('5')))
-  reloadCatalog()
-  expect(priceOf('claude-x', u)).toBe(5)
 })
 
 it('the first refresh is compared with the shipped prices and lists the models the instance uses whose price moved; unused models are not listed', async () => {

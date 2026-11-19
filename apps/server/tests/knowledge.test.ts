@@ -1,6 +1,3 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -19,11 +16,6 @@ let withoutRepo: number
 
 let testDb: TestDb
 beforeAll(async () => {
-  const pack = mkdtempSync(join(tmpdir(), 'pack-'))
-  mkdirSync(join(pack, 'rules'))
-  writeFileSync(join(pack, 'rules/evidence.md'), '# Evidence\n\nEvery MR carries zebra proof.\n')
-  writeFileSync(join(pack, 'rules/style.md'), '# Style\n\nKeep it short.\n')
-  process.env.BAUHERR_PACK_DIR = pack
   backend.current = new FakeBackend()
   backend.current.commit(REPO, 'main', 'workspace/rules/evidence.md', '# Evidence\n\nHouse rule: giraffe proof.\n')
   backend.current.commit(REPO, 'main', 'products/web/notes.md', '# Notes\n\nWeb only okapi note.\n')
@@ -68,22 +60,10 @@ describe('chunk', () => {
 })
 
 describe('search', () => {
-  it('finds the core pack without a Knowledge repo, with a citation', async () => {
-    const hits = await knowledge.search(payload, withoutRepo, 'zebra')
-    expect(hits).toEqual([expect.objectContaining({ source: 'core', path: 'rules/evidence.md', heading: 'Evidence', commit: 'core-pack' })])
-  })
-
   it('finds a repo document with source, path, heading and commit, and skips non-markdown files', async () => {
     const hits = await knowledge.search(payload, withRepo, 'giraffe')
     expect(hits).toEqual([expect.objectContaining({ source: REPO, path: 'workspace/rules/evidence.md', heading: 'Evidence', commit: expect.any(String) })])
-    expect(hits[0]!.commit).not.toBe('core-pack')
     expect((await knowledge.search(payload, withRepo, 'binary')).length).toBe(0)
-  })
-
-  it('a later layer shadows the earlier one at the same logical path', async () => {
-    expect((await knowledge.search(payload, withRepo, 'zebra')).length).toBe(0)
-    expect((await knowledge.read(payload, withRepo, 'rules/evidence.md'))?.text).toContain('giraffe')
-    expect((await knowledge.read(payload, withoutRepo, 'rules/evidence.md'))?.text).toContain('zebra')
   })
 
   it('shows a product layer only to that product', async () => {
@@ -99,7 +79,6 @@ describe('search', () => {
 
   it('never returns another Workspace documents', async () => {
     expect(await knowledge.search(payload, withoutRepo, 'giraffe')).toEqual([])
-    expect(await knowledge.read(payload, withoutRepo, 'handbook.md')).toBeNull()
   })
 })
 
@@ -128,24 +107,11 @@ describe('resync', () => {
     await payload.update({ collection: 'workspaces', id: withRepo, data: { knowledgeRepo: null }, ...o })
     expect(await knowledge.resync(payload, withRepo)).toBe(true)
     expect(await knowledge.search(payload, withRepo, 'narwhal')).toEqual([])
-    expect((await knowledge.search(payload, withRepo, 'Keep it short')).length).toBe(1)
-  })
-})
-
-describe('MCP tools', () => {
-  it('search_knowledge returns citations and read_knowledge resolves layers for the callers Workspace', async () => {
-    const { callTool } = await import('../src/lib/mcp-tools')
-    const ctx = (workspace: number) => ({ payload, user: { role: 'bauherr', tenants: [{ tenant: workspace }] }, actor: { kind: 'human' as const } })
-    const hits = (await callTool(ctx(withoutRepo), 'search_knowledge', { query: 'zebra' })) as Record<string, unknown>[]
-    expect(hits[0]).toMatchObject({ source: 'core', path: 'rules/evidence.md', heading: 'Evidence', commit: 'core-pack' })
-    expect(await callTool(ctx(withoutRepo), 'read_knowledge', { path: 'rules/evidence.md' })).toContain('zebra')
-    expect(await callTool(ctx(withoutRepo), 'read_knowledge', { path: 'rules/style.md' })).toContain('Keep it short')
   })
 })
 
 describe('repo switch, failure back-off and fencing', () => {
   const OTHER = 'acme/other'
-  let switched: number
   const makeWs = async (slug: string, repo: string) => {
     const w = Number((await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id)
     const conn = await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: w }, ...o } as never)
@@ -156,7 +122,7 @@ describe('repo switch, failure back-off and fencing', () => {
   it('switching knowledgeRepo A to B drops As chunks', async () => {
     backend.current.commit('acme/a', 'main', 'a.md', '# A\n\naardvark\n')
     backend.current.commit('acme/b', 'main', 'b.md', '# B\n\nbonobo\n')
-    const w = (switched = await makeWs('switch', 'acme/a'))
+    const w = await makeWs('switch', 'acme/a')
     await knowledge.resync(payload, w)
     expect((await knowledge.search(payload, w, 'aardvark')).length).toBe(1)
     await payload.update({ collection: 'workspaces', id: w, data: { knowledgeRepo: 'acme/b' }, ...o })
@@ -174,16 +140,6 @@ describe('repo switch, failure back-off and fencing', () => {
     expect(list).toHaveBeenCalledTimes(1)
     list.mockRestore()
   })
-
-  it('fences repo text for agents and leaves core text plain', async () => {
-    const { callTool } = await import('../src/lib/mcp-tools')
-    const ctx = (workspace: number) => ({ payload, user: { role: 'bauherr', tenants: [{ tenant: workspace }] }, actor: { kind: 'human' as const } })
-    const repoHits = (await callTool(ctx(switched), 'search_knowledge', { query: 'bonobo' })) as { text: string }[]
-    expect(repoHits[0]!.text).toContain('<untrusted-data>')
-    expect(await callTool(ctx(switched), 'read_knowledge', { path: 'b.md' })).toContain('<untrusted-data>')
-    const core = (await callTool(ctx(withoutRepo), 'search_knowledge', { query: 'zebra' })) as { text: string }[]
-    expect(core[0]!.text).not.toContain('untrusted-data')
-  })
 })
 
 describe('Product docs', () => {
@@ -191,14 +147,13 @@ describe('Product docs', () => {
   let conn: number
   let PA: string
   let PB: string
-  const ctx = (workspace: number) => ({ payload, user: { role: 'bauherr', tenants: [{ tenant: workspace }] }, actor: { kind: 'human' as const } })
   const addProduct = async (slug: string, repo: string) => {
     const product = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace: w }, ...o } as never)).id
     await payload.create({ collection: 'repositories', data: { fullName: repo, product, workspace: w }, ...o } as never)
     await payload.create({ collection: 'ticket_sources', data: { repo, product, connection: conn, cursor: '2026-10-30T09:00:00Z', workspace: w }, ...o } as never)
     return product
   }
-  const sources = async () => (await knowledge.documents(payload, w)).map((d) => `${d.source}:${d.path}`)
+  const sources = async () => ((await payload.db.drizzle.execute(sql`SELECT DISTINCT "source", "path" FROM "knowledge_chunks" WHERE "workspace_id" = ${w} AND "path" LIKE '%.md'`)).rows as { source: string; path: string }[]).map((d) => `${d.source}:${d.path}`)
 
   beforeAll(async () => {
     const fb = backend.current
@@ -220,7 +175,6 @@ describe('Product docs', () => {
     expect(await sources()).not.toContain(`${PA}:src/notes.md`)
     const r = await payload.db.drizzle.execute(sql`SELECT "layer", "product", "logical" FROM "knowledge_chunks" WHERE "workspace_id" = ${w} AND "source" = ${PA} AND "path" = 'docs/guide/setup.md'`)
     expect(r.rows[0]).toEqual({ layer: 'product', product: 'pa', logical: 'repo-docs/docs/guide/setup.md' })
-    expect(await knowledge.readDocument(payload, w, PA, 'README.md')).toContain('lemur readme')
   })
 
   it('shows a Product its own docs only', async () => {
@@ -228,19 +182,6 @@ describe('Product docs', () => {
     expect(await paths('pa')).toEqual([`${PA}:README.md`, `${PA}:docs/evidence.md`, `${PA}:docs/guide/setup.md`])
     expect(await paths('pb')).toEqual([`${PB}:README.md`])
     expect(await paths()).toEqual([])
-  })
-
-  it('never shadows a core document', async () => {
-    expect((await knowledge.read(payload, w, 'rules/evidence.md', 'pa'))?.text).toContain('zebra')
-    expect((await knowledge.search(payload, w, 'zebra', 20, 'pa')).length).toBe(1)
-  })
-
-  it('fences product hits for agents', async () => {
-    const { callTool } = await import('../src/lib/mcp-tools')
-    const hits = (await callTool(ctx(w), 'search_knowledge', { query: 'meerkat', product: 'pb' })) as { source: string; text: string }[]
-    expect(hits[0]).toMatchObject({ source: 'acme/pb' })
-    expect(hits[0]!.text).toContain('<untrusted-data>')
-    expect(await callTool(ctx(w), 'read_knowledge', { path: 'repo-docs/README.md', product: 'pb' })).toContain('<untrusted-data>')
   })
 
   it('re-indexes on a changed commit, not on an unchanged one', async () => {
@@ -299,6 +240,6 @@ describe('Product docs sharing a repo', () => {
     expect(await count(`"source" LIKE 'acme/shared#%'`)).toBe(2)
     expect(await count(`"source" = '${REPO}'`)).toBeGreaterThan(0)
     expect(await count(`"source" LIKE '${REPO}#%'`)).toBe(0)
-    expect((await knowledge.documents(payload, ws)).filter((d) => d.path === 'handbook.md')).toHaveLength(1)
+    expect(((await payload.db.drizzle.execute(sql`SELECT DISTINCT "source" FROM "knowledge_chunks" WHERE "workspace_id" = ${ws} AND "path" = 'handbook.md'`)).rows)).toHaveLength(1)
   })
 })

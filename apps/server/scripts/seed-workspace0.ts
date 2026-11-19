@@ -1,9 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { getPayload } from 'payload'
 import config from '../src/payload.config'
-import { replaceAgentKey } from '../src/lib/api-key'
-import { ensureSessionKey, gatewayEnabled, writeSecretFile } from '../src/lib/gateway'
-import { activeVersion, applyFactory, packSource } from '../src/lib/factory'
+import { ensureSessionKey, gatewayEnabled } from '../src/lib/gateway'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -12,52 +10,31 @@ const env = (k: string): string => {
 }
 
 const anthropicKey = process.env.ANTHROPIC_API_KEY_FILE ? readFileSync(process.env.ANTHROPIC_API_KEY_FILE, 'utf8').trim() : env('ANTHROPIC_API_KEY')
+const adminPassword = process.env.BAUHERR_ADMIN_PASSWORD_FILE ? readFileSync(process.env.BAUHERR_ADMIN_PASSWORD_FILE, 'utf8').trim() : env('BAUHERR_ADMIN_PASSWORD')
 
 const payload = await getPayload({ config })
 const o = { overrideAccess: true } as const
 
+const eq = (where: Record<string, unknown>) => Object.fromEntries(Object.entries(where).map(([k, v]) => [k, { equals: v }]))
 const ensure = async (collection: string, where: Record<string, unknown>, data: Record<string, unknown>) => {
-  const found = await payload.find({ collection, where: where as never, limit: 1, depth: 0, ...o })
+  const found = await payload.find({ collection, where: eq(where) as never, limit: 1, depth: 0, ...o })
   return found.docs[0] ?? (await payload.create({ collection, data: data as never, ...o }))
 }
-const eq = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, { equals: v }]))
 
-const adminPassword = process.env.BAUHERR_ADMIN_PASSWORD_FILE ? readFileSync(process.env.BAUHERR_ADMIN_PASSWORD_FILE, 'utf8').trim() : env('BAUHERR_ADMIN_PASSWORD')
-const admin = await ensure('bauherren', eq({ email: env('BAUHERR_ADMIN_EMAIL') }), {
-  email: env('BAUHERR_ADMIN_EMAIL'),
-  password: adminPassword,
-  role: 'admin',
-})
+const email = env('BAUHERR_ADMIN_EMAIL')
+const admin = await ensure('bauherren', { email }, { email, password: adminPassword, role: 'admin' })
 await payload.update({ collection: 'bauherren', id: admin.id, data: { password: adminPassword, role: 'admin' }, ...o })
 
-if (process.env.BAUHERR_MCP_KEY_FILE) await writeSecretFile(process.env.BAUHERR_MCP_KEY_FILE, await replaceAgentKey(payload, admin, 'seed'))
-
-const ws = await ensure('workspaces', eq({ slug: 'getbauherr' }), { name: 'getbauherr', slug: 'getbauherr' })
+const ws = await ensure('workspaces', { slug: 'getbauherr' }, { name: 'getbauherr', slug: 'getbauherr' })
 const workspace = ws.id
 if (gatewayEnabled()) await ensureSessionKey({ id: ws.id, slug: ws.slug as string, budgetUsd30d: ws.budgetUsd30d as number | null })
-const scoped = (c: string, key: Record<string, unknown>, data: Record<string, unknown>) =>
-  ensure(c, eq({ workspace, ...key }), { workspace, ...key, ...data })
+const scoped = (collection: string, key: Record<string, unknown>, data: Record<string, unknown>) => ensure(collection, { workspace, ...key }, { workspace, ...key, ...data })
 
-const github = await scoped('connections', { name: 'github' }, {
-  kind: 'github',
-  config: {},
-  secret: env('GITHUB_TOKEN'),
-  capabilities: { attachments: false, nativeSubTickets: true, nativeBlocking: true, webhooks: false },
-})
+const github = await scoped('connections', { name: 'github' }, { kind: 'github', config: {}, secret: env('GITHUB_TOKEN'), capabilities: { attachments: false, nativeSubTickets: true, nativeBlocking: true, webhooks: false } })
 await scoped('connections', { name: 'anthropic' }, { kind: 'llm-provider', config: { provider: 'anthropic' }, secret: anthropicKey })
-const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr', productionGate: true, productionChecks: 'production', releaseMode: 'factory', releasePrerelease: true, releaseChecks: 'image, npm' })
-if (!product.productionChecks) await payload.update({ collection: 'products', id: product.id, data: { productionGate: true, productionChecks: 'production' }, ...o })
-if (!product.releaseChecks) await payload.update({ collection: 'products', id: product.id, data: { releaseMode: 'factory', releasePrerelease: true, releaseChecks: 'image, npm' }, ...o })
+const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr', productionGate: true, productionChecks: 'production' })
 await scoped('repositories', { fullName: 'getbauherr/bauherr' }, { product: product.id })
 await scoped('ticket_sources', { repo: 'getbauherr/bauherr', product: product.id }, { connection: github.id })
-if (!(await activeVersion(payload, Number(workspace)))) await applyFactory(payload, Number(workspace), packSource(), { by: 'seed', via: 'seed' })
-
-const smoke = process.env.BAUHERR_SMOKE_REPO
-if (smoke) {
-  const sandbox = await scoped('products', { slug: 'sandbox' }, { name: 'sandbox' })
-  await scoped('repositories', { fullName: smoke }, { product: sandbox.id })
-  await scoped('ticket_sources', { repo: smoke, product: sandbox.id }, { connection: github.id })
-}
 
 payload.logger.info(`seeded workspace ${workspace}`)
 process.exit(0)

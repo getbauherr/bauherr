@@ -1,22 +1,16 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { request } from './chat/dock-state'
-import { Chat } from './chat/icons'
-import { LogOut, Moon, Plus, Search, Ticket } from './icons'
+import { LogOut, Moon, Search } from './icons'
 import { settingsPages, type NavItem } from './nav-items'
 import { toggleTheme } from './ThemeToggle'
 import { Button } from './ui/button'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
-import { searchTickets, type TicketHit } from '../lib/search'
 
-const SEARCH_DEBOUNCE_MS = 150
-
-export function CommandMenu({ items, admin, setup, logout }: { items: Pick<NavItem, 'href' | 'label'>[]; admin: boolean; setup?: { complete: boolean }; logout: () => Promise<void> }) {
+export function CommandMenu({ items, admin, logout }: { items: Pick<NavItem, 'href' | 'label'>[]; admin: boolean; logout: () => Promise<void> }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
-  const [hits, setHits] = useState<TicketHit[]>([])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
@@ -27,27 +21,14 @@ export function CommandMenu({ items, admin, setup, logout }: { items: Pick<NavIt
     addEventListener('keydown', onKey)
     return () => removeEventListener('keydown', onKey)
   }, [])
-  useEffect(() => {
-    const term = q.trim()
-    if (!term) return setHits([])
-    let stale = false
-    const id = setTimeout(() => searchTickets(term).then((r) => !stale && setHits(r)), SEARCH_DEBOUNCE_MS)
-    return () => {
-      stale = true
-      clearTimeout(id)
-    }
-  }, [q])
   const run = (action: () => void) => {
     setOpen(false)
     action()
   }
   const go = (href: string) => run(() => router.push(href))
   const needle = q.trim().toLowerCase()
-  const pages = [...items.map(({ href, label }) => ({ href, label })), ...(setup ? [{ href: '/setup', label: setup.complete ? 'Setup checklist' : 'Set up' }] : []), ...settingsPages(admin).map(([label, href]) => ({ href, label: `Settings: ${label}` }))].filter((p) => p.label.toLowerCase().includes(needle))
+  const pages = [...items.map(({ href, label }) => ({ href, label })), ...settingsPages(admin).map(([label, href]) => ({ href, label: `Settings: ${label}` }))].filter((p) => p.label.toLowerCase().includes(needle))
   const actions = [
-    { label: 'Ask the factory', Icon: Chat, run: () => run(() => request('focus')) },
-    { label: 'New chat', Icon: Chat, run: () => run(() => request('new')) },
-    { label: 'New request', Icon: Plus, run: () => go('/requests/new') },
     { label: 'Toggle theme', Icon: Moon, run: () => run(toggleTheme) },
     { label: 'Sign out', Icon: LogOut, run: () => run(() => void logout()) },
   ].filter((a) => a.label.toLowerCase().includes(needle))
@@ -66,24 +47,13 @@ export function CommandMenu({ items, admin, setup, logout }: { items: Pick<NavIt
         </Button>
       }
     >
-      <CommandInput value={q} onValueChange={setQ} placeholder="Go to a page, find a Ticket (#123 or words), run an action" />
+      <CommandInput value={q} onValueChange={setQ} placeholder="Go to a page or run an action" />
       <CommandList>
         <CommandEmpty>Nothing found.</CommandEmpty>
         {pages.length > 0 && (
           <CommandGroup heading="Go to">
             {pages.map((p) => (
               <CommandItem key={p.href + p.label} value={p.href + p.label} onSelect={() => go(p.href)}>{p.label}</CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-        {hits.length > 0 && (
-          <CommandGroup heading="Tickets">
-            {hits.map((t) => (
-              <CommandItem key={t.id} value={`ticket-${t.id}`} onSelect={() => go(`/tickets/${t.id}`)}>
-                <Ticket />
-                <span className="mono">#{t.number}</span>
-                <span className="truncate">{t.title}</span>
-              </CommandItem>
             ))}
           </CommandGroup>
         )}

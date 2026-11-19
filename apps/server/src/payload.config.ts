@@ -1,21 +1,17 @@
 import { postgresAdapter } from '@payloadcms/db-postgres'
 import { multiTenantPlugin } from '@payloadcms/plugin-multi-tenant'
-import { s3Storage } from '@payloadcms/storage-s3'
 import { buildConfig, type SanitizedConfig } from 'payload'
 import { bauherrOnly, collections, isAdmin } from './collections'
 import { TASKS, syncJobEnums } from './jobs'
-import { bootFactory } from './lib/factory'
 import { migrations } from './migrations'
 import { poolOptions } from './lib/db-pool'
 import { loginLimits } from './lib/login-lock'
 import { secret } from './lib/secrets'
-import { renderTracing } from './lib/monitoring'
 
 const tenantCollections = Object.fromEntries(
   collections.filter((c) => !['workspaces', 'bauherren', 'agent_keys', 'instance_state'].includes(c.slug)).map((c) => [c.slug, {}]),
 )
 
-const mediaBucket = process.env.MEDIA_S3_BUCKET
 if (!loginLimits().trustedProxyHops) console.warn('TRUSTED_PROXY_HOPS=0: x-forwarded-for is ignored, so the per-IP sign-in limit is off (the per-account cap still applies)')
 
 const closeBuiltIns = (config: SanitizedConfig): SanitizedConfig => {
@@ -34,8 +30,6 @@ export default buildConfig({
   collections,
   onInit: async (payload) => {
     await syncJobEnums(payload)
-    if (process.env.GATEWAY_ADMIN_URL) await renderTracing(payload, undefined, true).catch((e) => payload.logger.warn({ err: e }, 'gateway config sync failed at boot'))
-    await bootFactory(payload)
   },
   plugins: [
     multiTenantPlugin({
@@ -43,18 +37,6 @@ export default buildConfig({
       tenantField: { name: 'workspace' },
       collections: tenantCollections as never,
       userHasAccessToAllTenants: (user) => (user as { role?: string }).role === 'admin',
-    }),
-    s3Storage({
-      enabled: !!mediaBucket,
-      alwaysInsertFields: true,
-      collections: { media: true },
-      bucket: mediaBucket ?? '',
-      config: {
-        endpoint: process.env.MEDIA_S3_ENDPOINT || undefined,
-        region: process.env.MEDIA_S3_REGION || 'auto',
-        forcePathStyle: true,
-        credentials: mediaBucket ? { accessKeyId: secret('MEDIA_S3_ACCESS_KEY_ID'), secretAccessKey: secret('MEDIA_S3_SECRET_ACCESS_KEY') } : undefined,
-      },
     }),
   ],
   jobs: {

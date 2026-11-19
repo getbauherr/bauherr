@@ -19,17 +19,12 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-it('a bauherr of workspace A cannot read workspace B tickets', async () => {
+it('a bauherr of workspace A cannot read workspace B products', async () => {
   const o = { overrideAccess: true } as const
   const seed = async (slug: string) => {
     const workspace = (await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id
-    const product = (await payload.create({ collection: 'products', data: { name: slug, slug, workspace }, ...o })).id
-    const ticket = await payload.create({
-      collection: 'tickets',
-      data: { title: `ticket ${slug}`, externalId: slug, product, workspace },
-      ...o,
-    })
-    return { workspace, ticket }
+    const product = await payload.create({ collection: 'products', data: { name: slug, slug, workspace }, ...o })
+    return { workspace, product }
   }
   await payload.create({ collection: 'bauherren', data: { email: 'admin@example.com', password: 'pw-admin-12345' }, ...o } as never)
   const a = await seed('a')
@@ -41,8 +36,8 @@ it('a bauherr of workspace A cannot read workspace B tickets', async () => {
   } as never)
   const user = { ...doc, collection: 'bauherren' } as never
 
-  const list = await payload.find({ collection: 'tickets', user, overrideAccess: false })
-  expect(list.docs.map((t) => t.id)).toEqual([a.ticket.id])
-  await expect(payload.findByID({ collection: 'tickets', id: b.ticket.id, user, overrideAccess: false })).rejects.toThrow()
-  expect((await payload.findByID({ collection: 'tickets', id: a.ticket.id, user, overrideAccess: false })).title).toBe('ticket a')
+  const list = await payload.find({ collection: 'products', user, overrideAccess: false })
+  expect(list.docs.map((p) => p.id)).toEqual([a.product.id])
+  await expect(payload.findByID({ collection: 'products', id: b.product.id, user, overrideAccess: false })).rejects.toThrow()
+  expect((await payload.findByID({ collection: 'products', id: a.product.id, user, overrideAccess: false })).name).toBe('a')
 })

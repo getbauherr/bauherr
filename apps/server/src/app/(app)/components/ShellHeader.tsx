@@ -1,39 +1,18 @@
 'use client'
-import { usePathname } from 'next/navigation'
 import { Breadcrumbs } from './Breadcrumbs'
-import { ChatButton } from './chat/ChatButton'
-import Link from 'next/link'
 import { CommandMenu } from './CommandMenu'
-import { Plus } from './icons'
-import { PresencePill } from './Presence'
 import type { NavItem } from './nav-items'
-import { Button } from './ui/button'
 import { Separator } from './ui/separator'
 import { SidebarTrigger } from './ui/sidebar'
 
-export function ShellHeader({ items, admin, setup, minimal, logout }: { items: Pick<NavItem, 'href' | 'label'>[]; admin: boolean; setup?: { complete: boolean }; minimal?: boolean; logout: () => Promise<void> }) {
-  const path = usePathname()
+export function ShellHeader({ items, admin, logout }: { items: Pick<NavItem, 'href' | 'label'>[]; admin: boolean; logout: () => Promise<void> }) {
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-4 max-sm:gap-1 max-sm:px-2">
       <SidebarTrigger />
       <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-5 max-sm:hidden" />
-      <Breadcrumbs owner={minimal} />
+      <Breadcrumbs />
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        {!path.startsWith('/requests/new') && (
-          <Button asChild variant="outline" className="max-sm:size-9 max-sm:px-0">
-            <Link href="/requests/new" prefetch={false} data-testid="new-request">
-              <Plus />
-              <span className="max-sm:sr-only">New request</span>
-            </Link>
-          </Button>
-        )}
-        {!minimal && (
-          <>
-            <PresencePill />
-            <CommandMenu items={items} admin={admin} setup={setup} logout={logout} />
-            <ChatButton />
-          </>
-        )}
+        <CommandMenu items={items} admin={admin} logout={logout} />
       </div>
     </header>
   )

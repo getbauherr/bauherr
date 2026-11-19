@@ -108,13 +108,3 @@ describe('failed lock read', () => {
     }
   })
 })
-
-describe('/mcp', () => {
-  it('answers 401 "This account is locked." for a locked account key', async () => {
-    const key = await rotateApiKey(payload, await bauherr('mcp-locked', new Date(Date.now() + day)))
-    const { POST } = await import('../src/app/mcp/route')
-    const res = await POST(new Request('http://localhost/mcp', { method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' }, body: '{}' }))
-    expect(res.status).toBe(401)
-    expect((await res.json()).error.message).toBe('This account is locked.')
-  })
-})

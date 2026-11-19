@@ -1,6 +1,5 @@
 'use server'
 import { randomBytes } from 'node:crypto'
-import { artifactRules, parseReviewChecks, storableProofRules } from '@bauherr/runner'
 import { revalidatePath } from 'next/cache'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
@@ -8,31 +7,18 @@ import { createLocalReq } from 'payload'
 import { mintAgentKey, revokeAgentKey, revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
 import { backendFor } from '../../../../lib/adapters'
 import { connectionInput, webOrigin } from '../../../../lib/connection'
-import { createEmbedToken } from '../../../../lib/intake/embed'
 import { withLoginLock } from '../../../../lib/login-lock'
-import { suggestOverlapIgnore } from '../../../../lib/overlap'
 import { parsePathSets, type PathSets } from '../../../../lib/path-sets'
-import { forgeOf } from '../../../../lib/release'
-import { gatewayEnabled, rotateKey, rotateSessionKey } from '../../../../lib/gateway'
+import { forgeOf } from '../../../../lib/forge'
+import { gatewayEnabled, rotateKey } from '../../../../lib/gateway'
 import { refreshPrices } from '../../../../lib/prices'
-import { SCAN_MAX_BUDGET_USD } from '../../../../lib/investigation'
-import { startVerifyCreate } from '../../../../lib/verify-create'
-import { startSecurityScan } from '../../../../lib/security-scan'
-import { DEFAULT_DOCS_PATHS, startDocsCheck } from '../../../../lib/docs-check'
-import { MERGE_MODES } from '../../../../lib/merge-mode'
-import { redetectMergeMode, runPreflight } from '../../../../lib/merge-preflight'
-import { mintScrapeToken, monitoringRows, scrapeOrigin, scrapeSnippet, SERVICES, testMonitoring, TITLES, type Service } from '../../../../lib/monitoring'
 import { decrypt } from '../../../../lib/secrets'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
 import { deployErrors } from '../../lib/product-setup'
 import { isAdmin, listRepos, only, presetFor, run, type FormState } from '../../lib/settings'
-import { isTemplateName, lintTemplate } from '../../../../lib/template-text'
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
 import { OTHER_REPO, slugOf } from '../../lib/new-product'
-import { isWebUrl } from '../../lib/url'
-import { modeStages } from '../../../../lib/workflow'
-import { workflowFor } from '../../../../lib/factory'
 import { assignmentRows } from '../../../../lib/people'
 import { archiveWorkspace, restoreWorkspace } from '../../../../lib/workspace-delete'
 
@@ -50,7 +36,6 @@ const act = (rename: Record<string, string>, fn: (c: Awaited<ReturnType<typeof c
     const result = await run(() => fn(c, fd), rename)
     if (result.saved) {
       revalidatePath('/settings', 'layout')
-      revalidatePath('/setup')
     }
     return result
   }
@@ -63,77 +48,40 @@ const inWorkspace = (c: { workspace: { id: number } | null }) => {
 
 export const saveGeneral = act({}, async ({ user, workspace, payload, w }, fd) => {
   only(user)
-  await payload.update({ collection: 'workspaces', id: inWorkspace({ workspace }), data: { name: s(fd, 'name'), progressComments: fd.get('progressComments') === 'on' }, ...w } as never)
+  await payload.update({ collection: 'workspaces', id: inWorkspace({ workspace }), data: { name: s(fd, 'name') }, ...w } as never)
 })
 
-export const saveModels = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d: 'budgetAmount', routerBudgetShare: 'routerBudgetShare' }, async ({ user, workspace, payload, w }, fd) => {
+export const saveModels = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d: 'budgetAmount' }, async ({ user, workspace, payload, w }, fd) => {
   only(user)
   const wsId = inWorkspace({ workspace })
   const unit = s(fd, 'budgetUnit') === 'tokens' ? 'tokens' : 'usd'
   const amount = s(fd, 'budgetAmount')
   const data: Record<string, unknown> = { budgetUnit: unit, [unit === 'usd' ? 'budgetUsd30d' : 'budgetTokens30d']: amount === '' ? null : Number(amount) }
-  if (s(fd, 'routerBudgetShare')) data.routerBudgetShare = Number(s(fd, 'routerBudgetShare'))
   const { defaultModels: defaults, slugs } = await presetFor(wsId)
   const missing = (['cheap', 'standard', 'strong'] as const).filter((t) => !s(fd, `tier_${t}`) && !defaults)
   if (missing.length) throw Object.assign(new Error('Model tiers missing.'), { data: { errors: missing.map((t) => ({ path: `tier_${t}`, message: 'This provider has no default; set a model id' })) } })
   const qualify = (v: string) => (!slugs.length || slugs.some((c) => v.startsWith(`${c}/`)) ? v : `${slugs[0]}/${v}`)
   const tiers = Object.fromEntries((['cheap', 'standard', 'strong'] as const).map((t) => [t, qualify(s(fd, `tier_${t}`) || defaults![t])]))
-  const stages = Object.fromEntries(modeStages(workflowFor(wsId)).map((t) => [t, s(fd, `mode_${t}`)]).filter(([, v]) => v))
-  Object.assign(data, { modelByTier: tiers, defaultMode: s(fd, 'defaultMode') || null, modeByStage: Object.keys(stages).length ? stages : null })
+  data.modelByTier = tiers
   await payload.update({ collection: 'workspaces', id: wsId, data, ...w } as never)
-})
-
-export const saveKnowledge = act({}, async ({ user, workspace, payload, w }, fd) => {
-  only(user)
-  const wsId = inWorkspace({ workspace })
-  const conn = Number(s(fd, 'knowledgeConnection')) || undefined
-  await assertInWorkspace(payload, 'connections', [conn], wsId)
-  await payload.update({ collection: 'workspaces', id: wsId, data: { knowledgeConnection: conn ?? null, knowledgeRepo: s(fd, 'knowledgeRepo') || null }, ...w } as never)
-})
-
-export const saveOverlapIgnore = act({ ignore: 'ignore' }, async (c, fd) => {
-  only(c.user)
-  const wsId = inWorkspace(c)
-  const product = id(fd)
-  await assertInWorkspace(c.payload, 'products', [product], wsId)
-  const current = ((await c.payload.findByID({ collection: 'products', id: product, select: { overlapIgnore: true }, depth: 0, overrideAccess: true })) as { overlapIgnore?: string[] }).overlapIgnore ?? []
-  const lines = fd.has('ignore') ? s(fd, 'ignore').split('\n').map((l) => l.trim()).filter(Boolean) : [...current, s(fd, 'add')]
-  if (lines.some((l) => /\s/.test(l))) throw Object.assign(new Error('Invalid glob.'), { data: { errors: [{ path: 'ignore', message: 'One path glob per line, without spaces' }] } })
-  await c.payload.update({ collection: 'products', id: product, data: { overlapIgnore: [...new Set(lines)] }, ...c.w } as never)
 })
 
 export const savePathSets = act({ sets: 'sets' }, async (c, fd) => {
   only(c.user)
   const product = id(fd)
   await assertInWorkspace(c.payload, 'products', [product], inWorkspace(c))
-  const current = ((await c.payload.findByID({ collection: 'products', id: product, select: { pathSets: true }, depth: 0, overrideAccess: true })) as { pathSets?: PathSets }).pathSets ?? {}
   let pathSets: PathSets
   try {
-    pathSets = fd.has('sets') ? parsePathSets(s(fd, 'sets')) : { ...current, [s(fd, 'add')]: current[s(fd, 'add')] ?? [] }
+    pathSets = parsePathSets(s(fd, 'sets'))
   } catch (e) {
     throw fieldError('sets', (e as Error).message)
   }
   await c.payload.update({ collection: 'products', id: product, data: { pathSets }, ...c.w } as never)
 })
 
-export const suggestOverlapPaths = act({}, async (c, fd) => {
-  only(c.user)
-  const product = id(fd)
-  await assertInWorkspace(c.payload, 'products', [product], inWorkspace(c))
-  const { backend, repo } = await forgeOf(c.payload, product)
-  const items = await suggestOverlapIgnore(backend.forge, repo)
-  await c.payload.update({ collection: 'products', id: product, data: { overlapSuggestions: { at: new Date().toISOString(), items } }, ...c.w } as never)
-})
-
 export const rotateWorkspaceKey = act({}, async ({ user, workspace, payload }) => {
   only(user)
   await rotateKey(await createLocalReq({ user }, payload), inWorkspace({ workspace }))
-})
-
-export const createSessionKey = act({}, async ({ user, workspace, payload }) => {
-  only(user)
-  if (!gatewayEnabled()) throw new Error('The gateway is off on this instance.')
-  return rotateSessionKey(await createLocalReq({ user }, payload), inWorkspace({ workspace }))
 })
 
 export const updatePricesNow = act({}, async ({ user, payload }) => {
@@ -152,98 +100,18 @@ const makeProduct = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => 
   return (await c.payload.create({ collection: 'products', data: { name, slug, workspace: inWorkspace(c) }, ...c.w } as never)).id as number
 }
 
-const TEXT_FIELDS = ['stagingUrl', 'deployMode', 'deployWebhookUrl', 'deployChecks', 'productionWebhookUrl', 'productionChecks', 'releaseMode'] as const
+const TEXT_FIELDS = ['stagingUrl', 'deployMode', 'deployWebhookUrl', 'deployChecks', 'productionWebhookUrl', 'productionChecks'] as const
 
 export const saveDeploy = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
-  const section = s(fd, 'section')
-  const sec = (g: string) => (section ? section === g : g === 'deploy' || g === 'approvals')
   const data: Record<string, unknown> = Object.fromEntries(TEXT_FIELDS.filter((k) => fd.has(k)).map((k) => [k, s(fd, k)]))
-  if (fd.has('checkRetries')) data.checkRetries = Number(s(fd, 'checkRetries') || 1)
-  if (fd.has('releaseReminderDays')) data.releaseReminderDays = Number(s(fd, 'releaseReminderDays') || 7)
-  if (sec('approvals')) Object.assign(data, { autoMerge: fd.get('autoMerge') === 'on', expediteSkipStaging: fd.get('expediteSkipStaging') === 'on', productionGate: fd.get('productionGate') === 'on', ...(fd.get('poStagingShown') && { productOwnerTestsStaging: fd.get('productOwnerTestsStaging') === 'on' }) })
-  if (sec('releases')) data.releasePrerelease = fd.get('releasePrerelease') === 'on'
-  const before = (await c.payload.findByID({ collection: 'products', id: id(fd), select: { stagingUrl: true, deployMode: true, deployWebhookUrl: true, productionWebhookUrl: true, productionGate: true, productionChecks: true, expediteSkipStaging: true }, ...c.w } as never)) as Record<string, any>
+  if (fd.has('productionGateShown')) data.productionGate = fd.get('productionGate') === 'on'
+  const before = (await c.payload.findByID({ collection: 'products', id: id(fd), select: { stagingUrl: true, deployMode: true, deployWebhookUrl: true, productionWebhookUrl: true, productionGate: true, productionChecks: true }, depth: 0, overrideAccess: true })) as Record<string, unknown>
   const merged = { stagingUrl: '', deployWebhookUrl: '', productionWebhookUrl: '', productionChecks: '', deployMode: 'observe-ci', productionGate: false, ...before, ...data } as Parameters<typeof deployErrors>[0]
   const errors = Object.entries(deployErrors(merged)).filter(([path]) => path in data).map(([path, message]) => ({ path, message }))
-  const days = data.releaseReminderDays as number | undefined
-  if (days !== undefined && (!Number.isInteger(days) || days < 1)) errors.push({ path: 'releaseReminderDays', message: 'Enter a whole number of days, 1 or more.' })
-  const retries = data.checkRetries as number | undefined
-  if (retries !== undefined && (!Number.isInteger(retries) || retries < 0 || retries > 1)) errors.push({ path: 'checkRetries', message: 'Enter a whole number 0 or 1.' })
-  if (fd.has('reviewChecks')) {
-    try {
-      const checks = parseReviewChecks(s(fd, 'reviewChecks')) ?? {}
-      const rules = fd.has('proofRules') ? storableProofRules(artifactRules(JSON.parse(s(fd, 'proofRules') || '[]'))) : []
-      data.reviewChecks = rules.length ? { ...checks, artifacts: rules } : Object.keys(checks).length ? checks : null
-    } catch (e) {
-      errors.push({ path: fd.has('proofRules') && /^rule \d/.test((e as Error).message) ? 'proofRules' : 'reviewChecks', message: (e as Error).message })
-    }
-  }
-  if (errors.length) throw Object.assign(new Error('Release settings invalid.'), { data: { errors } })
-  if ('expediteSkipStaging' in data) {
-    const flipped = data.expediteSkipStaging !== !!before.expediteSkipStaging
-    if (flipped) Object.assign(data, { expediteSkipStagingBy: data.expediteSkipStaging ? c.user.email : null, expediteSkipStagingAt: data.expediteSkipStaging ? new Date().toISOString() : null })
-  }
+  if (errors.length) throw Object.assign(new Error('Deploy settings invalid.'), { data: { errors } })
   await c.payload.update({ collection: 'products', id: id(fd), data, ...c.w } as never)
-})
-
-export const saveMergeMode = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  const mode = s(fd, 'mergeMode')
-  if (!(MERGE_MODES as readonly string[]).includes(mode)) throw fieldError('mergeMode', 'Choose direct, queue or train.')
-  const current = (await c.payload.findByID({ collection: 'products', id: id(fd), select: { mergeMode: true }, depth: 0, overrideAccess: true })) as { mergeMode?: string }
-  if ((mode === 'queue' || mode === 'train') && current.mergeMode !== mode) {
-    const preflight = await runPreflight(c.payload, id(fd), mode)
-    if (!preflight.ok) throw fieldError('mergeMode', `${mode === 'queue' ? 'Queue' : 'Train'} mode is not ready: ${preflight.problems.join(' ')}`)
-  }
-  await c.payload.update({ collection: 'products', id: id(fd), data: { mergeMode: mode }, ...c.w } as never)
-})
-
-export const saveSecurityScan = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  const budget = s(fd, 'maxBudgetUsd')
-  const turns = s(fd, 'maxTurns')
-  const cron = s(fd, 'cron')
-  if (budget && !(Number(budget) > 0 && Number(budget) <= SCAN_MAX_BUDGET_USD)) throw fieldError('maxBudgetUsd', `Enter an amount above 0 and up to ${SCAN_MAX_BUDGET_USD}.`)
-  if (turns && !(Number.isInteger(Number(turns)) && Number(turns) >= 1)) throw fieldError('maxTurns', 'Enter a whole number, 1 or more.')
-  if (cron.split(/\s+/).length !== 6) throw fieldError('cron', 'Use 6 fields: seconds minutes hours day month weekday.')
-  await c.payload.update({ collection: 'products', id: id(fd), data: { securityScan: { enabled: fd.get('enabled') === 'on', cron, maxBudgetUsd: budget ? Number(budget) : null, maxTurns: turns ? Number(turns) : null } }, ...c.w } as never)
-})
-
-export const startScan = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  await startSecurityScan(c.payload, id(fd))
-})
-
-export const saveDocsCheck = act({ paths: 'paths' }, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  const paths = [...new Set(s(fd, 'paths').split('\n').map((l) => l.trim()).filter(Boolean))]
-  if (!paths.length || paths.some((l) => /[\s`]/.test(l) || l.startsWith('/') || l.split('/').includes('..'))) throw fieldError('paths', 'One path glob per line, relative to the repository: no spaces, backticks, leading / or .. segments; at least one.')
-  const current = ((await c.payload.findByID({ collection: 'products', id: id(fd), select: { docsCheck: true }, depth: 0, overrideAccess: true })) as { docsCheck?: object }).docsCheck
-  await c.payload.update({ collection: 'products', id: id(fd), data: { docsCheck: { ...current, paths } }, ...c.w } as never)
-})
-
-export const startDocsCheckAction = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  await startDocsCheck(c.payload, id(fd))
-})
-
-export const startVerifyCreateAction = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  await startVerifyCreate(c.payload, id(fd))
-})
-
-export const redetectMerge = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  await redetectMergeMode(c.payload, id(fd))
 })
 
 const makeRepository = async (c: Awaited<ReturnType<typeof ctx>>, product: number, fd: FormData) => {
@@ -289,25 +157,7 @@ export const createProductWithRepo = act({}, async (c, fd) => {
     await c.payload.delete({ collection: 'products', id: product, ...c.w } as never)
     throw e
   }
-  await redetectMergeMode(c.payload, product)
   if (fd.get('open') === '1') redirect(`/settings/products/${product}?tab=deploy#staging`)
-})
-
-export const mintEmbedToken = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  const allowedOrigins = s(fd, 'origins').split(/[\s,]+/).filter(Boolean)
-  if (!allowedOrigins.length) throw Object.assign(new Error('Origins missing.'), { data: { errors: [{ path: 'origins', message: 'Add at least one origin' }] } })
-  if (!allowedOrigins.every(isWebUrl)) throw Object.assign(new Error('Origins invalid.'), { data: { errors: [{ path: 'origins', message: 'Each origin must be an http(s) URL' }] } })
-  const perHour = s(fd, 'maxSessionsPerHour')
-  if (perHour && !(Number.isInteger(Number(perHour)) && Number(perHour) >= 1)) throw fieldError('maxSessionsPerHour', 'Enter a whole number, 1 or more.')
-  const token = await createEmbedToken(c.payload, { product: id(fd), name: s(fd, 'name'), allowedOrigins, ...(perHour && { maxSessionsPerHour: Number(perHour) }) })
-  return `<script src="${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/intake/widget.js" data-token="${token}"></script>`
-})
-export const revokeEmbedToken = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'embed_tokens', id(fd))
-  await c.payload.update({ collection: 'embed_tokens', id: id(fd), data: { revokedAt: new Date().toISOString() }, overrideAccess: true } as never)
 })
 
 const COLLECTIONS = ['products', 'repositories', 'ticket_sources', 'bauherren']
@@ -342,59 +192,6 @@ export const saveConnection = act({}, async (c, fd) => {
     if (kind !== 'llm-provider' && s(fd, 'secret')) data.capabilities = { ...(await connectionInput(c.payload, id(fd))).capabilities, verifiedAt: undefined, lastError: undefined }
     await c.payload.update({ collection: 'connections', id: id(fd), data, ...c.w } as never)
   } else await c.payload.create({ collection: 'connections', data: { ...data, workspace: inWorkspace(c) }, ...c.w } as never)
-})
-
-const monitoringRow = async (c: Awaited<ReturnType<typeof ctx>>, rowId: number) => {
-  const row = (await monitoringRows(c.payload)).find((r) => Number(r.id) === rowId)
-  if (!row) throw new Error('Not found.')
-  return row
-}
-
-export const saveMonitoring = act({}, async (c, fd) => {
-  only(c.user)
-  const service = s(fd, 'service') as Service
-  if (!SERVICES.includes(service)) throw new Error('Unknown service.')
-  const minted = service === 'prometheus' && !id(fd) ? mintScrapeToken() : undefined
-  const notice = minted && (await snippetFor(minted.token)) // built before anything is written: a failure leaves no token nobody saw
-  const config = service === 'grafana' ? { url: s(fd, 'url') } : service === 'prometheus' ? { url: s(fd, 'url'), ...(minted && { tokenHash: minted.hash }) } : { host: s(fd, 'host'), protocol: s(fd, 'protocol'), headerName: s(fd, 'headerName'), uiUrl: s(fd, 'uiUrl') }
-  const data = { kind: 'monitoring', service, name: TITLES[service], config, capabilities: {}, ...(fd.get('clearSecret') === 'on' ? { secret: null } : s(fd, 'secret') ? { secret: s(fd, 'secret') } : {}) }
-  if (id(fd)) {
-    const row = await monitoringRow(c, id(fd))
-    if (row.service !== service) throw new Error('Not found.')
-    await c.payload.update({ collection: 'connections', id: id(fd), data, ...c.w } as never)
-  } else await c.payload.create({ collection: 'connections', data: { ...data, workspace: inWorkspace(c) }, ...c.w } as never)
-  return notice
-})
-
-const snippetFor = async (token: string): Promise<string> => {
-  const h = await headers()
-  return `Scrape token, shown once. Paste into Prometheus:\n${scrapeSnippet(scrapeOrigin({ forwardedHost: h.get('x-forwarded-host'), forwardedProto: h.get('x-forwarded-proto'), host: h.get('host') }), token)}`
-}
-
-export const rotateScrapeToken = act({}, async (c, fd) => {
-  only(c.user)
-  const row = await monitoringRow(c, id(fd))
-  if (row.service !== 'prometheus') throw new Error('Not found.')
-  const minted = mintScrapeToken()
-  const notice = await snippetFor(minted.token)
-  await c.payload.update({ collection: 'connections', id: id(fd), data: { config: { ...row.config, tokenHash: minted.hash }, capabilities: {} }, ...c.w } as never)
-  return notice
-})
-
-export const removeMonitoring = act({}, async (c, fd) => {
-  only(c.user)
-  await monitoringRow(c, id(fd))
-  await c.payload.delete({ collection: 'connections', id: id(fd), ...c.w } as never)
-})
-
-export const testMonitoringAction = act({}, async (c, fd) => {
-  only(c.user)
-  const row = await monitoringRow(c, id(fd))
-  const result = await testMonitoring(row.service, row.config, row.secret ? decrypt(row.secret) : null)
-  await c.payload.update({ collection: 'connections', id: id(fd), data: { capabilities: { verifiedAt: result.ok ? new Date().toISOString() : null, lastError: result.ok ? null : result.message } }, overrideAccess: true } as never)
-  revalidatePath('/settings/connections') // a failure throws, which `act` does not revalidate
-  if (!result.ok) throw new Error(result.message)
-  return result.message
 })
 
 export const verifyConnection = act({}, async (c, fd) => {
@@ -521,34 +318,11 @@ export const restoreWorkspaceAction = act({}, async ({ user, payload }, fd) => {
   await restoreWorkspace(payload, user, id(fd))
 })
 
-const mcpAdd = (key: string) => `claude mcp add --transport http bauherr ${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/mcp --header "Authorization: Bearer ${key}"`
-
-export const mintOwnAgentKey = act({}, async ({ user, payload }, fd) => mcpAdd(await mintAgentKey(payload, user, s(fd, 'label'))))
+export const mintOwnAgentKey = act({}, async ({ user, payload }, fd) => mintAgentKey(payload, user, s(fd, 'label')))
 
 export const revokeOwnAgentKey = act({}, async ({ user, payload }, fd) => revokeAgentKey(payload, user, id(fd)))
 
-export const rotateOwnKey = act({}, async ({ user, payload }) => mcpAdd(await rotateApiKey(payload, user)))
+export const rotateOwnKey = act({}, async ({ user, payload }) => rotateApiKey(payload, user))
 
 export const revokeOwnKey = act({}, async ({ user, payload }) => revokeApiKey(payload, user))
 
-export const saveTemplate = act({}, async ({ user, workspace, payload }, fd) => {
-  const wsId = inWorkspace({ workspace })
-  only(user)
-  const name = s(fd, 'name')
-  if (!isTemplateName(name)) throw new Error('Unknown template.')
-  const body = String(fd.get('body') ?? '').replace(/\r\n/g, '\n').trim()
-  const errors = lintTemplate(name, body).filter((f) => f.level === 'error')
-  if (errors.length) throw new Error(errors.map((f) => f.message).join(' '))
-  const found = (await payload.find({ collection: 'templates', where: { workspace: { equals: wsId }, name: { equals: name } }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
-  if (found) await payload.update({ collection: 'templates', id: found.id, data: { body, updatedBy: user.email }, overrideAccess: true })
-  else await payload.create({ collection: 'templates', data: { name, body, updatedBy: user.email, workspace: wsId } as never, overrideAccess: true })
-})
-
-export const resetTemplate = act({}, async ({ user, workspace, payload }, fd) => {
-  const wsId = inWorkspace({ workspace })
-  only(user)
-  const name = s(fd, 'name')
-  if (!isTemplateName(name)) throw new Error('Unknown template.')
-  const found = (await payload.find({ collection: 'templates', where: { workspace: { equals: wsId }, name: { equals: name } }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
-  if (found) await payload.delete({ collection: 'templates', id: found.id, overrideAccess: true })
-})

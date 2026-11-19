@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation'
 import { oidcDisplayName, oidcEnabled } from '../../../lib/oidc'
-import { homeOf } from '../../../lib/people'
 import { login } from '../lib/actions'
 import { getPerson } from '../lib/session'
 import { Button } from '../components/ui/button'
@@ -8,7 +7,7 @@ import { Input } from '../components/ui/input'
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const person = await getPerson()
-  if (person) redirect(homeOf(person))
+  if (person) redirect('/')
   const { error } = await searchParams
   const sso = oidcEnabled()
   const passwordError = !!error && error !== 'oidc' && error !== 'oidc-link' && error !== 'oidc-role'
