@@ -1,12 +1,13 @@
 import type { Payload } from 'payload'
 import type { AppEvent, Stage } from './events'
-import { fingerprint, fold, next, type Config, type State, type Step } from './lifecycle'
+import { fingerprint, fold, foldOptions, next, type Config, type State, type Step } from './lifecycle'
 import type { RecordSource } from './record/schema'
 import {
   appendEvent,
   readEvents,
   readRecord,
   setCard,
+  setParked,
   setProjection,
   type StoredCard,
   type StoredRecord,
@@ -18,11 +19,14 @@ export const MAX_ADVANCE_STEPS = 10
 
 export type MergeTarget = { recordId: number; source: RecordSource; pr: number; headSha: string }
 export type MergeFn = (target: MergeTarget) => Promise<{ sha: string }>
+export type StartVerdict = { ok: true } | { ok: false; reason: string }
+export type MayStartFn = (stored: StoredRecord, stage: Stage) => Promise<StartVerdict>
 export type AdvanceDeps = {
   payload: Payload
   configFor: (recordId: number) => Promise<Config>
   now: Date
   merge: MergeFn
+  mayStart?: MayStartFn
 }
 
 type Ctx = { deps: AdvanceDeps; stored: StoredRecord; state: State; seq: number }
@@ -56,6 +60,13 @@ const project = async (ctx: Ctx, waitingOn: WaitingOn, card: Raised | null, stag
 
 const runStep = async (step: Extract<Step, { kind: 'run' }>, ctx: Ctx): Promise<Outcome> => {
   const print = fingerprint({ stage: step.stage, version: ctx.stored.version, note: ctx.state.note })
+  const verdict = (await ctx.deps.mayStart?.(ctx.stored, step.stage)) ?? { ok: true }
+  if (!verdict.ok) {
+    await setParked(ctx.deps.payload, ctx.stored.id, verdict.reason)
+    await project(ctx, 'nobody', null, step.stage)
+    return 'stop'
+  }
+  if (ctx.stored.parked !== null) await setParked(ctx.deps.payload, ctx.stored.id, null)
   const input = { stage: step.stage, role: step.role, fingerprint: print }
   const { run, created } = await enqueue(ctx.deps.payload, ctx.stored.id, input)
   if (created) {
@@ -119,7 +130,7 @@ export const advance = async (recordId: number, deps: AdvanceDeps): Promise<void
   for (let i = 0; i < MAX_ADVANCE_STEPS; i++) {
     const stored = await readRecord(deps.payload, recordId)
     const events = await readEvents(deps.payload, recordId)
-    const state = fold(events, { productionGate: config.productionGate })
+    const state = fold(events, foldOptions(config))
     const ctx = { deps, stored, state, seq: events.length }
     const outcome = await handle(next(stored.record, state, config), ctx)
     if (outcome === 'stop') return

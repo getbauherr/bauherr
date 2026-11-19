@@ -36,6 +36,7 @@ export const mirrorCollections: CollectionConfig[] = [
       date('forgeClosedAt'),
       text('headSha'),
       text('headRef'),
+      text('mergeSha'),
       list('closes'),
       flag('draft'),
       date('syncedAt'),

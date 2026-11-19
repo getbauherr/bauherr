@@ -23,6 +23,7 @@ describe('lifecycleConfig', () => {
       riskAreas: [],
       productionGate: false,
       deployChecks: false,
+      requiredChecks: false,
     })
     expect(CAPS.verifyRounds).toBe(3)
   })
@@ -37,6 +38,14 @@ describe('lifecycleConfig', () => {
       productionGate: true,
       deployChecks: true,
     })
+  })
+
+  it('reads the required checks from the Product', async () => {
+    const record = await db.fresh()
+    await setProduct(sql`"required_checks" = 'ci, lint'`)
+    expect((await lifecycleConfig(db.payload, record)).requiredChecks).toBe(true)
+    await setProduct(sql`"required_checks" = ' , '`)
+    expect((await lifecycleConfig(db.payload, record)).requiredChecks).toBe(false)
   })
 
   it('treats blank deploy checks as none', async () => {

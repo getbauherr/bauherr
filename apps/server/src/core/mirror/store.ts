@@ -15,7 +15,13 @@ export type SourceRow = {
   importedAt: string | null
 }
 
-export type ItemContext = { workspace: number; product: number; source: number; repo: string }
+export type ItemContext = {
+  workspace: number
+  product: number
+  source: number
+  repo: string
+  touched?: Set<number>
+}
 export type KnownItem = { id: number; updatedMs: number | null; gone: boolean }
 export type SourcePatch = {
   cursor?: string
@@ -119,14 +125,15 @@ export const knownItems = async (
 }
 
 const DATA = sql`("title", "body", "state", "author", "author_trusted", "author_is_bot", "labels", "assignees", "url",
-  "forge_created_at", "forge_updated_at", "forge_closed_at", "head_sha", "head_ref", "closes", "draft", "kind")`
+  "forge_created_at", "forge_updated_at", "forge_closed_at", "head_sha", "head_ref", "merge_sha", "closes", "draft",
+  "kind")`
 const INCOMING = sql`(excluded."title", excluded."body", excluded."state", excluded."author",
   excluded."author_trusted", excluded."author_is_bot", excluded."labels", excluded."assignees", excluded."url",
   excluded."forge_created_at", excluded."forge_updated_at", excluded."forge_closed_at", excluded."head_sha",
-  excluded."head_ref", excluded."closes", excluded."draft", excluded."kind")`
+  excluded."head_ref", excluded."merge_sha", excluded."closes", excluded."draft", excluded."kind")`
 const STORED = sql`(m."title", m."body", m."state", m."author", m."author_trusted", m."author_is_bot", m."labels",
   m."assignees", m."url", m."forge_created_at", m."forge_updated_at", m."forge_closed_at", m."head_sha",
-  m."head_ref", m."closes", m."draft", m."kind")`
+  m."head_ref", m."merge_sha", m."closes", m."draft", m."kind")`
 
 export const upsertItem = async (
   payload: Payload,
@@ -137,13 +144,13 @@ export const upsertItem = async (
   const result = await payload.db.drizzle.execute(sql`
     INSERT INTO "mirror_items" AS m ("workspace_id", "source_id", "product_id", "repo", "number", "kind", "title",
       "body", "state", "author", "author_trusted", "author_is_bot", "labels", "assignees", "url", "forge_created_at",
-      "forge_updated_at", "forge_closed_at", "head_sha", "head_ref", "closes", "draft", "synced_at", "gone_at",
-      "updated_at", "created_at")
+      "forge_updated_at", "forge_closed_at", "head_sha", "head_ref", "merge_sha", "closes", "draft", "synced_at",
+      "gone_at", "updated_at", "created_at")
     VALUES (${context.workspace}, ${context.source}, ${context.product}, ${context.repo}, ${row.number}, ${row.kind},
       ${row.title}, ${row.body}, ${row.state}, ${row.author}, ${row.authorTrusted}, ${row.authorIsBot},
       ${json(row.labels)}::jsonb, ${json(row.assignees)}::jsonb, ${row.url}, ${iso(row.forgeCreatedAt)}::timestamptz,
       ${iso(row.forgeUpdatedAt)}::timestamptz, ${iso(row.forgeClosedAt)}::timestamptz, ${row.headSha}, ${row.headRef},
-      ${json(row.closes)}::jsonb, ${row.draft}, ${now.toISOString()}::timestamptz, NULL, now(), now())
+      ${row.mergeSha}, ${json(row.closes)}::jsonb, ${row.draft}, ${now.toISOString()}::timestamptz, NULL, now(), now())
     ON CONFLICT ("workspace_id", "repo", "number") DO UPDATE SET
       ${DATA} = ${INCOMING},
       "source_id" = excluded."source_id",
@@ -153,7 +160,9 @@ export const upsertItem = async (
       "updated_at" = CASE WHEN ${STORED} IS DISTINCT FROM ${INCOMING} OR m."gone_at" IS NOT NULL
         THEN now() ELSE m."updated_at" END
     RETURNING "id"`)
-  return idRowSchema.parse(result.rows[0]).id
+  const id = idRowSchema.parse(result.rows[0]).id
+  context.touched?.add(id)
+  return id
 }
 
 export const latestCommentAt = async (payload: Payload, item: number): Promise<string | null> => {

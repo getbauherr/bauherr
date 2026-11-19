@@ -442,6 +442,39 @@ export const collections: CollectionConfig[] = [
       admin: { description: 'Names of path sets whose changes need an owner-approved Brief.' },
     },
     {
+      name: 'intakeExcludedLabels',
+      type: 'json',
+      defaultValue: [],
+      admin: { description: 'Issue labels that keep an issue out of intake.' },
+    },
+    {
+      name: 'outsideIssuesPerDay',
+      type: 'number',
+      defaultValue: 5,
+      admin: { description: 'Issues per day one outside author may get admitted by label.' },
+    },
+    {
+      name: 'reporterRemindDays',
+      type: 'number',
+      defaultValue: 7,
+      admin: { description: 'Days after a question before one reminder comment.' },
+    },
+    {
+      name: 'reporterSilentDays',
+      type: 'number',
+      defaultValue: 21,
+      admin: { description: 'Days after a question before the reporter counts as silent.' },
+    },
+    {
+      name: 'backlogBriefLimit',
+      type: 'number',
+      defaultValue: 5,
+      admin: { description: 'Brief cards of backlog tickets waiting on the owner at one time.' },
+    },
+    text('requiredChecks', {
+      admin: { description: 'Comma-separated check names a patch must pass before Verify; empty skips the wait.' },
+    }),
+    {
       name: 'pathSets',
       type: 'json',
       defaultValue: {},

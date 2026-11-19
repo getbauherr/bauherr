@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import { CAPS } from '../core/caps'
 import type { AdvanceDeps, MergeFn } from '../core/engine'
+import { pacing } from '../core/intake/pacing'
 import { createWriter, type ForgeWriter } from '../core/forge/writer'
 import type { Config } from '../core/lifecycle'
 
@@ -12,18 +13,23 @@ const productRow = z.object({
   production_gate: z.boolean().nullable(),
   deploy_checks: z.string().nullable(),
   risk_areas: z.array(z.string()).nullable(),
+  required_checks: z.string().nullable(),
 })
+
+const hasNames = (list: string | null | undefined): boolean =>
+  (list ?? '').split(',').some((name) => name.trim() !== '')
 
 export const lifecycleConfig = async (payload: Payload, recordId: number): Promise<Config> => {
   const found = await payload.db.drizzle.execute(sql`
-    SELECT p."production_gate", p."deploy_checks", p."risk_areas" FROM "records" r
+    SELECT p."production_gate", p."deploy_checks", p."risk_areas", p."required_checks" FROM "records" r
     JOIN "products" p ON p."id" = r."product_id" WHERE r."id" = ${recordId}`)
   const row = found.rows[0] ? productRow.parse(found.rows[0]) : null
   return {
     caps: { ...CAPS },
     riskAreas: row?.risk_areas ?? [],
     productionGate: row?.production_gate === true,
-    deployChecks: (row?.deploy_checks ?? '').split(',').some((name) => name.trim() !== ''),
+    deployChecks: hasNames(row?.deploy_checks),
+    requiredChecks: hasNames(row?.required_checks),
   }
 }
 
@@ -46,4 +52,5 @@ export const engineDeps = (payload: Payload): AdvanceDeps => ({
   now: new Date(),
   configFor: (recordId) => lifecycleConfig(payload, recordId),
   merge: mergeVia(payload, createWriter(payload)),
+  mayStart: pacing(payload),
 })

@@ -29,7 +29,13 @@ const setup = async () => {
   const writer = createWriter(h.payload(), { backend: async () => fake, now: () => new Date('2026-11-19T12:00:00Z') })
   const deps = {
     payload: h.payload(),
-    configFor: async () => ({ caps: { ...CAPS }, riskAreas: [], productionGate: false, deployChecks: false }),
+    configFor: async () => ({
+      caps: { ...CAPS },
+      riskAreas: [],
+      productionGate: false,
+      deployChecks: false,
+      requiredChecks: false,
+    }),
     now: new Date('2026-11-19T12:00:00Z'),
     merge: mergeVia(h.payload(), writer),
   }

@@ -53,6 +53,7 @@ export const SAMPLES: Record<EventType, unknown> = {
   'intake.accepted': {},
   'intake.asked': { round: 1 },
   'reporter.replied': {},
+  'reporter.reminded': {},
   'reporter.silent': {},
   'intake.closed': { reason: 'duplicate' },
   'intake.disputed': {},
@@ -91,6 +92,7 @@ export const CONFIG: Config = {
   riskAreas: ['security'],
   productionGate: false,
   deployChecks: false,
+  requiredChecks: true,
 }
 
 export const start = (stage: Stage, runId = 'r1') => ev('run.started', { stage, runId })

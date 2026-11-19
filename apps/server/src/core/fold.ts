@@ -9,7 +9,7 @@ export type State = {
   closed: string | null
   card: Card | null
   run: LiveRun | null
-  reporter: { rounds: number; waiting: boolean }
+  reporter: { rounds: number; waiting: boolean; reminded: boolean }
   verifyRounds: number
   extraRounds: number
   failedRuns: number
@@ -27,14 +27,14 @@ export type State = {
   last: EventType | null
 }
 
-export type FoldOptions = { productionGate: boolean }
+export type FoldOptions = { productionGate: boolean; requiredChecks?: boolean }
 
 export const initialState = (): State => ({
   stage: 'intake',
   closed: null,
   card: null,
   run: null,
-  reporter: { rounds: 0, waiting: false },
+  reporter: { rounds: 0, waiting: false, reminded: false },
   verifyRounds: 0,
   extraRounds: 0,
   failedRuns: 0,
@@ -70,9 +70,11 @@ const intake: Reducer = (state, event) => {
     case 'intake.accepted':
       return enter(endIntakeRun(state), 'brief')
     case 'intake.asked':
-      return { ...endIntakeRun(state), reporter: { rounds: event.data.round, waiting: true } }
+      return { ...endIntakeRun(state), reporter: { rounds: event.data.round, waiting: true, reminded: false } }
     case 'intake.disputed':
       return endIntakeRun(state)
+    case 'reporter.reminded':
+      return { ...state, reporter: { ...state.reporter, reminded: true } }
     case 'reporter.replied':
     case 'reporter.silent':
       return { ...state, reporter: { ...state.reporter, waiting: false } }
@@ -122,7 +124,7 @@ const brief: Reducer = (state, event) => {
   }
 }
 
-const patch: Reducer = (state, event) => {
+const patch: Reducer = (state, event, options) => {
   switch (event.type) {
     case 'build.submitted': {
       const fresh = {
@@ -134,7 +136,8 @@ const patch: Reducer = (state, event) => {
         overridden: false,
       }
       const latest = { id: event.data.patchId, pr: event.data.pr, headSha: event.data.headSha }
-      return { ...enter(fresh, 'verify'), patch: latest, checks: 'pending', verdict: null }
+      const checks = options.requiredChecks === false ? 'none' : 'pending'
+      return { ...enter(fresh, 'verify'), patch: latest, checks, verdict: null }
     }
     case 'checks.finished':
       if (state.patch?.id !== event.data.patchId) return state

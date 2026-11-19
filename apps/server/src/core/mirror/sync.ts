@@ -23,6 +23,7 @@ const RECONCILE_EVERY_MS = 86_400_000
 export type SyncDeps = {
   reader: (source: SourceRow) => Promise<ForgeReader>
   now: () => Date
+  afterStored?: (source: SourceRow, itemIds: number[]) => Promise<void>
 }
 
 export type SyncResult = { synced: number; failed: number }
@@ -71,13 +72,15 @@ const periodic = async (
   return patch
 }
 
-const syncOne = async (payload: Payload, source: SourceRow, reader: ForgeReader, now: Date): Promise<void> => {
+const syncOne = async (payload: Payload, source: SourceRow, reader: ForgeReader, now: Date): Promise<number[]> => {
+  const touched = new Set<number>()
   const context: PullContext = {
     workspace: source.workspace,
     product: source.product,
     source: source.id,
     repo: source.repo,
     now,
+    touched,
   }
   const polled = await pollIssues(payload, context, reader.tickets(source.repo), source.cursor)
   const cursor = laterOf(source.cursor, polled.cursor)
@@ -91,6 +94,7 @@ const syncOne = async (payload: Payload, source: SourceRow, reader: ForgeReader,
   if (moved) patch.cursor = cursor
   if (!imported && idle) patch.importedAt = now
   await finishSource(payload, source.id, patch)
+  return [...touched]
 }
 
 export const syncSources = async (payload: Payload, deps: SyncDeps): Promise<SyncResult> => {
@@ -98,7 +102,8 @@ export const syncSources = async (payload: Payload, deps: SyncDeps): Promise<Syn
   for (const source of await liveSources(payload)) {
     const now = deps.now()
     try {
-      await syncOne(payload, source, await deps.reader(source), now)
+      const stored = await syncOne(payload, source, await deps.reader(source), now)
+      await deps.afterStored?.(source, stored)
       result.synced++
     } catch (error) {
       result.failed++
