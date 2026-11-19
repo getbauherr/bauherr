@@ -16,12 +16,20 @@ import {
 export const WAITING_ON = ['owner', 'agents', 'reporter', 'nobody'] as const
 export type WaitingOn = (typeof WAITING_ON)[number]
 
+export const cardSchema = z.object({
+  card: z.enum(['brief', 'result', 'question']),
+  reason: z.string(),
+  options: z.array(z.string()),
+})
+export type StoredCard = z.infer<typeof cardSchema>
+
 export type StoredRecord = {
   id: number
   version: number
   stage: Stage
   waitingOn: WaitingOn
   rank: number
+  card: StoredCard | null
   record: TicketRecord
 }
 
@@ -42,6 +50,7 @@ const rowSchema = z.object({
   stage: stageSchema,
   waiting_on: z.enum(WAITING_ON),
   rank: z.coerce.number(),
+  card: cardSchema.nullable(),
   data: z.unknown(),
 })
 
@@ -72,7 +81,7 @@ const parseRecord = (id: number, data: unknown): TicketRecord => {
 
 export const readRecord = async (payload: Payload, id: number): Promise<StoredRecord> => {
   const result = await payload.db.drizzle.execute(
-    sql`SELECT "id", "version", "stage", "waiting_on", "rank", "data" FROM "records" WHERE "id" = ${id}`,
+    sql`SELECT "id", "version", "stage", "waiting_on", "rank", "card", "data" FROM "records" WHERE "id" = ${id}`,
   )
   const row = result.rows[0]
   if (!row) throw new RecordNotFound(`Record ${id} does not exist: check the id.`)
@@ -83,6 +92,7 @@ export const readRecord = async (payload: Payload, id: number): Promise<StoredRe
     stage: parsed.stage,
     waitingOn: parsed.waiting_on,
     rank: parsed.rank,
+    card: parsed.card,
     record: parseRecord(id, parsed.data),
   }
 }
@@ -136,6 +146,14 @@ export const setProjection = async (
   const updated = await payload.db.drizzle.execute(
     sql`UPDATE "records" SET "stage" = ${stage}, "waiting_on" = ${waitingOn}, "updated_at" = now()
       WHERE "id" = ${id} RETURNING "id"`,
+  )
+  if (!updated.rows[0]) throw new RecordNotFound(`Record ${id} does not exist: check the id.`)
+}
+
+export const setCard = async (payload: Payload, id: number, card: StoredCard | null): Promise<void> => {
+  const value = card === null ? null : json(cardSchema.parse(card))
+  const updated = await payload.db.drizzle.execute(
+    sql`UPDATE "records" SET "card" = ${value}::jsonb, "updated_at" = now() WHERE "id" = ${id} RETURNING "id"`,
   )
   if (!updated.rows[0]) throw new RecordNotFound(`Record ${id} does not exist: check the id.`)
 }

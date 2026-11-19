@@ -61,12 +61,17 @@ const endRun = (state: State, runId: string): State =>
 
 const submitted = (state: State, runId: string): State => ({ ...endRun(state, runId), failedRuns: 0 })
 
+const endIntakeRun = (state: State): State =>
+  state.run?.stage === 'intake' ? submitted(state, state.run.runId) : state
+
 const intake: Reducer = (state, event) => {
   switch (event.type) {
     case 'intake.accepted':
-      return enter(state, 'brief')
+      return enter(endIntakeRun(state), 'brief')
     case 'intake.asked':
-      return { ...state, reporter: { rounds: event.data.round, waiting: true } }
+      return { ...endIntakeRun(state), reporter: { rounds: event.data.round, waiting: true } }
+    case 'intake.disputed':
+      return endIntakeRun(state)
     case 'reporter.replied':
     case 'reporter.silent':
       return { ...state, reporter: { ...state.reporter, waiting: false } }

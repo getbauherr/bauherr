@@ -60,6 +60,14 @@ describe('fold', () => {
     expect(fold([start('brief', 'r2'), ev('brief.submitted', { runId: 'r1' })]).run?.runId).toBe('r2')
   })
 
+  it('ends a live intake run with the intake event it produced', () => {
+    expect(fold([start('intake'), ev('intake.accepted')]).run).toBeNull()
+    expect(fold([start('intake'), ev('intake.asked')]).run).toBeNull()
+    expect(fold([start('intake'), ev('intake.disputed')]).run).toBeNull()
+    expect(fold([start('intake', 'r1'), fail('intake', 'r1'), start('intake', 'r2'), ev('intake.accepted')]))
+      .toMatchObject({ run: null, failedRuns: 0 })
+  })
+
   it('ends the build run with build.submitted and the verify run with its verdict', () => {
     expect(fold([...inBuild, start('build'), ev('build.submitted')]).run).toBeNull()
     expect(fold([...inVerify, start('verify', 'r2'), ev('verify.changes')]).run).toBeNull()

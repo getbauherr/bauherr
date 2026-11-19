@@ -69,6 +69,14 @@ const refusal = async (payload: Payload, runId: number): Promise<never> => {
   throw new WrongLeaseToken(`The lease token does not belong to run ${runId}: use the token next_work returned.`)
 }
 
+export const authorize = async (payload: Payload, runId: number, token: string): Promise<Run> => {
+  const found = await payload.db.drizzle.execute(sql`
+    SELECT ${RUN_COLUMNS} FROM "stage_runs"
+    WHERE "id" = ${runId} AND "status" = 'claimed' AND "lease_token_hash" = ${hashOf(token)}`)
+  const row = found.rows[0]
+  return row ? toRun(row) : refusal(payload, runId)
+}
+
 export const heartbeat = async (
   payload: Payload,
   runId: number,
