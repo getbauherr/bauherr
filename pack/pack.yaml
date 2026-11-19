@@ -1,44 +1,5 @@
 name: core
 version: 0.1.0
-description: Bauherr core pack. Control patterns for Runs, worklog, team policy, human interaction.
-layers:
-  core: true            # this pack; ships with Bauherr
-  stack: []             # optional sub-packs under pack/stacks/<name>
-  client: workspace     # Workspace Knowledge repo; appended later, wins on conflict
-materialise: run-worktree   # at Run start; never committed to the Product repo
-skills:
-  - {path: skills/run-contract, purpose: How a Run reads its Goal, what counts as evidence, exit rule, blockers}
-  - {path: skills/pr-screenshots, purpose: Before/after screenshots of a UI change - capture before the first edit, fixed matrix, test data only, artifacts not a branch}
-  - {path: skills/triage, purpose: Triage Run on a Ticket without a stage - plan, refine (questions for the Bauherr) or skip}
-  - {path: skills/intake, purpose: Intake session - one plain-language question per turn until the Ticket draft is complete}
-  - {path: skills/assistant, purpose: Factory chat - the assistant docked on every page, answers about what the person sees, confirms writes on a card}
-  - {path: skills/review, purpose: Review Run on a factory MR - checklist, severity rubric, verdict and findings format}
-  - {path: skills/verify-findings, purpose: Verify Job of a review stage - re-check candidate findings against the code at the MR head, keep those with file:line, scenario and failing test, dedupe}
-  - {path: skills/review-rank, purpose: Concluding review Run of a review stage with Jobs - rank verified candidates into Important, Nit and Pre-existing, give the verdict}
-  - {path: skills/worklog, purpose: Per-Ticket worklog template and reconciliation}
-  - {path: skills/coordinate, purpose: Parallel lanes with owners (research in v0.1)}
-  - {path: skills/manager, purpose: Manager thread over a queue of similar items (Review in v0.1)}
-  - {path: skills/decision-sheet, purpose: Human-interaction protocol}
-  - {path: skills/security-scan, purpose: Read-only security scan Run - procedure, root-cause grouping, severity rubric, findings.json}
-  - {path: skills/docs-check, purpose: Read-only docs check Run - stale claims and missing features since the last check, docs-findings.json}
-  - {path: skills/mr-security-review, purpose: Security review of a factory MR between Build and Review - checklist, pass or findings (a conditional step of the Standard and Careful setup presets)}
-  - {path: skills/ux-review, purpose: UX review of a factory MR that changes something people see - the Product's own UI rules first, states, copy, accessibility, pass or findings (a conditional step of the Careful preset)}
-  - {path: skills/test-review, purpose: Test review of a bug-fix MR - a test that fails without the fix, the cases the request names, pass or findings (a conditional step of the Careful preset)}
-  - {path: skills/harden, purpose: AX role - plan scan, review check, correct a repeated mistake and comment check; moves rules into code, checks and proof}
-  - {path: skills/verify-create, purpose: AX role - write the Product's verify skill and seed feature-map.yaml, proved by one live run}
-  - {path: skills/verify-maintain, purpose: AX role - re-drive a feature when a Ticket touches its source and classify failures}
-  - {path: skills/effort-policy, purpose: Model and effort selection}
+description: Bauherr core pack.
 rules:
-  - {path: rules/team-policy.md, purpose: Agent cap per role, subagents of a session, patterns only via stage config, forbidden patterns}
-  - {path: rules/egress.md, purpose: Code and context leave only via the gateway}
-  - {path: rules/evidence.md, purpose: Required content of the MR ## Evidence section}
-  - {path: rules/security-context.md, purpose: Per-Product SECURITY-CONTEXT.md in the Knowledge repo, and template}
   - {path: rules/no-comments.md, purpose: No code comments; the allowlist, and encode the reason as a name, type, test or check}
-  - {path: rules/autonomy.md, purpose: Finish everything you can on your own; hand over only decisions and actions only a human can do}
-hooks:
-  manifest: hooks/hooks.yaml
-  items:
-    - {path: hooks/stop-goal-check.ts, purpose: Reference stub, not active (the Runner enforces this itself)}
-    - {path: hooks/write-scope-guard.ts, purpose: Reference stub, not active (the Runner enforces this itself)}
-    - {path: hooks/egress-guard.sh, purpose: Reference stub, not active (the Runner enforces this itself)}
-lint: {command: bauherr pack lint}   # size caps, cited paths, glossary Avoid terms, tiers vs spec, no stack names in core, hook citations; run in CI

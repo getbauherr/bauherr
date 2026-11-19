@@ -11,7 +11,6 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store pnpm i
 COPY . .
 # `.next/cache` persists between local builds (a cache mount; CI keeps only the layer cache, no extra action is allow-listed).
 RUN --mount=type=cache,id=next-cache,target=/repo/apps/server/.next/cache pnpm build:packages && PAYLOAD_SECRET=build ENCRYPTION_KEY=build pnpm --filter server build
-RUN mkdir -p /data/media
 # Last, so a new version, revision or build date does not bust the build layers; read at runtime (`appVersion()`), never at build time.
 ARG BAUHERR_VERSION=dev
 ARG BAUHERR_REVISION=

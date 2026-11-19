@@ -51,13 +51,12 @@ export const saveGeneral = act({}, async ({ user, workspace, payload, w }, fd) =
   await payload.update({ collection: 'workspaces', id: inWorkspace({ workspace }), data: { name: s(fd, 'name') }, ...w } as never)
 })
 
-export const saveModels = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d: 'budgetAmount', routerBudgetShare: 'routerBudgetShare' }, async ({ user, workspace, payload, w }, fd) => {
+export const saveModels = act({ budgetUsd30d: 'budgetAmount', budgetTokens30d: 'budgetAmount' }, async ({ user, workspace, payload, w }, fd) => {
   only(user)
   const wsId = inWorkspace({ workspace })
   const unit = s(fd, 'budgetUnit') === 'tokens' ? 'tokens' : 'usd'
   const amount = s(fd, 'budgetAmount')
   const data: Record<string, unknown> = { budgetUnit: unit, [unit === 'usd' ? 'budgetUsd30d' : 'budgetTokens30d']: amount === '' ? null : Number(amount) }
-  if (s(fd, 'routerBudgetShare')) data.routerBudgetShare = Number(s(fd, 'routerBudgetShare'))
   const { defaultModels: defaults, slugs } = await presetFor(wsId)
   const missing = (['cheap', 'standard', 'strong'] as const).filter((t) => !s(fd, `tier_${t}`) && !defaults)
   if (missing.length) throw Object.assign(new Error('Model tiers missing.'), { data: { errors: missing.map((t) => ({ path: `tier_${t}`, message: 'This provider has no default; set a model id' })) } })

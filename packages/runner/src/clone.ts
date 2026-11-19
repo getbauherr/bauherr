@@ -65,31 +65,6 @@ export async function patchId(c: Clone, env: NodeJS.ProcessEnv, base: string, re
   return stdout.split(' ')[0]!.trim();
 }
 
-export const REVIEW_MD_CAP = 20_000;
-
-export async function baseReviewMd(c: Clone, env: NodeJS.ProcessEnv, base: string): Promise<string> {
-  const text = await git(c.dir, env, 'show', `origin/${base}:REVIEW.md`).catch(() => '');
-  return Buffer.from(text).subarray(0, REVIEW_MD_CAP).toString();
-}
-
-export async function interdiff(c: Clone, env: NodeJS.ProcessEnv, base: string, reviewedSha: string, out: string): Promise<void> {
-  if (!(await git(c.dir, env, 'cat-file', '-t', reviewedSha).catch(() => ''))) {
-    await git(c.dir, env, 'diff', `--output=${out}`, `origin/${base}...HEAD`);
-    return;
-  }
-  const dir = await mkdtemp(join(tmpdir(), 'bauherr-interdiff-'));
-  try {
-    for (const [file, rev] of [['reviewed.patch', reviewedSha], ['head.patch', 'HEAD']] as const) {
-      await git(c.dir, env, 'diff', `--output=${join(dir, file)}`, `${await git(c.dir, env, 'merge-base', `origin/${base}`, rev)}..${rev}`);
-    }
-    await git(c.dir, env, 'diff', '--no-index', `--output=${out}`, join(dir, 'reviewed.patch'), join(dir, 'head.patch')).catch((e) => {
-      if (e.code !== 1) throw e;
-    });
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
-}
-
 export async function commitAll(c: Clone, env: NodeJS.ProcessEnv, message: string): Promise<boolean> {
   await git(c.dir, env, 'add', '-A');
   if ((await git(c.dir, env, 'status', '--porcelain')) !== '') await git(c.dir, env, 'commit', '-m', message);
@@ -100,18 +75,4 @@ export async function commitAndPush(c: Clone, env: NodeJS.ProcessEnv, message: s
   if (!(await commitAll(c, env, message))) return false;
   await git(c.dir, env, 'push', 'origin', `HEAD:refs/heads/${c.branch}`);
   return true;
-}
-
-export async function sliceBase(c: Clone, env: NodeJS.ProcessEnv, prev: string): Promise<string> {
-  if (!(await git(c.dir, env, 'cat-file', '-t', prev).catch(() => ''))) {
-    await git(c.dir, env, 'fetch', ...((await git(c.dir, env, 'rev-parse', '--is-shallow-repository')) === 'true' ? ['--unshallow'] : []), '--no-tags', 'origin');
-  }
-  const merges = (await git(c.dir, env, 'rev-list', '--merges', '--parents', '--ancestry-path', `${prev}..HEAD`)).split('\n').map((l) => l.split(' '));
-  return merges.findLast(([, first]) => first === prev)?.[0] ?? prev;
-}
-
-export async function sliceDiff(c: Clone, env: NodeJS.ProcessEnv, b: string, out: string): Promise<void> {
-  await git(c.dir, env, 'diff', `--output=${out}`, `${b}..HEAD`);
-  const merge = (await git(c.dir, env, 'rev-list', '--parents', '-n', '1', b)).split(' ').length > 2 ? await git(c.dir, env, 'show', '--remerge-diff', '--format=', b) : '';
-  if (merge) await appendFile(out, `\n# Resolution of the merge of main into the slice (remerge-diff of ${b})\n${merge}\n`);
 }

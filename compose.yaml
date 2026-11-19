@@ -9,7 +9,7 @@ x-app: &app
     db: {condition: service_healthy}
     init: {condition: service_completed_successfully}
     gateway: {condition: service_started}
-  volumes: [bauherr-secrets:/run/secrets:ro, "bauherr-gateway:/gateway", "bauherr-media:/data/media"]
+  volumes: [bauherr-secrets:/run/secrets:ro, "bauherr-gateway:/gateway"]
   environment:
     DATABASE_URL: postgres://bauherr:bauherr@db:5432/bauherr
     GATEWAY_URL: http://gateway:4000
@@ -26,7 +26,6 @@ x-app: &app
     ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
     PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
     BAUHERR_ENABLE_ADMIN: ${BAUHERR_ENABLE_ADMIN:-}
-    BAUHERR_MAX_RUNS: ${BAUHERR_MAX_RUNS:-4}
     # Postgres pool per container (app, poller); see docs/first-run.md "Database connections".
     DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
     DATABASE_POOL_TIMEOUT_MS: ${DATABASE_POOL_TIMEOUT_MS:-10000}
@@ -37,17 +36,6 @@ x-app: &app
     OIDC_ISSUER: ${OIDC_ISSUER:-}
     OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
     OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
-    # Pasted screenshots: local volume by default; MEDIA_S3_BUCKET (+ endpoint, region, keys) switches to any S3-compatible bucket, see docs/media.md.
-    MEDIA_DIR: /data/media
-    MEDIA_S3_BUCKET: ${MEDIA_S3_BUCKET:-}
-    MEDIA_S3_ENDPOINT: ${MEDIA_S3_ENDPOINT:-}
-    MEDIA_S3_REGION: ${MEDIA_S3_REGION:-}
-    MEDIA_S3_ACCESS_KEY_ID: ${MEDIA_S3_ACCESS_KEY_ID:-}
-    MEDIA_S3_SECRET_ACCESS_KEY: ${MEDIA_S3_SECRET_ACCESS_KEY:-}
-    MEDIA_S3_ACCESS_KEY_ID_FILE: ${MEDIA_S3_ACCESS_KEY_ID_FILE:-}
-    MEDIA_S3_SECRET_ACCESS_KEY_FILE: ${MEDIA_S3_SECRET_ACCESS_KEY_FILE:-}
-    MEDIA_MAX_BYTES: ${MEDIA_MAX_BYTES:-}
-    MEDIA_MAX_PER_SESSION: ${MEDIA_MAX_PER_SESSION:-}
 
 services:
   init:
@@ -77,7 +65,7 @@ services:
     image: cr.agentgateway.dev/agentgateway:v1.7.0@sha256:60216aafb03d37f94e952ff3d51d2f630a65b10ecaebdc0a864882f92610c45b
     user: "0" # provider key files are 0600 and written by root in app/poller
     command: [-f, /gateway/config.yaml]
-    ports: ["127.0.0.1:${GATEWAY_PORT:-4000}:4000"] # loopback only (never 0.0.0.0), host port from GATEWAY_PORT: sessions on this machine; remote sessions go through a TLS proxy (docs/gateway.md). Admin API :15000 stays internal; only the opt-in `gateway-ui` profile below forwards it, on loopback
+    ports: ["127.0.0.1:${GATEWAY_PORT:-4000}:4000"] # loopback only (never 0.0.0.0), host port from GATEWAY_PORT: sessions on this machine; remote sessions go through a TLS proxy (docs/gateway.md). Admin API :15000 stays internal
     volumes: ["bauherr-gateway:/gateway:ro"]
     depends_on:
       db: {condition: service_healthy}
@@ -105,4 +93,3 @@ volumes:
   bauherr-pg:
   bauherr-secrets:
   bauherr-gateway:
-  bauherr-media:

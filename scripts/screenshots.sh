@@ -16,13 +16,12 @@ cleanup() {
 trap cleanup EXIT
 
 (umask 077; head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$tmp/password")
-mkdir "$tmp/media"
 pg_port=$(free_port)
 docker rm -f "$pg" > /dev/null 2>&1 || true
 docker run -d --name "$pg" -e POSTGRES_USER=bauherr -e POSTGRES_PASSWORD=bauherr -e POSTGRES_DB=bauherr -p "$pg_port:5432" postgres:17 > /dev/null
 until docker exec "$pg" pg_isready -U bauherr -d bauherr > /dev/null 2>&1; do sleep 1; done
 
-export E2E_EMAIL=e2e@example.com E2E_PASSWORD_FILE="$tmp/password" LOGIN_IP_MAX_ATTEMPTS=1000 OTEL_ENABLED=0 MEDIA_DIR="$tmp/media"
+export E2E_EMAIL=e2e@example.com E2E_PASSWORD_FILE="$tmp/password" LOGIN_IP_MAX_ATTEMPTS=1000 OTEL_ENABLED=0
 export DATABASE_URL="postgres://bauherr:bauherr@localhost:$pg_port/bauherr"
 export BAUHERR_E2E_FAKE_FORGE=1 INTAKE_FAKE=1 CHAT_FAKE=1 E2E_FAKE_FORGE=1 E2E_GATED_PACK=1
 export BAUHERR_PACK_DIR="$PWD/apps/server/tests/fixtures/gated-pack"

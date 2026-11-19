@@ -11,7 +11,7 @@ import { decrypt, encrypt } from './secrets'
 
 export const DEFAULT_MODEL_BY_TIER = { cheap: 'claude-haiku-5-5', standard: 'claude-sonnet-5-5', strong: 'claude-opus-5-5' }
 
-type Ws = { id: number | string; slug: string; gatewayKey?: string | null; routerKey?: string | null; budgetUsd30d?: number | null; budgetUnit?: string | null; budgetTokens30d?: number | null; routerBudgetShare?: number | null }
+type Ws = { id: number | string; slug: string; gatewayKey?: string | null; budgetUsd30d?: number | null; budgetUnit?: string | null; budgetTokens30d?: number | null }
 type Resource = { id: string; value: { key: string; metadata?: { name?: string; kind?: string } } }
 
 export const gatewayPublicUrl = (): string => (process.env.GATEWAY_PUBLIC_URL || `http://127.0.0.1:${process.env.GATEWAY_PORT || 4000}`).replace(/\/+$/, '')
@@ -25,7 +25,6 @@ export const gatewayEnabled = (): boolean => {
 export const newKey = (): string => `sk-bauherr-${randomBytes(24).toString('hex')}`
 const keyName = (slug: string) => `workspace-${slug}`
 const sessionKeyName = (slug: string) => `${keyName(slug)}-session`
-const routerKeyName = (slug: string) => `${keyName(slug)}-router`
 const dir = () => process.env.GATEWAY_CONFIG_DIR ?? '/gateway'
 export const providerFile = (ws: string, conn: string, ext: 'key' | 'json' = 'key') => join(dir(), 'providers', `ws-${ws}.${conn}.${ext}`)
 const KEYS = '/api/config/resources/llm.apiKey'
@@ -55,16 +54,10 @@ const keyNamed = async (name: string): Promise<Resource | undefined> =>
   (await call<{ resources: Resource[] }>('GET', KEYS)).resources.find((r) => r.value.metadata?.name === name)
 const keyOf = (slug: string) => keyNamed(keyName(slug))
 
-export const DEFAULT_ROUTER_SHARE = 20
-
-const routerShare = (ws: Ws): number => ws.routerBudgetShare ?? DEFAULT_ROUTER_SHARE
-
-export const shareOf = (base: number, tokens: boolean, share: number): number => (share === 100 ? base : tokens ? Math.floor((base * share) / 100) : Math.floor(base * share) / 100)
-
-const budget = (ws: Ws, share = 100) => {
+const budget = (ws: Ws) => {
   const tokens = ws.budgetUnit === 'tokens'
   const base = tokens ? ws.budgetTokens30d ?? 20_000_000 : ws.budgetUsd30d ?? 50
-  return [{ name: 'monthly', limit: { unit: tokens ? 'Tokens' : 'USD', amount: shareOf(base, tokens, share) }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' }]
+  return [{ name: 'monthly', limit: { unit: tokens ? 'Tokens' : 'USD', amount: base }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' }]
 }
 
 export const writeSecretFile = async (path: string, value: string): Promise<void> => {
@@ -86,13 +79,12 @@ export const ensureKey = async (req: PayloadRequest, id: number | string): Promi
     key: decrypt(ws.gatewayKey),
     metadata: { name: keyName(ws.slug), user: keyName(ws.slug) },
     allowedModels: [`ws-${ws.slug}/*`],
-    budgets: budget(ws, ws.routerKey ? 100 - routerShare(ws) : 100),
+    budgets: budget(ws),
   }
   const existing = await keyOf(ws.slug)
   if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })
   else await call('PUT', KEYS, { resources: [{ value }] })
   await ensureSessionKey(ws)
-  await syncRouterKey(req, id)
 }
 
 export const ensureSessionKey = async (ws: Ws, rotate = false): Promise<string> => {
@@ -114,31 +106,14 @@ export const rotateSessionKey = async (req: PayloadRequest, id: number | string)
 export const tierModels = async (payload: Payload, ws: Record<string, any>, req?: PayloadRequest): Promise<Record<string, string>> => {
   const set = (ws.modelByTier ?? {}) as Record<string, string>
   const conns = (await payload.find({ collection: 'connections', where: { workspace: { equals: ws.id }, kind: { equals: 'llm-provider' } }, sort: 'id', select: { provider: true, slug: true }, depth: 0, pagination: false, overrideAccess: true, ...(req ? { req } : {}) })).docs as Record<string, any>[]
-  const first = Object.keys(DEFAULT_MODEL_BY_TIER).some((t) => !set[t]) ? conns.find((c) => c.provider !== 'router') : undefined
-  const tiers = Object.fromEntries(
+  const first = Object.keys(DEFAULT_MODEL_BY_TIER).some((t) => !set[t]) ? conns[0] : undefined
+  return Object.fromEntries(
     Object.entries(DEFAULT_MODEL_BY_TIER).map(([t, def]) => {
       if (set[t]) return [t, `ws-${ws.slug}/${set[t]}`]
       if (!first) throw new Error(`Workspace ${ws.slug} has no LLM provider Connection for tier "${t}"`)
       return [t, `ws-${ws.slug}/${first.slug}/${def}`]
     }),
   )
-  const router = conns.find((c) => c.provider === 'router')
-  return router ? { ...tiers, auto: `ws-${ws.slug}/${router.slug}/auto` } : tiers
-}
-
-export const ensureRouterKey = async (req: PayloadRequest, id: number | string): Promise<void> => {
-  let ws = await loadWs(req, id)
-  if (!ws.routerKey) ws = (await req.payload.update({ collection: 'workspaces', id, data: { routerKey: encrypt(newKey()) }, overrideAccess: true, req })) as unknown as Ws
-  const { auto: _auto, ...tiers } = await tierModels(req.payload, ws, req)
-  const value = {
-    key: decrypt(ws.routerKey!),
-    metadata: { name: routerKeyName(ws.slug), user: keyName(ws.slug), kind: 'router' },
-    allowedModels: [...new Set(Object.values(tiers))],
-    budgets: budget(ws, routerShare(ws)),
-  }
-  const existing = await keyNamed(routerKeyName(ws.slug))
-  if (existing) await call('PUT', `${KEYS}/${existing.id}`, { value })
-  else await call('PUT', KEYS, { resources: [{ value }] })
 }
 
 const archivedIds = async (req: PayloadRequest): Promise<(number | string)[]> => {
@@ -147,24 +122,13 @@ const archivedIds = async (req: PayloadRequest): Promise<(number | string)[]> =>
   return (await req.payload.find({ collection: 'workspaces', where: { archivedAt: { exists: true } }, select: {}, pagination: false, depth: 0, overrideAccess: true, req })).docs.map((w) => w.id)
 }
 
-export const syncRouterKey = async (req: PayloadRequest, id: number | string): Promise<void> => {
-  if ((await loadWs(req, id)).routerKey) await ensureRouterKey(req, id)
-}
-
-export const revokeRouterKey = async (req: PayloadRequest, id: number | string, slug: string): Promise<void> => {
-  const existing = await keyNamed(routerKeyName(slug))
-  if (existing) await call('DELETE', `${KEYS}/${existing.id}`)
-  await req.payload.update({ collection: 'workspaces', id, data: { routerKey: null }, overrideAccess: true, req })
-  await ensureKey(req, id)
-}
-
 export const rotateKey = async (req: PayloadRequest, id: number | string): Promise<void> => {
   await req.payload.update({ collection: 'workspaces', id, data: { gatewayKey: encrypt(newKey()) }, overrideAccess: true, req })
   await ensureKey(req, id)
 }
 
 export const deleteKey = async (slug: string): Promise<void> => {
-  for (const name of [keyName(slug), sessionKeyName(slug), routerKeyName(slug)]) {
+  for (const name of [keyName(slug), sessionKeyName(slug)]) {
     const existing = await keyNamed(name)
     if (existing) await call('DELETE', `${KEYS}/${existing.id}`)
   }
@@ -204,49 +168,6 @@ export const removeProvider = (ws: string, conn: string, ...exts: ('key' | 'json
 export const removeWorkspaceProviders = async (ws: string): Promise<void> => {
   const files = await readdir(join(dir(), 'providers')).catch(() => [] as string[])
   await Promise.all(files.filter((f) => f.startsWith(`ws-${ws}.`) && /^[a-z0-9-]+\.(key|json)$/.test(f.slice(`ws-${ws}.`.length))).map((f) => rm(join(dir(), 'providers', f), { force: true })))
-}
-
-const ROUTER_DOMAINS = {
-  strong: ['math', 'physics', 'chemistry', 'engineering', 'law'],
-  standard: ['computer science', 'business', 'economics', 'health', 'biology'],
-}
-
-export const renderRouter = async (req: PayloadRequest): Promise<void> => {
-  const path = join(dir(), 'router', 'config.yaml')
-  const gone = await archivedIds(req)
-  const conn = ((await req.payload.find({ collection: 'connections', where: { kind: { equals: 'llm-provider' } }, sort: 'id', select: { provider: true, workspace: true }, depth: 0, pagination: false, overrideAccess: true, req })).docs as Record<string, any>[]).find((c) => c.provider === 'router' && !gone.includes(typeof c.workspace === 'object' ? c.workspace.id : c.workspace))
-  if (!conn) return void (await rm(path, { force: true }))
-  const ws = await loadWs(req, typeof conn.workspace === 'object' ? (conn.workspace as { id: number }).id : (conn.workspace as number))
-  if (!ws.routerKey) {
-    req.payload.logger.error(`renderRouter: Workspace ${ws.slug} has no router key, router config not written`)
-    return void (await rm(path, { force: true }))
-  }
-  const { auto: _auto, ...tiers } = await tierModels(req.payload, ws, req)
-  const backend = { name: 'gateway', endpoint: 'gateway:4000', protocol: 'http', provider: 'vllm', auth_header: 'Authorization', auth_prefix: 'Bearer', api_key: decrypt(ws.routerKey) }
-  const cfg = {
-    version: 'v0.3',
-    listeners: [{ name: 'http-8801', address: '0.0.0.0', port: 8801, timeout: '300s' }],
-    providers: {
-      defaults: { model: tiers.cheap },
-      models: [...new Set(Object.values(tiers))].map((id) => ({ name: id, provider_model_id: id, api_format: 'openai', backend_refs: [backend] })),
-    },
-    routing: {
-      strategy: 'priority',
-      signals: { domains: Object.entries(ROUTER_DOMAINS).map(([name, mmlu_categories]) => ({ name, description: `${name} tier categories`, mmlu_categories })) },
-      decisions: (['strong', 'standard'] as const).map((name, i) => ({
-        name,
-        priority: 200 - i * 100,
-        rules: { operator: 'AND', conditions: [{ type: 'domain', name }] },
-        modelRefs: [{ model: tiers[name], use_reasoning: false }],
-        algorithm: { type: 'static' },
-      })),
-    },
-    global: { router: { config_source: 'file', auto_model_names: ['auto'] } },
-  }
-  const tmp = `${path}.tmp`
-  await rm(tmp, { force: true })
-  await writeSecretFile(tmp, stringify(cfg))
-  await rename(tmp, path)
 }
 
 export const KEY_LOCATION = 'coalesce(request.headers["x-agw-key"], request.headers["x-api-key"], request.headers["x-goog-api-key"], request.headers["authorization"].stripPrefix("Bearer "))'
@@ -344,7 +265,6 @@ export const renderModels = async (req: PayloadRequest): Promise<void> => {
     ensureManaged(cfg, await catalogFiles())
     await writeConfig(path, cfg)
   })
-  await renderRouter(req)
 }
 
 export const completeCheap = async (w: { slug: string; gatewayKey: string; modelByTier?: Partial<typeof DEFAULT_MODEL_BY_TIER> | null }, system: string, user: string): Promise<string> => {

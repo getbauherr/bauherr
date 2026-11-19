@@ -136,9 +136,9 @@ describe('account hooks', () => {
     }
     for (let i = 0; i < 20; i++) {
       const u = await mk(`race-up-${i}@x.io`, { role: 'bauherr', tenants: [{ tenant: a }] })
-      const [role, prefs] = await race(u.id, { role: 'product-owner' }, { uiPrefs: { n: 1 } })
-      expect([role === null, prefs === null].sort(), `iteration ${i}: exactly one write is refused`).toEqual([false, true])
-      expect(await get(u.id), `iteration ${i}`).toMatchObject(role === null ? { role: 'product-owner', tenants: [], uiPrefs: null } : { role: 'bauherr', uiPrefs: { n: 1 } })
+      const [role, login] = await race(u.id, { role: 'product-owner' }, { githubLogin: 'stale' })
+      expect([role === null, login === null].sort(), `iteration ${i}: exactly one write is refused`).toEqual([false, true])
+      expect(await get(u.id), `iteration ${i}`).toMatchObject(role === null ? { role: 'product-owner', tenants: [], githubLogin: null } : { role: 'bauherr', githubLogin: 'stale' })
     }
   })
 })

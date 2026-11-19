@@ -42,7 +42,7 @@ export const archiveWorkspace = async (payload: Payload, user: Doc, workspace: n
     const ws = (await tx.execute(sql`SELECT "id", "slug", "name", "archived_at" FROM "workspaces" WHERE "id" = ${workspace}`)).rows[0] as { id: number; slug: string; name: string; archived_at: string | null } | undefined
     if (!ws || ws.archived_at) throw new Error('Workspace not found.')
     if (!(await tx.execute(sql`SELECT 1 FROM "workspaces" WHERE "archived_at" IS NULL AND "id" <> ${workspace} LIMIT 1`)).rows.length) throw new Error('You cannot delete your last Workspace.')
-    await tx.execute(sql`UPDATE "workspaces" SET "archived_at" = ${now.toISOString()}, "purge_at" = ${purgeAt.toISOString()}, "gateway_key" = NULL, "router_key" = NULL, "updated_at" = now() WHERE "id" = ${workspace}`)
+    await tx.execute(sql`UPDATE "workspaces" SET "archived_at" = ${now.toISOString()}, "purge_at" = ${purgeAt.toISOString()}, "gateway_key" = NULL, "updated_at" = now() WHERE "id" = ${workspace}`)
     await tx.execute(sql`UPDATE "agent_sessions" SET "disconnected_at" = now(), "end_reason" = 'disconnect', "updated_at" = now() WHERE "workspace_id" = ${workspace} AND "disconnected_at" IS NULL`)
     await tx.execute(sql`INSERT INTO "human_touches" ("kind", "actor", "at", "detail", "updated_at", "created_at") VALUES ('workspace:delete', ${actor}, now(), ${JSON.stringify({ id: ws.id, slug: ws.slug, name: ws.name })}::jsonb, now(), now())`)
     if (gatewayEnabled()) await deleteKey(ws.slug)

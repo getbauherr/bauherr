@@ -17,7 +17,7 @@ Usage: bauherr <command> [options]
   down     stop it (--volumes also deletes its data)
   status   show service state
   seed     create the Admin user and first Workspace (needs BAUHERR_ADMIN_EMAIL, GITHUB_TOKEN)
-  pack lint  check a pack: pack lint [--pack pack] [--context CONTEXT.md] [--spec docs/spec/workflow.md]; exit 1 on findings
+  pack lint  check a pack: pack lint [--pack pack] [--context CONTEXT.md]; exit 1 on findings
 
 Options: --dir <path> (default ./bauherr)  --port <n>  --gateway-port <n> (default 4000, loopback)  --url <public url>  --yes  --volumes
          --anthropic-key-file <path>  --admin-password-file <path>  (seed)
@@ -76,7 +76,7 @@ const main = async () => {
       dir: { type: 'string', default: 'bauherr' }, port: { type: 'string' }, 'gateway-port': { type: 'string' }, url: { type: 'string' },
       yes: { type: 'boolean', short: 'y', default: false }, volumes: { type: 'boolean', default: false },
       'anthropic-key-file': { type: 'string' }, 'admin-password-file': { type: 'string' },
-      pack: { type: 'string', default: 'pack' }, context: { type: 'string', default: 'CONTEXT.md' }, spec: { type: 'string', default: 'docs/spec/workflow.md' },
+      pack: { type: 'string', default: 'pack' }, context: { type: 'string', default: 'CONTEXT.md' },
       help: { type: 'boolean', short: 'h', default: false }, version: { type: 'boolean', short: 'v', default: false },
     },
   })
@@ -88,7 +88,7 @@ const main = async () => {
   if (cmd === 'init') return init(opts)
   if (cmd === 'pack') {
     if (positionals[1] !== 'lint') throw new CliError(`Unknown command: pack ${positionals[1] ?? ''}\n\n${usage}`)
-    const findings = lintPack({ packDir: resolve(values.pack), contextFile: values.context, specFile: values.spec })
+    const findings = lintPack({ packDir: resolve(values.pack), contextFile: values.context })
     if (findings.length) throw new CliError(`pack lint: ${findings.length} finding(s)\n${formatFindings(findings.map((f) => ({ ...f, file: relative(process.cwd(), f.file) || f.file })))}`)
     return console.log('pack lint: ok')
   }

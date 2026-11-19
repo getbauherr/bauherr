@@ -58,8 +58,6 @@ export async function loadWorkspaceSettings(id: number) {
     budgetUnit: (ws.budgetUnit ?? 'usd') as 'usd' | 'tokens',
     budgetUsd30d: ws.budgetUsd30d as number | null,
     budgetTokens30d: ws.budgetTokens30d as number | null,
-    hasRouter: !!ws.routerKey,
-    routerBudgetShare: (ws.routerBudgetShare ?? 20) as number,
     modelByTier: Object.fromEntries(Object.entries((ws.modelByTier ?? {}) as Record<string, string>).map(([t, v]) => [t, preset.slugs[0] && v.startsWith(`${preset.slugs[0]}/`) ? v.slice(preset.slugs[0].length + 1) : v])),
     modelChoices,
     placeholders: preset.defaultModels ?? DEFAULT_MODEL_BY_TIER,

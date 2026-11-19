@@ -3,10 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import type { RunCtx } from '../src/types.js';
-
-export const PACK_DIR = resolve(import.meta.dirname, '../../../../pack');
+import { join } from 'node:path';
 
 export type Stub = { url: string; seen: { headers: IncomingHttpHeaders; body: string }[]; close(): Promise<void> };
 
@@ -63,28 +60,4 @@ export function makeBareRepo(): string {
   g(work, 'commit', '-m', 'init');
   g(work, 'push', bare, 'main');
   return `file://${root}`;
-}
-
-export function makeCtx(over: Partial<RunCtx> & { gatewayUrl: string; gitBaseUrl: string; stage?: 'triage' | 'plan' | 'build' | 'scan' | 'agent' }): RunCtx & { logs: string[]; comments: string[]; worklogs: string[]; stages: string[]; prs: { head: string; body: string }[] } {
-  const logs: string[] = [];
-  const comments: string[] = [];
-  const worklogs: string[] = [];
-  const stages: string[] = [];
-  const prs: { head: string; body: string }[] = [];
-  return {
-    run: { id: 'r1', stage: over.stage ?? 'plan', kind: over.stage ?? 'plan', goal: { statements: ['plan posted'] }, maxTurns: 5, maxBudgetUsd: 1, tier: 'cheap' },
-    ticket: { number: 7, url: 'https://example.invalid/7', title: 'T', body: 'body' },
-    product: { repo: 'o/n', defaultBranch: 'main' },
-    connection: { gatewayUrl: over.gatewayUrl, gatewayKey: 'REAL-GATEWAY-KEY', gitToken: 'GIT-TOKEN', modelByTier: { cheap: 'stub-model' }, gitBaseUrl: over.gitBaseUrl },
-    forge: {
-      async openPullRequest(p) { prs.push({ head: p.head, body: p.body }); return { url: 'https://example.invalid/pr/1' }; },
-      async comment(_n, b) { comments.push(b); },
-      async upsertWorklog(_n, b) { worklogs.push(b); },
-      async setStage(_n, st) { stages.push(st); },
-    },
-    recorder: { async step() {}, async toolCall() {}, log: (m) => logs.push(m) },
-    packDir: PACK_DIR,
-    stageNames: { review: 'review' },
-    logs, comments, worklogs, stages, prs,
-  };
 }

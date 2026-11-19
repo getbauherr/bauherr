@@ -35,7 +35,7 @@ export function egressGuard(tool: string, input: { command?: string; url?: strin
   }
   const cmd = input.command ?? input.url ?? '';
   if (NETWORK.test(cmd) && !cmd.includes(gatewayHost)) {
-    return { allow: false, reason: 'network access only to the gateway; see rules/egress.md' };
+    return { allow: false, reason: 'network access only to the gateway' };
   }
   return { allow: true };
 }

@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util'
 import { sql } from '@payloadcms/db-postgres'
 import { addDataAndFileToRequest, APIError, generatePayloadCookie, headersWithCors, ValidationError, type CollectionConfig, type Field, type PayloadRequest } from 'payload'
-import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, ensureRouterKey, gatewayEnabled, newKey, removeProvider, revokeRouterKey, syncRouterKey, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
+import { DEFAULT_MODEL_BY_TIER, deleteKey, ensureKey, gatewayEnabled, newKey, removeProvider, removeWorkspaceProviders, renderModels, verifyProvider, writeProvider } from './lib/gateway'
 import { invalidFields, missingFields, parseIamSecret, PRESET_FIELDS, PRESETS, presetOf, type Preset } from './lib/providers'
 import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests, oidcStrategy, SESSION_TTL_S } from './lib/oidc-session'
 import { clientIp, LoginBusy, signInWithPassword } from './lib/login-lock'
@@ -28,12 +28,11 @@ const lockAccount = async (req: PayloadRequest, id: number | string): Promise<vo
 }
 
 const TIERS = ['cheap', 'standard', 'strong'] as const
-const isRouter = (config: { provider?: string } | null | undefined) => presetOf(config) === 'router'
-const sharedIdentity = (p: Preset) => PRESETS[p].auth === 'ambient' && p !== 'router'
+const sharedIdentity = (p: Preset) => PRESETS[p].auth === 'ambient'
 const llmConnections = async (req: PayloadRequest, workspace: number | string) =>
   (await req.payload.find({ collection: 'connections', where: { workspace: { equals: workspace }, kind: { equals: 'llm-provider' } }, sort: 'id', depth: 0, pagination: false, overrideAccess: true, req })).docs
 
-const unitOf = (conns: Record<string, any>[]) => (conns.filter((c) => !isRouter(c.config)).every((c) => PRESETS[presetOf(c.config)].catalog) ? 'usd' : 'tokens')
+const unitOf = (conns: Record<string, any>[]) => (conns.every((c) => PRESETS[presetOf(c.config)].catalog) ? 'usd' : 'tokens')
 
 const rel = (name: string, to: string, extra: Partial<Field> = {}): Field =>
   ({ name, type: 'relationship', relationTo: to, ...extra }) as Field
@@ -52,7 +51,7 @@ const col = (slug: string, fields: Field[], extra: Partial<CollectionConfig> = {
   access: { read: bauherrOnly, create: bauherrOnly, update: bauherrOnly, delete: bauherrOnly, ...extra.access },
 })
 
-const SELF_FIELDS = ['uiPrefs', 'password']
+const SELF_FIELDS = ['uiPrefs', 'password', 'githubLogin']
 
 const bauherren: CollectionConfig = {
   slug: 'bauherren',
@@ -97,7 +96,12 @@ const bauherren: CollectionConfig = {
         }
         if (operation === 'update' && req.user?.role === 'product-owner') {
           const other = Object.keys(data).filter((k) => ![...SELF_FIELDS, 'updatedAt', 'createdAt'].includes(k) && !isDeepStrictEqual(data[k] ?? null, originalDoc?.[k] ?? null))
-          if (other.length) throw fail(other[0], 'A Product owner can change only the password and display preferences')
+          if (other.length) throw fail(other[0], 'A Product owner can change only the password, display preferences and forge login')
+        }
+        if (data.githubLogin && data.githubLogin !== originalDoc?.githubLogin) {
+          const mine = String(data.githubLogin).split(',').map((l) => l.trim().toLowerCase()).filter(Boolean)
+          const others = await req.payload.find({ collection: 'bauherren', where: { and: [{ githubLogin: { exists: true } }, ...(originalDoc?.id != null ? [{ id: { not_equals: originalDoc.id } }] : [])] }, pagination: false, depth: 0, overrideAccess: true, select: { githubLogin: true }, req })
+          if (others.docs.some((u) => String(u.githubLogin).split(',').some((l) => mine.includes(l.trim().toLowerCase())))) throw fail('githubLogin', 'This forge login is already linked to another account')
         }
         if ((data.role ?? originalDoc?.role) === 'product-owner') {
           if ((data.enableAPIKey && !originalDoc?.enableAPIKey) || (data.apiKey && data.apiKey !== originalDoc?.apiKey)) throw fail('enableAPIKey', 'A Product owner cannot have an API key')
@@ -161,6 +165,7 @@ const bauherren: CollectionConfig = {
       admin: { description: 'Product owner only: per Workspace, all its Products (scope workspace) or the listed ones (scope products; an empty list grants nothing). Keeps `tenants` equal to the Workspaces listed here.' },
       fields: [rel('workspace', 'workspaces', { required: true }), select('scope', ['workspace', 'products'], { required: true }), rel('products', 'products', { hasMany: true })],
     },
+    text('githubLogin', { admin: { description: 'The forge login (GitHub, or GitLab username) linked to this account: a gate label or answers comment from it counts as this person\'s decision, and it is assigned to Tickets when this Bauherr claims a session Run (falls back to BAUHERR_BOT_LOGIN). One account per login, case ignored.' } }),
     text('oidcSubject', { index: true, access: { create: isAdmin, update: isAdmin }, admin: { description: 'issuer|sub of the OIDC identity (Keycloak: <issuer>|<user ID>). Set on first SSO sign-in; Admins can set it to link an existing Bauherr.' } }),
     { name: 'sessionVersion', type: 'number', defaultValue: 0, access: { create: () => false, update: () => false }, admin: { hidden: true } },
     { name: 'oidcSynced', type: 'date', access: { create: () => false, update: () => false }, admin: { readOnly: true, description: 'Last OIDC sign-in that synced role and Workspaces.' } },
@@ -197,17 +202,9 @@ const workspaces = col(
         ],
       },
     },
-    {
-      name: 'routerKey',
-      type: 'text',
-      admin: { description: 'Write-only. Consumer key of the vLLM Semantic Router for this Workspace; created with the first `router` Connection, encrypted at rest.' },
-      access: { read: () => false, update: () => false },
-      hooks: { beforeChange: [({ value }) => (typeof value === 'string' && value && !isEncrypted(value) ? encrypt(value) : value)] },
-    },
     { name: 'budgetUsd30d', type: 'number', defaultValue: 50, min: 0 },
     select('budgetUnit', ['usd', 'tokens'], { defaultValue: 'usd', admin: { description: 'Flips to tokens when the provider has no USD price catalog.' } }),
     { name: 'budgetTokens30d', type: 'number', defaultValue: 20000000, min: 0 },
-    { name: 'routerBudgetShare', type: 'number', defaultValue: 20, min: 1, max: 99, admin: { description: 'Percent of the budget for `auto` traffic while a router Connection exists.' } },
     { name: 'modelByTier', type: 'json', defaultValue: DEFAULT_MODEL_BY_TIER },
     rel('knowledgeConnection', 'connections', { admin: { description: 'GitHub Connection used to read the Knowledge repo.' } }),
     text('knowledgeRepo', { admin: { description: 'Knowledge repo as owner/name.' } }),
@@ -230,14 +227,9 @@ const workspaces = col(
     hooks: {
       beforeValidate: [
         async ({ data, operation, originalDoc, req }) => {
-          const tiers = Object.entries((data?.modelByTier ?? {}) as Record<string, string>)
-          const slash = tiers.some(([, v]) => String(v).endsWith('/auto'))
-          const routerSlug = slash && originalDoc?.id ? (await llmConnections(req, originalDoc.id)).find((c) => isRouter(c.config))?.slug : undefined
-          const auto = tiers.filter(([, v]) => v === 'auto' || (routerSlug && v === `${routerSlug}/auto`))
-          if (auto.length) throw new ValidationError({ collection: 'workspaces', errors: auto.map(([path]) => ({ path, message: '`auto` is the router tier, not a model; pick <connection>/<model>' })) })
           if (operation === 'update') {
             if (!data?.modelByTier) return
-            const slugs = (await llmConnections(req, originalDoc.id)).filter((c) => !isRouter(c.config)).map((c) => c.slug as string)
+            const slugs = (await llmConnections(req, originalDoc.id)).map((c) => c.slug as string)
             const bad = Object.entries(data.modelByTier as Record<string, string>).filter(([, v]) => !slugs.some((s) => String(v).startsWith(`${s}/`) && String(v).length > s.length + 1))
             if (slugs.length && bad.length) {
               throw new ValidationError({ collection: 'workspaces', errors: bad.map(([path]) => ({ path, message: `must be <connection>/<model>, connection one of: ${slugs.join(', ')}` })) })
@@ -258,10 +250,9 @@ const workspaces = col(
           if (!gatewayEnabled()) return
           if (
             operation === 'create' ||
-            (['budgetUsd30d', 'budgetUnit', 'budgetTokens30d', 'routerBudgetShare'] as const).some((k) => doc[k] !== previousDoc?.[k])
+            (['budgetUsd30d', 'budgetUnit', 'budgetTokens30d'] as const).some((k) => doc[k] !== previousDoc?.[k])
           )
             await ensureKey(req, doc.id)
-          else if (!isDeepStrictEqual(doc.modelByTier, previousDoc?.modelByTier)) await syncRouterKey(req, doc.id)
         },
       ],
       afterDelete: [
@@ -355,13 +346,6 @@ const connections = col(
           if (missing.length) {
             throw new ValidationError({ collection: 'connections', errors: missing.map((path) => ({ path, message: `required for ${presetOf(config)}` })) })
           }
-          if (isRouter(config)) {
-            await lockAmbient(req)
-            const wsId = typeof workspace === 'object' ? workspace.id : workspace
-            if ((await req.payload.count({ collection: 'connections', where: { kind: { equals: 'llm-provider' }, provider: { equals: 'router' }, workspace: { not_equals: wsId } }, overrideAccess: true, req })).totalDocs) {
-              throw new ValidationError({ collection: 'connections', errors: [{ path: 'provider', message: 'the router serves one Workspace: another Workspace already has a router Connection' }] })
-            }
-          }
           if (sharedIdentity(presetOf(config))) await lockAmbient(req)
           if (sharedIdentity(presetOf(config)) && (await req.payload.count({ collection: 'workspaces', overrideAccess: true, req })).totalDocs !== 1) {
             throw new ValidationError({ collection: 'connections', errors: [{ path: 'provider', message: 'ambient identity is shared by the whole gateway: allowed only while the instance has exactly one Workspace' }] })
@@ -380,7 +364,6 @@ const connections = col(
           }
           const slug = doc.slug as string
           const preset = PRESETS[presetOf(doc.config)]
-          const router = isRouter(doc.config)
           const o = { overrideAccess: true, req } as const
           const ws = (await req.payload.findByID({ collection: 'workspaces', id: raw.workspace.id, depth: 0, ...o })) as unknown as {
             gatewayKey: string
@@ -399,21 +382,16 @@ const connections = col(
           )
           const changed = operation === 'create' || presetOf(previousDoc?.config) !== presetOf(doc.config)
           const data: Record<string, unknown> = {}
-          if (!router && changed && ws.budgetUnit !== unitOf(conns)) data.budgetUnit = unitOf(conns)
-          if (!router && changed && !isDeepStrictEqual(ws.modelByTier, tiers)) data.modelByTier = tiers
+          if (changed && ws.budgetUnit !== unitOf(conns)) data.budgetUnit = unitOf(conns)
+          if (changed && !isDeepStrictEqual(ws.modelByTier, tiers)) data.modelByTier = tiers
           if (Object.keys(data).length) await req.payload.update({ collection: 'workspaces', id: raw.workspace.id, data, ...o })
           if (!gatewayEnabled()) return
           if (preset.auth === 'file' && raw.secret) await writeProvider(raw.workspace.slug, slug, decrypt(raw.secret), preset.secret.ext)
           await removeProvider(raw.workspace.slug, slug, ...(preset.auth === 'file' ? [preset.secret.ext === 'key' ? ('json' as const) : ('key' as const)] : (['key', 'json'] as const)))
-          if (router) {
-            await ensureRouterKey(req, raw.workspace.id)
-            await ensureKey(req, raw.workspace.id)
-          }
-          else if (isRouter(previousDoc?.config) && !conns.some((c) => isRouter(c.config))) await revokeRouterKey(req, raw.workspace.id, raw.workspace.slug)
           await renderModels(req)
           if (!process.env.GATEWAY_URL) return
           const current = (data.modelByTier ?? ws.modelByTier) as Record<string, string>
-          const cheapest = router ? current.cheap : TIERS.map((t) => current[t]).find(own) ?? `${slug}/${preset.defaultModels?.cheap ?? DEFAULT_MODEL_BY_TIER.cheap}`
+          const cheapest = TIERS.map((t) => current[t]).find(own) ?? `${slug}/${preset.defaultModels?.cheap ?? DEFAULT_MODEL_BY_TIER.cheap}`
           const result = await verifyProvider(raw.workspace.slug, decrypt(ws.gatewayKey), cheapest)
           req.context.skipVerify = true
           await req.payload.update({
@@ -433,7 +411,6 @@ const connections = col(
           if (conns.length && ws.budgetUnit !== unitOf(conns)) await req.payload.update({ collection: 'workspaces', id: wsId, data: { budgetUnit: unitOf(conns) }, overrideAccess: true, req })
           if (!gatewayEnabled()) return
           await removeProvider(ws.slug, doc.slug)
-          if (isRouter(doc.config) && !conns.some((c) => isRouter(c.config))) await revokeRouterKey(req, wsId, ws.slug)
           await renderModels(req)
         },
       ],
