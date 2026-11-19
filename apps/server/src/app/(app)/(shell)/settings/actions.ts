@@ -4,8 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createLocalReq } from 'payload'
 import { mintAgentKey, revokeAgentKey, revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
-import { backendFor } from '../../../../lib/adapters'
-import { connectionInput, webOrigin } from '../../../../lib/connection'
+import { backendFor, verifyForge } from '../../../../lib/adapters'
+import { connectionInput, credentialName, forgeConfig } from '../../../../lib/connection'
 import { withLoginLock } from '../../../../lib/login-lock'
 import { parsePathSets, type PathSets } from '../../../../lib/path-sets'
 import { rotateKey } from '../../../../lib/gateway'
@@ -182,7 +182,7 @@ export const saveConnection = act({}, async (c, fd) => {
     data.provider = s(fd, 'provider')
     for (const k of PRESET_FIELDS) if (fd.has(k)) data[k] = s(fd, k)
   }
-  if (kind === 'gitlab') data.config = { baseUrl: webOrigin({ kind, config: { baseUrl: s(fd, 'baseUrl') } }) }
+  if (kind !== 'llm-provider') data.config = await forgeConfig(c.payload, id(fd), kind, (k) => s(fd, k))
   if (s(fd, 'secret')) data.secret = s(fd, 'secret')
   if (id(fd)) {
     await inWs(c, 'connections', id(fd))
@@ -201,12 +201,12 @@ export const verifyConnection = act({}, async (c, fd) => {
   }
   let failure: { message: string; refused: boolean } | null = null
   try {
-    await backendFor(conn, { maxRetries: 0, timeoutMs: 10_000 }).tickets('').whoami()
+    await verifyForge(conn, { maxRetries: 0, timeoutMs: 10_000 })
   } catch (e) {
     failure = { message: (e as Error).message, refused: [401, 403].includes((e as { status?: number }).status ?? 0) }
   }
   await c.payload.update({ collection: 'connections', id: id(fd), data: { capabilities: { ...conn.capabilities, verifiedAt: failure ? null : new Date().toISOString(), lastError: failure?.message ?? null } }, overrideAccess: true } as never)
-  if (failure) throw new Error(`${failure.refused ? 'The forge did not accept the token' : 'Could not verify the token'}: ${failure.message}`)
+  if (failure) throw new Error(`${failure.refused ? 'The forge did not accept' : 'Could not verify'} ${credentialName(conn)}: ${failure.message}`)
 })
 
 const tenants = (fd: FormData) => fd.getAll('workspaces').map(Number)

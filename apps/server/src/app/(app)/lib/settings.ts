@@ -157,7 +157,7 @@ export async function loadConnections(workspace: number) {
       name: c.name as string,
       kind: c.kind as string,
       provider: c.kind === 'llm-provider' ? presetOf(c.config) : '',
-      config: Object.fromEntries(['baseUrl', 'awsRegion', 'vertexProject', 'vertexRegion', 'azureResource'].map((k) => [k, (c.config?.[k] ?? '') as string])),
+      config: Object.fromEntries(['baseUrl', 'appId', 'installationId', 'awsRegion', 'vertexProject', 'vertexRegion', 'azureResource'].map((k) => [k, (c.config?.[k] ?? '') as string])),
       status: (c.capabilities?.lastError ? 'failed' : c.capabilities?.verifiedAt ? 'ok' : 'none') as 'failed' | 'ok' | 'none',
       detail: (c.capabilities?.lastError ?? c.capabilities?.verifiedAt ?? '') as string,
     }))

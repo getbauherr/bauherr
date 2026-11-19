@@ -29,3 +29,37 @@ export const webOrigin = (connection: Pick<ConnectionInput, 'kind' | 'config'>):
   if (url.protocol !== 'https:') throw new Error('the GitLab base URL must be https')
   return url.origin + url.pathname.replace(/\/+$/, '')
 }
+
+export const isGithubApp = (connection: Pick<ConnectionInput, 'kind' | 'config'>): boolean =>
+  connection.kind === 'github' && !!connection.config.appId && !!connection.config.installationId
+
+export const credentialName = (connection: Pick<ConnectionInput, 'kind' | 'config'>): string =>
+  isGithubApp(connection) ? 'the App credentials' : 'the token'
+
+const fieldErrors = (errors: { path: string; message: string }[]) =>
+  Object.assign(new Error('Connection invalid.'), { data: { errors } })
+
+const githubConfig = (
+  before: ConnectionInput | null, field: (name: string) => string,
+): Record<string, unknown> => {
+  const apiUrl = before?.config.apiUrl
+  const config: Record<string, unknown> = typeof apiUrl === 'string' ? { apiUrl } : {}
+  const keeps = !!before && isGithubApp(before)
+  if (field('auth') !== 'app') {
+    if (keeps && !field('secret')) throw fieldErrors([{ path: 'secret', message: 'Enter a personal access token.' }])
+    return config
+  }
+  const errors: { path: string; message: string }[] = (['appId', 'installationId'] as const)
+    .filter((k) => !/^\d+$/.test(field(k)))
+    .map((path) => ({ path, message: 'Enter the number shown in GitHub.' }))
+  if (!keeps && !field('secret')) errors.push({ path: 'secret', message: 'Paste the App private key.' })
+  if (errors.length) throw fieldErrors(errors)
+  return { ...config, appId: field('appId'), installationId: field('installationId') }
+}
+
+export const forgeConfig = async (
+  payload: Payload, id: number, kind: string, field: (name: string) => string,
+): Promise<Record<string, unknown>> => {
+  if (kind === 'gitlab') return { baseUrl: webOrigin({ kind, config: { baseUrl: field('baseUrl') } }) }
+  return githubConfig(id ? await connectionInput(payload, id) : null, field)
+}
