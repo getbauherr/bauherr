@@ -1,7 +1,9 @@
 import { MigrateDownArgs, MigrateUpArgs, sql } from '@payloadcms/db-postgres'
 
 const TABLE = sql`
-   ALTER TABLE "records" ADD COLUMN "card" jsonb;
+   ALTER TYPE "public"."enum_payload_jobs_task_slug" ADD VALUE IF NOT EXISTS 'expire-runs';
+  ALTER TYPE "public"."enum_payload_jobs_log_task_slug" ADD VALUE IF NOT EXISTS 'expire-runs';
+  ALTER TABLE "records" ADD COLUMN "card" jsonb;
   CREATE TABLE "stage_runs" (
   	"id" serial PRIMARY KEY NOT NULL,
   	"workspace_id" integer,
