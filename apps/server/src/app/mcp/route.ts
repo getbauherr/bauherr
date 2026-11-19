@@ -35,10 +35,9 @@ const authenticate = async (payload: Payload, token: string): Promise<Partial<Co
     throw error
   })
   if (agent) {
-    const workspace = tenantIds(agent.owner)[0]
-    if (!isBauherr(agent.owner)) return refuse(403, 'The owner of this key is not a Bauherr.')
-    if (workspace === undefined) return refuse(403, 'The owner of this key belongs to no Workspace.')
-    return { agent: { deps, workspace, keyId: Number(agent.keyId) } }
+    const member = isBauherr(agent.owner) && tenantIds(agent.owner).includes(agent.workspace)
+    if (!member) return refuse(401, 'unauthorized')
+    return { agent: { deps, workspace: agent.workspace, keyId: Number(agent.keyId) } }
   }
   const headers = new Headers({ authorization: `bauherren API-Key ${token}` })
   const { user } = await payload.auth({ headers })

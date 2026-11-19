@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import type { ItemRow } from '../../src/core/mirror/map'
+import { mintAgentKey, resolveAgentKey } from '../../src/lib/api-key'
 import { upsertItem } from '../../src/core/mirror/store'
 import { TOOLS } from '../../src/core/run/mcp/registry'
 import { openMcp, type Mcp } from './mcp-harness'
@@ -101,6 +102,48 @@ describe('authentication', () => {
     expect((await call(m.alpha.personalKey, 'connect', { role: 'builder' })).text).toMatch(/agent key/)
     expect((await m.e.view(record)).types).not.toContain('brief.approved')
     await m.e.drain()
+  })
+})
+
+describe('the Workspace of a key', () => {
+  const connect = (key: string) =>
+    route.POST(rpc('tools/call', { name: 'connect', arguments: { role: 'builder' } }, key))
+  const make = async (email: string, extra: Record<string, unknown> = {}) => {
+    const { payload } = m.e.db
+    const data = { email, password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: m.e.db.workspace }], ...extra }
+    return payload.create({ collection: 'bauherren', data: data, overrideAccess: true })
+  }
+
+  it('refuses minting a key for a Workspace the person is not a member of', async () => {
+    const user = await make('mint@x.io')
+    await expect(mintAgentKey(m.e.db.payload, user, 'x', m.e.db.otherWorkspace)).rejects.toThrow(/not a member/)
+    const token = await mintAgentKey(m.e.db.payload, user, 'x', m.e.db.workspace)
+    expect((await resolveAgentKey(m.e.db.payload, token))?.workspace).toBe(m.e.db.workspace)
+  })
+
+  it('acts in the Workspace of the key even when the owner belongs to several', async () => {
+    const user = await make('multi@x.io', {
+      tenants: [{ tenant: m.e.db.workspace }, { tenant: m.e.db.otherWorkspace }],
+    })
+    const token = await mintAgentKey(m.e.db.payload, user, 'x', m.e.db.otherWorkspace)
+    expect((await call(token, 'connect', { role: 'builder' })).error).toBe(false)
+    const row = await m.e.db.payload.db.drizzle.execute(
+      sql`SELECT "workspace_id" FROM "agent_sessions" ORDER BY "id" DESC LIMIT 1`,
+    )
+    expect(row.rows[0]?.workspace_id).toBe(m.e.db.otherWorkspace)
+  })
+
+  it('answers 401 once the owner left the Workspace or is no longer a Bauherr', async () => {
+    const left = await make('left@x.io')
+    const leftKey = await mintAgentKey(m.e.db.payload, left, 'x', m.e.db.workspace)
+    expect((await connect(leftKey)).status).toBe(200)
+    await m.e.db.payload.update({ collection: 'bauherren', id: left.id, data: { tenants: [] }, overrideAccess: true })
+    expect((await connect(leftKey)).status).toBe(401)
+    const demoted = await make('demoted@x.io')
+    const demotedKey = await mintAgentKey(m.e.db.payload, demoted, 'x', m.e.db.workspace)
+    const data = { role: 'product-owner', assignments: [{ workspace: m.e.db.workspace, scope: 'workspace' }] }
+    await m.e.db.payload.update({ collection: 'bauherren', id: demoted.id, data: data, overrideAccess: true })
+    expect((await connect(demotedKey)).status).toBe(401)
   })
 })
 

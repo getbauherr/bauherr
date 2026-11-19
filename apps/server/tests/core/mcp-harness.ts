@@ -33,7 +33,7 @@ export const openMcp = async (suite: string, modules: Modules = TEST_MODULES): P
       data: { email: `${name}@x.io`, password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: workspace }] },
       overrideAccess: true,
     })
-    const agentToken = await mintAgentKey(payload, user, 'agent')
+    const agentToken = await mintAgentKey(payload, user, 'agent', workspace)
     const resolved = await resolveAgentKey(payload, agentToken)
     return {
       id: idOf(user),

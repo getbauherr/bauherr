@@ -10,6 +10,7 @@ const states = { locked: new Date(Date.now() + day), expired: new Date(Date.now(
 
 let payload: Payload
 let testDb: TestDb
+let workspace: number
 beforeAll(async () => {
   testDb = await createTestDb('account_lock')
   process.env.DATABASE_URL = testDb.url
@@ -17,6 +18,8 @@ beforeAll(async () => {
   process.env.ENCRYPTION_KEY ??= 'test-key'
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
+  const made = await payload.create({ collection: 'workspaces', data: { name: 'w', slug: 'w' }, overrideAccess: true })
+  workspace = Number(made.id)
 })
 afterAll(async () => {
   await payload?.destroy()
@@ -24,7 +27,7 @@ afterAll(async () => {
 })
 
 const bauherr = async (name: string, lockUntil?: Date) => {
-  const b = await payload.create({ collection: 'bauherren', data: { email: `${name}@x.io`, password: 'pw-123456-x', role: 'bauherr' } as never, overrideAccess: true })
+  const b = await payload.create({ collection: 'bauherren', data: { email: `${name}@x.io`, password: 'pw-123456-x', role: 'bauherr', tenants: [{ tenant: workspace }] } as never, overrideAccess: true })
   if (lockUntil) await payload.update({ collection: 'bauherren', id: b.id, data: { lockUntil: lockUntil.toISOString(), loginAttempts: 5 } as never, overrideAccess: true })
   return b
 }
@@ -32,7 +35,7 @@ const bauherr = async (name: string, lockUntil?: Date) => {
 describe.each(Object.entries(states))('%s account', (state, lockUntil) => {
   it('agent key', async () => {
     const b = await bauherr(`agent-${state}`, lockUntil)
-    const token = await mintAgentKey(payload, b, 'ci')
+    const token = await mintAgentKey(payload, b, 'ci', workspace)
     if (state === 'locked') return expect(resolveAgentKey(payload, token)).rejects.toThrow(/locked/)
     const r = await resolveAgentKey(payload, token)
     expect(r?.owner.email).toBe(b.email)
@@ -81,7 +84,7 @@ describe('local JWT', () => {
 describe('failed lock read', () => {
   it('refuses the agent key and the API key', async () => {
     const b = await bauherr('failed-read')
-    const token = await mintAgentKey(payload, b, 'ci')
+    const token = await mintAgentKey(payload, b, 'ci', workspace)
     const key = await rotateApiKey(payload, b)
     const find = payload.findByID.bind(payload)
     const spy = vi.spyOn(payload, 'findByID').mockImplementation(((a: { select?: { lockUntil?: boolean } }) => (a.select?.lockUntil ? Promise.reject(new Error('db down')) : find(a as never))) as never)

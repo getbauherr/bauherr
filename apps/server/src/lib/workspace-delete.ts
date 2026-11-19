@@ -69,7 +69,7 @@ type Exec = { execute: (q: ReturnType<typeof sql>) => Promise<{ rows: Doc[] }> }
 const ofWorkspace = (ws: number) => sql`"workspace_id" = ${ws}`
 export const PURGE_ORDER: { table: string; where: (ws: number) => ReturnType<typeof sql> }[] = [
   { table: 'human_touches', where: (ws) => sql`"workspace_id" = ${ws} AND "kind" NOT LIKE 'workspace:%'` },
-  ...['mirror_checks', 'mirror_comments', 'mirror_items', 'events', 'stage_runs', 'proofs', 'records', 'agent_sessions', 'ticket_sources', 'repositories', 'products', 'connections', 'knowledge_chunks', 'bauherren_assignments'].map((table) => ({ table, where: ofWorkspace })),
+  ...['mirror_checks', 'mirror_comments', 'mirror_items', 'events', 'stage_runs', 'proofs', 'records', 'agent_sessions', 'agent_keys', 'ticket_sources', 'repositories', 'products', 'connections', 'knowledge_chunks', 'bauherren_assignments'].map((table) => ({ table, where: ofWorkspace })),
   { table: 'bauherren_tenants', where: (ws) => sql`"tenant_id" = ${ws}` },
   { table: 'workspaces', where: (ws) => sql`"id" = ${ws}` },
 ]
