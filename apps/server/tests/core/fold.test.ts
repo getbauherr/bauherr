@@ -20,6 +20,8 @@ describe('fold', () => {
       deployed: false,
       accepted: false,
       productionApproved: false,
+      productionHeld: false,
+      overridden: false,
       note: null,
     })
   })
@@ -118,6 +120,45 @@ describe('fold', () => {
     expect(fold([...asked, start('brief', 'r2')]).note).toBeNull()
     expect(fold([...merged, ev('result.sent-back')]).note).toBe('not yet')
     expect(fold([...merged, ev('result.sent-back'), start('build', 'r3')]).note).toBeNull()
+  })
+
+  it('sets the note from the owner until the next run starts', () => {
+    expect(fold([...inBuild, ev('owner.note')]).note).toBe('try the other way')
+    expect(fold([...inBuild, ev('owner.note'), start('build', 'r3')]).note).toBeNull()
+  })
+
+  it('closes the ticket when the owner discards it', () => {
+    expect(fold([...inBuild, ev('ticket.closed')]).closed).toBe('discarded')
+  })
+
+  it('treats an override of the latest patch like a passed verify for the stage change', () => {
+    const changes = [...inVerify, start('verify', 'r2'), ev('verify.changes')]
+    const overridden = fold([...changes, ev('verify.overridden')])
+    expect(overridden).toMatchObject({ stage: 'ship', verdict: 'p1', overridden: true, failedRuns: 0 })
+    expect(fold(inShip).overridden).toBe(false)
+  })
+
+  it('ignores an override of a patch that is not the latest', () => {
+    const changes = [...inVerify, start('verify', 'r2'), ev('verify.changes')]
+    expect(fold([...changes, ev('verify.overridden', { patchId: 'old' })])).toMatchObject({
+      stage: 'build',
+      overridden: false,
+    })
+  })
+
+  it('starts the override over with the next patch', () => {
+    const changes = [...inVerify, start('verify', 'r2'), ev('verify.changes'), ev('verify.overridden')]
+    const patched = [start('build', 'r3'), ev('build.submitted', { runId: 'r3', patchId: 'p2' })]
+    expect(fold([...changes, ...patched])).toMatchObject({ stage: 'verify', overridden: false })
+  })
+
+  it('remembers a held production until a new patch', () => {
+    const held = [...merged, ev('result.accepted'), ev('production.held')]
+    expect(fold(held, { productionGate: true })).toMatchObject({ productionHeld: true, stage: 'ship' })
+    const back = fold([...held, ev('result.sent-back')], { productionGate: true })
+    expect(back.productionHeld).toBe(true)
+    const patched = [start('build', 'r3'), ev('build.submitted', { runId: 'r3', patchId: 'p2' })]
+    expect(fold([...held, ev('result.sent-back'), ...patched], { productionGate: true }).productionHeld).toBe(false)
   })
 
   it('opens a question card until it is answered', () => {

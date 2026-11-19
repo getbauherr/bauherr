@@ -101,7 +101,9 @@ const ship: Rule = (_r, state, config) => {
   if (!state.merged) return { kind: 'effect', effect: 'merge' }
   if (config.deployChecks && !state.deployed) return wait('deploy')
   if (!state.accepted) return { kind: 'card', card: 'result', reason: 'result', options: [] }
-  if (config.productionGate && !state.productionApproved) return question('production', ['approve', 'hold'])
+  if (config.productionGate && !state.productionApproved) {
+    return state.productionHeld ? wait('owner') : question('production', ['approve', 'hold'])
+  }
   return { kind: 'done' }
 }
 

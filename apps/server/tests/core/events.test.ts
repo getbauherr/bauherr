@@ -17,11 +17,14 @@ const BAD: [EventType, unknown][] = [
   ['question.asked', { reason: 'x', options: ['only'] }],
   ['question.asked', { reason: 'x', options: ['a', 'b', 'c', 'd', 'e'] }],
   ['question.answered', {}],
+  ['owner.note', { note: ' ' }],
+  ['ticket.closed', { reason: 'duplicate' }],
+  ['verify.overridden', {}],
 ]
 
 describe('parseEvent', () => {
   it('has a sample for every event type, and parses each', () => {
-    expect(Object.keys(SAMPLES)).toHaveLength(24)
+    expect(Object.keys(SAMPLES)).toHaveLength(28)
     for (const [type, data] of Object.entries(SAMPLES)) {
       expect(parseEvent({ type, data })).toEqual({ type, data })
     }

@@ -72,6 +72,10 @@ export const SAMPLES: Record<EventType, unknown> = {
   'result.accepted': {},
   'result.sent-back': { note: 'not yet' },
   'production.approved': {},
+  'production.held': {},
+  'owner.note': { note: 'try the other way' },
+  'ticket.closed': { reason: 'discarded' },
+  'verify.overridden': { patchId: 'p1' },
   'question.asked': { reason: 'failed-runs', options: ['retry', 'discard'] },
   'question.answered': { option: 'retry' },
 }

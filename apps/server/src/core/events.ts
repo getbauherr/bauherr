@@ -37,6 +37,10 @@ const eventSchema = z.discriminatedUnion('type', [
   event('result.accepted', none),
   event('result.sent-back', z.object({ note: id })),
   event('production.approved', none),
+  event('production.held', none),
+  event('owner.note', z.object({ note: id })),
+  event('ticket.closed', z.object({ reason: z.literal('discarded') })),
+  event('verify.overridden', z.object({ patchId: id })),
   event('question.asked', z.object({ reason: id, options: z.array(id).min(2).max(4) })),
   event('question.answered', z.object({ option: id })),
 ])

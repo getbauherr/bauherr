@@ -16,10 +16,12 @@ export type State = {
   patch: { id: string; pr: number } | null
   checks: 'none' | 'pending' | 'passed' | 'failed'
   verdict: string | null
+  overridden: boolean
   merged: boolean
   deployed: boolean
   accepted: boolean
   productionApproved: boolean
+  productionHeld: boolean
   note: string | null
   last: EventType | null
 }
@@ -39,10 +41,12 @@ export const initialState = (): State => ({
   patch: null,
   checks: 'none',
   verdict: null,
+  overridden: false,
   merged: false,
   deployed: false,
   accepted: false,
   productionApproved: false,
+  productionHeld: false,
   note: null,
   last: null,
 })
@@ -86,6 +90,17 @@ const runs: Reducer = (state, event) => {
   }
 }
 
+const owner: Reducer = (state, event) => {
+  switch (event.type) {
+    case 'owner.note':
+      return { ...state, note: event.data.note }
+    case 'ticket.closed':
+      return { ...state, closed: event.data.reason }
+    default:
+      return null
+  }
+}
+
 const brief: Reducer = (state, event) => {
   switch (event.type) {
     case 'brief.submitted':
@@ -104,15 +119,32 @@ const brief: Reducer = (state, event) => {
 const patch: Reducer = (state, event) => {
   switch (event.type) {
     case 'build.submitted': {
-      const fresh = { ...submitted(state, event.data.runId), merged: false, deployed: false, accepted: false }
+      const fresh = {
+        ...submitted(state, event.data.runId),
+        merged: false,
+        deployed: false,
+        accepted: false,
+        productionHeld: false,
+        overridden: false,
+      }
       const latest = { id: event.data.patchId, pr: event.data.pr }
       return { ...enter(fresh, 'verify'), patch: latest, checks: 'pending', verdict: null }
     }
     case 'checks.finished':
       if (state.patch?.id !== event.data.patchId) return state
       return { ...state, checks: event.data.passed ? 'passed' : 'failed' }
+    default:
+      return null
+  }
+}
+
+const verify: Reducer = (state, event) => {
+  switch (event.type) {
     case 'verify.passed':
       return { ...enter(submitted(state, event.data.runId), 'ship'), verdict: event.data.patchId }
+    case 'verify.overridden':
+      if (state.patch?.id !== event.data.patchId) return state
+      return { ...enter({ ...state, failedRuns: 0 }, 'ship'), verdict: event.data.patchId, overridden: true }
     case 'verify.changes':
       return {
         ...enter(submitted(state, event.data.runId), 'build'),
@@ -139,6 +171,8 @@ const ship: Reducer = (state, event, options) => {
       return { ...enter(state, 'build'), accepted: false, note: event.data.note }
     case 'production.approved':
       return finished({ ...state, productionApproved: true }, options)
+    case 'production.held':
+      return { ...state, productionHeld: true }
     default:
       return null
   }
@@ -160,7 +194,7 @@ const questions: Reducer = (state, event) => {
   }
 }
 
-const REDUCERS: Reducer[] = [intake, runs, brief, patch, ship, questions]
+const REDUCERS: Reducer[] = [intake, runs, owner, brief, patch, verify, ship, questions]
 
 const reduce = (state: State, event: AppEvent, options: FoldOptions): State => {
   for (const reducer of REDUCERS) {
