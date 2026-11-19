@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { appVersion, changelog } from '../src/app/(app)/lib/version'
+import { appVersion } from '../src/app/(app)/lib/version'
 
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -49,10 +49,6 @@ describe('version helpers', () => {
     vi.stubEnv('BAUHERR_REVISION', '6857912abc')
     vi.stubEnv('BAUHERR_BUILD_DATE', 'yesterday')
     expect(appVersion()).toBe('dev+6857912')
-  })
-
-  it('reads the repo changelog', () => {
-    expect(changelog()).toContain('# Changelog')
   })
 
   describe('an image built without BAUHERR_BUILD_DATE', () => {

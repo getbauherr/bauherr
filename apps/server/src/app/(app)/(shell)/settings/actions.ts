@@ -70,10 +70,9 @@ export const savePathSets = act({ sets: 'sets' }, async (c, fd) => {
   only(c.user)
   const product = id(fd)
   await assertInWorkspace(c.payload, 'products', [product], inWorkspace(c))
-  const current = ((await c.payload.findByID({ collection: 'products', id: product, select: { pathSets: true }, depth: 0, overrideAccess: true })) as { pathSets?: PathSets }).pathSets ?? {}
   let pathSets: PathSets
   try {
-    pathSets = fd.has('sets') ? parsePathSets(s(fd, 'sets')) : { ...current, [s(fd, 'add')]: current[s(fd, 'add')] ?? [] }
+    pathSets = parsePathSets(s(fd, 'sets'))
   } catch (e) {
     throw fieldError('sets', (e as Error).message)
   }

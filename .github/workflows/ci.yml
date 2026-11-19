@@ -164,7 +164,6 @@ jobs:
       DATABASE_URL: postgres://bauherr:bauherr@localhost:54330/bauherr
       BAUHERR_E2E_FAKE_FORGE: "1"
       E2E_FAKE_FORGE: "1"
-      OTEL_ENABLED: "0"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -263,10 +262,6 @@ jobs:
           echo pulled=false >> "$GITHUB_OUTPUT"
       - if: steps.pull.outputs.pulled == 'true'
         run: pnpm --filter server test:gateway
-      - name: Check the Prometheus config
-        run: |
-          img=$(grep -o 'prom/prometheus:[^ "]*' compose.yaml)
-          docker run --rm -v "$PWD/deploy/prometheus:/p:ro" --entrypoint promtool "$img" check config /p/prometheus.yml
 
   cli-smoke:
     runs-on: ubuntu-latest

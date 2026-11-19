@@ -21,11 +21,6 @@ export const getPerson = cache(async (): Promise<Person | null> => {
 
 export const requirePerson = async (): Promise<Person> => (await getPerson()) ?? redirect('/login')
 
-export const getBauherr = cache(async (): Promise<Bauherr | null> => {
-  const person = await getPerson()
-  return isBauherr(person) ? (person as Bauherr) : null
-})
-
 export const requireBauherr = async (): Promise<Bauherr> => {
   const person = await requirePerson()
   return isProductOwner(person) || !isBauherr(person) ? notFound() : (person as Bauherr)

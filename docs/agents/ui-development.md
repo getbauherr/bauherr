@@ -24,6 +24,6 @@ pnpm e2e
 
 `pnpm e2e` reads `BASE_URL`, `E2E_EMAIL` and `E2E_PASSWORD_FILE`. Payload accepts the session cookie only from the `PUBLIC_URL` origin. From another origin, start Chromium with `--host-resolver-rules`, or leave `PUBLIC_URL` unset on the dev server.
 
-Specs for the request conversation and the chat dock need `CHAT_FAKE=1` or `INTAKE_FAKE=1` and the fake forge. The production image refuses the fake forge, so those specs run in the `e2e-fake` job, which builds with `BAUHERR_TEST_BUILD=1`. The isolation rules for specs are in [CONTRIBUTING.md](../../CONTRIBUTING.md) and pinned by `tests/e2e-conventions.test.ts`.
+Specs that read a repository or its checks need the fake forge (`BAUHERR_E2E_FAKE_FORGE=1` on the server, `E2E_FAKE_FORGE=1` for Playwright). The production image refuses the fake forge, so those specs run in the `e2e-fake` job, which builds with `BAUHERR_TEST_BUILD=1`. The isolation rules for specs are in [CONTRIBUTING.md](../../CONTRIBUTING.md) and pinned by `tests/e2e-conventions.test.ts`.
 
 `e2e/perf.spec.ts` budgets the click feedback at 100 ms and the content at 400 ms on the production server.
