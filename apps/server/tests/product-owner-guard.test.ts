@@ -14,7 +14,7 @@ const PO_ROUTES: Record<string, string> = {
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
 }
-const BAUHERR_ROUTES: string[] = []
+const BAUHERR_ROUTES: string[] = ['mcp GET', 'mcp POST', 'mcp DELETE']
 const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
@@ -27,7 +27,7 @@ const PO_COLLECTIONS: Record<string, Record<string, string>> = {
   bauherren: { read: 'own account only', update: 'own account: uiPrefs, password and the linked forge login (one account per login) only' },
   'payload-preferences': { read: 'own preferences (Payload built-in, keyed to the user)', create: 'own preferences', update: 'own preferences', delete: 'own preferences' },
 }
-const BAUHERR_COLLECTIONS = ['agent_keys', 'agent_sessions', 'connections', 'events', 'human_touches', 'instance_state', 'knowledge_chunks', 'mirror_checks', 'mirror_comments', 'mirror_items', 'products', 'records', 'repositories', 'stage_runs', 'ticket_sources', 'workspaces', 'payload-kv', 'payload-locked-documents', 'payload-jobs', 'payload-migrations']
+const BAUHERR_COLLECTIONS = ['agent_keys', 'agent_sessions', 'connections', 'events', 'human_touches', 'instance_state', 'knowledge_chunks', 'mirror_checks', 'mirror_comments', 'mirror_items', 'products', 'proofs', 'records', 'repositories', 'stage_runs', 'ticket_sources', 'workspaces', 'payload-kv', 'payload-locked-documents', 'payload-jobs', 'payload-migrations']
 const COLLECTIONS: Record<string, 'closed' | Record<string, string>> = { ...Object.fromEntries(BAUHERR_COLLECTIONS.map((c) => [c, 'closed' as const])), ...PO_COLLECTIONS }
 const OPEN_PAGES = PO_PAGES
 const OPEN_ROUTES = PO_ROUTES
@@ -276,7 +276,7 @@ describe('routes', () => {
       }
     }
     for (const key of Object.keys(OPEN_ROUTES)) expect(seen, `OPEN_ROUTES names a route that does not exist: ${key}`).toContain(key)
-    expect(seen.length).toBe(3)
+    expect(seen.length).toBe(6)
     partition('routes', seen, Object.keys(PO_ROUTES), BAUHERR_ROUTES)
   })
 })

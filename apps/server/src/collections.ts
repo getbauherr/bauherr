@@ -176,6 +176,7 @@ const agentKeys = col(
   'agent_keys',
   [
     rel('owner', 'bauherren', { required: true, index: true }),
+    rel('workspace', 'workspaces', { required: true, index: true }),
     text('label', { required: true }),
     text('keyHash', { required: true, unique: true, hidden: true }),
     text('prefix', { required: true, admin: { description: 'First characters of the key, to recognise it in lists.' } }),

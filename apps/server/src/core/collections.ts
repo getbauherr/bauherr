@@ -61,5 +61,19 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'finishedAt', type: 'date' },
     ],
   },
+  {
+    slug: 'proofs',
+    admin: { useAsTitle: 'criterion' },
+    access: { read: readable, create: closed, update: closed, delete: closed },
+    fields: [
+      { name: 'record', type: 'relationship', relationTo: 'records', required: true, index: true },
+      { name: 'criterion', type: 'text', required: true },
+      { name: 'kind', type: 'text', required: true },
+      { name: 'source', type: 'text', required: true },
+      { name: 'sha', type: 'text', required: true },
+      { name: 'body', type: 'textarea' },
+      { name: 'url', type: 'text' },
+    ],
+  },
   ...mirrorCollections,
 ]

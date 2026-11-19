@@ -20,6 +20,7 @@ export const cardSchema = z.object({
   card: z.enum(['brief', 'result', 'question']),
   reason: z.string(),
   options: z.array(z.string()),
+  text: z.string().optional(),
   seq: z.number().int().min(0),
 })
 export type StoredCard = z.infer<typeof cardSchema>

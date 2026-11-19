@@ -321,7 +321,9 @@ export const restoreWorkspaceAction = act({}, async ({ user, payload }, fd) => {
   await restoreWorkspace(payload, user, id(fd))
 })
 
-export const mintOwnAgentKey = act({}, async ({ user, payload }, fd) => mintAgentKey(payload, user, s(fd, 'label')))
+export const mintOwnAgentKey = act({}, async ({ user, workspace, payload }, fd) =>
+  mintAgentKey(payload, user, s(fd, 'label'), inWorkspace({ workspace })),
+)
 
 export const revokeOwnAgentKey = act({}, async ({ user, payload }, fd) => revokeAgentKey(payload, user, id(fd)))
 
