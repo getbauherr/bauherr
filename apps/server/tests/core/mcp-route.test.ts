@@ -131,6 +131,19 @@ describe('the Workspace of a key', () => {
     expect((await call(memberKey, 'connect', { role: 'builder' })).error).toBe(false)
   })
 
+  it('refuses a key of an archived Workspace until it is restored, and minting for one', async () => {
+    const { archiveWorkspace, restoreWorkspace } = await import('../../src/lib/workspace-delete')
+    const { payload, workspace } = m.e.db
+    const admin = await make('archiver@x.io', { role: 'admin', tenants: [] })
+    const key = await mintAgentKey(payload, admin, 'x', workspace)
+    expect((await connect(key)).status).toBe(200)
+    await archiveWorkspace(payload, { ...admin, collection: 'bauherren' }, workspace)
+    expect((await connect(key)).status).toBe(401)
+    await expect(mintAgentKey(payload, admin, 'y', workspace)).rejects.toThrow(/deleted/)
+    await restoreWorkspace(payload, { ...admin, collection: 'bauherren' }, workspace)
+    expect((await connect(key)).status).toBe(200)
+  })
+
   it('shows the person why minting was refused', async () => {
     const user = await make('refused@x.io')
     const { run } = await import('../../src/app/(app)/lib/settings')
