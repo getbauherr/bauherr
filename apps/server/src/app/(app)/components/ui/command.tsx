@@ -9,7 +9,7 @@ export function Command({ className, ...props }: ComponentProps<typeof CommandPr
   return <CommandPrimitive data-slot="command" className={cn('flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground', className)} {...props} />
 }
 
-export function CommandDialog({ title = 'Command palette', description = 'Search for a page, a Ticket or an action.', children, trigger, ...props }: ComponentProps<typeof Dialog> & { title?: string; description?: string; trigger?: ReactNode }) {
+export function CommandDialog({ title = 'Command palette', description = 'Search for a page or an action.', children, trigger, ...props }: ComponentProps<typeof Dialog> & { title?: string; description?: string; trigger?: ReactNode }) {
   return (
     <Dialog {...props}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}

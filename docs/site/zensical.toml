@@ -11,13 +11,10 @@ screenshots/banner*.svg
 """
 nav = [
   { "Home" = "index.md" },
-  { "Get started" = ["features.md", "session-mode.md"] },
-  { "Using the factory" = ["ui.md", "chat.md", "intake-embed.md", "media.md"] },
-  { "Operating it" = ["auth.md", "cost.md", "gateway.md", "observability.md", "router.md", "releasing.md"] },
+  { "Using the factory" = ["ui.md"] },
+  { "Operating it" = ["auth.md", "gateway.md"] },
   { "Reference" = [
-    { "Workflow" = ["spec/workflow.md", "spec/gates.md", "spec/epics.md", "spec/review.md", "spec/proof.md", "spec/merge.md", "spec/release.md", "spec/scheduling.md", "spec/fast-lane.md", "spec/runs.md", "spec/sessions.md", "spec/intake.md"] },
-    { "Factory file" = ["spec/factory-file.md", "spec/apply.md", "spec/history.md"] },
-    { "People" = ["spec/people.md", "spec/people-checkpoints.md", "spec/people-forge.md"] },
+    { "People" = ["spec/people.md"] },
     { "Credits" = "references.md" },
   ] },
   { "Legal" = ["legal.md"] },

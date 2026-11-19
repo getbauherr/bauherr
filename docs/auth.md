@@ -11,7 +11,7 @@ Password login with email and password works on a fresh clone with no configurat
 - `POST /api/bauherren/login`, also used by the `/admin` form, goes through the same queue and cap. GraphQL is off.
 - Per-IP limit: after `LOGIN_IP_MAX_ATTEMPTS` **failed** sign-ins from one IP within `IP_WINDOW_MS`, that IP is refused before the queue. REST answers 429. Successful sign-ins do not count. The defaults are 10 and 1 minute.
 - Both limits are per process. A non-integer `LOGIN_IP_MAX_ATTEMPTS` or `TRUSTED_PROXY_HOPS` fails at boot.
-- The Postgres pool waits at most `DATABASE_POOL_TIMEOUT_MS` for a connection, default 10000. See `docs/first-run.md`, "Database connections".
+- The Postgres pool waits at most `DATABASE_POOL_TIMEOUT_MS` for a connection, default 10000.
 
 ### Client IP
 

@@ -26,7 +26,7 @@ fresh() { # stop the server, reset the DB, boot (it migrates on boot), seed
 play() { # run one spec file in Playwright
   docker run --rm $net --ipc=host --user "$(id -u):$(id -g)" \
     -v "$PWD:/work" -v "$E2E_PASSWORD_FILE:/pw:ro" -w /work/apps/server \
-    -e BASE_URL="$base" -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e INTAKE_FAKE -e E2E_GATED_PACK -e HOME=/tmp \
+    -e BASE_URL="$base" -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e HOME=/tmp \
     mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test "$1" --reporter=line
 }
 

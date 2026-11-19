@@ -1,6 +1,6 @@
 # UI
 
-The Bauherr UI is served at `/`. Everything an Admin configures is a page here, and every feature with its page is listed in the [feature map](features.md). This page is the short guide.
+The Bauherr UI is served at `/`. Everything an Admin configures is a page here, and every feature with its page is listed in the feature map. This page is the short guide.
 
 ## Shell
 
@@ -72,7 +72,7 @@ Every human checkpoint uses one card. It has the ask in one sentence, a recommen
 - Several problems in one message become several Tickets.
 - File request is enabled when the card is complete or the question limit is reached.
 
-After filing, the conversation is read-only history. Details of the conversation engine are in [chat](chat.md#request-conversation).
+After filing, the conversation is read-only history. Details of the conversation engine are in chat.
 
 ## Run page
 
@@ -88,7 +88,7 @@ A Run offers at most one primary action. It is Connect an agent, Re-run the stag
 2. Press Copy prompt and paste it into a Claude Code session that has the Bauherr MCP server.
 3. The session appears as Idle, then Working when it claims a Run.
 
-Rows show the status, the Ticket and today's cost. Open a row for the agent view with current Run, milestones and cost. An Admin edits a role's model and agent limit in the role drawer. Commands are in [session mode](session-mode.md#connect-as-a-role).
+Rows show the status, the Ticket and today's cost. Open a row for the agent view with current Run, milestones and cost. An Admin edits a role's model and agent limit in the role drawer. Commands are in session mode.
 
 ## Chat
 
@@ -99,7 +99,7 @@ One assistant is docked on every page. It answers questions about the factory an
 - Rate answers with thumbs. Admins read the ratings at `/settings/chat-feedback`.
 - Slash commands: `/context`, `/new`, `/request`, `/help`. On a Ticket thread, `/comment <text>` posts to the issue.
 
-More in [chat](chat.md).
+More in chat.
 
 ## Settings
 

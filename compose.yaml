@@ -26,7 +26,7 @@ x-app: &app
     ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
     PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
     BAUHERR_ENABLE_ADMIN: ${BAUHERR_ENABLE_ADMIN:-}
-    # Postgres pool per container (app, poller); see docs/first-run.md "Database connections".
+    # Postgres pool per container (app, poller).
     DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
     DATABASE_POOL_TIMEOUT_MS: ${DATABASE_POOL_TIMEOUT_MS:-10000}
     # Sign-in IP limit, see docs/auth.md: failed sign-ins per IP and minute; proxies in front that append to x-forwarded-for (0 = limit off).

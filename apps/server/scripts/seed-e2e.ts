@@ -38,11 +38,17 @@ await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop', slug: 'acme
 await ensure('products', { slug: 'zeta-app' }, { name: 'Zeta App', slug: 'zeta-app', workspace: zeta })
 await ensure('repositories', { fullName: 'acme/web' }, { fullName: 'acme/web', product, workspace })
 await ensure('ticket_sources', { repo: 'acme/web' }, { repo: 'acme/web', product, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
+const checksProduct = (await ensure('products', { slug: 'acme-checks' }, { name: 'Acme Checks', slug: 'acme-checks', workspace })).id
+await ensure('repositories', { fullName: 'acme/checks' }, { fullName: 'acme/checks', product: checksProduct, workspace })
+await ensure('ticket_sources', { repo: 'acme/checks' }, { repo: 'acme/checks', product: checksProduct, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
 await user('owner@example.com', 'product-owner', { assignments: [{ workspace, scope: 'products', products: [product] }] })
+await ensure('products', { slug: 'acme-bare' }, { name: 'Acme Bare', slug: 'acme-bare', workspace })
 
 await ensure('connections', { name: 'GitHub Settingsco' }, { name: 'GitHub Settingsco', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: settingsco })
 const settingsApp = (await ensure('products', { slug: 'settingsco-app' }, { name: 'Settings App', slug: 'settingsco-app', workspace: settingsco, stagingUrl: 'https://staging.example.com' })).id
 await ensure('repositories', { fullName: 'settingsco/app' }, { fullName: 'settingsco/app', product: settingsApp, workspace: settingsco })
+
+await ensure('human_touches', { kind: 'e2e:audit' }, { kind: 'e2e:audit', actor: 'e2e-audit-actor', at: '2026-10-30T09:00:00Z', workspace })
 
 console.log('seeded')
 process.exit(0)

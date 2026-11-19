@@ -14,7 +14,7 @@ hide:
 Bauherr connects to the issue tracker and repositories you already use. Agents plan, build, review and release; you decide at the checkpoints. Self-hosted, with an audit trail and a budget per Workspace.
 
 [Get started](#install){ .md-button .md-button--primary }
-[Read the docs](features.md){ .md-button }
+Read the docs{ .md-button }
 [Source on GitHub](https://github.com/getbauherr/bauherr){ .md-button }
 
 <img class="bh-shot bh-shot--hero bh-light" src="screenshots/screenshot-workflow.png" alt="The Workflow view: the stages as a graph with open Tickets, who waits on whom and the human checkpoints">
@@ -54,7 +54,7 @@ Each Workspace has its own provider key and a rolling 30-day budget in a bundled
 
 <div markdown>
 ### Use your own session
-A stage can wait for your Claude Code to claim it, so you work in your own worktree with your own credentials. See [Session mode](session-mode.md).
+A stage can wait for your Claude Code to claim it, so you work in your own worktree with your own credentials. See Session mode.
 </div>
 
 <div markdown>
@@ -81,7 +81,7 @@ A Ticket moves through the stages Triage, Plan, Build, Review, Staging and Done.
 | Staging | The Product's own CI deploys. |
 | Done | The Ticket is closed on merge. Release notes group done Tickets per release. |
 
-You are asked at **Answer questions**, **Approve plan** and **Approve production** by default. **Accept on staging** is an optional gate. The full workflow: [Workflow spec](spec/workflow.md).
+You are asked at **Answer questions**, **Approve plan** and **Approve production** by default. **Accept on staging** is an optional gate. The full workflow: Workflow spec.
 
 </section>
 
@@ -90,7 +90,7 @@ You are asked at **Answer questions**, **Approve plan** and **Approve production
 
 ## Inbox: each decision as a card
 
-One prepared card per decision, grouped by checkpoint: the ask, a recommendation, the facts and the real options. Approve a plan, accept on staging, approve production, or give a review one more round. More in [Features](features.md#decisions).
+One prepared card per decision, grouped by checkpoint: the ask, a recommendation, the facts and the real options. Approve a plan, accept on staging, approve production, or give a review one more round. More in Features.
 
 </div>
 <img class="bh-shot bh-light" src="screenshots/screenshot-inbox.png" alt="Inbox with decision cards: approve the plan for a Ticket, with a recommendation and three facts">
@@ -102,7 +102,7 @@ One prepared card per decision, grouped by checkpoint: the ask, a recommendation
 
 ## Ticket: the path it took
 
-The stages a Ticket visited on the same graph, and a Steps timeline with every wait and every piece of work, with its executor, model, outcome and cost. More in [Features](features.md#tickets).
+The stages a Ticket visited on the same graph, and a Steps timeline with every wait and every piece of work, with its executor, model, outcome and cost. More in Features.
 
 </div>
 <img class="bh-shot bh-light" src="screenshots/screenshot-ticket.png" alt="Ticket page with the Path through the stages and the Steps timeline">
@@ -114,7 +114,7 @@ The stages a Ticket visited on the same graph, and a Steps timeline with every w
 
 ## Requests: ask in plain words
 
-A chat fills a request card with the type, the problem, what is done when it works and how urgent it is. Every field stays editable, and you send it to the factory when it is ready. The Requests page lists your drafts and your sent requests. See [Chat](chat.md).
+A chat fills a request card with the type, the problem, what is done when it works and how urgent it is. Every field stays editable, and you send it to the factory when it is ready. The Requests page lists your drafts and your sent requests. See Chat.
 
 </div>
 <img class="bh-shot bh-light" src="screenshots/screenshot-request-card.png" alt="Request card for an urgent bug: title, what is broken, for whom and since when, and what is still missing before it can be sent">
@@ -126,7 +126,7 @@ A chat fills a request card with the type, the problem, what is done when it wor
 
 ## Insights: where time goes
 
-Lead time, cycle time and time per stage with the bottleneck, and [tokens and cost](cost.md) per model, role, session, stage and Ticket.
+Lead time, cycle time and time per stage with the bottleneck, and tokens and cost per model, role, session, stage and Ticket.
 
 </div>
 <img class="bh-shot bh-light" src="screenshots/screenshot-insights.png" alt="Insights with lead time, cycle time and time per stage with the bottleneck">
@@ -138,7 +138,7 @@ Lead time, cycle time and time per stage with the bottleneck, and [tokens and co
 
 ## Chat: ask, then confirm
 
-A chat on every page that knows the page, with stored threads. An action such as approve, accept or stop is shown as a card and runs only when you confirm it. See [Chat](chat.md).
+A chat on every page that knows the page, with stored threads. An action such as approve, accept or stop is shown as a card and runs only when you confirm it. See Chat.
 
 </div>
 <img class="bh-shot bh-light" src="screenshots/screenshot-chat.png" alt="Docked chat with an answer and a confirm card for approving a plan">
@@ -162,7 +162,7 @@ The texts the factory writes are editable templates, with a live preview. Settin
 
 ## Agent team: who is working
 
-An Agent team page to pick a role and see its profile, skills and model, and which sessions are working on what and which are idle. See [Session mode](session-mode.md).
+An Agent team page to pick a role and see its profile, skills and model, and which sessions are working on what and which are idle. See Session mode.
 
 </div>
 <img class="bh-shot bh-light" src="screenshots/screenshot-team.png" alt="Agent team page: the roster with the Reviewer selected, one session working on a Ticket and one idle">

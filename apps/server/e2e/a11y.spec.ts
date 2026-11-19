@@ -2,7 +2,6 @@ import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
-import { pickRow } from './inbox-row'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -11,12 +10,6 @@ test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSW
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']
 
 const CONTRAST_REVIEWED: [target: RegExp, reason: string][] = [
-  [/\.leading-none\.(px-1\.)?bg-background/, 'Workflow graph edge labels: a chip with its own background drawn over the SVG edge line (obscured by the line)'],
-  [/^span\[title=.*\] > \.max-w-full/, 'Ticket path step names: axe sees an image node (the step icon) in the box'],
-  [/^#(step|cp)-|^select\[aria-label="Asked: |^(?=.*\.gap-1(\.|$))(?=.*\.small(\.|$))(?=.*\.text-muted-foreground(\.|$))(\.[\w-]+){3}$/, 'Workflow editor cards: a decorative pseudo-element rail overlaps the card; the text sits on the plain card background'],
-  [/^\.flex-\\\[1_1_20ch\\\]$/, 'Ticket page ActionBar sentence at 390 px on the Conversation tab: the fixed bar (opaque bg-card, painted above in the browser) covers the conversation composer\'s sticky artifact bar, which axe sorts above it; the text sits on the plain card background (same token pair as the states that pass)'],
-  [/^\.flex-\\\[1_1_20ch\\\] > \.mono$/, 'Run page action bar at 390 px: the session name inside the status sentence; the fixed bar (opaque bg-card, painted above in the browser) overlaps page content that axe sorts above it, the text sits on the plain card background (same token pair as the sentence itself, which passes)'],
-  [/^\.[\w-]*svg\[width="\d+"\]\[height="\d+"\] > text$/, 'Role avatar without its own drawing: one or two initials on a tile, nothing for axe to measure against (the class is `avatars-module__<hash>__svg` in dev and `<hash>_svg` in the production build)'],
   [/^(output|text)$/, 'Symbol-only output and SVG text: no text characters to measure'],
 ]
 
@@ -51,46 +44,22 @@ const signedOut: Record<string, string> = {
   '/login': '/login',
 }
 
-const redirects: Record<string, RegExp> = { '/requests/new': /^\/requests\/\d+$/, '/settings': /^\/settings\/profile$/, '/settings/workflow': /^\/workflow\/edit$/ }
+const redirects: Record<string, RegExp> = { '/settings': /^\/settings\/profile$/ }
 
 const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
   '/': '/',
-  '/inbox': '/inbox',
-  '/insights': '/insights',
-  '/knowledge': '/knowledge',
-  '/knowledge/edit': process.env.E2E_FAKE_FORGE ? '/knowledge/edit?path=workspace/rules/style.md' : '/knowledge/edit?path=image.png', // the editor needs the fake forge; without it the refusal state is scanned
-  '/release-notes': '/release-notes',
-  '/releases': '/releases',
-  '/requests': '/requests',
-  '/requests/[id]': linkOn('/requests', /^\/requests\/\d+$/),
-  '/requests/new': '/requests/new',
-  '/runs': '/runs',
-  '/runs/[id]': linkOn('/runs', /^\/runs\/\d+$/),
   '/settings': '/settings',
   '/settings/api-key': '/settings/api-key',
   '/settings/audit': '/settings/audit',
   '/settings/bauherren': '/settings/bauherren',
-  '/settings/chat-feedback': '/settings/chat-feedback',
   '/settings/connections': '/settings/connections',
   '/settings/health': '/settings/health',
-  '/settings/knowledge': '/settings/knowledge',
   '/settings/models': '/settings/models',
   '/settings/products': '/settings/products',
   '/settings/products/[id]': linkOn('/settings/products', /^\/settings\/products\/\d+$/),
   '/settings/products/new': '/settings/products/new',
   '/settings/profile': '/settings/profile',
-  '/settings/templates': '/settings/templates',
-  '/settings/templates/[name]': linkOn('/settings/templates', /^\/settings\/templates\/[^/]+$/),
-  '/settings/usage': '/settings/usage',
-  '/settings/workflow': '/settings/workflow',
   '/settings/workspace': '/settings/workspace',
-  '/setup': '/setup',
-  '/team': '/team',
-  '/team/[id]': linkOn('/team', /^\/team\/[^/?#]+$/),
-  '/tickets/[id]': linkOn('/', /^\/tickets\/\d+$/),
-  '/tickets/n/[number]': '/tickets/n/1', // a number two Products share: the chooser, not the redirect to one Ticket
-  '/workflow/[stage]': '/workflow/plan',
-  '/workflow/edit': '/workflow/edit',
 }
 
 test.describe('keyboard', () => {
@@ -177,198 +146,4 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
       await page.context().close()
     })
   }
-
-  test('Ticket and Run page with the CI panel (#581)', async ({ browser }) => {
-    test.setTimeout(120_000)
-    const page = await (await browser.newContext({ storageState: session })).newPage()
-    await page.goto('/tickets/n/581')
-    await expect(page.getByTestId('ci-panel')).toBeVisible()
-    const run = await page.getByRole('link', { name: /^Run #\d+$/ }).first().getAttribute('href')
-    for (const url of [page.url(), new URL(run!, page.url()).toString()]) {
-      await page.goto(url)
-      await expect(page.getByTestId('ci-panel')).toBeVisible()
-      for (const t of ['light', 'dark'] as const) {
-        await setTheme(page, t)
-        expect(await scan(page), `${url} (${t})`).toEqual([])
-      }
-    }
-    await page.context().close()
-  })
-})
-
-test.describe('Run page: axe in each state at 1280 and 390 px', () => {
-  const states = ['Run page: working session', 'Run page: stuck session', 'Run page: session gone', 'Run page: failed build', 'Show CI on the ticket', 'Export invoices as CSV', 'Recover the stalled import', 'Wait for an engineer agent'] as const
-  let session: Awaited<ReturnType<BrowserContext['storageState']>>
-  test.beforeAll(async ({ browser }) => {
-    const context = await browser.newContext()
-    await signIn(await context.newPage())
-    session = await context.storageState()
-    await context.close()
-  })
-  const inRunLab = new Set<string>(['Run page: working session', 'Run page: stuck session', 'Run page: session gone', 'Run page: failed build']) // the Run page seed has a Workspace of its own
-  for (const title of states) {
-    test(title, async ({ browser }) => {
-      test.setTimeout(120_000)
-      for (const width of [1280, 390]) {
-        const page = await (await browser.newContext({ storageState: session, viewport: { width, height: width > 640 ? 800 : 844 } })).newPage()
-        if (inRunLab.has(title)) await page.context().addCookies([{ name: 'bauherr-ws', value: 'runpage', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
-        await page.goto('/runs')
-        await page.locator('table tbody tr').filter({ hasText: title }).getByRole('link').first().click()
-        await expect(page).toHaveURL(/\/runs\/\d+$/)
-        await expect(page.getByRole('heading', { level: 2, name: 'Timeline' })).toBeVisible()
-        for (const t of ['light', 'dark'] as const) {
-          await setTheme(page, t)
-          expect(await scan(page), `${title} ${width}px (${t})`).toEqual([])
-        }
-        await page.context().close()
-      }
-    })
-  }
-})
-
-test('axe on the Workflow view with "N stage(s) cannot run" in the holds strip, light and dark (#605)', async ({ browser }) => {
-  test.setTimeout(120_000)
-  const page = await (await browser.newContext()).newPage()
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'editor', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
-  await page.goto('/login')
-  await page.getByLabel('Email').fill('editor-admin@example.com')
-  await page.getByLabel('Password').fill(password())
-  await page.getByRole('button', { name: 'Sign in' }).click()
-  await expect(page.getByRole('banner')).toBeVisible()
-  await page.goto('/')
-  const strip = page.getByTestId('holds-strip')
-  await expect(strip).toContainText(/\d+ stages? cannot run/)
-  await expect(strip.getByRole('link', { name: /cannot run/ })).toHaveAttribute('href', '/')
-  for (const t of ['light', 'dark'] as const) {
-    await setTheme(page, t)
-    expect(await scan(page), `/ with strip (${t})`).toEqual([])
-  }
-  await page.context().close()
-})
-
-test.describe('axe on the Agent team pages at 375 px, light and dark', () => {
-  let session: Awaited<ReturnType<BrowserContext['storageState']>>
-  test.beforeAll(async ({ browser }) => {
-    const context = await browser.newContext()
-    await signIn(await context.newPage())
-    session = await context.storageState()
-    await context.close()
-  })
-  for (const route of ['/team', '/team/[id]'] as const) {
-    test(route, async ({ browser }) => {
-      test.setTimeout(120_000)
-      const page = await (await browser.newContext({ storageState: session, viewport: { width: 375, height: 844 } })).newPage()
-      const target = routes[route]!
-      const url = typeof target === 'string' ? target : await target(page)
-      await page.goto(url)
-      await expect(page.getByRole('banner')).toBeVisible()
-      await page.locator('h1').first().waitFor({ timeout: 10_000 })
-      for (const t of ['light', 'dark'] as const) {
-        await setTheme(page, t)
-        expect(await scan(page), `${url} 375px (${t})`).toEqual([])
-      }
-      if (route === '/team') {
-        await page.getByRole('button', { name: 'Role settings' }).first().click()
-        await expect(page.getByRole('dialog')).toBeVisible()
-        expect(await scan(page), `${url} 375px Role settings`).toEqual([])
-      }
-      await page.context().close()
-    })
-  }
-})
-
-test('Inbox: list, detail and the keys dialog at 1280 and 390 px, light and dark', async ({ browser }) => {
-  test.setTimeout(120_000)
-  const context = await browser.newContext()
-  await signIn(await context.newPage())
-  const session = await context.storageState()
-  await context.close()
-  for (const width of [1280, 390]) {
-    const page = await (await browser.newContext({ storageState: session, viewport: { width, height: width > 640 ? 800 : 844 } })).newPage()
-    await page.goto('/inbox')
-    await expect(page.getByTestId('inbox-row').first()).toBeVisible()
-    await pickRow(page)
-    await expect(page.getByTestId('inbox-pane')).toBeVisible()
-    for (const t of ['light', 'dark'] as const) {
-      await setTheme(page, t)
-      expect(await scan(page), `Inbox ${width}px (${t})`).toEqual([])
-    }
-    await page.keyboard.press('?')
-    await expect(page.getByRole('dialog', { name: 'Keyboard' })).toBeVisible()
-    expect(await scan(page), `Inbox keys dialog ${width}px`).toEqual([])
-    await page.context().close()
-  }
-})
-
-test.describe('Ticket page: axe in each state at 1280 and 390 px, and the keyboard', () => {
-  const states = [['Triage question', 'Clarify the export scope'], ['Plan approval', 'Approve the retry policy'], ['Staging accept', 'Ship the export header'], ['Run failed', 'Fix the date parser'], ['Build waiting for CI', 'Show CI on the ticket']] as const
-  let session: Awaited<ReturnType<BrowserContext['storageState']>>
-  test.beforeAll(async ({ browser }) => {
-    const context = await browser.newContext()
-    await signIn(await context.newPage())
-    session = await context.storageState()
-    await context.close()
-  })
-  const open = async (browser: import('@playwright/test').Browser, title: string, width: number) => {
-    const page = await (await browser.newContext({ storageState: session, viewport: { width, height: width > 640 ? 800 : 844 } })).newPage()
-    await page.goto('/')
-    await page.locator('.card', { hasText: title }).first().getByRole('link', { name: title }).click()
-    await expect(page.getByTestId('action-bar')).toBeVisible()
-    return page
-  }
-
-  for (const [state, title] of states) {
-    test(`${state}`, async ({ browser }) => {
-      test.setTimeout(120_000)
-      for (const width of [1280, 390]) {
-        const page = await open(browser, title, width)
-        await expect(page.getByTestId('action-bar').locator('p[role=status]')).toHaveCount(1)
-        for (const t of ['light', 'dark'] as const) {
-          await setTheme(page, t)
-          expect(await scan(page), `${state} ${width}px (${t})`).toEqual([])
-        }
-        await page.context().close()
-      }
-    })
-  }
-
-  test('the split handle and the tabs work with the keyboard', async ({ browser }) => {
-    const page = await open(browser, 'Ship the export header', 1280)
-    const handle = page.getByTestId('split-handle')
-    await expect(handle).toHaveAttribute('role', 'separator')
-    await handle.focus()
-    await page.keyboard.press('Home')
-    await expect(handle).toHaveAttribute('aria-valuenow', '360')
-    await page.keyboard.press('ArrowLeft')
-    await expect(handle).toHaveAttribute('aria-valuenow', '376')
-    await page.keyboard.press('ArrowRight')
-    await expect(handle).toHaveAttribute('aria-valuenow', '360')
-    await page.keyboard.press('End')
-    await expect(handle).toHaveAttribute('aria-valuenow', '640')
-    await page.keyboard.press('Enter')
-    await expect(handle).toHaveAttribute('aria-valuenow', '0')
-    await page.keyboard.press('Enter')
-    await expect(handle).toHaveAttribute('aria-valuenow', '640')
-
-    await page.getByTestId('pane-tab-now').focus()
-    await page.keyboard.press('ArrowRight')
-    await expect(page.getByTestId('pane-tab-plan')).toBeFocused()
-    await expect(page.getByTestId('pane-tab-plan')).toHaveAttribute('aria-selected', 'true')
-    await page.keyboard.press('End')
-    await expect(page.getByTestId('pane-tab-history')).toBeFocused()
-    await page.keyboard.press('ArrowRight')
-    await expect(page.getByTestId('pane-tab-now')).toBeFocused()
-    await page.context().close()
-
-    const phone = await open(browser, 'Ship the export header', 390)
-    await expect(phone.getByTestId('split-tab-status')).toHaveAttribute('aria-selected', 'true')
-    await phone.getByTestId('split-tab-status').focus()
-    await phone.keyboard.press('ArrowLeft')
-    await expect(phone.getByTestId('split-tab-conversation')).toBeFocused()
-    await expect(phone.getByTestId('split-tab-conversation')).toHaveAttribute('aria-selected', 'true')
-    await expect(phone.getByTestId('split-conversation')).toBeVisible()
-    await phone.keyboard.press('ArrowRight')
-    await expect(phone.getByTestId('split-tab-status')).toBeFocused()
-    await phone.context().close()
-  })
 })

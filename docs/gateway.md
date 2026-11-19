@@ -25,7 +25,7 @@ Request logs are deleted after 180 days. `BAUHERR_REQUEST_LOG_RETENTION_DAYS` ch
    - A call with an unknown or missing name counts as "Unnamed gateway session".
 4. Insights › Cost & tokens shows cost per session, model, role, stage and Ticket. The recompute covers two days and never counts a call twice.
 
-With the [usage hook](cost.md#the-usage-hook) also running, the gateway wins from a session's first gateway call on.
+With the usage hook also running, the gateway wins from a session's first gateway call on.
 
 ### Which key, which payment route
 
@@ -68,7 +68,7 @@ The UI generates each tool's lines from the official documentation read on 2026-
 | Aider | session | `OPENAI_API_BASE`, `OPENAI_API_KEY`, and `extra_headers` in `.aider.model.settings.yml`. | [docs](https://aider.chat/docs/config/adv-model-settings.html) |
 | Cline, Roo Code | key | Provider "OpenAI Compatible": base URL, key, model. | [docs](https://docs.cline.bot/provider-config/openai-compatible) |
 
-Not measurable: [GitHub Copilot in JetBrains](https://github.blog/changelog/2026-07-14-github-copilot-for-jetbrains-expands-byok-capabilities/) takes an API key only. [Cursor](https://cursor.com/help/models-and-usage/api-keys) routes through its own servers. Fall back to the [usage hook](cost.md#the-usage-hook) for Claude Code, or the `usage` argument of the factory tools.
+Not measurable: [GitHub Copilot in JetBrains](https://github.blog/changelog/2026-07-14-github-copilot-for-jetbrains-expands-byok-capabilities/) takes an API key only. [Cursor](https://cursor.com/help/models-and-usage/api-keys) routes through its own servers. Fall back to the usage hook for Claude Code, or the `usage` argument of the factory tools.
 
 The UI block shows how to add the factory as MCP server. For Claude Code:
 

@@ -8,7 +8,7 @@ test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSW
 
 const signOutEmail = 'signout-shell@example.com' // signing out ends every session of the user, so this spec has one of its own
 
-test('shell: sidebar nav, New request, user menu with theme, sign out', async ({ page }) => {
+test('shell: sidebar nav, home empty state, footer, user menu with theme, sign out', async ({ page }) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   await expect(page).toHaveURL(/\/login$/)
@@ -19,26 +19,14 @@ test('shell: sidebar nav, New request, user menu with theme, sign out', async ({
   const bar = page.getByRole('banner')
   await expect(bar).toBeVisible()
   const nav = page.getByRole('navigation', { name: 'Main' })
-  await expect(nav.getByRole('link', { name: /^Workflow/ })).toHaveAttribute('aria-current', 'page')
-  await expect(nav.getByRole('link', { name: /^Requests/ })).toBeVisible()
-  await expect(nav.getByRole('link')).toHaveCount(8) // Inbox, Workflow, Agent team, Requests, Releases, Knowledge, Runs (Admin), Insights
-  await expect(nav.getByRole('link', { name: 'Knowledge' })).toBeVisible()
-  await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Workflow')
-  await expect(bar.getByRole('link', { name: 'New request' })).toBeVisible()
-  await nav.getByRole('link', { name: /^Requests/ }).click()
-  await expect(nav.getByRole('link', { name: /^Requests/ })).toHaveAttribute('aria-current', 'page')
-  await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Requests')
-  await bar.getByRole('link', { name: 'New request' }).click()
-  await expect(page).toHaveURL(/\/requests\/\d+$/)
-  await expect(page.getByTestId('conversation-shell')).toBeVisible()
-  await expect(page.getByTestId('chat-dock')).toBeHidden() // the conversation is the page, not the dock
-  await page.goto('/requests/new')
-  await expect(page).toHaveURL(/\/requests\/\d+$/) // the empty draft is reused, not piled up
-  await page.goto('/')
+  await expect(nav.getByRole('link')).toHaveText(['Home'])
+  await expect(nav.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
+  await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Home')
+  await expect(page.getByText('No project is connected to the lean core yet.')).toBeVisible()
+  await expect(page.getByRole('main').getByRole('link', { name: 'Open Products settings' })).toHaveAttribute('href', '/settings/products')
 
   const footer = page.getByRole('contentinfo')
   await expect(footer).toContainText(/Made with .*love in Cologne, Germany/)
-  await expect(footer.getByTestId('app-version')).toHaveAttribute('href', '/release-notes')
   await expect(footer.getByTestId('app-version')).toHaveText(/^(dev|v\d)/)
 
   await page.getByRole('button', { name: 'User menu' }).click()
@@ -51,7 +39,6 @@ test('shell: sidebar nav, New request, user menu with theme, sign out', async ({
     expect(b!.x + b!.width).toBeLessThanOrEqual(box!.x + box!.width)
   }
   await expect(menu).toContainText(signOutEmail)
-  await expect(menu.getByRole('menuitem', { name: /Release notes/ })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: /Bauherren|API key/ })).toHaveCount(0)
   await menu.getByRole('group', { name: 'Theme' }).getByRole('menuitemradio', { name: 'Dark' }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
@@ -79,7 +66,7 @@ test('sidebar collapses to a rail and stays collapsed after a reload; the Settin
   await expect(sidebar).toHaveAttribute('data-state', 'expanded')
 })
 
-test('command palette: opens with Ctrl+K, finds a Ticket by number, navigates, and gives focus back', async ({ page }) => {
+test('command palette: opens with Ctrl+K, finds a Settings page, navigates, and gives focus back', async ({ page }) => {
   await signIn(page, 'member@example.com')
   await page.keyboard.press('Control+k')
   const dialog = page.getByRole('dialog', { name: 'Command palette' })
@@ -92,11 +79,11 @@ test('command palette: opens with Ctrl+K, finds a Ticket by number, navigates, a
   await expect(page.getByRole('button', { name: 'Command palette' })).toBeFocused()
 
   await page.getByRole('button', { name: 'Command palette' }).click()
-  await page.getByPlaceholder(/Go to a page/).fill('#1')
-  const hit = dialog.getByRole('group', { name: 'Tickets' }).getByRole('option').first()
-  await expect(hit).toContainText('#1')
+  await page.getByPlaceholder(/Go to a page/).fill('People')
+  const hit = dialog.getByRole('group', { name: 'Go to' }).getByRole('option').first()
+  await expect(hit).toContainText('Settings: Workspace › People')
   await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(/\/tickets\/\d+$/)
+  await expect(page).toHaveURL(/\/settings\/bauherren$/)
   await expect(dialog).toBeHidden()
 })
 
@@ -107,52 +94,3 @@ const signIn = async (page: Page, who: string) => {
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('banner')).toBeVisible()
 }
-const nav = (page: Page) => page.getByRole('navigation', { name: 'Main' })
-
-test('Knowledge link and Workspace switcher are absent for a member with one Workspace without a knowledge repo', async ({ page }) => {
-  await signIn(page, 'solo@example.com')
-  await expect(nav(page).getByRole('link', { name: 'Workflow' })).toBeVisible()
-  await expect(nav(page).getByRole('link', { name: 'Knowledge' })).toHaveCount(0)
-  await expect(page.getByText('Describe what you want built.')).toBeVisible()
-  await expect(page.getByRole('link', { name: 'New request' }).first()).toBeVisible()
-  await expect(page.getByText(/Ask an Admin to set up the Workspace/)).toHaveCount(0)
-  await expect(page.getByLabel('Product')).toHaveCount(0)
-  await expect(page.getByTestId('workspace-switcher')).toHaveCount(0)
-  await expect(page.getByTestId('workspace-name')).toContainText('Zeta')
-})
-
-test('An Admin always gets the Workspace menu, with settings and New Workspace', async ({ page }) => {
-  await signIn(page, email)
-  await page.getByTestId('workspace-switcher').click()
-  const m = page.getByRole('menu')
-  await expect(m.getByRole('menuitem', { name: 'Workspace settings' })).toBeVisible()
-  await m.getByRole('menuitem', { name: 'New Workspace' }).click()
-  await expect(page).toHaveURL(/\/settings\/workspace#new-workspace$/)
-})
-
-test('the palette offers Set up only while the Workspace has no Ticket yet', async ({ page }) => {
-  await signIn(page, email)
-  await page.keyboard.press('Control+k')
-  const dialog = page.getByRole('dialog', { name: 'Command palette' })
-  await expect(dialog.getByRole('option', { name: 'Toggle theme' })).toBeVisible()
-  await expect(dialog.getByRole('option', { name: 'Set up', exact: true })).toHaveCount(0)
-  await page.keyboard.press('Escape')
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'zeta', url: new URL(page.url()).origin }])
-  await page.reload()
-  await page.keyboard.press('Control+k')
-  await dialog.getByRole('option', { name: 'Set up', exact: true }).click()
-  await expect(page).toHaveURL(/\/setup$/)
-})
-
-test('Workspace switcher shows with 2+ Workspaces; selecting one switches and drops Knowledge', async ({ page }) => {
-  await signIn(page, 'duo@example.com')
-  await expect(nav(page).getByRole('link', { name: 'Knowledge' })).toBeVisible()
-  await page.getByTestId('workspace-switcher').click()
-  const m = page.getByRole('menu')
-  await expect(m.getByText('Workspace', { exact: true })).toBeVisible()
-  await expect(m.getByRole('menuitem', { name: 'Acme' })).toHaveAttribute('aria-current', 'true')
-  await m.getByRole('menuitem', { name: 'Zeta' }).click()
-  await expect(nav(page).getByRole('link', { name: 'Knowledge' })).toHaveCount(0)
-  await page.getByTestId('workspace-switcher').click()
-  await expect(page.getByRole('menu').getByRole('menuitem', { name: 'Zeta' })).toHaveAttribute('aria-current', 'true')
-})

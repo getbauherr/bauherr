@@ -319,13 +319,11 @@ export const restoreWorkspaceAction = act({}, async ({ user, payload }, fd) => {
   await restoreWorkspace(payload, user, id(fd))
 })
 
-const mcpAdd = (key: string) => `claude mcp add --transport http bauherr ${process.env.PUBLIC_URL ?? 'http://localhost:3000'}/mcp --header "Authorization: Bearer ${key}"`
-
-export const mintOwnAgentKey = act({}, async ({ user, payload }, fd) => mcpAdd(await mintAgentKey(payload, user, s(fd, 'label'))))
+export const mintOwnAgentKey = act({}, async ({ user, payload }, fd) => mintAgentKey(payload, user, s(fd, 'label')))
 
 export const revokeOwnAgentKey = act({}, async ({ user, payload }, fd) => revokeAgentKey(payload, user, id(fd)))
 
-export const rotateOwnKey = act({}, async ({ user, payload }) => mcpAdd(await rotateApiKey(payload, user)))
+export const rotateOwnKey = act({}, async ({ user, payload }) => rotateApiKey(payload, user))
 
 export const revokeOwnKey = act({}, async ({ user, payload }) => revokeApiKey(payload, user))
 
