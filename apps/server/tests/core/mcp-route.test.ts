@@ -121,6 +121,23 @@ describe('the Workspace of a key', () => {
     expect((await resolveAgentKey(m.e.db.payload, token))?.workspace).toBe(m.e.db.workspace)
   })
 
+  it('lets an Admin without a membership hold a key and act with it, and an ordinary Bauherr too', async () => {
+    const admin = await make('admin@x.io', { role: 'admin', tenants: [] })
+    const adminKey = await mintAgentKey(m.e.db.payload, admin, 'x', m.e.db.workspace)
+    expect((await connect(adminKey)).status).toBe(200)
+    expect((await call(adminKey, 'connect', { role: 'builder' })).error).toBe(false)
+    const member = await make('member@x.io')
+    const memberKey = await mintAgentKey(m.e.db.payload, member, 'x', m.e.db.workspace)
+    expect((await call(memberKey, 'connect', { role: 'builder' })).error).toBe(false)
+  })
+
+  it('shows the person why minting was refused', async () => {
+    const user = await make('refused@x.io')
+    const { run } = await import('../../src/app/(app)/lib/settings')
+    const outcome = await run(() => mintAgentKey(m.e.db.payload, user, 'x', m.e.db.otherWorkspace))
+    expect(outcome).toEqual({ error: 'You are not a member of that Workspace.' })
+  })
+
   it('acts in the Workspace of the key even when the owner belongs to several', async () => {
     const user = await make('multi@x.io', {
       tenants: [{ tenant: m.e.db.workspace }, { tenant: m.e.db.otherWorkspace }],

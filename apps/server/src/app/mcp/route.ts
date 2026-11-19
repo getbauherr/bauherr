@@ -10,7 +10,7 @@ import type { Contexts } from '../../core/run/mcp/tool'
 import { engineDeps } from '../../jobs/engine-deps'
 import { resolveAgentKey } from '../../lib/api-key'
 import { ACCOUNT_LOCKED, lockedRequests } from '../../lib/oidc-session'
-import { isBauherr, tenantIds } from '../../lib/people'
+import { isBauherr, mayWorkIn, tenantIds } from '../../lib/people'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -35,7 +35,7 @@ const authenticate = async (payload: Payload, token: string): Promise<Partial<Co
     throw error
   })
   if (agent) {
-    const member = isBauherr(agent.owner) && tenantIds(agent.owner).includes(agent.workspace)
+    const member = isBauherr(agent.owner) && mayWorkIn(agent.owner, agent.workspace)
     if (!member) return refuse(401, 'unauthorized')
     return { agent: { deps, workspace: agent.workspace, keyId: Number(agent.keyId) } }
   }
