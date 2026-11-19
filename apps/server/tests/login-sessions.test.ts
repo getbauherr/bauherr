@@ -80,7 +80,7 @@ it('an account edit made while a sign-in runs is not reverted by it, and the sig
   const { id } = await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', role: 'bauherr' }, ...o })
   for (let i = 0; i < 4; i++) {
     const login = signIn(email, 'pw-123456')
-    await new Promise((r) => setTimeout(r, 15)) // inside the sign-in: after its read of the user, before its write
+    await new Promise((r) => setTimeout(r, 15))
     await withLoginLock(email, () => payload.update({ collection: 'bauherren', id, data: { githubLogin: `gh-${i}` }, ...o }))
     await login
     const row = await payload.findByID({ collection: 'bauherren', id, ...o })

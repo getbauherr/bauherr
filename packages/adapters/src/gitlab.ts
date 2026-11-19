@@ -495,7 +495,7 @@ class GitlabForge implements Forge {
     try {
       await this.h.json('POST', `/projects/${enc(repo)}/merge_requests/${n}/cancel_merge_when_pipeline_succeeds`);
     } catch (e) {
-      if (!(e instanceof GitlabError && [404, 405, 406].includes(e.status))) throw e; // nothing set to cancel
+      if (!(e instanceof GitlabError && [404, 405, 406].includes(e.status))) throw e;
     }
   }
   async resetBranch(repo: RepoRef, branch: string, sha: string) {

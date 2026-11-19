@@ -6,7 +6,7 @@ const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim
 
 test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
 
-const signOutEmail = 'signout-shell@example.com' // signing out ends every session of the user, so this spec has one of its own
+const signOutEmail = 'signout-shell@example.com'
 
 test('shell: sidebar nav, home empty state, footer, user menu with theme, sign out', async ({ page }) => {
   await page.goto('/')

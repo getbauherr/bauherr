@@ -278,7 +278,7 @@ export const completeCheap = async (w: { slug: string; gatewayKey: string; model
   return ((await res.json()) as { content: { type: string; text?: string }[] }).content.find((c) => c.type === 'text')?.text ?? ''
 }
 
-export const verifyProvider = async (slug: string, key: string, model: string /* `<connection>/<model>` */): Promise<{ verifiedAt: string } | { lastError: string }> => {
+export const verifyProvider = async (slug: string, key: string, model: string): Promise<{ verifiedAt: string } | { lastError: string }> => {
   let last = 'network error'
   for (let i = 0; i < 3; i++) {
     if (i) await new Promise((r) => setTimeout(r, 500))

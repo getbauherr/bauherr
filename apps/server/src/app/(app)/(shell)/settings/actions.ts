@@ -1,7 +1,6 @@
 'use server'
 import { randomBytes } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
-import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createLocalReq } from 'payload'
 import { mintAgentKey, revokeAgentKey, revokeApiKey, rotateApiKey } from '../../../../lib/api-key'
@@ -9,14 +8,12 @@ import { backendFor } from '../../../../lib/adapters'
 import { connectionInput, webOrigin } from '../../../../lib/connection'
 import { withLoginLock } from '../../../../lib/login-lock'
 import { parsePathSets, type PathSets } from '../../../../lib/path-sets'
-import { forgeOf } from '../../../../lib/forge'
-import { gatewayEnabled, rotateKey } from '../../../../lib/gateway'
+import { rotateKey } from '../../../../lib/gateway'
 import { refreshPrices } from '../../../../lib/prices'
-import { decrypt } from '../../../../lib/secrets'
 import { PRESET_FIELDS } from '../../../../lib/providers'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../../../../lib/settings-guards'
 import { deployErrors } from '../../lib/product-setup'
-import { isAdmin, listRepos, only, presetFor, run, type FormState } from '../../lib/settings'
+import { listRepos, only, presetFor, run, type FormState } from '../../lib/settings'
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
 import { OTHER_REPO, slugOf } from '../../lib/new-product'
 import { assignmentRows } from '../../../../lib/people'
@@ -232,7 +229,7 @@ const githubKnows = async (c: Awaited<ReturnType<typeof ctx>>, login: string): P
   try {
     return await backendFor(await connectionInput(c.payload, first.id as number), { maxRetries: 0, timeoutMs: 10_000 }).tickets('').userExists(login)
   } catch {
-    return true // GitHub unreachable or rate-limited: saving is never blocked, the login stays unverified
+    return true
   }
 }
 

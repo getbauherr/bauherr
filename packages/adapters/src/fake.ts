@@ -403,7 +403,7 @@ class FakeTickets implements TicketSource {
     if (this.b.opts.native) t.rel = r;
     else {
       t.body = renderRelations(t.body, r);
-      this.touch(t); // convention writes edit the body, which bumps updatedAt
+      this.touch(t);
     }
   }
   private summary(t: FakeTicket): TicketSummary {
