@@ -1,5 +1,7 @@
+import { generateKeyPairSync } from 'node:crypto'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { connectionInput } from '../src/lib/connection'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../src/lib/settings-guards'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
@@ -37,6 +39,22 @@ it('rejects a Connection of a foreign Workspace', async () => {
   const c = await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace: other!.id as number }, ...o })
   await expect(assertInWorkspace(payload, 'connections', [c.id as number], mine!.id as number)).rejects.toThrow('Not in this Workspace')
   await expect(assertInWorkspace(payload, 'connections', [c.id as number], other!.id as number)).resolves.toBeUndefined()
+})
+
+it('stores a GitHub App private key encrypted and never returns it', async () => {
+  const ws = await payload.create({ collection: 'workspaces', data: { name: 'App', slug: 'app-key' }, ...o })
+  const workspace = ws.id
+  const pem = generateKeyPairSync('rsa', { modulusLength: 2048 })
+    .privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+  const config = { appId: '12', installationId: '34' }
+  const data = { name: 'app', kind: 'github', config, secret: pem, workspace } as const
+  const c = await payload.create({ collection: 'connections', data, ...o })
+  const read = JSON.stringify(await payload.findByID({ collection: 'connections', id: c.id, ...o }))
+  expect(read).not.toContain('PRIVATE KEY')
+  const stored = await payload.findByID({ collection: 'connections', id: c.id, showHiddenFields: true, ...o })
+  expect(JSON.stringify(stored)).not.toContain('PRIVATE KEY')
+  expect(JSON.stringify(stored)).toContain('secret')
+  expect(await connectionInput(payload, c.id)).toMatchObject({ secret: pem, config })
 })
 
 it('stores a gitlab Connection with its base URL', async () => {

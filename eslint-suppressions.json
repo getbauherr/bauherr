@@ -671,7 +671,7 @@
   },
   "apps/server/src/lib/adapters.ts": {
     "max-len": {
-      "count": 3
+      "count": 2
     }
   },
   "apps/server/src/lib/api-key.ts": {
