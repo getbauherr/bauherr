@@ -7,6 +7,7 @@ import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests
 import { clientIp, LoginBusy, signInWithPassword } from './lib/login-lock'
 import { decrypt, encrypt, isEncrypted } from './lib/secrets'
 import { assignmentRows, isBauherr, ROLES, tenantIds } from './lib/people'
+import { coreCollections } from './core/collections'
 
 export const isAdmin = ({ req }: { req: { user?: object | null } }): boolean => (req.user as { role?: string } | null)?.role === 'admin'
 export const bauherrOnly = ({ req }: { req: { user?: object | null } }): boolean => isBauherr(req.user as Doc | null)
@@ -496,5 +497,6 @@ export const collections: CollectionConfig[] = [
     json('detail'),
   ], { access: { create: () => false, update: () => false, delete: () => false }, indexes: [{ fields: ['kind', 'at'] }] }),
   col('instance_state', [text('key', { required: true, unique: true }), json('value')], { access: { read: () => false, create: () => false, update: () => false, delete: () => false } }),
+  ...coreCollections,
 ]
 
