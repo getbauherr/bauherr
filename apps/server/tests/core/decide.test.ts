@@ -37,17 +37,17 @@ describe('the decision table', () => {
   })
 
   it.each(ROWS)('%s %s appends the specified events', (ask, choice, types) => {
-    const events = DECISIONS[ask]?.[choice]?.events({ note: 'because', patchId: 'p1' }) ?? []
+    const events = DECISIONS[ask]?.[choice]?.events({ note: 'because', patchId: 'p1', headSha: 'h1' }) ?? []
     expect(events.map((e) => e.type)).toEqual(types)
   })
 
   it('carries the note and the latest patch where the specification says so', () => {
     const note = (ask: string, choice: string) =>
-      DECISIONS[ask]?.[choice]?.events({ note: 'because', patchId: 'p9' }).map((e) => e.data)
+      DECISIONS[ask]?.[choice]?.events({ note: 'because', patchId: 'p9', headSha: 'h9' }).map((e) => e.data)
     expect(note('brief', 'request-changes')).toEqual([{ note: 'because' }])
     expect(note('result', 'send-back')).toEqual([{ note: 'because' }])
     expect(note('question:failed-runs', 'retry-with-guidance')?.[1]).toEqual({ note: 'because' })
-    expect(note('question:verify-rounds', 'accept-as-is')?.[1]).toEqual({ patchId: 'p9' })
+    expect(note('question:verify-rounds', 'accept-as-is')?.[1]).toEqual({ patchId: 'p9', headSha: 'h9' })
     expect(note('brief', 'approve')).toEqual([{ by: 'owner' }])
   })
 })
@@ -68,9 +68,9 @@ const atResultCard = async () => {
   await advance(id, e.deps())
   await e.work(id, 'builder', { verdict: 'accept' })
   await e.work(id, 'builder', { goal: 'Fix it', open: false })
-  await e.work(id, 'builder', { patchId: 'p1', pr: 1 })
+  await e.work(id, 'builder', { patchId: 'p1', headSha: 'h1', pr: 1 })
   await e.checks(id)
-  await e.work(id, 'verifier', { passed: true, patchId: 'p1' })
+  await e.work(id, 'verifier', { passed: true, patchId: 'p1', headSha: 'h1' })
   return id
 }
 const owner = { id: 'u7' }

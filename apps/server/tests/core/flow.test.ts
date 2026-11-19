@@ -40,13 +40,13 @@ const toBrief = async (open: boolean) => {
   return id
 }
 const patch = async (id: number, n: number) => {
-  await e.work(id, 'builder', { patchId: `p${n}`, pr: n })
+  await e.work(id, 'builder', { patchId: `p${n}`, headSha: `h${n}`, pr: n })
   await e.checks(id)
 }
 const toResult = async () => {
   const id = await toBrief(false)
   await patch(id, 1)
-  await e.work(id, 'verifier', { passed: true, patchId: 'p1' })
+  await e.work(id, 'verifier', { passed: true, patchId: 'p1', headSha: 'h1' })
   return id
 }
 const runRows = async (id: number) =>
@@ -61,11 +61,11 @@ describe('a ticket from intake to done', () => {
     await expectView(id, 'brief', 'agents')
     await e.work(id, 'builder', { goal: 'Fix it', open: false })
     await expectView(id, 'build', 'agents')
-    await e.work(id, 'builder', { patchId: 'p1', pr: 12 })
+    await e.work(id, 'builder', { patchId: 'p1', headSha: 'h1', pr: 12 })
     await expectView(id, 'verify', 'agents')
     await e.checks(id)
     await expectView(id, 'verify', 'agents')
-    await e.work(id, 'verifier', { passed: true, patchId: 'p1' })
+    await e.work(id, 'verifier', { passed: true, patchId: 'p1', headSha: 'h1' })
     await expectView(id, 'ship', 'owner', resultCard)
     expect(e.merges).toEqual([12])
     await decide(id, owner, { ask: 'result', choice: 'accept' }, e.deps())
@@ -88,17 +88,17 @@ describe('a ticket from intake to done', () => {
     const id = await toBrief(false)
     await patch(id, 1)
     for (const n of [1, 2]) {
-      await e.work(id, 'verifier', { passed: false, patchId: `p${n}` })
+      await e.work(id, 'verifier', { passed: false, patchId: `p${n}`, headSha: `h${n}` })
       await expectView(id, 'build', 'agents')
       await patch(id, n + 1)
     }
-    await e.work(id, 'verifier', { passed: false, patchId: 'p3' })
+    await e.work(id, 'verifier', { passed: false, patchId: 'p3', headSha: 'h3' })
     const ask = { card: 'question', reason: 'verify-rounds', options: ['one-more-round', 'accept-as-is', 'discard'] }
     await expectView(id, 'build', 'owner', ask)
     await decide(id, owner, { ask: 'question:verify-rounds', choice: 'one-more-round' }, e.deps())
     await expectView(id, 'build', 'agents')
     await patch(id, 4)
-    await e.work(id, 'verifier', { passed: false, patchId: 'p4' })
+    await e.work(id, 'verifier', { passed: false, patchId: 'p4', headSha: 'h4' })
     await expectView(id, 'build', 'owner', ask)
     const types = (await e.view(id)).types
     expect(types.filter((t) => t === 'build.submitted')).toHaveLength(4)

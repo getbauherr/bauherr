@@ -96,9 +96,9 @@ const postQuestion = async (ctx: Ctx, target: Target, body: string): Promise<voi
   })
 }
 
-const mergePullRequest = async (ctx: Ctx, target: Target, expectedHeadSha: string): Promise<void> => {
+const mergePullRequest = async (ctx: Ctx, target: Target, expectedHeadSha: string): Promise<string> => {
   const session = await open(ctx, target, 'pr')
-  await perform(ctx, target, 'merge', session, {
+  const merged = await perform(ctx, target, 'merge', session, {
     call: async ({ forge, row }) => {
       const pull = await forge.getPullRequest(row.repo, row.number)
       if (pull.headSha !== expectedHeadSha) {
@@ -108,6 +108,7 @@ const mergePullRequest = async (ctx: Ctx, target: Target, expectedHeadSha: strin
     },
     mirror: () => saveClosed(ctx.payload, target.itemId, 'merged', ctx.deps.now()),
   })
+  return merged.mergeSha
 }
 
 const closeIssue = async (ctx: Ctx, target: Target, reason: CloseReason): Promise<void> => {

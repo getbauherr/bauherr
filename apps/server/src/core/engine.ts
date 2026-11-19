@@ -16,7 +16,7 @@ import { enqueue } from './run/leases'
 
 export const MAX_ADVANCE_STEPS = 10
 
-export type MergeTarget = { recordId: number; source: RecordSource; pr: number }
+export type MergeTarget = { recordId: number; source: RecordSource; pr: number; headSha: string }
 export type MergeFn = (target: MergeTarget) => Promise<{ sha: string }>
 export type AdvanceDeps = {
   payload: Payload
@@ -64,10 +64,11 @@ const cardStep = async (step: Extract<Step, { kind: 'card' }>, ctx: Ctx): Promis
 
 const attemptMerge = async (ctx: Ctx): Promise<AppEvent> => {
   const pr = ctx.state.patch?.pr
+  const headSha = ctx.state.verdict?.headSha
   const failed = (reason: string): AppEvent => ({ type: 'run.failed', data: { stage: 'ship', runId: 'merge', reason } })
-  if (pr === undefined) return failed('no patch to merge')
+  if (pr === undefined || headSha === undefined) return failed('no verified patch to merge')
   try {
-    const { sha } = await ctx.deps.merge({ recordId: ctx.stored.id, source: ctx.stored.record.source, pr })
+    const { sha } = await ctx.deps.merge({ recordId: ctx.stored.id, source: ctx.stored.record.source, pr, headSha })
     return { type: 'ship.merged', data: { sha } }
   } catch (error) {
     return failed(error instanceof Error && error.message.trim() !== '' ? error.message : 'merge failed')

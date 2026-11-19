@@ -15,7 +15,7 @@ const overridden = [
   ...atVerifyCap,
   ev('question.asked'),
   ev('question.answered', { option: 'accept-as-is' }),
-  ev('verify.overridden', { patchId: 'p1' }),
+  ev('verify.overridden', { patchId: 'p1', headSha: 'h1' }),
 ]
 
 const CASES: Case[] = [

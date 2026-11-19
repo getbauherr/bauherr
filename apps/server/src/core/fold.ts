@@ -1,6 +1,7 @@
 import type { AppEvent, EventType, Stage } from './events'
 
 export type Card = { card: 'question'; reason: string; options: string[] }
+export type Verdict = { patchId: string; headSha: string }
 export type LiveRun = { stage: Stage; runId: string; fingerprint: string }
 
 export type State = {
@@ -13,9 +14,9 @@ export type State = {
   extraRounds: number
   failedRuns: number
   brief: 'none' | 'submitted' | 'approved'
-  patch: { id: string; pr: number } | null
+  patch: { id: string; pr: number; headSha: string } | null
   checks: 'none' | 'pending' | 'passed' | 'failed'
-  verdict: string | null
+  verdict: Verdict | null
   overridden: boolean
   merged: boolean
   deployed: boolean
@@ -132,7 +133,7 @@ const patch: Reducer = (state, event) => {
         productionHeld: false,
         overridden: false,
       }
-      const latest = { id: event.data.patchId, pr: event.data.pr }
+      const latest = { id: event.data.patchId, pr: event.data.pr, headSha: event.data.headSha }
       return { ...enter(fresh, 'verify'), patch: latest, checks: 'pending', verdict: null }
     }
     case 'checks.finished':
@@ -143,13 +144,15 @@ const patch: Reducer = (state, event) => {
   }
 }
 
+const verdictOf = (data: Verdict): Verdict => ({ patchId: data.patchId, headSha: data.headSha })
+
 const verify: Reducer = (state, event) => {
   switch (event.type) {
     case 'verify.passed':
-      return { ...enter(submitted(state, event.data.runId), 'ship'), verdict: event.data.patchId }
+      return { ...enter(submitted(state, event.data.runId), 'ship'), verdict: verdictOf(event.data) }
     case 'verify.overridden':
       if (state.patch?.id !== event.data.patchId) return state
-      return { ...enter({ ...state, failedRuns: 0 }, 'ship'), verdict: event.data.patchId, overridden: true }
+      return { ...enter({ ...state, failedRuns: 0 }, 'ship'), verdict: verdictOf(event.data), overridden: true }
     case 'verify.changes':
       return {
         ...enter(submitted(state, event.data.runId), 'build'),

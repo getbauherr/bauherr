@@ -36,7 +36,7 @@ const atBuild = async () => {
 }
 const atVerify = async () => {
   const id = await atBuild()
-  await e.work(id, 'builder', { patchId: 'p1', pr: 1 })
+  await e.work(id, 'builder', { patchId: 'p1', headSha: 'h1', pr: 1 })
   await e.checks(id)
   return id
 }
@@ -62,7 +62,7 @@ describe('advance', () => {
 
   it('waits on agents for the checks, then queues the verify run', async () => {
     const id = await atBuild()
-    await e.work(id, 'builder', { patchId: 'p1', pr: 1 })
+    await e.work(id, 'builder', { patchId: 'p1', headSha: 'h1', pr: 1 })
     expect(await e.view(id)).toMatchObject({ stage: 'verify', waitingOn: 'agents', card: null })
     await e.checks(id)
     const view = await e.view(id)
@@ -71,7 +71,7 @@ describe('advance', () => {
 
   it('merges through the injected merge and records the commit', async () => {
     const id = await atVerify()
-    await e.work(id, 'verifier', { passed: true, patchId: 'p1' })
+    await e.work(id, 'verifier', { passed: true, patchId: 'p1', headSha: 'h1' })
     const view = await e.view(id)
     expect(e.merges).toEqual([1])
     expect(view.types.slice(-2)).toEqual(['verify.passed', 'ship.merged'])
@@ -84,7 +84,7 @@ describe('advance', () => {
     let calls = 0
     e.mergeWith.fn = (target) =>
       ++calls === 1 ? Promise.reject(new Error('conflict')) : Promise.resolve({ sha: `s${target.pr}` })
-    await e.work(id, 'verifier', { passed: true, patchId: 'p1' })
+    await e.work(id, 'verifier', { passed: true, patchId: 'p1', headSha: 'h1' })
     const types = (await e.view(id)).types
     expect(types.slice(-3)).toEqual(['verify.passed', 'run.failed', 'ship.merged'])
     e.mergeWith.fn = (target) => Promise.resolve({ sha: `sha-${target.pr}` })
@@ -93,7 +93,7 @@ describe('advance', () => {
   it('asks the failed-runs question once when merges keep failing', async () => {
     const id = await atVerify()
     e.mergeWith.fn = () => Promise.reject(new Error('conflict'))
-    await e.work(id, 'verifier', { passed: true, patchId: 'p1' })
+    await e.work(id, 'verifier', { passed: true, patchId: 'p1', headSha: 'h1' })
     await advance(id, e.deps())
     const view = await e.view(id)
     expect(count(view.types, 'question.asked')).toBe(1)
@@ -108,7 +108,7 @@ describe('advance', () => {
     const id = await atVerify()
     let calls = 0
     e.mergeWith.fn = () => Promise.reject(new Error(`attempt ${++calls}`))
-    await e.work(id, 'verifier', { passed: true, patchId: 'p1' })
+    await e.work(id, 'verifier', { passed: true, patchId: 'p1', headSha: 'h1' })
     expect(calls).toBe(MAX_ADVANCE_STEPS)
     e.mergeWith.fn = (target) => Promise.resolve({ sha: `sha-${target.pr}` })
   })
@@ -233,7 +233,7 @@ describe('submit', () => {
       patch: { handoff: 'x' },
       by: { stage: 'build', runId: 'r' },
     })
-    await e.work(id, 'builder', { patchId: 'p1', pr: 1 })
+    await e.work(id, 'builder', { patchId: 'p1', headSha: 'h1', pr: 1 })
     expect((await readRecord(e.db.payload, id)).record.handoff).toBe('built p1')
   })
 })

@@ -106,7 +106,7 @@ describe('fold', () => {
   })
 
   it('records the verdict, merge, deploy and acceptance', () => {
-    expect(fold(inShip).verdict).toBe('p1')
+    expect(fold(inShip).verdict).toEqual({ patchId: 'p1', headSha: 'h1' })
     expect(fold(merged).merged).toBe(true)
     expect(fold([...merged, ev('ship.deployed')]).deployed).toBe(true)
     expect(fold([...merged, ev('result.accepted')]).accepted).toBe(true)
@@ -147,7 +147,8 @@ describe('fold', () => {
   it('treats an override of the latest patch like a passed verify for the stage change', () => {
     const changes = [...inVerify, start('verify', 'r2'), ev('verify.changes')]
     const overridden = fold([...changes, ev('verify.overridden')])
-    expect(overridden).toMatchObject({ stage: 'ship', verdict: 'p1', overridden: true, failedRuns: 0 })
+    const verdict = { patchId: 'p1', headSha: 'h1' }
+    expect(overridden).toMatchObject({ stage: 'ship', verdict, overridden: true, failedRuns: 0 })
     expect(fold(inShip).overridden).toBe(false)
   })
 

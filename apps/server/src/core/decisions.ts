@@ -1,6 +1,6 @@
 import type { AppEvent } from './events'
 
-export type DecisionInput = { note: string; patchId: string }
+export type DecisionInput = { note: string; patchId: string; headSha: string }
 export type DecisionEntry = { needsNote: boolean; events: (input: DecisionInput) => AppEvent[] }
 
 const answered = (option: string): AppEvent => ({ type: 'question.answered', data: { option } })
@@ -47,7 +47,10 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
     'one-more-round': answer('one-more-round'),
     'accept-as-is': {
       needsNote: false,
-      events: ({ patchId }) => [answered('accept-as-is'), { type: 'verify.overridden', data: { patchId } }],
+      events: ({ patchId, headSha }) => [
+        answered('accept-as-is'),
+        { type: 'verify.overridden', data: { patchId, headSha } },
+      ],
     },
     discard: answer('discard', discarded),
   },

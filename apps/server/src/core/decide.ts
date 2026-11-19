@@ -51,7 +51,7 @@ export const decide = async (
   const stored = await readRecord(deps.payload, recordId)
   const state = fold(await readEvents(deps.payload, recordId), { productionGate: config.productionGate })
   const { entry, note } = entryOf(askedOf(next(stored.record, state, config), state), decision)
-  const events = entry.events({ note, patchId: state.patch?.id ?? '' })
+  const events = entry.events({ note, patchId: state.patch?.id ?? '', headSha: state.patch?.headSha ?? '' })
   for (const event of events) await appendEvent(deps.payload, recordId, { ...event, actor: 'owner', actorId: by.id })
   await advance(recordId, deps)
 }

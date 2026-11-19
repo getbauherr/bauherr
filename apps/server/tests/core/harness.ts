@@ -41,10 +41,19 @@ const build = defineModule({
   stage: 'build',
   role: 'builder',
   writes: ['handoff'],
-  resultSchema: z.object({ patchId: z.string().min(1), pr: z.number().int().positive() }),
+  resultSchema: z.object({
+    patchId: z.string().min(1),
+    headSha: z.string().min(1),
+    pr: z.number().int().positive(),
+  }),
   apply: (_record, result, run) => ({
     patch: { handoff: `built ${result.patchId}` },
-    events: [{ type: 'build.submitted', data: { runId: String(run.id), patchId: result.patchId, pr: result.pr } }],
+    events: [
+      {
+        type: 'build.submitted',
+        data: { runId: String(run.id), patchId: result.patchId, headSha: result.headSha, pr: result.pr },
+      },
+    ],
   }),
 })
 
@@ -52,13 +61,13 @@ const verify = defineModule({
   stage: 'verify',
   role: 'verifier',
   writes: ['handoff'],
-  resultSchema: z.object({ passed: z.boolean(), patchId: z.string().min(1) }),
+  resultSchema: z.object({ passed: z.boolean(), patchId: z.string().min(1), headSha: z.string().min(1) }),
   apply: (_record, result, run) => ({
     patch: { handoff: `verified ${result.patchId}` },
     events: [
       {
         type: result.passed ? 'verify.passed' : 'verify.changes',
-        data: { runId: String(run.id), patchId: result.patchId },
+        data: { runId: String(run.id), patchId: result.patchId, headSha: result.headSha },
       },
     ],
   }),
