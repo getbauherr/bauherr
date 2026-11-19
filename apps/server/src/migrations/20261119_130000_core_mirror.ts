@@ -117,7 +117,12 @@ const LOCKED = sql`
   CREATE INDEX "payload_locked_documents_rels_mirror_checks_id_idx"
     ON "payload_locked_documents_rels" USING btree ("mirror_checks_id");`
 
+const SLUG = sql`
+  ALTER TYPE "public"."enum_payload_jobs_log_task_slug" ADD VALUE IF NOT EXISTS 'sync-mirror';
+  ALTER TYPE "public"."enum_payload_jobs_task_slug" ADD VALUE IF NOT EXISTS 'sync-mirror';`
+
 export async function up({ db }: MigrateUpArgs): Promise<void> {
+  await db.execute(SLUG)
   await db.execute(TABLES)
   await db.execute(LINKS)
   await db.execute(INDEXES)

@@ -32,6 +32,7 @@ interface FakeRepo {
   queueSupport: boolean;
   requiredChecks: string[];
   queue: number[];
+  issued: number;
   snapshots: Map<string, Map<string, string>>;
 }
 
@@ -55,6 +56,10 @@ export class FakeBackend implements Backend {
       attachments: false, nativeSubTickets: opts.native, nativeBlocking: opts.native, webhooks: false,
     };
     this.forge = this.makeForge();
+  }
+
+  nextNumber(repo: RepoRef): number {
+    return ++this.repo(repo).issued;
   }
 
   isTrusted(login: string): boolean {
@@ -200,7 +205,7 @@ export class FakeBackend implements Backend {
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], reviews: [], resolvedThreads: new Set(), commitDates: new Map(), releases: [], tags: [], tagShas: new Map(), contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [], snapshots: new Map() };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], reviews: [], resolvedThreads: new Set(), commitDates: new Map(), releases: [], tags: [], tagShas: new Map(), contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [], issued: 0, snapshots: new Map() };
       r.snapshots.set(r.branches.get('main')!.sha, new Map());
       this.repos.set(name, r);
     }
@@ -245,8 +250,9 @@ export class FakeBackend implements Backend {
       },
       openPullRequest: async (repo, pr: NewPullRequest) => {
         const r = this.repo(repo);
+        const number = this.nextNumber(repo);
         const created: PullRequest = {
-          number: r.prs.length + 1, url: `https://github.com/${repo}/pull/${r.prs.length + 1}`, title: pr.title,
+          number, url: `https://github.com/${repo}/pull/${number}`, title: pr.title,
           body: pr.body ?? '', state: 'open', head: pr.head, base: pr.base, headSha: sha(r, pr.head),
           headRepo: repo, baseRepo: repo, draft: false, author: this.actingAs,
           authorTrusted: this.isTrusted(this.actingAs), authorIsBot: this.isBot(this.actingAs),
@@ -480,7 +486,7 @@ class FakeTickets implements TicketSource {
     return { changes, next: changes.at(-1)?.updatedAt ?? cursor };
   }
   async create(n: NewTicket) {
-    const number = this.items.size + 1;
+    const number = this.b.nextNumber(this.repo);
     const t: FakeTicket = {
       number, title: n.title, body: n.body ?? '', state: 'open', labels: [...(n.labels ?? [])], assignees: [], author: n.author ?? this.b.opts.user ?? 'fake',
       createdAt: '', updatedAt: '', closeReason: null, rel: { parent: null, blockedBy: [], links: [] },

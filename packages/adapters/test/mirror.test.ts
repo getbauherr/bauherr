@@ -190,6 +190,14 @@ void describe('fake mirror fields', () => {
     assert.deepEqual((await f.forge.listOpenPullRequests('o/r', 2, 1)).map((p) => [p.number, p.closes]), [[2, [2]]]);
     assert.deepEqual(await f.forge.listOpenPullRequests('o/r', 3, 1), []);
   });
+  void it('numbers issues and pull requests from one sequence per repository', async () => {
+    const f = new FakeBackend({ native: true });
+    const issue = await f.tickets('o/r').create({ title: 'a' });
+    await f.forge.createBranch('o/r', 'b');
+    const pull = await f.forge.openPullRequest('o/r', { title: 'p', head: 'b', base: 'main' });
+    assert.deepEqual([issue.number, pull.number], [1, 2]);
+    assert.equal((await f.tickets('o/other').create({ title: 'x' })).number, 1);
+  });
   void it('hides a ticket from lists and polls until it is shown again', async () => {
     const f = new FakeBackend({ native: true });
     const ts = f.tickets('o/r');
