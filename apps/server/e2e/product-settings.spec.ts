@@ -112,6 +112,11 @@ test('list, Product page, save, validation, path sets and the single Delete sect
   await page.locator('#path-sets').getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText('is not a set name')).toBeVisible()
 
+  await tab(page, 'Repository')
+  const state = page.locator('#state')
+  await expect(state.getByText('Observing: nothing is written to the forge', { exact: true })).toBeVisible()
+  await expect(state.getByRole('button', { name: 'Switch to active' })).toBeVisible()
+
   await deleteProduct(page)
   await expect(page.getByRole('link', { name })).toHaveCount(0)
   expect((await page.goto('/settings/products/999999'))?.status()).toBe(404)
