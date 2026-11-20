@@ -35,7 +35,7 @@ export type RunPage = {
   leasedBy: string | null
   steps: RunStep[]
   error: string | null
-  startedAt: string | null
+  startedAt: string
   finishedAt: string | null
   ticket: { recordId: number; number: number; title: string }
   handoff: string | null
