@@ -1,8 +1,11 @@
-import { Settings, Ticket } from './icons'
+import { Factory, Inbox, Settings } from './icons'
 
-export type NavItem = { href: string; label: string; Icon: typeof Ticket; match: (path: string) => boolean }
+export type NavItem = { href: string; label: string; Icon: typeof Factory; match: (path: string) => boolean }
 
-export const mainItems = (): NavItem[] => [{ href: '/', label: 'Home', Icon: Ticket, match: (p) => p === '/' }]
+export const mainItems = (): NavItem[] => [
+  { href: '/', label: 'Factory', Icon: Factory, match: (p) => p === '/' },
+  { href: '/inbox', label: 'Inbox', Icon: Inbox, match: (p) => p.startsWith('/inbox') },
+]
 
 export const settingsItem = (): NavItem => ({ href: '/settings/profile', label: 'Settings', Icon: Settings, match: (p) => p.startsWith('/settings') })
 

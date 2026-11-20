@@ -8,7 +8,7 @@ test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSW
 
 const signOutEmail = 'signout-shell@example.com'
 
-test('shell: sidebar nav, home empty state, footer, user menu with theme, sign out', async ({ page }) => {
+test('shell: sidebar nav, Factory view, footer, user menu with theme, sign out', async ({ page }) => {
   await page.goto('/')
   await page.waitForLoadState('networkidle')
   await expect(page).toHaveURL(/\/login$/)
@@ -19,11 +19,11 @@ test('shell: sidebar nav, home empty state, footer, user menu with theme, sign o
   const bar = page.getByRole('banner')
   await expect(bar).toBeVisible()
   const nav = page.getByRole('navigation', { name: 'Main' })
-  await expect(nav.getByRole('link')).toHaveText(['Home'])
-  await expect(nav.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
-  await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Home')
-  await expect(page.getByText('No project is connected to the lean core yet.')).toBeVisible()
-  await expect(page.getByRole('main').getByRole('link', { name: 'Open Products settings' })).toHaveAttribute('href', '/settings/products')
+  await expect(nav.getByRole('link')).toHaveText([/^Factory$/, /^Inbox/])
+  await expect(nav.getByRole('link', { name: 'Factory' })).toHaveAttribute('aria-current', 'page')
+  await expect(nav.getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', '/inbox')
+  await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Factory')
+  await expect(page.getByRole('heading', { level: 1, name: 'Factory' })).toBeVisible()
 
   const footer = page.getByRole('contentinfo')
   await expect(footer).toContainText(/Made with .*love in Cologne, Germany/)

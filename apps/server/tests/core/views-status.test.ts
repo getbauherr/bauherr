@@ -6,7 +6,9 @@ import { SAMPLES } from './fixtures'
 
 const card = (kind: 'brief' | 'result' | 'question', reason: string) => ({ card: kind, reason, options: [], seq: 1 })
 
-const base: StatusInput = { stage: 'build', waitingOn: 'agents', card: null, parked: null, hasRun: true, ended: null }
+const base: StatusInput = {
+  stage: 'build', waitingOn: 'agents', card: null, parked: null, hasRun: true, claimed: true, ended: null,
+}
 
 describe('stuck', () => {
   it('is a question card with reason failed-runs, verify-rounds or reporter-silent', () => {
@@ -35,9 +37,11 @@ describe('state and status', () => {
   it('names one status per situation', () => {
     const status = (extra: Partial<StatusInput>) => statusOf({ ...base, ...extra })
     expect(status({})).toBe('building')
-    expect(status({ stage: 'verify', hasRun: false })).toBe('waiting-for-checks')
+    expect(status({ claimed: false })).toBe('queued')
+    expect(status({ stage: 'verify', claimed: false })).toBe('queued')
+    expect(status({ stage: 'verify', hasRun: false, claimed: false })).toBe('waiting-for-checks')
     expect(status({ stage: 'verify' })).toBe('verifying')
-    expect(status({ stage: 'ship', hasRun: false })).toBe('waiting-for-deploy')
+    expect(status({ stage: 'ship', hasRun: false, claimed: false })).toBe('waiting-for-deploy')
     expect(status({ waitingOn: 'reporter', stage: 'intake', hasRun: false })).toBe('reporter-asked')
     expect(status({ waitingOn: 'owner', card: card('brief', 'backlog') })).toBe('brief-needs-approval')
     expect(status({ waitingOn: 'owner', card: card('result', 'result') })).toBe('result-ready')

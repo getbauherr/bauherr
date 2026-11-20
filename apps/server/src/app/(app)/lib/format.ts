@@ -9,3 +9,5 @@ export const duration = (sec: number): string => {
 }
 
 export const usd = (n: number | null): string => (n == null ? '—' : n >= 100 ? `$${n.toFixed(0)}` : n >= 1 ? `$${n.toFixed(2)}` : `$${n.toFixed(3)}`)
+
+export const exactTime = (iso: string): string => `${iso.slice(0, 16).replace('T', ' ')} UTC`

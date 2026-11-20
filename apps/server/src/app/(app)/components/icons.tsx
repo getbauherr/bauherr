@@ -51,3 +51,35 @@ export const PanelLeft = icon(
 export const Ticket = icon(<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2ZM13 5v2M13 17v2M13 11v2" />)
 export const Users = icon(<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />)
 export const User = icon(<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0" />)
+const FACTORY_BODY =
+  'M3 19a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5a.5.5 0 0 0-.769-.422l-4.462 2.844A.5.5 0 0 1 15 10.5v-2a.5.5 0 0 0-.769' +
+  '-.422L9.77 10.922A.5.5 0 0 1 9 10.5V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z'
+const INBOX_BODY =
+  'M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24' +
+  'a2 2 0 0 0-1.79 1.11z'
+
+export const Factory = icon(
+  <>
+    <path d="M12 16h.01M16 16h.01M8 16h.01" />
+    <path d={FACTORY_BODY} />
+  </>,
+)
+export const Inbox = icon(
+  <>
+    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+    <path d={INBOX_BODY} />
+  </>,
+)
+export const Clock = icon(
+  <>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 6v6l4 2" />
+  </>,
+)
+export const Ellipsis = icon(
+  <>
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="19" cy="12" r="1" />
+    <circle cx="5" cy="12" r="1" />
+  </>,
+)

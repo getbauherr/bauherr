@@ -11,6 +11,7 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-prac
 
 const CONTRAST_REVIEWED: [target: RegExp, reason: string][] = [
   [/^(output|text)$/, 'Symbol-only output and SVG text: no text characters to measure'],
+  [/^#loop-(verify|ship)$/, 'Label on a dashed loop line: muted ink on the page ground, 5.8:1 light, 7.1:1 dark'],
 ]
 
 const scan = async (page: Page) => {
@@ -40,6 +41,12 @@ const linkOn = (from: string, re: RegExp) => async (page: Page) => {
   return href!
 }
 
+const inFactory = (url: string) => async (page: Page) => {
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'factory', url: base }])
+  return url
+}
+
 const signedOut: Record<string, string> = {
   '/login': '/login',
 }
@@ -47,7 +54,8 @@ const signedOut: Record<string, string> = {
 const redirects: Record<string, RegExp> = { '/settings': /^\/settings\/profile$/ }
 
 const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
-  '/': '/',
+  '/': inFactory('/'),
+  '/inbox': inFactory('/inbox'),
   '/settings': '/settings',
   '/settings/api-key': '/settings/api-key',
   '/settings/audit': '/settings/audit',

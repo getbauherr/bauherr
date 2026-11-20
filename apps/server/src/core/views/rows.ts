@@ -29,7 +29,12 @@ const rowSchema = z.object({
   role: z.enum(['builder', 'reviewer', 'verifier']).nullable(),
   leased_by: z.string().nullable(),
   step: z.string().nullable(),
+  terminal_reason: z.string().nullable(),
+  criteria_total: count,
+  criteria_met: count,
 })
+
+export type ClosedAs = 'not-a-bug' | 'duplicate' | 'not-planned' | 'discarded' | 'closed-on-forge'
 
 export type TicketRow = {
   recordId: number
@@ -46,15 +51,27 @@ export type TicketRow = {
   verifyRounds: number
   reporterRound: number | null
   ended: 'accepted' | 'closed' | null
+  closedAs: ClosedAs | null
+  criteria: { met: number; total: number }
   endedAt: Date | null
   run: { role: 'builder' | 'reviewer' | 'verifier'; leasedBy: string | null; step: string | null } | null
 }
 
 const ACCEPTED = ['result.accepted', 'production.approved']
 
+const CLOSED_AS: ClosedAs[] = ['not-a-bug', 'duplicate', 'not-planned', 'discarded', 'closed-on-forge']
+
+const closedAsOf = (type: string | null, reason: string | null): ClosedAs | null => {
+  if (type === 'brief.discarded') return 'discarded'
+  return CLOSED_AS.find((known) => known === reason) ?? null
+}
+
+const endedOf = (type: string | null): 'accepted' | 'closed' | null =>
+  type === null ? null : ACCEPTED.includes(type) ? 'accepted' : 'closed'
+
 const toRow = (raw: unknown): TicketRow => {
   const r = rowSchema.parse(raw)
-  const ended = r.terminal_type === null ? null : ACCEPTED.includes(r.terminal_type) ? 'accepted' : 'closed'
+  const ended = endedOf(r.terminal_type)
   return {
     recordId: r.id,
     product: { id: r.product_id, name: r.product_name },
@@ -71,6 +88,8 @@ const toRow = (raw: unknown): TicketRow => {
     reporterRound: r.reporter_round,
     ended: r.waiting_on === 'nobody' && r.parked === null ? (ended ?? 'closed') : null,
     endedAt: r.terminal_at,
+    closedAs: ended === 'closed' ? closedAsOf(r.terminal_type, r.terminal_reason) : null,
+    criteria: { met: r.criteria_met, total: r.criteria_total },
     run: r.role === null ? null : { role: r.role, leasedBy: r.leased_by, step: r.step },
   }
 }
@@ -80,7 +99,10 @@ export const loadRows = async (payload: Payload, filter: RowFilter): Promise<Tic
     SELECT r."id", r."product_id", p."name" AS product_name, r."source_repo", r."source_number", r."stage",
       r."waiting_on", r."rank", r."card", r."parked", i."title", ev."entered_at", ev."verify_rounds",
       ev."reporter_round", ev."terminal_type", ev."terminal_at", s."role", s."leased_by",
-      s."steps" -> -1 ->> 'text' AS step
+      s."steps" -> -1 ->> 'text' AS step, ev."terminal_reason",
+      jsonb_array_length(coalesce(r."data" -> 'criteria', '[]'::jsonb)) AS criteria_total,
+      (SELECT count(*) FROM jsonb_array_elements(coalesce(r."data" -> 'criteria', '[]'::jsonb)) c
+        WHERE c ->> 'status' = 'met') AS criteria_met
     FROM "records" r
     JOIN "products" p ON p."id" = r."product_id"
     LEFT JOIN "mirror_items" i ON i."workspace_id" = r."workspace_id" AND i."repo" = r."source_repo"
@@ -92,6 +114,8 @@ export const loadRows = async (payload: Payload, filter: RowFilter): Promise<Tic
         count(*) FILTER (WHERE e."type" = 'verify.changes') AS verify_rounds,
         max((e."data"->>'round')::integer) FILTER (WHERE e."type" = 'intake.asked') AS reporter_round,
         (array_agg(e."type" ORDER BY e."id" DESC) FILTER (WHERE e."type" IN (${TERMINAL_LIST})))[1] AS terminal_type,
+        (array_agg(e."data" ->> 'reason' ORDER BY e."id" DESC) FILTER (WHERE e."type" IN (${TERMINAL_LIST})))[1]
+          AS terminal_reason,
         max(e."created_at") FILTER (WHERE e."type" IN (${TERMINAL_LIST})) AS terminal_at
       FROM "events" e LEFT JOIN ${ENTRY_TABLE} ON m."type" = e."type" WHERE e."record_id" = r."id"
     ) ev ON true

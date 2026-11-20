@@ -9,13 +9,15 @@ const settingsPage: Record<string, string> = { profile: 'Profile', workspace: 'G
 
 type Crumb = { label: string; href?: string }
 
+const homeCrumb = (first: string | undefined): Crumb => ({ label: first === 'inbox' ? 'Inbox' : 'Factory', href: '/' })
+
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export function Breadcrumbs() {
   const path = usePathname()
   const title = usePageTitle()
   const [first, second, third] = path.split('/').filter(Boolean)
-  const crumbs: Crumb[] = first === 'settings' ? [{ label: 'Settings' }] : [{ label: 'Home', href: '/' }]
+  const crumbs: Crumb[] = first === 'settings' ? [{ label: 'Settings' }] : [homeCrumb(first)]
   if (first === 'settings' && second) crumbs.push({ label: settingsPage[second] ?? cap(second), href: third ? `/settings/${second}` : undefined })
   if (third) crumbs.push({ label: /^\d+$/.test(third) ? 'Product' : cap(third) })
   if (title && crumbs.length > 1) crumbs[crumbs.length - 1] = { label: title }

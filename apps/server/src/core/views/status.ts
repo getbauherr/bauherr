@@ -22,6 +22,7 @@ export const STATUSES = [
   'drafting-brief',
   'building',
   'verifying',
+  'queued',
   'waiting-for-checks',
   'waiting-for-deploy',
   'reporter-asked',
@@ -44,6 +45,7 @@ export type StatusInput = {
   card: StoredCard | null
   parked: string | null
   hasRun: boolean
+  claimed: boolean
   ended: 'accepted' | 'closed' | null
 }
 
@@ -70,6 +72,7 @@ const RULES: Rule[] = [
   (i) => STUCK_REASONS.find((reason) => isStuck(i.card) && i.card?.reason === reason) ?? null,
   (i) => (i.card === null ? null : OPEN_CARD[i.card.card]),
   (i) => (i.waitingOn === 'reporter' ? 'reporter-asked' : null),
+  (i) => (i.hasRun && !i.claimed ? 'queued' : null),
   (i) => (i.stage === 'verify' && !i.hasRun ? 'waiting-for-checks' : null),
   (i) => (i.stage === 'ship' && !i.hasRun ? 'waiting-for-deploy' : null),
 ]

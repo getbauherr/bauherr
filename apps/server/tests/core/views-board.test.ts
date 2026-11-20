@@ -1,5 +1,8 @@
+import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { appendEvent, setProjection } from '../../src/core/record/store'
 import { board } from '../../src/core/views/board'
+import { waitingOnOwner } from '../../src/core/views/owner'
 import { stageStats } from '../../src/core/views/stats'
 import { openViews, seed, type Seeded } from './views-harness'
 
@@ -26,7 +29,7 @@ describe('board', () => {
     const rows = (cards: typeof stages.intake) => cards.map((c) => [c.recordId, c.status, c.state])
     expect(rows(stages.intake)).toEqual(
       expect.arrayContaining([
-        [n.intakeQueued, 'triaging', 'agents'],
+        [n.intakeQueued, 'queued', 'agents'],
         [n.intakeWorking, 'triaging', 'agents'],
         [n.reporterAsked, 'reporter-asked', 'others'],
         [n.failedRuns, 'failed-runs', 'stuck'],
@@ -36,23 +39,23 @@ describe('board', () => {
     expect(stages.intake).toHaveLength(5)
     expect(rows(stages.brief)).toEqual(
       expect.arrayContaining([
-        [n.briefQueued, 'drafting-brief', 'agents'],
+        [n.briefQueued, 'queued', 'agents'],
         [n.briefCard, 'brief-needs-approval', 'owner'],
       ]),
     )
     expect(stages.brief).toHaveLength(2)
     expect(rows(stages.build)).toEqual(
-      expect.arrayContaining([[n.building, 'building', 'agents'], [n.verifyRounds, 'verify-rounds', 'stuck']]),
+      expect.arrayContaining([[n.building, 'queued', 'agents'], [n.verifyRounds, 'verify-rounds', 'stuck']]),
     )
     expect(rows(stages.verify)).toEqual(
-      expect.arrayContaining([[n.waitingChecks, 'waiting-for-checks', 'others'], [n.verifying, 'verifying', 'agents']]),
+      expect.arrayContaining([[n.waitingChecks, 'waiting-for-checks', 'others'], [n.verifying, 'queued', 'agents']]),
     )
     expect(rows(stages.ship)).toEqual([[n.resultCard, 'result-ready', 'owner']])
     expect(rows(stages.done)).toEqual(
       expect.arrayContaining([[n.accepted, 'accepted', 'none'], [n.closed, 'closed', 'none']]),
     )
     expect(ids(parked)).toEqual([n.parked])
-    expect(parked[0]).toMatchObject({ status: 'parked', state: 'none', stage: 'brief' })
+    expect(parked[0]).toMatchObject({ status: 'parked', state: 'none', stage: 'brief', parkedReason: 'limit reached' })
   })
 
   it('names the title from the mirror, the claimed run and the verify round', async () => {
@@ -97,6 +100,16 @@ describe('board', () => {
   })
 })
 
+describe('waitingOnOwner', () => {
+  it('counts the tickets that wait on the owner or are stuck, as the board shows them', async () => {
+    const { stages } = await view()
+    const shown = Object.values(stages).flat().filter((c) => c.state === 'owner' || c.state === 'stuck')
+    expect(shown.length).toBeGreaterThan(3)
+    expect(await waitingOnOwner(s.e.db.payload, s.e.db.workspace)).toBe(shown.length)
+    expect(await waitingOnOwner(s.e.db.payload, s.e.db.otherWorkspace)).toBe(0)
+  })
+})
+
 describe('stageStats counts', () => {
   it('counts the four states per stage and lists live runs', async () => {
     const { stages, totals } = await stageStats(s.e.db.payload, { workspace: s.e.db.workspace, now: now() })
@@ -137,5 +150,26 @@ describe('query counts with 200 more open tickets', () => {
   it('makes four queries for the stage statistics', async () => {
     const stats = () => stageStats(s.e.db.payload, { workspace: s.e.db.workspace, now: now() })
     expect(await count(stats)).toBeLessThanOrEqual(4)
+  })
+})
+
+describe('card facts', () => {
+  const card = async (id: number) => Object.values((await view()).stages).flat().find((c) => c.recordId === id)
+
+  it('says why a closed ticket closed', async () => {
+    expect((await card(s.names.closed))?.closedAs).toBe('discarded')
+    const id = await s.e.db.fresh()
+    await appendEvent(s.e.db.payload, id, { type: 'intake.closed', data: { reason: 'duplicate' }, actor: 'agent' })
+    await setProjection(s.e.db.payload, id, { stage: 'intake', waitingOn: 'nobody' })
+    expect(await card(id)).toMatchObject({ status: 'closed', closedAs: 'duplicate' })
+    expect((await card(s.names.accepted))?.closedAs).toBeNull()
+  })
+
+  it('counts the criteria met from the record', async () => {
+    expect((await card(s.names.verifying))?.criteria?.total).toBe(3)
+    await s.e.db.payload.db.drizzle.execute(sql`UPDATE "records" SET "data" = jsonb_set("data", '{criteria,0,status}',
+      '"met"') WHERE "id" = ${s.names.verifying}`)
+    expect((await card(s.names.verifying))?.criteria).toEqual({ met: 1, total: 3 })
+    expect((await card(s.names.intakeQueued))?.criteria).toBeNull()
   })
 })

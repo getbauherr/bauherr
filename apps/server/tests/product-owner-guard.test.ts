@@ -4,23 +4,27 @@ import { createTestDb, type TestDb } from './helpers/test-db'
 
 const PO_PAGES: Record<string, string> = {
   login: 'public sign-in; a signed-in account is sent to its home',
-  '': 'a static empty state; it reads no data',
+  '': 'the Factory view for a Bauherr; a Product owner gets a static empty state that reads no data',
   settings: 'redirects to the profile',
   'settings/profile': 'the profile',
 }
-const BAUHERR_PAGES = ['settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/connections', 'settings/health', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/workspace']
+const BAUHERR_PAGES = ['inbox', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/connections', 'settings/health', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/workspace']
 const PO_ROUTES: Record<string, string> = {
   'api/health GET': 'unauthenticated health probe',
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
 }
-const BAUHERR_ROUTES: string[] = ['mcp GET', 'mcp POST', 'mcp DELETE']
+const BAUHERR_ROUTES: string[] = ['api/changes GET', 'mcp GET', 'mcp POST', 'mcp DELETE']
 const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
   '(shell)/settings/profile/actions.ts#saveOwnLogin': 'the profile: links or removes their own forge login; Payload refuses a login another account holds',
 }
-const BAUHERR_ACTIONS = ['lib/actions.ts#selectWorkspace', '(shell)/settings/state-action.ts#setProductState'].concat(
+const BAUHERR_ACTIONS = [
+  'lib/actions.ts#selectWorkspace',
+  '(shell)/actions.ts#moveCard',
+  '(shell)/settings/state-action.ts#setProductState',
+].concat(
   ['saveGeneral', 'saveModels', 'savePathSets', 'rotateWorkspaceKey', 'updatePricesNow', 'saveDeploy', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'removeDoc', 'saveConnection', 'verifyConnection', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'deleteWorkspace', 'restoreWorkspaceAction', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey'].map((n) => `(shell)/settings/actions.ts#${n}`),
 )
 const PO_COLLECTIONS: Record<string, Record<string, string>> = {
@@ -206,7 +210,7 @@ describe('server actions', () => {
 
   it('every action not listed is refused with a 404 for a Product owner', async () => {
     session.cookie = productOwnerCookie
-    expect(files.length).toBe(4)
+    expect(files.length).toBe(5)
     let checked = 0
     for (const f of files) {
       const rel = f.slice((APP + '(app)/').length)
@@ -276,7 +280,7 @@ describe('routes', () => {
       }
     }
     for (const key of Object.keys(OPEN_ROUTES)) expect(seen, `OPEN_ROUTES names a route that does not exist: ${key}`).toContain(key)
-    expect(seen.length).toBe(6)
+    expect(seen.length).toBe(7)
     partition('routes', seen, Object.keys(PO_ROUTES), BAUHERR_ROUTES)
   })
 })

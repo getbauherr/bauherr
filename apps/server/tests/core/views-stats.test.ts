@@ -68,6 +68,18 @@ describe('stageStats from events', () => {
       medianSecondsToAccept: 32.5 * 3600,
       firstPassAcceptRate: 0.5,
       exceptionRate: 1 / 3,
+      sentBackFromVerifyLast7Days: 1,
+      sentBackFromShipLast7Days: 1,
+    })
+  })
+
+  it('counts tickets sent back from Verify and from Ship over the last 7 days only', async () => {
+    const later = new Date(T.getTime() + 6 * 24 * HOUR)
+    const { totals } = await stageStats(e.db.payload, { workspace: e.db.workspace, now: later })
+    expect(totals).toMatchObject({ sentBackFromVerifyLast7Days: 0, sentBackFromShipLast7Days: 1 })
+    expect((await stats(e.db.otherWorkspace)).totals).toMatchObject({
+      sentBackFromVerifyLast7Days: 0,
+      sentBackFromShipLast7Days: 0,
     })
   })
 
