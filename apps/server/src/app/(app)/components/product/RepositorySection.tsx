@@ -117,6 +117,14 @@ export function RepositorySection({ product, connections, admin }: Props) {
           <RadioCards name="executor" legend="Who works the runs?" value={product.executor} options={EXECUTORS} />
         </SettingsForm>
       </Editable>
+      {product.executor === 'session' && (
+        <p className="small text-muted-foreground">
+          A session needs an agent key and one command.{' '}
+          <Link href="/settings/api-key" className={LINK}>
+            Connect a session
+          </Link>
+        </p>
+      )}
       <State product={product} admin={admin} />
       {admin && <AddRepository product={product} connections={connections} />}
     </SettingsSection>
