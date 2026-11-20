@@ -15,7 +15,14 @@ const event = <T extends string, D extends z.ZodType>(type: T, data: D) =>
   z.object({ type: z.literal(type), data })
 
 export const WRITE_KINDS = ['stage-label', 'status-comment', 'question', 'merge', 'close', 'pull-request'] as const
-const write = { kind: z.enum(WRITE_KINDS), target: z.object({ repo: id, number: z.number().int().positive() }) }
+const target = z.object({ repo: id, number: z.number().int().positive() })
+const write = { kind: z.enum(WRITE_KINDS), target }
+
+export const deferredSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('question'), target, body: id }),
+  z.object({ kind: z.literal('close'), target, reason: z.enum(['completed', 'not_planned', 'duplicate']) }),
+])
+export type Deferred = z.infer<typeof deferredSchema>
 
 const eventSchema = z.discriminatedUnion('type', [
   event('intake.accepted', none),
@@ -53,6 +60,7 @@ const eventSchema = z.discriminatedUnion('type', [
   event('forge.write.started', z.object(write)),
   event('forge.write.done', z.object(write)),
   event('forge.write.failed', z.object({ ...write, reason: id })),
+  event('forge.write.deferred', deferredSchema),
 ])
 
 export type AppEvent = z.infer<typeof eventSchema>

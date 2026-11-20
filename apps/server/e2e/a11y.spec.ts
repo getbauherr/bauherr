@@ -75,6 +75,14 @@ const signedOut: Record<string, string> = {
 
 const redirects: Record<string, RegExp> = { '/settings': /^\/settings\/profile$/ }
 
+const connectOf = (product: string, path = '/connect') => async (page: Page) => {
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'connect', url: base }])
+  await page.goto('/settings/products')
+  const href = await page.getByRole('link', { name: product, exact: true }).getAttribute('href')
+  return `${href}${path}`
+}
+
 type Target = string | ((page: Page) => Promise<string>)
 
 const routes: Record<string, Target | Record<string, Target>> = {
@@ -100,7 +108,14 @@ const routes: Record<string, Target | Record<string, Target>> = {
   '/settings/health': '/settings/health',
   '/settings/models': '/settings/models',
   '/settings/products': '/settings/products',
-  '/settings/products/[id]': linkOn('/settings/products', /^\/settings\/products\/\d+$/),
+  '/settings/products/[id]': {
+    'first Product': linkOn('/settings/products', /^\/settings\/products\/\d+$/),
+    'imported Product': connectOf('Look App', ''),
+  },
+  '/settings/products/[id]/connect': {
+    'first look': connectOf('Look App'),
+    importing: connectOf('Importing App'),
+  },
   '/settings/products/new': '/settings/products/new',
   '/settings/profile': '/settings/profile',
   '/settings/workspace': '/settings/workspace',

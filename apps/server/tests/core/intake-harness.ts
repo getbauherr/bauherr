@@ -36,7 +36,7 @@ export const intakeHarness = (suite: string) => {
     await h.rows(sql`DELETE FROM "records"`)
     clock.now = START
     await product(sql`"state" = 'observing', "connected_at" = NULL, "intake_excluded_labels" = '[]'::jsonb,
-      "outside_issues_per_day" = 5, "backlog_brief_limit" = 5, "required_checks" = NULL,
+      "outside_issues_per_day" = 5, "backlog_brief_limit" = 5, "required_checks" = NULL, "auto_close" = true,
       "reporter_remind_days" = 7, "reporter_silent_days" = 21`)
   })
 

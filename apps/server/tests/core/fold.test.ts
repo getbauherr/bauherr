@@ -27,7 +27,12 @@ describe('fold', () => {
   })
 
   it('ignores the forge write events completely', () => {
-    const writes = [ev('forge.write.started'), ev('forge.write.done'), ev('forge.write.failed')]
+    const writes = [
+      ev('forge.write.started'),
+      ev('forge.write.done'),
+      ev('forge.write.failed'),
+      ev('forge.write.deferred'),
+    ]
     expect(fold([...inBrief, ...writes])).toEqual(fold(inBrief))
   })
 

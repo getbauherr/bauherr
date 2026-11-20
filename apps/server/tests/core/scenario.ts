@@ -31,13 +31,13 @@ export type ItemFields = Partial<{
   head: string
 }>
 
-export const mirrorSource = async (e: Engine) => {
+export const mirrorSource = async (e: Pick<Engine, 'db'>, repo = 'acme/app') => {
   const { payload, workspace, product } = e.db
   const connection = idOf(await payload.create({
     collection: 'connections', data: { name: 'gh', kind: 'github', workspace }, ...o,
   }))
   const source = idOf(await payload.create({
-    collection: 'ticket_sources', data: { repo: 'acme/app', product, connection, workspace }, ...o,
+    collection: 'ticket_sources', data: { repo, product, connection, workspace }, ...o,
   }))
   const item = async (number: number, fields: ItemFields = {}): Promise<number> => {
     const f = {
@@ -49,7 +49,7 @@ export const mirrorSource = async (e: Engine) => {
       INSERT INTO "mirror_items" ("workspace_id", "source_id", "product_id", "repo", "number", "kind", "title", "body",
         "state", "author", "author_trusted", "author_is_bot", "labels", "assignees", "url", "forge_created_at",
         "forge_updated_at", "head_sha", "closes", "draft", "synced_at", "updated_at", "created_at")
-      VALUES (${workspace}, ${source}, ${product}, 'acme/app', ${number}, ${f.kind}, ${f.title}, 'body', ${f.state},
+      VALUES (${workspace}, ${source}, ${product}, ${repo}, ${number}, ${f.kind}, ${f.title}, 'body', ${f.state},
         ${f.author}, ${f.trusted}, false, ${json(f.labels)}::jsonb, ${json(f.assignees)}::jsonb,
         ${`https://forge/${number}`}, now() - interval '1 day', ${f.updated}::timestamptz, ${f.head},
         ${json(f.closes)}::jsonb, false, now(), now(), now())
@@ -94,6 +94,9 @@ export const asked = async (e: Engine, id: number, round: number) => {
   if (!claimed) throw new Error('no run queued')
   await finishRun(e.db.payload, claimed.run.id, { status: 'submitted', now: e.clock.now })
   await appendEvent(e.db.payload, id, { type: 'intake.asked', data: { round }, actor: 'agent' })
+  const target = { repo: 'acme/app', number: 1 }
+  const done = { type: 'forge.write.done', data: { kind: 'question', target }, actor: 'factory' } as const
+  await appendEvent(e.db.payload, id, done)
   await advance(id, e.deps())
 }
 

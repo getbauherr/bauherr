@@ -8,6 +8,7 @@ import type { ForgeWriter } from '../forge/writer'
 import { fold, foldOptions } from '../lifecycle'
 import { appendEvent, readEvents } from '../record/store'
 import { DAY_MS } from './candidates'
+import { questionPostedAt } from './posted'
 
 export const REMINDER =
   'We are still waiting for your answer to the questions above. Reply here when you can; ' +
@@ -16,9 +17,9 @@ export const REMINDER =
 export type ReporterTiming = { remindDays: number; silentDays: number }
 export type Due = 'remind' | 'silent' | null
 
-export const reporterDue = (state: State, askedAt: string | null, now: Date, timing: ReporterTiming): Due => {
-  if (!state.reporter.waiting || askedAt === null) return null
-  const days = (now.getTime() - Date.parse(askedAt)) / DAY_MS
+export const reporterDue = (state: State, postedAt: string | null, now: Date, timing: ReporterTiming): Due => {
+  if (!state.reporter.waiting || postedAt === null) return null
+  const days = (now.getTime() - Date.parse(postedAt)) / DAY_MS
   if (days >= timing.silentDays) return 'silent'
   return days >= timing.remindDays && !state.reporter.reminded ? 'remind' : null
 }
@@ -43,8 +44,7 @@ const settle = (deps: AdvanceDeps, id: number, timing: ReporterTiming): Promise<
   inLockedRecord(deps.payload, id, async (tx) => {
     const events = await readEvents(tx, id)
     const state = fold(events, foldOptions(await deps.configFor(id)))
-    const asked = events.findLast((event) => event.type === 'intake.asked')
-    const due = reporterDue(state, asked?.createdAt ?? null, deps.now, timing)
+    const due = reporterDue(state, questionPostedAt(events), deps.now, timing)
     if (due === null) return null
     const type = due === 'silent' ? 'reporter.silent' : 'reporter.reminded'
     await appendEvent(tx, id, { type, data: {}, actor: 'factory' })

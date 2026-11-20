@@ -20,7 +20,7 @@ const AFTER = '2026-11-11T10:00:00Z'
 const input = (events: ReturnType<typeof ev>[], extra: Partial<ReactInput> = {}): ReactInput => ({
   record: briefed(),
   state: fold(events),
-  askedAt: null,
+  postedAt: null,
   issue: open,
   pull: null,
   comments: [],
@@ -35,7 +35,7 @@ const reply = (extra: { author?: string; body?: string; createdAt?: string } = {
   createdAt: AFTER,
   ...extra,
 })
-const asking = (comments: ReturnType<typeof reply>[]) => input(waiting, { askedAt: ASKED, comments })
+const asking = (comments: ReturnType<typeof reply>[]) => input(waiting, { postedAt: ASKED, comments })
 
 describe('reporterReplied', () => {
   it('fires on a newer comment of the reporter while waiting', () => {
@@ -51,7 +51,7 @@ describe('reporterReplied', () => {
   })
 
   it('does nothing when the ticket does not wait on the reporter', () => {
-    const base = input([...waiting, ev('reporter.replied')], { askedAt: ASKED, comments: [reply()] })
+    const base = input([...waiting, ev('reporter.replied')], { postedAt: ASKED, comments: [reply()] })
     expect(reporterReplied(base)).toEqual([])
     expect(reporterReplied(input([], { comments: [reply()] }))).toEqual([])
   })
@@ -142,7 +142,7 @@ describe('issueClosed', () => {
 
 describe('react', () => {
   it('returns only the close when the issue was closed, whatever else changed', () => {
-    const closing = input(waiting, { askedAt: ASKED, comments: [reply()], issue: closedIssue })
+    const closing = input(waiting, { postedAt: ASKED, comments: [reply()], issue: closedIssue })
     expect(react(closing)).toEqual([{ type: 'ticket.closed', data: { reason: 'closed-on-forge' } }])
   })
 
