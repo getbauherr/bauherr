@@ -7,12 +7,14 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   CREATE TYPE "public"."enum_connections_kind" AS ENUM('github', 'llm-provider');
   CREATE TYPE "public"."enum_tickets_state" AS ENUM('open', 'closed');
   CREATE TYPE "public"."enum_runs_stage" AS ENUM('plan', 'build');
-  CREATE TYPE "public"."enum_runs_status" AS ENUM('queued', 'awaiting_session', 'running', 'succeeded', 'failed', 'cancelled', 'needs_human', 'budget_exhausted');
+  CREATE TYPE "public"."enum_runs_status" AS ENUM('queued', 'awaiting_session', 'running', 'succeeded', 'failed',
+      'cancelled', 'needs_human', 'budget_exhausted');
   CREATE TYPE "public"."enum_runs_mode" AS ENUM('session', 'autonomous');
   CREATE TYPE "public"."enum_runs_cost_source" AS ENUM('estimate', 'gateway');
   CREATE TYPE "public"."enum_runs_reconcile_status" AS ENUM('pending', 'matched', 'mismatch');
   CREATE TYPE "public"."enum_tool_calls_status" AS ENUM('ok', 'error');
-  CREATE TYPE "public"."enum_payload_jobs_log_task_slug" AS ENUM('inline', 'poll-tickets', 'run-stage', 'expire-sessions');
+  CREATE TYPE "public"."enum_payload_jobs_log_task_slug" AS ENUM('inline', 'poll-tickets', 'run-stage',
+      'expire-sessions');
   CREATE TYPE "public"."enum_payload_jobs_log_state" AS ENUM('failed', 'succeeded');
   CREATE TYPE "public"."enum_payload_jobs_task_slug" AS ENUM('inline', 'poll-tickets', 'run-stage', 'expire-sessions');
   CREATE TABLE "bauherren_tenants" (
@@ -55,7 +57,8 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   	"slug" varchar NOT NULL,
   	"gateway_key" varchar,
   	"budget_usd30d" numeric DEFAULT 50,
-  	"model_by_tier" jsonb DEFAULT '{"cheap":"claude-haiku-5-5","standard":"claude-sonnet-5-5","strong":"claude-opus-5-5"}'::jsonb,
+  	"model_by_tier" jsonb DEFAULT
+  	    '{"cheap":"claude-haiku-5-5","standard":"claude-sonnet-5-5","strong":"claude-opus-5-5"}'::jsonb,
   	"default_mode" "enum_workspaces_default_mode",
   	"mode_by_stage" jsonb,
   	"updated_at" timestamp(3) with time zone DEFAULT now() NOT NULL,
@@ -308,51 +311,97 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   	"created_at" timestamp(3) with time zone
   );
   
-  ALTER TABLE "bauherren_tenants" ADD CONSTRAINT "bauherren_tenants_tenant_id_workspaces_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "bauherren_tenants" ADD CONSTRAINT "bauherren_tenants_parent_id_fk" FOREIGN KEY ("_parent_id") REFERENCES "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "bauherren_sessions" ADD CONSTRAINT "bauherren_sessions_parent_id_fk" FOREIGN KEY ("_parent_id") REFERENCES "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "products" ADD CONSTRAINT "products_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "connections" ADD CONSTRAINT "connections_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "repositories" ADD CONSTRAINT "repositories_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "repositories" ADD CONSTRAINT "repositories_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "ticket_sources" ADD CONSTRAINT "ticket_sources_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "ticket_sources" ADD CONSTRAINT "ticket_sources_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "ticket_sources" ADD CONSTRAINT "ticket_sources_connection_id_connections_id_fk" FOREIGN KEY ("connection_id") REFERENCES "public"."connections"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "tickets" ADD CONSTRAINT "tickets_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "tickets" ADD CONSTRAINT "tickets_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "tickets" ADD CONSTRAINT "tickets_parent_id_tickets_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."tickets"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "tickets_texts" ADD CONSTRAINT "tickets_texts_parent_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "tickets_rels" ADD CONSTRAINT "tickets_rels_parent_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "tickets_rels" ADD CONSTRAINT "tickets_rels_tickets_fk" FOREIGN KEY ("tickets_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "runs" ADD CONSTRAINT "runs_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "runs" ADD CONSTRAINT "runs_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."tickets"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "runs" ADD CONSTRAINT "runs_session_owner_id_bauherren_id_fk" FOREIGN KEY ("session_owner_id") REFERENCES "public"."bauherren"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "steps" ADD CONSTRAINT "steps_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "steps" ADD CONSTRAINT "steps_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "tool_calls" ADD CONSTRAINT "tool_calls_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "tool_calls" ADD CONSTRAINT "tool_calls_step_id_steps_id_fk" FOREIGN KEY ("step_id") REFERENCES "public"."steps"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "tool_calls" ADD CONSTRAINT "tool_calls_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "human_touches" ADD CONSTRAINT "human_touches_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "human_touches" ADD CONSTRAINT "human_touches_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."tickets"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "human_touches" ADD CONSTRAINT "human_touches_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "workflow_versions" ADD CONSTRAINT "workflow_versions_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "workflow_versions" ADD CONSTRAINT "workflow_versions_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "payload_jobs_log" ADD CONSTRAINT "payload_jobs_log_parent_id_fk" FOREIGN KEY ("_parent_id") REFERENCES "public"."payload_jobs"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_parent_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."payload_locked_documents"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_bauherren_fk" FOREIGN KEY ("bauherren_id") REFERENCES "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_workspaces_fk" FOREIGN KEY ("workspaces_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_products_fk" FOREIGN KEY ("products_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_connections_fk" FOREIGN KEY ("connections_id") REFERENCES "public"."connections"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_repositories_fk" FOREIGN KEY ("repositories_id") REFERENCES "public"."repositories"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_ticket_sources_fk" FOREIGN KEY ("ticket_sources_id") REFERENCES "public"."ticket_sources"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_tickets_fk" FOREIGN KEY ("tickets_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_runs_fk" FOREIGN KEY ("runs_id") REFERENCES "public"."runs"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_steps_fk" FOREIGN KEY ("steps_id") REFERENCES "public"."steps"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_tool_calls_fk" FOREIGN KEY ("tool_calls_id") REFERENCES "public"."tool_calls"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_human_touches_fk" FOREIGN KEY ("human_touches_id") REFERENCES "public"."human_touches"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_workflow_versions_fk" FOREIGN KEY ("workflow_versions_id") REFERENCES "public"."workflow_versions"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_preferences_rels" ADD CONSTRAINT "payload_preferences_rels_parent_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."payload_preferences"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_preferences_rels" ADD CONSTRAINT "payload_preferences_rels_bauherren_fk" FOREIGN KEY ("bauherren_id") REFERENCES "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "bauherren_tenants" ADD CONSTRAINT "bauherren_tenants_tenant_id_workspaces_id_fk" FOREIGN KEY
+      ("tenant_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "bauherren_tenants" ADD CONSTRAINT "bauherren_tenants_parent_id_fk" FOREIGN KEY ("_parent_id") REFERENCES
+      "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "bauherren_sessions" ADD CONSTRAINT "bauherren_sessions_parent_id_fk" FOREIGN KEY ("_parent_id")
+      REFERENCES "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "products" ADD CONSTRAINT "products_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES
+      "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "connections" ADD CONSTRAINT "connections_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id")
+      REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "repositories" ADD CONSTRAINT "repositories_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id")
+      REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "repositories" ADD CONSTRAINT "repositories_product_id_products_id_fk" FOREIGN KEY ("product_id")
+      REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "ticket_sources" ADD CONSTRAINT "ticket_sources_workspace_id_workspaces_id_fk" FOREIGN KEY
+      ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "ticket_sources" ADD CONSTRAINT "ticket_sources_product_id_products_id_fk" FOREIGN KEY ("product_id")
+      REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "ticket_sources" ADD CONSTRAINT "ticket_sources_connection_id_connections_id_fk" FOREIGN KEY
+      ("connection_id") REFERENCES "public"."connections"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "tickets" ADD CONSTRAINT "tickets_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES
+      "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "tickets" ADD CONSTRAINT "tickets_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES
+      "public"."products"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "tickets" ADD CONSTRAINT "tickets_parent_id_tickets_id_fk" FOREIGN KEY ("parent_id") REFERENCES
+      "public"."tickets"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "tickets_texts" ADD CONSTRAINT "tickets_texts_parent_fk" FOREIGN KEY ("parent_id") REFERENCES
+      "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "tickets_rels" ADD CONSTRAINT "tickets_rels_parent_fk" FOREIGN KEY ("parent_id") REFERENCES
+      "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "tickets_rels" ADD CONSTRAINT "tickets_rels_tickets_fk" FOREIGN KEY ("tickets_id") REFERENCES
+      "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "runs" ADD CONSTRAINT "runs_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES
+      "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "runs" ADD CONSTRAINT "runs_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES
+      "public"."tickets"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "runs" ADD CONSTRAINT "runs_session_owner_id_bauherren_id_fk" FOREIGN KEY ("session_owner_id") REFERENCES
+      "public"."bauherren"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "steps" ADD CONSTRAINT "steps_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES
+      "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "steps" ADD CONSTRAINT "steps_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id")
+      ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "tool_calls" ADD CONSTRAINT "tool_calls_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id")
+      REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "tool_calls" ADD CONSTRAINT "tool_calls_step_id_steps_id_fk" FOREIGN KEY ("step_id") REFERENCES
+      "public"."steps"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "tool_calls" ADD CONSTRAINT "tool_calls_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES
+      "public"."runs"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "human_touches" ADD CONSTRAINT "human_touches_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id")
+      REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "human_touches" ADD CONSTRAINT "human_touches_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id")
+      REFERENCES "public"."tickets"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "human_touches" ADD CONSTRAINT "human_touches_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES
+      "public"."runs"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "workflow_versions" ADD CONSTRAINT "workflow_versions_workspace_id_workspaces_id_fk" FOREIGN KEY
+      ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "workflow_versions" ADD CONSTRAINT "workflow_versions_product_id_products_id_fk" FOREIGN KEY
+      ("product_id") REFERENCES "public"."products"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "payload_jobs_log" ADD CONSTRAINT "payload_jobs_log_parent_id_fk" FOREIGN KEY ("_parent_id") REFERENCES
+      "public"."payload_jobs"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_parent_fk" FOREIGN KEY
+      ("parent_id") REFERENCES "public"."payload_locked_documents"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_bauherren_fk" FOREIGN KEY
+      ("bauherren_id") REFERENCES "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_workspaces_fk" FOREIGN KEY
+      ("workspaces_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_products_fk" FOREIGN KEY
+      ("products_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_connections_fk" FOREIGN KEY
+      ("connections_id") REFERENCES "public"."connections"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_repositories_fk" FOREIGN KEY
+      ("repositories_id") REFERENCES "public"."repositories"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_ticket_sources_fk" FOREIGN
+      KEY ("ticket_sources_id") REFERENCES "public"."ticket_sources"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_tickets_fk" FOREIGN KEY
+      ("tickets_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_runs_fk" FOREIGN KEY
+      ("runs_id") REFERENCES "public"."runs"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_steps_fk" FOREIGN KEY
+      ("steps_id") REFERENCES "public"."steps"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_tool_calls_fk" FOREIGN KEY
+      ("tool_calls_id") REFERENCES "public"."tool_calls"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_human_touches_fk" FOREIGN
+      KEY ("human_touches_id") REFERENCES "public"."human_touches"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_workflow_versions_fk"
+      FOREIGN KEY ("workflow_versions_id") REFERENCES "public"."workflow_versions"("id") ON DELETE cascade ON UPDATE no
+      action;
+  ALTER TABLE "payload_preferences_rels" ADD CONSTRAINT "payload_preferences_rels_parent_fk" FOREIGN KEY ("parent_id")
+      REFERENCES "public"."payload_preferences"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_preferences_rels" ADD CONSTRAINT "payload_preferences_rels_bauherren_fk" FOREIGN KEY
+      ("bauherren_id") REFERENCES "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
   CREATE INDEX "bauherren_tenants_order_idx" ON "bauherren_tenants" USING btree ("_order");
   CREATE INDEX "bauherren_tenants_parent_id_idx" ON "bauherren_tenants" USING btree ("_parent_id");
   CREATE INDEX "bauherren_tenants_tenant_idx" ON "bauherren_tenants" USING btree ("tenant_id");
@@ -433,18 +482,28 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   CREATE INDEX "payload_locked_documents_rels_order_idx" ON "payload_locked_documents_rels" USING btree ("order");
   CREATE INDEX "payload_locked_documents_rels_parent_idx" ON "payload_locked_documents_rels" USING btree ("parent_id");
   CREATE INDEX "payload_locked_documents_rels_path_idx" ON "payload_locked_documents_rels" USING btree ("path");
-  CREATE INDEX "payload_locked_documents_rels_bauherren_id_idx" ON "payload_locked_documents_rels" USING btree ("bauherren_id");
-  CREATE INDEX "payload_locked_documents_rels_workspaces_id_idx" ON "payload_locked_documents_rels" USING btree ("workspaces_id");
-  CREATE INDEX "payload_locked_documents_rels_products_id_idx" ON "payload_locked_documents_rels" USING btree ("products_id");
-  CREATE INDEX "payload_locked_documents_rels_connections_id_idx" ON "payload_locked_documents_rels" USING btree ("connections_id");
-  CREATE INDEX "payload_locked_documents_rels_repositories_id_idx" ON "payload_locked_documents_rels" USING btree ("repositories_id");
-  CREATE INDEX "payload_locked_documents_rels_ticket_sources_id_idx" ON "payload_locked_documents_rels" USING btree ("ticket_sources_id");
-  CREATE INDEX "payload_locked_documents_rels_tickets_id_idx" ON "payload_locked_documents_rels" USING btree ("tickets_id");
+  CREATE INDEX "payload_locked_documents_rels_bauherren_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("bauherren_id");
+  CREATE INDEX "payload_locked_documents_rels_workspaces_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("workspaces_id");
+  CREATE INDEX "payload_locked_documents_rels_products_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("products_id");
+  CREATE INDEX "payload_locked_documents_rels_connections_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("connections_id");
+  CREATE INDEX "payload_locked_documents_rels_repositories_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("repositories_id");
+  CREATE INDEX "payload_locked_documents_rels_ticket_sources_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("ticket_sources_id");
+  CREATE INDEX "payload_locked_documents_rels_tickets_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("tickets_id");
   CREATE INDEX "payload_locked_documents_rels_runs_id_idx" ON "payload_locked_documents_rels" USING btree ("runs_id");
   CREATE INDEX "payload_locked_documents_rels_steps_id_idx" ON "payload_locked_documents_rels" USING btree ("steps_id");
-  CREATE INDEX "payload_locked_documents_rels_tool_calls_id_idx" ON "payload_locked_documents_rels" USING btree ("tool_calls_id");
-  CREATE INDEX "payload_locked_documents_rels_human_touches_id_idx" ON "payload_locked_documents_rels" USING btree ("human_touches_id");
-  CREATE INDEX "payload_locked_documents_rels_workflow_versions_id_idx" ON "payload_locked_documents_rels" USING btree ("workflow_versions_id");
+  CREATE INDEX "payload_locked_documents_rels_tool_calls_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("tool_calls_id");
+  CREATE INDEX "payload_locked_documents_rels_human_touches_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("human_touches_id");
+  CREATE INDEX "payload_locked_documents_rels_workflow_versions_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("workflow_versions_id");
   CREATE INDEX "payload_preferences_key_idx" ON "payload_preferences" USING btree ("key");
   CREATE INDEX "payload_preferences_updated_at_idx" ON "payload_preferences" USING btree ("updated_at");
   CREATE INDEX "payload_preferences_created_at_idx" ON "payload_preferences" USING btree ("created_at");

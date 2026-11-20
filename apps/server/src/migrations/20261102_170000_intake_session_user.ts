@@ -5,7 +5,8 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
    DROP INDEX "intake_sessions_ip_idx";
   ALTER TABLE "intake_sessions" DROP COLUMN "ip";
   ALTER TABLE "intake_sessions" ADD COLUMN "user_id" integer;
-  ALTER TABLE "intake_sessions" ADD CONSTRAINT "intake_sessions_user_id_bauherren_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."bauherren"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "intake_sessions" ADD CONSTRAINT "intake_sessions_user_id_bauherren_id_fk" FOREIGN KEY ("user_id")
+      REFERENCES "public"."bauherren"("id") ON DELETE set null ON UPDATE no action;
   CREATE INDEX "intake_sessions_user_idx" ON "intake_sessions" USING btree ("user_id");`)
 }
 

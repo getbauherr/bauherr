@@ -10,9 +10,11 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   ALTER TABLE "intake_sessions" ADD COLUMN "urgent_reason" varchar;
   ALTER TABLE "intake_sessions" ADD COLUMN "edited" jsonb;
   ALTER TABLE "intake_sessions" ADD COLUMN "follow_up_of_id" integer;
-  ALTER TABLE "intake_sessions" ADD CONSTRAINT "intake_sessions_follow_up_of_id_intake_sessions_id_fk" FOREIGN KEY ("follow_up_of_id") REFERENCES "public"."intake_sessions"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "intake_sessions" ADD CONSTRAINT "intake_sessions_follow_up_of_id_intake_sessions_id_fk" FOREIGN KEY
+      ("follow_up_of_id") REFERENCES "public"."intake_sessions"("id") ON DELETE set null ON UPDATE no action;
   CREATE INDEX "intake_sessions_follow_up_of_idx" ON "intake_sessions" USING btree ("follow_up_of_id");
-  UPDATE "intake_sessions" SET "kind" = ("draft"->>'type')::"enum_intake_sessions_kind" WHERE "draft"->>'type' IN ('bug', 'feature', 'question');`)
+  UPDATE "intake_sessions" SET "kind" = ("draft"->>'type')::"enum_intake_sessions_kind" WHERE "draft"->>'type' IN
+      ('bug', 'feature', 'question');`)
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {

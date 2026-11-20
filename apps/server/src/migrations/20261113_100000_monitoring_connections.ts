@@ -7,8 +7,15 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {
-  const rows = Number((await db.execute(sql`SELECT count(*) AS n FROM "connections" WHERE "service" IS NOT NULL;`)).rows[0]?.n ?? 0)
-  if (rows) throw new Error(`Cannot roll back: ${rows} monitoring Connection(s) exist. Remove them under Settings > Connections > Monitoring first.`)
+  const counted = await db.execute(sql`
+    SELECT count(*) AS n FROM "connections" WHERE "service" IS NOT NULL;`)
+  const rows = Number(counted.rows[0]?.n ?? 0)
+  if (rows) {
+    throw new Error(
+      `Cannot roll back: ${rows} monitoring Connection(s) exist. ` +
+        'Remove them under Settings > Connections > Monitoring first.',
+    )
+  }
   await db.execute(sql`ALTER TABLE "connections" DROP COLUMN "service";`)
   await db.execute(sql`DROP TYPE "public"."enum_connections_service";`)
 }

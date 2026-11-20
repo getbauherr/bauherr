@@ -1,11 +1,38 @@
-import { MigrateDownArgs, MigrateUpArgs, sql } from '@payloadcms/db-postgres'
+import { MigrateUpArgs, sql } from '@payloadcms/db-postgres'
 
-const REMOVED_TASKS = ['poll-tickets', 'run-stage', 'expire-sessions', 'watch-release', 'notify-gates', 'watch-reviews', 'watch-production', 'resume-reviews', 'publish-release', 'watch-knowledge-prs', 'reconcile-costs', 'prune-request-logs', 'prune-comment-media', 'merge-main', 'watch-liveness', 'security-scan-tick', 'distill-skill', 'sync-progress', 'store-ci-summary']
+const REMOVED_TASKS = [
+  'poll-tickets',
+  'run-stage',
+  'expire-sessions',
+  'watch-release',
+  'notify-gates',
+  'watch-reviews',
+  'watch-production',
+  'resume-reviews',
+  'publish-release',
+  'watch-knowledge-prs',
+  'reconcile-costs',
+  'prune-request-logs',
+  'prune-comment-media',
+  'merge-main',
+  'watch-liveness',
+  'security-scan-tick',
+  'distill-skill',
+  'sync-progress',
+  'store-ci-summary',
+]
 
-const rebuildEnum = (type: string, table: string, column: string, labels: string[], fallback?: string) => `
+const rebuildEnum = (
+  type: string,
+  table: string,
+  column: string,
+  labels: string[],
+  fallback?: string,
+) => `
   ALTER TABLE "${table}" ALTER COLUMN "${column}" DROP DEFAULT;
   CREATE TYPE "public"."${type}_new" AS ENUM(${labels.map((l) => `'${l}'`).join(', ')});
-  ALTER TABLE "${table}" ALTER COLUMN "${column}" TYPE "public"."${type}_new" USING "${column}"::text::"public"."${type}_new";
+  ALTER TABLE "${table}" ALTER COLUMN "${column}" TYPE "public"."${type}_new"
+    USING "${column}"::text::"public"."${type}_new";
   DROP TYPE "public"."${type}";
   ALTER TYPE "public"."${type}_new" RENAME TO "${type}";${fallback ? `
   ALTER TABLE "${table}" ALTER COLUMN "${column}" SET DEFAULT '${fallback}';` : ''}`
@@ -14,7 +41,11 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
    DELETE FROM "connections" WHERE "kind"::text = 'monitoring' OR "provider"::text = 'router';
    DELETE FROM "knowledge_chunks" WHERE "layer"::text = 'core';`)
-  await db.execute(sql`DELETE FROM "payload_jobs" WHERE "task_slug"::text IN (${sql.join(REMOVED_TASKS.map((t) => sql`${t}`), sql`, `)});`)
+  const removedTasks = sql.join(
+    REMOVED_TASKS.map((t) => sql`${t}`),
+    sql`, `,
+  )
+  await db.execute(sql`DELETE FROM "payload_jobs" WHERE "task_slug"::text IN (${removedTasks});`)
   await db.execute(sql`
    ALTER TABLE "payload_locked_documents_rels"
     DROP COLUMN IF EXISTS "artifacts_id",
@@ -91,7 +122,10 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
    ALTER TABLE "connections"
     DROP COLUMN IF EXISTS "service";`)
   await db.execute(sql`
-   DROP TABLE IF EXISTS "artifacts", "chat_messages", "chat_threads", "check_flakes", "embed_tokens", "inbox_seen", "intake_sessions", "media", "runs", "session_spans", "skill_proposals", "steps", "templates", "ticket_events", "tickets", "tickets_rels", "tickets_texts", "tool_calls", "usage_cursors", "usage_entries", "workflow_versions" CASCADE;`)
+   DROP TABLE IF EXISTS "artifacts", "chat_messages", "chat_threads", "check_flakes", "embed_tokens", "inbox_seen",
+       "intake_sessions", "media", "runs", "session_spans", "skill_proposals", "steps", "templates", "ticket_events",
+       "tickets", "tickets_rels", "tickets_texts", "tool_calls", "usage_cursors", "usage_entries", "workflow_versions"
+       CASCADE;`)
   await db.execute(sql`
    DROP TYPE IF EXISTS "public"."enum_artifacts_kind";
    DROP TYPE IF EXISTS "public"."enum_artifacts_pair";
@@ -125,11 +159,42 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
    DROP TYPE IF EXISTS "public"."enum_tool_calls_status";
    DROP TYPE IF EXISTS "public"."enum_usage_entries_source";
    DROP TYPE IF EXISTS "public"."enum_workspaces_default_mode";`)
-  await db.execute(sql.raw(rebuildEnum('enum_connections_kind', 'connections', 'kind', ['github', 'gitlab', 'llm-provider'])))
-  await db.execute(sql.raw(rebuildEnum('enum_connections_provider', 'connections', 'provider', ['anthropic', 'openai', 'gemini', 'greenpt', 'bedrock', 'vertex', 'foundry', 'anthropic-compatible', 'openai-compatible', 'bedrock-iam', 'foundry-entra', 'bedrock-ambient', 'vertex-ambient', 'foundry-ambient'], 'anthropic')))
-  await db.execute(sql.raw(rebuildEnum('enum_knowledge_chunks_layer', 'knowledge_chunks', 'layer', ['workspace', 'product'])))
+  await db.execute(
+    sql.raw(rebuildEnum('enum_connections_kind', 'connections', 'kind', ['github', 'gitlab', 'llm-provider'])),
+  )
+  await db.execute(
+    sql.raw(
+      rebuildEnum(
+        'enum_connections_provider',
+        'connections',
+        'provider',
+        [
+          'anthropic',
+          'openai',
+          'gemini',
+          'greenpt',
+          'bedrock',
+          'vertex',
+          'foundry',
+          'anthropic-compatible',
+          'openai-compatible',
+          'bedrock-iam',
+          'foundry-entra',
+          'bedrock-ambient',
+          'vertex-ambient',
+          'foundry-ambient',
+        ],
+        'anthropic',
+      ),
+    ),
+  )
+  await db.execute(
+    sql.raw(rebuildEnum('enum_knowledge_chunks_layer', 'knowledge_chunks', 'layer', ['workspace', 'product'])),
+  )
 }
 
-export async function down(_: MigrateDownArgs): Promise<void> {
-  throw new Error('Cannot roll back: the legacy engine tables are dropped. The schema is in git at the tag legacy-final.')
+export async function down(): Promise<void> {
+  throw new Error(
+    'Cannot roll back: the legacy engine tables are dropped. The schema is in git at the tag legacy-final.',
+  )
 }

@@ -879,9 +879,6 @@
     }
   },
   "apps/server/src/migrations/20261029_165423_initial.ts": {
-    "max-len": {
-      "count": 58
-    },
     "max-lines": {
       "count": 1
     },
@@ -889,268 +886,22 @@
       "count": 1
     }
   },
-  "apps/server/src/migrations/20261030_120000_provider_presets.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261030_140000_active_run_unique.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261030_170000_ticket_lease.ts": {
-    "max-len": {
-      "count": 2
-    }
-  },
-  "apps/server/src/migrations/20261030_170000_watch_release_job.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261030_180000_review_stage.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261030_190000_sub_tickets.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261030_190000_ticket_rank.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261102_150084_production_gate.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261102_150119_gitlab_connection.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261102_150144_connection_slugs.ts": {
-    "max-len": {
-      "count": 8
-    }
-  },
-  "apps/server/src/migrations/20261102_150145_intake_sessions.ts": {
-    "max-len": {
-      "count": 4
-    }
-  },
-  "apps/server/src/migrations/20261102_150147_media.ts": {
-    "max-len": {
-      "count": 4
-    }
-  },
-  "apps/server/src/migrations/20261102_150150_knowledge.ts": {
-    "max-len": {
-      "count": 5
-    }
-  },
-  "apps/server/src/migrations/20261102_150166_agent_keys.ts": {
-    "max-len": {
-      "count": 7
-    }
-  },
-  "apps/server/src/migrations/20261102_150170_requeue_expired_unclaimed_runs.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 2
-    }
-  },
-  "apps/server/src/migrations/20261102_170000_intake_session_user.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261102_170149_embed_tokens.ts": {
-    "max-len": {
-      "count": 5
-    }
-  },
-  "apps/server/src/migrations/20261102_180000_gate_pending_attempts.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261103_150194_watcher_jobs.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261103_150206_task_slug_enums.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261103_160000_media_upload.ts": {
-    "max-len": {
-      "count": 4
-    }
-  },
-  "apps/server/src/migrations/20261103_190000_prune_comment_media_slug.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261104_100000_check_flakes.ts": {
-    "max-len": {
-      "count": 4
-    }
-  },
-  "apps/server/src/migrations/20261104_120000_watch_liveness_slug.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261104_170000_clear_self_waiting.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261104_180000_waiting_for_checks.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261109_120000_ship_release_touch_unique.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261109_170000_security_scan_tick_slug.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261109_170000_skill_proposals.ts": {
-    "max-len": {
-      "count": 5
-    }
-  },
-  "apps/server/src/migrations/20261110_140000_stage_text.ts": {
-    "max-len": {
-      "count": 3
-    }
-  },
-  "apps/server/src/migrations/20261110_150000_chat.ts": {
-    "max-len": {
-      "count": 8
-    }
-  },
   "apps/server/src/migrations/20261110_160000_ticket_history.ts": {
-    "max-len": {
-      "count": 23
-    },
     "max-lines-per-function": {
       "count": 1
     }
   },
-  "apps/server/src/migrations/20261110_170000_workspace_factory.ts": {
-    "max-len": {
-      "count": 2
-    }
-  },
-  "apps/server/src/migrations/20261110_185000_templates.ts": {
-    "max-len": {
-      "count": 4
-    }
-  },
   "apps/server/src/migrations/20261111_120000_agent_sessions.ts": {
-    "max-len": {
-      "count": 13
-    },
     "max-lines-per-function": {
       "count": 1
     }
   },
   "apps/server/src/migrations/20261111_140000_usage_entries.ts": {
-    "max-len": {
-      "count": 12
-    },
     "max-lines-per-function": {
       "count": 1
     }
   },
-  "apps/server/src/migrations/20261111_150000_chat_ticket_threads.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261111_160000_chat_request_threads.ts": {
-    "max-len": {
-      "count": 2
-    }
-  },
-  "apps/server/src/migrations/20261112_100000_artifacts.ts": {
-    "max-len": {
-      "count": 6
-    }
-  },
-  "apps/server/src/migrations/20261112_110000_product_owner.ts": {
-    "max-len": {
-      "count": 5
-    }
-  },
-  "apps/server/src/migrations/20261112_130000_request_card.ts": {
-    "max-len": {
-      "count": 2
-    }
-  },
-  "apps/server/src/migrations/20261112_140000_instance_state.ts": {
-    "max-len": {
-      "count": 2
-    }
-  },
-  "apps/server/src/migrations/20261112_170000_forge_channel.ts": {
-    "max-len": {
-      "count": 5
-    }
-  },
-  "apps/server/src/migrations/20261113_100000_monitoring_connections.ts": {
-    "max-len": {
-      "count": 2
-    }
-  },
-  "apps/server/src/migrations/20261116_120000_purge_workspaces_slug.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    }
-  },
-  "apps/server/src/migrations/20261116_130000_inbox_seen.ts": {
-    "max-len": {
-      "count": 6
-    }
-  },
-  "apps/server/src/migrations/20261118_100000_stage_jobs.ts": {
-    "max-len": {
-      "count": 2
-    }
-  },
-  "apps/server/src/migrations/20261118_110000_ticket_caused_by.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
   "apps/server/src/migrations/20261119_100000_drop_legacy_engine.ts": {
-    "@typescript-eslint/no-unused-vars": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 8
-    },
     "max-lines-per-function": {
       "count": 1
     }

@@ -18,10 +18,14 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   	"path" varchar NOT NULL,
   	"products_id" integer
   );
-  ALTER TABLE "bauherren_assignments" ADD CONSTRAINT "bauherren_assignments_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "bauherren_assignments" ADD CONSTRAINT "bauherren_assignments_parent_id_fk" FOREIGN KEY ("_parent_id") REFERENCES "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "bauherren_rels" ADD CONSTRAINT "bauherren_rels_parent_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "bauherren_rels" ADD CONSTRAINT "bauherren_rels_products_fk" FOREIGN KEY ("products_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "bauherren_assignments" ADD CONSTRAINT "bauherren_assignments_workspace_id_workspaces_id_fk" FOREIGN KEY
+      ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "bauherren_assignments" ADD CONSTRAINT "bauherren_assignments_parent_id_fk" FOREIGN KEY ("_parent_id")
+      REFERENCES "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "bauherren_rels" ADD CONSTRAINT "bauherren_rels_parent_fk" FOREIGN KEY ("parent_id") REFERENCES
+      "public"."bauherren"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "bauherren_rels" ADD CONSTRAINT "bauherren_rels_products_fk" FOREIGN KEY ("products_id") REFERENCES
+      "public"."products"("id") ON DELETE cascade ON UPDATE no action;
   CREATE INDEX "bauherren_assignments_order_idx" ON "bauherren_assignments" USING btree ("_order");
   CREATE INDEX "bauherren_assignments_parent_id_idx" ON "bauherren_assignments" USING btree ("_parent_id");
   CREATE INDEX "bauherren_assignments_workspace_idx" ON "bauherren_assignments" USING btree ("workspace_id");
@@ -41,6 +45,7 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
   ALTER TABLE "bauherren" ALTER COLUMN "role" SET DATA TYPE text;
   DROP TYPE "public"."enum_bauherren_role";
   CREATE TYPE "public"."enum_bauherren_role" AS ENUM('admin', 'bauherr');
-  ALTER TABLE "bauherren" ALTER COLUMN "role" SET DATA TYPE "public"."enum_bauherren_role" USING "role"::"public"."enum_bauherren_role";
+  ALTER TABLE "bauherren" ALTER COLUMN "role" SET DATA TYPE "public"."enum_bauherren_role" USING
+      "role"::"public"."enum_bauherren_role";
   ALTER TABLE "bauherren" ALTER COLUMN "role" SET DEFAULT 'bauherr';`)
 }
