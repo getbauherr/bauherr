@@ -1,4 +1,5 @@
 import type { Payload } from 'payload'
+import { runEffects, type ForgePort } from './effects'
 import type { AppEvent, Stage } from './events'
 import { fingerprint, fold, foldOptions, next, type Config, type State, type Step } from './lifecycle'
 import type { RecordSource } from './record/schema'
@@ -27,6 +28,7 @@ export type AdvanceDeps = {
   now: Date
   merge: MergeFn
   mayStart?: MayStartFn
+  forge?: ForgePort
 }
 
 type Ctx = { deps: AdvanceDeps; stored: StoredRecord; state: State; seq: number }
@@ -55,6 +57,9 @@ const raised = (ctx: Ctx, card: Raised | null, seq: number): StoredCard | null =
 
 const project = async (ctx: Ctx, waitingOn: WaitingOn, card: Raised | null, stage: Stage = ctx.state.stage) => {
   await setProjection(ctx.deps.payload, ctx.stored.id, { stage, waitingOn })
+  if (stage !== ctx.stored.stage && ctx.state.brief === 'approved') {
+    await runEffects(ctx.deps, ctx.stored.id, [{ kind: 'status' }])
+  }
   await setCard(ctx.deps.payload, ctx.stored.id, raised(ctx, card, ctx.seq))
 }
 

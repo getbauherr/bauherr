@@ -47,10 +47,14 @@ export const mergeVia =
     return { sha: mergeSha }
   }
 
-export const engineDeps = (payload: Payload): AdvanceDeps => ({
-  payload,
-  now: new Date(),
-  configFor: (recordId) => lifecycleConfig(payload, recordId),
-  merge: mergeVia(payload, createWriter(payload)),
-  mayStart: pacing(payload),
-})
+export const engineDeps = (payload: Payload): AdvanceDeps => {
+  const writer = createWriter(payload)
+  return {
+    payload,
+    now: new Date(),
+    configFor: (recordId) => lifecycleConfig(payload, recordId),
+    merge: mergeVia(payload, writer),
+    mayStart: pacing(payload),
+    forge: writer,
+  }
+}
