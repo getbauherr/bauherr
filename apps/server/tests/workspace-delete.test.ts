@@ -1,15 +1,18 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
+import type { Person } from '../src/app/(app)/lib/session'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { z } from 'zod'
+import { personOf } from './helpers/person'
+import { anyRow, queryRows } from './helpers/query-rows'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-type Doc = Record<string, any>
 let payload: Payload
 let del: typeof import('../src/lib/workspace-delete')
 let wsA: number
 let wsB: number
-let admin: Doc
-let member: Doc
+let admin: Person
+let member: Person
 const o = { overrideAccess: true } as const
 
 let testDb: TestDb
@@ -31,16 +34,20 @@ beforeAll(async () => {
   }
   wsA = (await seed('alpha')).workspace
   wsB = (await seed('beta')).workspace
-  admin = await payload.create({
-    collection: 'bauherren',
-    data: { email: 'a@x.io', password: 'pw-123456', role: 'admin', tenants: [{ tenant: wsA }, { tenant: wsB }] },
-    ...o,
-  })
-  member = await payload.create({
-    collection: 'bauherren',
-    data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: wsA }, { tenant: wsB }] },
-    ...o,
-  })
+  admin = personOf(
+    await payload.create({
+      collection: 'bauherren',
+      data: { email: 'a@x.io', password: 'pw-123456', role: 'admin', tenants: [{ tenant: wsA }, { tenant: wsB }] },
+      ...o,
+    }),
+  )
+  member = personOf(
+    await payload.create({
+      collection: 'bauherren',
+      data: { email: 'm@x.io', password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: wsA }, { tenant: wsB }] },
+      ...o,
+    }),
+  )
 })
 
 afterAll(async () => {
@@ -50,7 +57,8 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-const rows = async (q: ReturnType<typeof sql>) => (await payload.db.drizzle.execute(q)).rows as Doc[]
+const rows = (q: ReturnType<typeof sql>) => queryRows(payload, anyRow, q)
+const dateOf = (v: unknown) => z.coerce.date().parse(v).toISOString()
 
 it('archive refuses a non-Admin and refuses the last live Workspace', async () => {
   await expect(del.archiveWorkspace(payload, member, wsB)).rejects.toThrow('Only an Admin')
@@ -71,7 +79,7 @@ it('archive stops the Workspace at once', async () => {
         "last_seen_at") VALUES (${wsB}, 'ses_x', ${member.id}, 'engineer', now(), now()) RETURNING "id"`,
     )
   )[0]
-  expect(((await payload.findByID({ collection: 'workspaces', id: wsB, ...o })) as Doc).gatewayKey).toBeTruthy()
+  expect((await payload.findByID({ collection: 'workspaces', id: wsB, ...o })).gatewayKey).toBeTruthy()
 
   const deleted: string[] = []
   process.env.GATEWAY_ADMIN_URL = 'http://gw.test'
@@ -91,8 +99,8 @@ it('archive stops the Workspace at once', async () => {
 
   expect(deleted.map((u) => u.split('/').pop()).sort()).toEqual(['workspace-beta', 'workspace-beta-session'])
   const ws = (await rows(sql`SELECT * FROM "workspaces" WHERE "id" = ${wsB}`))[0]
-  expect(new Date(ws.archived_at).toISOString()).toBe('2026-11-13T10:00:00.000Z')
-  expect(new Date(ws.purge_at).toISOString()).toBe('2026-11-27T10:00:00.000Z')
+  expect(dateOf(ws.archived_at)).toBe('2026-11-13T10:00:00.000Z')
+  expect(dateOf(ws.purge_at)).toBe('2026-11-27T10:00:00.000Z')
   expect(ws.gateway_key).toBeNull()
   expect(
     (await rows(sql`SELECT "disconnected_at" FROM "agent_sessions" WHERE "id" = ${session.id}`))[0].disconnected_at,
@@ -108,8 +116,8 @@ it('archive stops the Workspace at once', async () => {
 
 it('an archived Workspace is hidden from workspacesOf', async () => {
   const { workspacesOf } = await import('../src/app/(app)/lib/session')
-  expect((await workspacesOf(admin as never)).map((w) => w.id)).toEqual([wsA])
-  expect((await workspacesOf(member as never)).map((w) => w.id)).toEqual([wsA])
+  expect((await workspacesOf(admin)).map((w) => w.id)).toEqual([wsA])
+  expect((await workspacesOf(member)).map((w) => w.id)).toEqual([wsA])
   expect(await del.isArchived(payload, wsB)).toBe(true)
   expect(await del.isArchived(payload, wsA)).toBe(false)
 })
@@ -128,5 +136,5 @@ it('restore works before purgeAt, clears both fields and writes workspace:restor
   expect(touches).toHaveLength(1)
   expect(touches[0]).toMatchObject({ workspace_id: wsB, actor: 'a@x.io', detail: { id: wsB, slug: 'beta' } })
   const { workspacesOf } = await import('../src/app/(app)/lib/session')
-  expect((await workspacesOf(admin as never)).map((w) => w.id).sort()).toEqual([wsA, wsB].sort())
+  expect((await workspacesOf(admin)).map((w) => w.id).sort()).toEqual([wsA, wsB].sort())
 })

@@ -1,11 +1,17 @@
 import { generateKeyPairSync } from 'node:crypto'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { z } from 'zod'
+import type { Bauherr } from '../src/app/(app)/lib/session'
 import { connectionInput } from '../src/lib/connection'
 import { assertAnotherAdmin, assertInWorkspace, blockedBy } from '../src/lib/settings-guards'
+import { bauherrOf } from './helpers/person'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+
+const lockState = z.object({ lockUntil: z.string().nullish(), loginAttempts: z.number().optional() })
+const tenantsOf = z.object({ tenants: z.array(z.object({ tenant: z.number() })) })
 
 let payload: Payload
 const o = { overrideAccess: true } as const
@@ -148,31 +154,27 @@ it(
       data: { lockUntil: new Date(Date.now() + 600_000).toISOString(), loginAttempts: 5 },
       ...o,
     })
-    const as = async (user: typeof admin) => {
+    const as = async (user: Bauherr) => {
       const session = await import('../src/app/(app)/lib/session')
-      vi.spyOn(session, 'currentWorkspace').mockResolvedValue({ user, workspaces: [], workspace: null } as never)
+      vi.spyOn(session, 'currentWorkspace').mockResolvedValue({ user, workspaces: [], workspace: null })
     }
     const form = (f: Record<string, string>) =>
       Object.entries(f).reduce((fd, [k, v]) => (fd.set(k, v), fd), new FormData())
 
     const { loadBauherren } = await import('../src/app/(app)/lib/settings')
-    const listed = await loadBauherren(admin as never, null)
+    const listed = await loadBauherren(bauherrOf(admin), null)
     expect(listed.find((b) => b.id === locked.id)?.locked).toBe(true)
     expect(listed.find((b) => b.id === member.id)?.locked).toBe(false)
 
-    await as(member)
+    await as(bauherrOf(member))
     expect((await actions.unlockBauherr({}, form({ id: String(locked.id) }))).error).toBeTruthy()
     expect((await actions.createWorkspace({}, form({ name: 'Nope' }))).error).toBeTruthy()
 
-    await as(admin)
+    await as(bauherrOf(admin))
     expect((await actions.unlockBauherr({}, form({ id: String(locked.id) }))).saved).toBe(true)
-    const after = (await payload.findByID({
-      collection: 'bauherren',
-      id: locked.id,
-      depth: 0,
-      showHiddenFields: true,
-      ...o,
-    })) as unknown as { lockUntil?: string | null; loginAttempts?: number }
+    const after = lockState.parse(
+      await payload.findByID({ collection: 'bauherren', id: locked.id, depth: 0, showHiddenFields: true, ...o }),
+    )
     expect(after.lockUntil ?? null).toBeNull()
     expect(after.loginAttempts).toBe(0)
 
@@ -181,9 +183,7 @@ it(
       await payload.find({ collection: 'workspaces', where: { slug: { equals: 'second-workspace' } }, depth: 0, ...o })
     ).docs[0]
     expect(ws).toBeTruthy()
-    const me = (await payload.findByID({ collection: 'bauherren', id: admin.id, depth: 0, ...o })) as unknown as {
-      tenants: { tenant: number }[]
-    }
+    const me = tenantsOf.parse(await payload.findByID({ collection: 'bauherren', id: admin.id, depth: 0, ...o }))
     expect(me.tenants.map((t) => t.tenant)).toContain(ws.id)
     expect((await actions.createWorkspace({}, form({ name: 'Again', slug: 'second-workspace' }))).error).toBeTruthy()
   },

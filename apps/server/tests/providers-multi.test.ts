@@ -4,6 +4,8 @@ import { join } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { z } from 'zod'
+import { migrationUp } from './helpers/migration-db'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 const renderFail = vi.hoisted(() => ({ on: false }))
@@ -27,11 +29,8 @@ const conn = (workspace: number, provider: string, extra: object = {}) =>
   })
 const ws = async (slug: string) =>
   (await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id as number
-const reload = (id: number) =>
-  payload.findByID({ collection: 'workspaces', id, ...o }) as unknown as Promise<{
-    modelByTier: Record<string, string>
-    budgetUnit: string
-  }>
+const reloaded = z.object({ modelByTier: z.record(z.string(), z.string()), budgetUnit: z.string() })
+const reload = async (id: number) => reloaded.parse(await payload.findByID({ collection: 'workspaces', id, ...o }))
 
 let testDb: TestDb
 beforeAll(async () => {
@@ -127,26 +126,26 @@ it('budget unit is tokens while any Connection has no USD catalog, usd again whe
 it('the migration backfills slugs and prefixes tiers, and running it again changes nothing', async () => {
   const w = await ws('mig')
   const [a, b] = [await conn(w, 'anthropic'), await conn(w, 'anthropic')]
-  const db = (payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> } }).drizzle
+  const db = payload.db.drizzle
   await db.execute(sql`UPDATE connections SET slug = NULL WHERE workspace_id = ${w}`)
   await db.execute(
     sql`UPDATE workspaces SET model_by_tier =
       '{"cheap":"claude-haiku-5-5","standard":"x/y","strong":"claude-opus-5-5"}'::jsonb WHERE id = ${w}`,
   )
-  const { up } = await import('../src/migrations/20261102_150144_connection_slugs')
+  const up = migrationUp(await import('../src/migrations/20261102_150144_connection_slugs'))
   const state = async () => ({
     slugs: (
       await payload.find({ collection: 'connections', where: { workspace: { equals: w } }, sort: 'id', ...o })
-    ).docs.map((c) => c.slug),
+    ).docs.map((c) => z.string().parse(c.slug)),
     tiers: (await reload(w)).modelByTier,
   })
-  await up({ db, payload, req: {} } as never)
+  await up({ db, payload, req: {} })
   const first = await state()
   expect(first).toEqual({
     slugs: ['anthropic', 'anthropic-2'],
     tiers: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/x/y', strong: 'anthropic/claude-opus-5-5' },
   })
-  await up({ db, payload, req: {} } as never)
+  await up({ db, payload, req: {} })
   expect(await state()).toEqual(first)
   expect([a.id, b.id]).toHaveLength(2)
 })
@@ -194,10 +193,10 @@ it('concurrent creates cannot share a slug', async () => {
 it('the migration fills missing tiers for a Workspace with exactly one Connection', async () => {
   const w = await ws('mig-fill')
   await conn(w, 'anthropic')
-  const db = (payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> } }).drizzle
+  const db = payload.db.drizzle
   await db.execute(sql`UPDATE workspaces SET model_by_tier = '{"cheap":"claude-haiku-5-5"}'::jsonb WHERE id = ${w}`)
-  const { up } = await import('../src/migrations/20261102_150144_connection_slugs')
-  await up({ db, payload, req: {} } as never)
+  const up = migrationUp(await import('../src/migrations/20261102_150144_connection_slugs'))
+  await up({ db, payload, req: {} })
   expect((await reload(w)).modelByTier).toEqual({
     cheap: 'anthropic/claude-haiku-5-5',
     standard: 'anthropic/claude-sonnet-5-5',
@@ -211,10 +210,7 @@ it(
   async () => {
     const w = await ws('mig-rollback')
     await conn(w, 'anthropic')
-    const q = (s: ReturnType<typeof sql>) =>
-      (
-        payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<{ rows: Record<string, unknown>[] }> } }
-      ).drizzle.execute(s)
+    const q = (s: ReturnType<typeof sql>) => payload.db.drizzle.execute(s)
     await q(sql`DROP INDEX IF EXISTS "workspace_slug_idx"`)
     await q(sql`ALTER TABLE connections DROP COLUMN slug`)
     const cfgPath = join(dir, 'config.yaml')
@@ -223,11 +219,11 @@ it(
     vi.stubGlobal('fetch', async () => ({ ok: true, json: async () => ({ resources: [] }) }))
     process.env.GATEWAY_ADMIN_URL = 'http://gw.invalid'
     renderFail.on = true
-    const { up } = await import('../src/migrations/20261102_150144_connection_slugs')
+    const up = migrationUp(await import('../src/migrations/20261102_150144_connection_slugs'))
     const txId = (await payload.db.beginTransaction()) as string
     try {
-      const db = (payload.db as unknown as { sessions: Record<string, { db: never }> }).sessions[txId].db
-      await up({ db, payload, req: { payload, transactionID: txId } } as never)
+      const db = payload.db.sessions![txId].db
+      await up({ db, payload, req: { payload, transactionID: txId } })
       await payload.db.commitTransaction(txId)
     } finally {
       renderFail.on = false

@@ -2,9 +2,13 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import pg from 'pg'
-import type { Payload, PayloadRequest } from 'payload'
+import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { z } from 'zod'
+import { localReq } from './helpers/local-req'
 import { createTestDb, type TestDb } from './helpers/test-db'
+
+const thrown = z.object({ message: z.string(), data: z.unknown() })
 
 let payload: Payload
 const o = { overrideAccess: true } as const
@@ -49,10 +53,13 @@ it(
       JSON.stringify({ accessKeyId: '', secretAccessKey: 'b' }),
       iam({ sessionToken: 5 }),
     ]) {
-      const err = await conn(workspace, { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret }).catch((e) => e)
+      const err = await conn(workspace, { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret }).catch(
+        (e: unknown) => e,
+      )
       expect(err).toBeInstanceOf(Error)
-      expect(JSON.stringify([err.message, err.data])).not.toContain('AKIARAWKEY')
-      expect(JSON.stringify([err.message, err.data])).not.toContain('s3cr3t')
+      const shown = JSON.stringify([thrown.parse(err).message, thrown.parse(err).data])
+      expect(shown).not.toContain('AKIARAWKEY')
+      expect(shown).not.toContain('s3cr3t')
     }
     await expect(
       conn(workspace, { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret: iam({ sessionToken: 'tok' }) }),
@@ -70,7 +77,7 @@ it('renderModels skips a Connection with a corrupt stored secret and still rende
     secret: iam({ accessKeyId: 'AKIAGOOD' }),
   })
   await payload.update({ collection: 'connections', id: bad.id, data: { secret: encrypt(RAW) }, ...o })
-  await renderModels({ payload } as unknown as PayloadRequest)
+  await renderModels(await localReq(payload))
   const out = readFileSync(join(dir, 'config.yaml'), 'utf8')
   expect(out).toContain('ws-good/bedrock-iam/*')
   expect(out).toContain('AKIAGOOD')
@@ -147,6 +154,6 @@ it('renderModels replaces a stale config.yaml.tmp so the 0600 mode always applie
   const tmp = join(dir, 'config.yaml.tmp')
   writeFileSync(tmp, 'stale')
   chmodSync(tmp, 0o644)
-  await renderModels({ payload } as unknown as PayloadRequest)
+  await renderModels(await localReq(payload))
   expect(statSync(join(dir, 'config.yaml')).mode & 0o777).toBe(0o600)
 })

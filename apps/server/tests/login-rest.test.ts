@@ -1,11 +1,16 @@
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let testDb: TestDb
 let POST: (req: Request, ctx: { params: Promise<{ slug: string[] }> }) => Promise<Response>
 const o = { overrideAccess: true } as const
+const errorBody = z.object({ errors: z.array(z.object({ message: z.string() })) })
+const signedIn = z.object({ user: z.object({ email: z.string() }) })
+const tokenBody = z.object({ token: z.string() })
+const firstError = async (r: Response) => errorBody.parse(await r.json()).errors[0].message
 const generic = 'The email or password provided is incorrect.'
 
 beforeAll(async () => {
@@ -44,10 +49,13 @@ it('REST sign-in answers like Payload and 2 parallel sign-ins keep both sessions
   expect(res.map((r) => r.status)).toEqual([200, 200])
   for (const r of res) {
     expect(r.headers.get('set-cookie')).toMatch(/^payload-token=/)
-    const body = await r.json()
-    expect(body).toMatchObject({ message: 'Authentication Passed', user: { email }, exp: expect.any(Number) })
-    const { user } = await payload.auth({ headers: new Headers({ Authorization: `JWT ${body.token}` }) })
-    expect(user?.email).toBe(email)
+    const body: unknown = await r.json()
+    const anyNumber: unknown = expect.any(Number)
+    expect(body).toMatchObject({ message: 'Authentication Passed', user: { email }, exp: anyNumber })
+    const auth: unknown = await payload.auth({
+      headers: new Headers({ Authorization: `JWT ${tokenBody.parse(body).token}` }),
+    })
+    expect(signedIn.parse(auth).user.email).toBe(email)
   }
   expect((await payload.findByID({ collection: 'bauherren', id, ...o })).sessions).toHaveLength(2)
 }, 20_000)
@@ -58,7 +66,7 @@ it('6 parallel REST sign-ins of one account: at least one 429 with the generic m
   const res = await Promise.all(Array.from({ length: 12 }, () => login(email)))
   const refused = res.filter((r) => r.status === 429)
   expect(refused.length).toBeGreaterThan(0)
-  expect((await refused[0].json()).errors[0].message).toBe(generic)
+  expect(await firstError(refused[0])).toBe(generic)
   expect(res.every((r) => [200, 429].includes(r.status))).toBe(true)
 }, 20_000)
 
@@ -67,7 +75,7 @@ it("a wrong password is 401 with Payload's message", async () => {
   await account(email)
   const res = await login(email, 'nope')
   expect(res.status).toBe(401)
-  expect((await res.json()).errors[0].message).toBe(generic)
+  expect(await firstError(res)).toBe(generic)
 })
 
 it(
@@ -80,7 +88,7 @@ it(
       expect((await login(`nobody-${i}@x.io`, 'nope', '203.0.113.7')).status).toBe(401)
     const refused = await login(email, 'pw-123456', '203.0.113.7')
     expect(refused.status).toBe(429)
-    expect((await refused.json()).errors[0].message).toBe(generic)
+    expect(await firstError(refused)).toBe(generic)
     expect((await login(email, 'pw-123456', '203.0.113.8')).status).toBe(200)
   },
   20_000,

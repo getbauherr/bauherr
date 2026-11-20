@@ -3,8 +3,34 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { parse, stringify } from 'yaml'
+import { z } from 'zod'
 import { PRESETS, type Preset } from '../src/lib/providers'
 import { buildConfig } from './helpers/gateway-config'
+
+const modelNames = z.array(z.object({ name: z.string() }))
+const gatewayModels = z.array(
+  z.object({
+    name: z.string(),
+    authorization: z.unknown().optional(),
+    requestHeaders: z.object({ remove: z.array(z.string()) }),
+  }),
+)
+const managedConfig = z.object({
+  config: z.object({ modelCatalog: z.array(z.object({ file: z.string() })) }),
+  frontendPolicies: z.object({
+    accessLog: z.object({ database: z.object({ add: z.record(z.string(), z.string()) }) }),
+  }),
+  llm: z.object({
+    policies: z.object({ apiKey: z.object({ location: z.object({ expression: z.string() }) }) }),
+    models: z.array(
+      z.object({
+        name: z.string(),
+        transformation: z.unknown().optional(),
+        requestHeaders: z.object({ remove: z.array(z.string()) }).optional(),
+      }),
+    ),
+  }),
+})
 
 it('the template with one entry per preset and both budget units is a structurally valid gateway config', () => {
   const dir = mkdtempSync(join(tmpdir(), 'agw-'))
@@ -12,12 +38,11 @@ it('the template with one entry per preset and both budget units is a structural
   const text = stringify(cfg)
   expect(parse(text)).toEqual(cfg)
   expect(text).not.toMatch(/__[A-Z_]+__/)
-  const models: { name: string }[] = cfg.llm.models
-  const names = models.map((m) => m.name)
+  const names = modelNames.parse(cfg.llm.models).map((m) => m.name)
   expect(new Set(names).size).toBe(names.length)
   expect(names.filter((n) => n.startsWith('ws-'))).toHaveLength(Object.keys(PRESETS).length + 2)
   for (const k of cfg.llm.policies.apiKey.keys) {
-    for (const pat of k.allowedModels as string[])
+    for (const pat of k.allowedModels)
       expect(
         names.some((n) => n.startsWith(pat.replace(/\*$/, ''))),
         pat,
@@ -102,7 +127,7 @@ it(
       client: 'coalesce(request.headers["x-bauherr-client"], request.headers["user-agent"])',
     })
     expect(cfg.frontendPolicies.accessLog.database.llm).toBe('metadata')
-    const models = cfg.llm.models as { name: string; authorization?: unknown; requestHeaders: { remove: string[] } }[]
+    const models = gatewayModels.parse(cfg.llm.models)
     expect(models.map((m) => m.name).filter((n) => !n.startsWith('ws-'))).toEqual(['sub/*', 'claude-*'])
     for (const m of models)
       expect(m.requestHeaders.remove, m.name).toEqual(
@@ -118,7 +143,7 @@ it(
 
 it('ensureManaged brings an older config up to date, adds claude-* once and lists every catalog file', async () => {
   const { ensureManaged, KEY_LOCATION } = await import('../src/lib/gateway')
-  const cfg = {
+  const cfg: Record<string, unknown> = {
     config: { modelCatalog: [{ file: '/gateway/catalogs/anthropic.json' }] },
     frontendPolicies: {
       accessLog: { database: { llm: 'metadata', add: { run: 'request.headers["x-bauherr-run"]' } } },
@@ -142,16 +167,14 @@ it('ensureManaged brings an older config up to date, adds claude-* once and list
         { name: 'ws-a/anthropic/*', provider: 'anthropic' },
       ],
     },
-  } as Record<string, any>
+  }
   expect(ensureManaged(cfg, ['anthropic.json', 'base-costs.json'])).toBe(true)
-  expect(Object.keys(cfg.frontendPolicies.accessLog.database.add)).toEqual(['run', 'session', 'role', 'client'])
-  expect(cfg.llm.policies.apiKey.location.expression).toBe(KEY_LOCATION)
-  expect(cfg.llm.models.map((m: { name: string }) => m.name)).toEqual(['sub/*', 'claude-*', 'ws-a/anthropic/*'])
-  expect(cfg.llm.models[1].transformation).toBeUndefined()
-  expect(cfg.llm.models[1].requestHeaders.remove).toEqual(['x-agw-key', 'x-api-key', 'x-goog-api-key'])
-  expect(cfg.config.modelCatalog.map((c: { file: string }) => c.file.split('/').pop())).toEqual([
-    'anthropic.json',
-    'base-costs.json',
-  ])
+  const managed = managedConfig.parse(cfg)
+  expect(Object.keys(managed.frontendPolicies.accessLog.database.add)).toEqual(['run', 'session', 'role', 'client'])
+  expect(managed.llm.policies.apiKey.location.expression).toBe(KEY_LOCATION)
+  expect(managed.llm.models.map((m) => m.name)).toEqual(['sub/*', 'claude-*', 'ws-a/anthropic/*'])
+  expect(managed.llm.models[1].transformation).toBeUndefined()
+  expect(managed.llm.models[1].requestHeaders?.remove).toEqual(['x-agw-key', 'x-api-key', 'x-goog-api-key'])
+  expect(managed.config.modelCatalog.map((c) => c.file.split('/').pop())).toEqual(['anthropic.json', 'base-costs.json'])
   expect(ensureManaged(cfg, ['anthropic.json', 'base-costs.json'])).toBe(false)
 })

@@ -1,6 +1,7 @@
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse, stringify } from 'yaml'
+import { z } from 'zod'
 import { PRESETS, type Preset } from '../../src/lib/providers'
 
 const FULL = {
@@ -27,8 +28,35 @@ const tmpl = readFileSync(join(root, 'deploy/gateway/config.yaml.tmpl'), 'utf8')
 
 export const AGW_IMAGE = readFileSync(join(root, 'compose.yaml'), 'utf8').match(/cr\.agentgateway\.dev\/[^\s"]+/)![0]
 
-export function buildConfig(dir: string): Record<string, any> {
-  const cfg = parse(tmpl.replace('__GATEWAY_DATABASE_URL__', 'postgres://u:p@db:5432/gw'))
+const budget = z.looseObject({
+  limit: z.looseObject({ unit: z.string(), amount: z.number() }),
+  onBudgetExceeded: z.string(),
+})
+
+const apiKey = z.looseObject({ allowedModels: z.array(z.string()), budgets: z.array(budget) })
+
+const gatewayConfig = z.looseObject({
+  config: z.looseObject({ modelCatalog: z.array(z.unknown()) }),
+  frontendPolicies: z.looseObject({
+    accessLog: z.looseObject({
+      database: z.looseObject({ llm: z.string(), add: z.record(z.string(), z.string()) }),
+    }),
+  }),
+  llm: z.looseObject({
+    models: z.array(z.record(z.string(), z.unknown())),
+    policies: z.looseObject({
+      apiKey: z.looseObject({
+        keys: z.array(apiKey),
+        location: z.looseObject({ expression: z.string() }),
+      }),
+    }),
+  }),
+})
+
+export type GatewayConfig = z.infer<typeof gatewayConfig>
+
+export function buildConfig(dir: string): GatewayConfig {
+  const cfg = gatewayConfig.parse(parse(tmpl.replace('__GATEWAY_DATABASE_URL__', 'postgres://u:p@db:5432/gw')))
   cfg.config.modelCatalog = []
   for (const p of Object.keys(PRESETS) as Preset[]) {
     const file = `${p}.${PRESETS[p].secret.ext}`

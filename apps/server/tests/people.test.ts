@@ -1,8 +1,15 @@
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { roleFrom, syncFrom } from '../src/lib/oidc'
 import { assignmentOf, assignmentWords, isBauherr, isProductOwner, resyncRole } from '../src/lib/people'
 import { createTestDb, type TestDb } from './helpers/test-db'
+
+const account = z.looseObject({
+  role: z.string(),
+  tenants: z.array(z.looseObject({ tenant: z.number() })),
+  assignments: z.array(z.looseObject({ scope: z.string(), products: z.array(z.number()) })),
+})
 
 const owner = (assignments: unknown[]) => ({ role: 'product-owner', assignments })
 
@@ -74,8 +81,8 @@ describe('account hooks', () => {
   let b1: number
   const mk = (email: string, data: Record<string, unknown>) =>
     payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', ...data }, ...o })
-  const get = (id: number | string) =>
-    payload.findByID({ collection: 'bauherren', id, ...o }) as Promise<Record<string, any>>
+  const get = async (id: number | string) =>
+    account.parse(await payload.findByID({ collection: 'bauherren', id, ...o }))
 
   beforeAll(async () => {
     testDb = await createTestDb('people')
@@ -120,7 +127,7 @@ describe('account hooks', () => {
       tenants: [{ tenant: b }],
       assignments: [{ workspace: a, scope: 'products', products: [a1] }],
     })
-    expect((await get(u.id)).tenants.map((t: { tenant: number }) => t.tenant)).toEqual([a])
+    expect((await get(u.id)).tenants.map((t) => t.tenant)).toEqual([a])
     await payload.update({
       collection: 'bauherren',
       id: u.id,
@@ -133,8 +140,8 @@ describe('account hooks', () => {
       ...o,
     })
     const after = await get(u.id)
-    expect(after.tenants.map((t: { tenant: number }) => t.tenant)).toEqual([a, b])
-    expect(after.assignments.map((r: { scope: string; products: number[] }) => [r.scope, r.products])).toEqual([
+    expect(after.tenants.map((t) => t.tenant)).toEqual([a, b])
+    expect(after.assignments.map((r) => [r.scope, r.products])).toEqual([
       ['workspace', []],
       ['products', [b1]],
     ])
@@ -144,7 +151,7 @@ describe('account hooks', () => {
       data: { tenants: [{ tenant: a }, { tenant: b }, { tenant: a }] },
       ...o,
     })
-    expect((await get(u.id)).tenants.map((t: { tenant: number }) => t.tenant)).toEqual([a, b])
+    expect((await get(u.id)).tenants.map((t) => t.tenant)).toEqual([a, b])
   })
 
   it('a new SSO product owner has no assignment and so no Workspace', async () => {

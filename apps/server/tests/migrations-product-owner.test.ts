@@ -1,29 +1,28 @@
-import { postgresAdapter, sql } from '@payloadcms/db-postgres'
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
-import { createTestDb, type TestDb } from './helpers/test-db'
+import { z } from 'zod'
+import { bootBlankPayload, forPayload, runSql, type MigrationDb } from './helpers/migration-db'
 
+let db: MigrationDb
 let payload: Payload
-let testDb: TestDb
-const run = (q: ReturnType<typeof sql>) => (payload.db as any).drizzle.execute(q)
+const run = (q: ReturnType<typeof sql>) => runSql(payload, q)
+const resultRows = async (q: ReturnType<typeof sql>) =>
+  z.array(z.record(z.string(), z.unknown())).parse((await run(q)).rows)
+const countOf = async (q: ReturnType<typeof sql>) => z.number().parse((await resultRows(q))[0].n)
+const roleRange = async () =>
+  z.string().parse((await resultRows(sql`SELECT enum_range(NULL::enum_bauherren_role)::text AS r`))[0].r)
 
 const NAME = '20261112_110000_product_owner'
 
 beforeAll(async () => {
-  testDb = await createTestDb('migrations_product_owner', undefined, { blank: true })
-  process.env.DATABASE_URL = testDb.url
-  process.env.PAYLOAD_SECRET ??= 'test-secret'
-  process.env.ENCRYPTION_KEY ??= 'test-key'
-  const { getPayload } = await import('payload')
-  const config = await (await import('../src/payload.config')).default
-  payload = await getPayload({
-    config: { ...config, db: postgresAdapter({ pool: { connectionString: testDb.url }, push: false }) as never },
-  })
+  db = await bootBlankPayload('migrations_product_owner')
+  payload = db.payload
 }, 120_000)
 
 afterAll(async () => {
   await payload?.destroy()
-  await testDb?.drop(payload)
+  await db?.testDb?.drop(payload)
 })
 
 it(
@@ -33,14 +32,12 @@ it(
     const { migrations } = await import('../src/migrations')
     const i = migrations.findIndex((m) => m.name === NAME)
     expect(i).toBeGreaterThan(0)
-    await payload.db.migrate({ migrations: migrations.slice(0, i) as never })
-    expect((await run(sql`SELECT enum_range(NULL::enum_bauherren_role)::text AS r`)).rows[0].r).toBe('{admin,bauherr}')
+    await payload.db.migrate({ migrations: migrations.slice(0, i).map(forPayload) })
+    expect(await roleRange()).toBe('{admin,bauherr}')
     await run(sql`INSERT INTO workspaces (name, slug) VALUES ('W', 'w')`)
 
-    await payload.db.migrate({ migrations: migrations.slice(i) as never })
-    expect((await run(sql`SELECT enum_range(NULL::enum_bauherren_role)::text AS r`)).rows[0].r).toBe(
-      '{admin,bauherr,product-owner}',
-    )
+    await payload.db.migrate({ migrations: migrations.slice(i).map(forPayload) })
+    expect(await roleRange()).toBe('{admin,bauherr,product-owner}')
     const o = { overrideAccess: true } as const
     const ws = (await payload.find({ collection: 'workspaces', limit: 1, ...o })).docs[0].id
     const product = await payload.create({
@@ -68,24 +65,17 @@ it(
       assignments: [{ workspace: ws, scope: 'products', products: [product.id] }],
       tenants: [{ tenant: ws }],
     })
-    expect(
-      (await run(sql`SELECT count(*)::int AS n FROM bauherren_rels WHERE products_id = ${product.id}`)).rows[0].n,
-    ).toBe(1)
+    expect(await countOf(sql`SELECT count(*)::int AS n FROM bauherren_rels WHERE products_id = ${product.id}`)).toBe(1)
 
-    await (
-      await import('../src/migrations/20261112_110000_product_owner')
-    ).down({ db: (payload.db as any).drizzle } as never)
-    expect((await run(sql`SELECT enum_range(NULL::enum_bauherren_role)::text AS r`)).rows[0].r).toBe('{admin,bauherr}')
+    const productOwner = await import('../src/migrations/20261112_110000_product_owner')
+    await forPayload({ name: NAME, ...productOwner }).down({ db: payload.db.drizzle, payload })
+    expect(await roleRange()).toBe('{admin,bauherr}')
+    expect((await resultRows(sql`SELECT email FROM bauherren ORDER BY id`)).map((r) => r.email)).toEqual(['a@x.io'])
     expect(
-      (await run(sql`SELECT email FROM bauherren ORDER BY id`)).rows.map((r: { email: string }) => r.email),
-    ).toEqual(['a@x.io'])
-    expect(
-      (
-        await run(
-          sql`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name IN ('bauherren_assignments',
+      await countOf(
+        sql`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name IN ('bauherren_assignments',
           'bauherren_rels')`,
-        )
-      ).rows[0].n,
+      ),
     ).toBe(0)
   },
   180_000,

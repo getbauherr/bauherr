@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest'
+import { z } from 'zod'
 import { createTestDb, type TestDb } from './helpers/test-db'
+
+const catalogMetadata = z.object({ metadata: z.object({ generatedAt: z.string() }) })
 
 let payload: Payload
 let testDb: TestDb
@@ -67,7 +70,7 @@ const answer = (body: unknown, init: ResponseInit = {}) =>
     new Response(typeof body === 'string' ? body : JSON.stringify(body), {
       status: 200,
       ...init,
-    })) as unknown as typeof fetch
+    })) as typeof fetch
 
 it(
   'the converter keeps name, text rates and understood tiers, and ' + 'drops what the pinned gateway would refuse',
@@ -149,9 +152,8 @@ it('a refresh writes the base catalog atomically, stores status and model list a
     models: 401,
     error: null,
   })
-  expect(JSON.parse(readFileSync(join(dir, 'catalogs', 'base-costs.json'), 'utf8')).metadata.generatedAt).toBe(
-    '2026-11-10T00:00:00Z',
-  )
+  const catalog = catalogMetadata.parse(JSON.parse(readFileSync(join(dir, 'catalogs', 'base-costs.json'), 'utf8')))
+  expect(catalog.metadata.generatedAt).toBe('2026-11-10T00:00:00Z')
   expect(existsSync(join(dir, 'catalogs', 'base-costs.json.tmp'))).toBe(false)
   expect(readFileSync(join(dir, 'config.yaml'), 'utf8')).toContain('base-costs.json')
   expect(await loadPriceStatus(payload)).toMatchObject({ models: 401 })
@@ -184,7 +186,7 @@ it(
       answer('{}', { status: 500 }),
       (async () => {
         throw new Error('boom')
-      }) as unknown as typeof fetch,
+      }) as typeof fetch,
     ]) {
       expect((await refreshPrices(payload, { force: true, fetcher: f }))?.error).toBeTruthy()
     }
@@ -200,7 +202,7 @@ it('an oversized answer is refused and BAUHERR_PRICES_REFRESH=0 switches the fet
   let calls = 0
   await refreshPrices(payload, {
     force: true,
-    fetcher: (async () => (calls++, new Response('{}'))) as unknown as typeof fetch,
+    fetcher: (async () => (calls++, new Response('{}'))),
   })
   expect(calls).toBe(0)
 })
