@@ -12,9 +12,10 @@ vi.mock('../src/lib/oidc', async (orig) => ({
 const o = { overrideAccess: true, depth: 0 } as const
 const iss = 'https://idp.test/realms/x'
 let payload: Payload
+const spyOnWarn = () => vi.spyOn(payload.logger, 'warn')
 let testDb: TestDb
 let GET: typeof import('../src/app/(app)/auth/oidc/callback/route').GET
-let warn: ReturnType<typeof vi.spyOn>
+let warn: ReturnType<typeof spyOnWarn>
 
 const setClaims = (sub: string, email: string, roles: string[]) =>
   (claims.current = { iss, sub, email, email_verified: true, realm_access: { roles } })
@@ -51,7 +52,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   warn?.mockRestore()
-  warn = vi.spyOn(payload.logger, 'warn')
+  warn = spyOnWarn()
 })
 
 describe('oidc callback with OIDC_BAUHERR_ROLE set', () => {

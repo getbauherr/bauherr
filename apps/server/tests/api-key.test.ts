@@ -53,6 +53,6 @@ it('rotating changes the stored key, touches only the own record, and revoking d
 })
 
 it('refuses a missing Bauherr', async () => {
-  await expect(rotateApiKey(payload, {} as never)).rejects.toThrow('signed-in Bauherr')
+  await expect(rotateApiKey(payload, {} as Parameters<typeof rotateApiKey>[1])).rejects.toThrow('signed-in Bauherr')
   await expect(revokeApiKey(payload, { id: '' })).rejects.toThrow('signed-in Bauherr')
 })

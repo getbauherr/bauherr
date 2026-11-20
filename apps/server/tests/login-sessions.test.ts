@@ -1,10 +1,13 @@
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { z } from 'zod'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
 let testDb: TestDb
 const o = { overrideAccess: true } as const
+const signedIn = z.object({ user: z.object({ email: z.string() }) })
+const sessions = z.object({ sessions: z.array(z.unknown()) })
 
 beforeAll(async () => {
   testDb = await createTestDb('login_sessions')
@@ -34,10 +37,11 @@ it('two parallel password sign-ins keep both sessions; OIDC sign-in leaves sessi
   const tokens = await Promise.all([signIn(email, 'pw-123456'), signIn(email, 'pw-123456')])
 
   for (const token of tokens) {
-    const { user } = await payload.auth({ headers: new Headers({ Authorization: `JWT ${token}` }) })
-    expect(user?.email).toBe(email)
+    const auth: unknown = await payload.auth({ headers: new Headers({ Authorization: `JWT ${token}` }) })
+    expect(signedIn.parse(auth).user.email).toBe(email)
   }
-  const sessionsOf = async () => (await payload.findByID({ collection: 'bauherren', id: created.id, ...o })).sessions
+  const sessionsOf = async () =>
+    sessions.parse(await payload.findByID({ collection: 'bauherren', id: created.id, ...o })).sessions
   const before = await sessionsOf()
   expect(before).toHaveLength(2)
 

@@ -1,5 +1,6 @@
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { personOf } from './helpers/person'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -38,7 +39,7 @@ it('a bauherr of workspace A cannot read workspace B products', async () => {
     data: { email: 'a@example.com', password: 'pw-a-12345', role: 'bauherr', tenants: [{ tenant: a.workspace }] },
     ...o,
   })
-  const user = { ...doc, collection: 'bauherren' } as never
+  const user = personOf(doc)
 
   const list = await payload.find({ collection: 'products', user, overrideAccess: false })
   expect(list.docs.map((p) => p.id)).toEqual([a.product.id])

@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 import {
   claimAt,
   emailOk,
@@ -11,6 +12,7 @@ import {
   syncFrom,
   workspaceSlugsFrom,
 } from '../src/lib/oidc'
+import { stubPayload } from './helpers/stub-payload'
 import { createTestDb, type TestDb } from './helpers/test-db'
 import {
   isLocked,
@@ -130,14 +132,17 @@ describe('session token', () => {
   })
 })
 
+const created = z.object({ id: z.number(), sessionVersion: z.number().nullish() })
+const lockState = z.object({ lockUntil: z.string().nullish() })
+
 describe('oidc strategy', () => {
   beforeAll(() => {
     process.env.PAYLOAD_SECRET = 'test-secret'
   })
   const run = (doc: object | null, v = 0) => {
     const headers = new Headers({ cookie: `${SESSION_COOKIE}=${signSession(7, v)}` })
-    const payload = { findByID: async () => (doc ? doc : Promise.reject(new Error('nf'))) }
-    return oidcStrategy.authenticate({ payload, headers } as never)
+    const findByID = vi.fn().mockImplementation(async () => (doc ? doc : Promise.reject(new Error('nf'))))
+    return oidcStrategy.authenticate({ payload: stubPayload({ findByID }), headers })
   }
   it('accepts a valid session', async () =>
     expect((await run({ id: 7, sessionVersion: 0 })).user).toMatchObject({ id: 7, _strategy: 'oidc' }))
@@ -178,7 +183,8 @@ describe('oidc strategy against the database', () => {
         data: { lockUntil: lockUntil.toISOString(), loginAttempts: 5 },
         overrideAccess: true,
       })
-    const headers = new Headers({ cookie: `${SESSION_COOKIE}=${signSession(b.id, b.sessionVersion ?? 0)}` })
+    const account = created.parse(b)
+    const headers = new Headers({ cookie: `${SESSION_COOKIE}=${signSession(account.id, account.sessionVersion ?? 0)}` })
     return { b, user: (await payload.auth({ headers })).user as Record<string, unknown> | null }
   }
   it('rejects a locked Bauherr', async () => {
@@ -190,7 +196,7 @@ describe('oidc strategy against the database', () => {
       showHiddenFields: true,
     })
     expect(user).toBeNull()
-    expect(isLocked(stored.lockUntil)).toBe(true)
+    expect(isLocked(lockState.parse(stored).lockUntil)).toBe(true)
   })
   it('accepts an expired lock', async () =>
     expect((await authFor('expired@example.com', new Date(Date.now() - day))).user).toMatchObject({

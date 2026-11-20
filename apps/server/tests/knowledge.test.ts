@@ -4,9 +4,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { FakeBackend } from '@bauherr/adapters'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-const backend = vi.hoisted(() => ({ current: null as unknown as FakeBackend }))
-vi.mock('../src/lib/adapters', () => ({ backendFor: () => backend.current }))
+let fakeBackend: FakeBackend
+vi.mock('../src/lib/adapters', () => ({ backendFor: () => fakeBackend }))
 
+const anyString: unknown = expect.any(String)
 const REPO = 'acme/knowledge'
 const o = { overrideAccess: true } as const
 let payload: Payload
@@ -16,12 +17,12 @@ let withoutRepo: number
 
 let testDb: TestDb
 beforeAll(async () => {
-  backend.current = new FakeBackend()
-  backend.current.commit(REPO, 'main', 'workspace/rules/evidence.md', '# Evidence\n\nHouse rule: giraffe proof.\n')
-  backend.current.commit(REPO, 'main', 'products/web/notes.md', '# Notes\n\nWeb only okapi note.\n')
-  backend.current.commit(REPO, 'main', 'products/api/notes.md', '# Notes\n\nApi only okapi note.\n')
-  backend.current.commit(REPO, 'main', 'handbook.md', '# Handbook\n\nokapi okapi okapi okapi\n\n## Other\n\nokapi\n')
-  backend.current.commit(REPO, 'main', 'image.png', 'okapi binary')
+  fakeBackend = new FakeBackend()
+  fakeBackend.commit(REPO, 'main', 'workspace/rules/evidence.md', '# Evidence\n\nHouse rule: giraffe proof.\n')
+  fakeBackend.commit(REPO, 'main', 'products/web/notes.md', '# Notes\n\nWeb only okapi note.\n')
+  fakeBackend.commit(REPO, 'main', 'products/api/notes.md', '# Notes\n\nApi only okapi note.\n')
+  fakeBackend.commit(REPO, 'main', 'handbook.md', '# Handbook\n\nokapi okapi okapi okapi\n\n## Other\n\nokapi\n')
+  fakeBackend.commit(REPO, 'main', 'image.png', 'okapi binary')
 
   testDb = await createTestDb('knowledge_150')
   process.env.DATABASE_URL = testDb.url
@@ -76,7 +77,7 @@ describe('search', () => {
         source: REPO,
         path: 'workspace/rules/evidence.md',
         heading: 'Evidence',
-        commit: expect.any(String),
+        commit: anyString,
       }),
     ])
     expect((await knowledge.search(payload, withRepo, 'binary')).length).toBe(0)
@@ -101,11 +102,11 @@ describe('search', () => {
 
 describe('resync', () => {
   it('re-indexes only when the default-branch commit changed', async () => {
-    const getFile = vi.spyOn(backend.current.forge, 'getFile')
+    const getFile = vi.spyOn(fakeBackend.forge, 'getFile')
     expect(await knowledge.resync(payload, withRepo)).toBe(false)
     expect(getFile).not.toHaveBeenCalled()
 
-    backend.current.commit(REPO, 'main', 'handbook.md', '# Handbook\n\nnarwhal arrives\n')
+    fakeBackend.commit(REPO, 'main', 'handbook.md', '# Handbook\n\nnarwhal arrives\n')
     expect(await knowledge.resync(payload, withRepo)).toBe(true)
     expect(getFile).toHaveBeenCalled()
     const hits = await knowledge.search(payload, withRepo, 'narwhal')
@@ -115,8 +116,8 @@ describe('resync', () => {
   })
 
   it('keeps the old index when the forge fails and drops it when the repo is unset', async () => {
-    backend.current.commit(REPO, 'main', 'extra.md', '# Extra\n\nquokka\n')
-    const fail = vi.spyOn(backend.current.forge, 'listFiles').mockRejectedValueOnce(new Error('down'))
+    fakeBackend.commit(REPO, 'main', 'extra.md', '# Extra\n\nquokka\n')
+    const fail = vi.spyOn(fakeBackend.forge, 'listFiles').mockRejectedValueOnce(new Error('down'))
     expect(await knowledge.resync(payload, withRepo)).toBe(false)
     fail.mockRestore()
     expect((await knowledge.search(payload, withRepo, 'narwhal')).length).toBe(1)
@@ -146,8 +147,8 @@ describe('repo switch, failure back-off and fencing', () => {
   }
 
   it('switching knowledgeRepo A to B drops As chunks', async () => {
-    backend.current.commit('acme/a', 'main', 'a.md', '# A\n\naardvark\n')
-    backend.current.commit('acme/b', 'main', 'b.md', '# B\n\nbonobo\n')
+    fakeBackend.commit('acme/a', 'main', 'a.md', '# A\n\naardvark\n')
+    fakeBackend.commit('acme/b', 'main', 'b.md', '# B\n\nbonobo\n')
     const w = await makeWs('switch', 'acme/a')
     await knowledge.resync(payload, w)
     expect((await knowledge.search(payload, w, 'aardvark')).length).toBe(1)
@@ -158,9 +159,9 @@ describe('repo switch, failure back-off and fencing', () => {
   })
 
   it('does not refetch a failing repo until the back-off passed', async () => {
-    backend.current.commit(OTHER, 'main', 'x.md', '# X\n\nx\n')
+    fakeBackend.commit(OTHER, 'main', 'x.md', '# X\n\nx\n')
     const w = await makeWs('backoff', OTHER)
-    const list = vi.spyOn(backend.current.forge, 'listFiles').mockRejectedValue(new Error('down'))
+    const list = vi.spyOn(fakeBackend.forge, 'listFiles').mockRejectedValue(new Error('down'))
     await knowledge.resync(payload, w)
     await knowledge.resync(payload, w)
     expect(list).toHaveBeenCalledTimes(1)
@@ -195,7 +196,7 @@ describe('Product docs', () => {
     ).map((d) => `${d.source}:${d.path}`)
 
   beforeAll(async () => {
-    const fb = backend.current
+    const fb = fakeBackend
     fb.commit('acme/pa', 'main', 'README.md', '# Pa\n\nlemur readme\n')
     fb.commit('acme/pa', 'main', 'docs/guide/setup.md', '# Setup\n\nlemur setup\n')
     fb.commit('acme/pa', 'main', 'docs/logo.png', 'lemur binary')
@@ -233,10 +234,10 @@ describe('Product docs', () => {
   })
 
   it('re-indexes on a changed commit, not on an unchanged one', async () => {
-    const getFile = vi.spyOn(backend.current.forge, 'getFile')
+    const getFile = vi.spyOn(fakeBackend.forge, 'getFile')
     expect(await knowledge.resync(payload, w)).toBe(false)
     expect(getFile).not.toHaveBeenCalled()
-    backend.current.commit('acme/pb', 'main', 'docs/new.md', '# New\n\nmeerkat novelty\n')
+    fakeBackend.commit('acme/pb', 'main', 'docs/new.md', '# New\n\nmeerkat novelty\n')
     expect(await knowledge.resync(payload, w)).toBe(true)
     expect((await knowledge.search(payload, w, 'novelty', 20, 'pb')).length).toBe(1)
     expect(getFile.mock.calls.every(([repo]) => repo === 'acme/pb')).toBe(true)
@@ -244,8 +245,8 @@ describe('Product docs', () => {
   })
 
   it('keeps the old index of a failing repo and backs off', async () => {
-    backend.current.commit('acme/pa', 'main', 'docs/more.md', '# More\n\nlemur more\n')
-    const list = vi.spyOn(backend.current.forge, 'listFiles').mockImplementation(async (repo: string) => {
+    fakeBackend.commit('acme/pa', 'main', 'docs/more.md', '# More\n\nlemur more\n')
+    const list = vi.spyOn(fakeBackend.forge, 'listFiles').mockImplementation(async (repo: string) => {
       if (repo === 'acme/pa') throw new Error('down')
       return { commit: 'x', paths: [], truncated: false }
     })
@@ -261,8 +262,8 @@ describe('Product docs', () => {
     const pb = (
       await payload.find({ collection: 'products', where: { slug: { equals: 'pb' }, workspace: { equals: w } }, ...o })
     ).docs[0]
-    for (const c of ['ticket_sources', 'repositories'] as const)
-      await payload.delete({ collection: c, where: { product: { equals: pb.id } }, ...o } as never)
+    await payload.delete({ collection: 'ticket_sources', where: { product: { equals: pb.id } }, ...o })
+    await payload.delete({ collection: 'repositories', where: { product: { equals: pb.id } }, ...o })
     await payload.delete({ collection: 'products', id: pb.id, ...o })
     expect(await knowledge.resync(payload, w)).toBe(true)
     expect((await sources()).filter((s) => s.startsWith(PB))).toEqual([])
@@ -272,7 +273,7 @@ describe('Product docs', () => {
 
 describe('Product docs sharing a repo', () => {
   it('keeps both Products chunks, and skips a Product on the Knowledge repo', async () => {
-    const fb = backend.current
+    const fb = fakeBackend
     fb.commit('acme/shared', 'main', 'README.md', '# Shared\n\nnarwhal readme\n')
     const ws = Number((await payload.create({ collection: 'workspaces', data: { name: 'sh', slug: 'sh' }, ...o })).id)
     const conn = (

@@ -11,7 +11,7 @@ const admin = async (sql: string, params: unknown[] = []) => {
   const client = new pg.Client({ connectionString: base })
   await client.connect()
   try {
-    return (await client.query(sql, params)).rows
+    return (await client.query<Record<string, unknown>>(sql, params)).rows
   } finally {
     await client.end()
   }

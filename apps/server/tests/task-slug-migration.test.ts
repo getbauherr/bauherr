@@ -89,6 +89,6 @@ it('a failing schedule is logged with the task slug', async () => {
   })
   expect(error).toHaveBeenCalledTimes(1)
   const logged: unknown = error.mock.calls[0][0]
-  expect(logged).toMatchObject({ task: task.slug })
+  expect(logged).toMatchObject({ task: z.string().parse(task.slug) })
   error.mockRestore()
 })

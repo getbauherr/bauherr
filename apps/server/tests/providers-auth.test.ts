@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Payload, PayloadRequest } from 'payload'
+import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { localReq } from './helpers/local-req'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -56,7 +57,7 @@ it('inline secret: absent from API reads, present only in a 0600 config.yaml, no
   })
   expect(JSON.stringify(read)).not.toContain('inline-s3cret')
   const { renderModels } = await import('../src/lib/gateway')
-  await renderModels({ payload } as unknown as PayloadRequest)
+  await renderModels(await localReq(payload))
   const path = join(dir, 'config.yaml')
   expect(readFileSync(path, 'utf8')).toContain('inline-s3cret')
   expect(statSync(path).mode & 0o777).toBe(0o600)
