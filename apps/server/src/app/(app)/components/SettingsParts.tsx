@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { Tone } from '../lib/product-setup'
 import { Badge } from './ui/badge'
@@ -40,15 +39,6 @@ export function RadioCards({ name, legend, value, disabled, options }: { name: s
   )
 }
 
-const callout = { ok: 'border-l-ok', warn: 'border-l-warn', muted: 'border-l-border' } as const
-const word = { ok: 'text-ok', warn: 'text-warn', muted: 'text-muted-foreground' } as const
-
-export const StatusCallout = ({ tone, lead, children }: { tone: Tone; lead: string; children: ReactNode }) => (
-  <p role="status" className={`rounded-md border border-l-2 border-border bg-card p-3 ${callout[tone]}`}>
-    <span className={`label mr-2 ${word[tone]}`}>{lead}</span>{children}
-  </p>
-)
-
 export function SettingsSection({ id, n, title, purpose, children, advanced }: { id: string; n?: number; title: string; purpose?: string; children: ReactNode; advanced?: ReactNode }) {
   return (
     <Card asChild className="scroll-mt-4 gap-4 p-4">
@@ -68,16 +58,3 @@ export function SettingsSection({ id, n, title, purpose, children, advanced }: {
     </Card>
   )
 }
-
-export const SetupChecklist = ({ rows }: { rows: { id: string; label: string; word: string; tone: Tone; href?: string }[] }) => (
-  <Card asChild className="gap-0 p-0">
-    <ul aria-label="Setup" className="list-none">
-      {rows.map((r) => (
-        <li key={r.id} className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-b-0">
-          <Link href={r.href ?? `#${r.id}`}>{r.label}</Link>
-          <StatusWord tone={r.tone}>{r.word}</StatusWord>
-        </li>
-      ))}
-    </ul>
-  </Card>
-)

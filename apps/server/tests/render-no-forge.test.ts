@@ -14,7 +14,7 @@ const rendered = [
 const FORBIDDEN = /(?<!function )\b(ticketsOf|forgeOf|sourceOf|backendFor|prOf|recentChecks|releaseDraft|deadTickets|invisibleDead|suggestOverlapIgnore|listRepos|decisionComments)\(|\.(listComments|listPullRequestFiles|listPullRequests|listChecks|listReleases|listRepositories)\(/g
 
 const ALLOWED: Record<string, { ids: string[]; why: string }> = {
-  'app/(app)/lib/settings.ts': { ids: ['forgeOf', 'backendFor', '.listChecks', '.listRepositories'], why: 'recentChecks/collectChecks run in a <Suspense> component with a 3 s timeout; listRepos is called by a server action' },
+  'app/(app)/lib/settings.ts': { ids: ['backendFor', '.listRepositories'], why: 'listRepos is called by a server action' },
 }
 
 it('no page, layout or render loader calls a forge client outside the documented allow-list', () => {

@@ -14,7 +14,6 @@ import { PRESET_FIELDS } from '../../../../lib/providers'
 import { markConnected } from '../../../../core/intake/connected'
 import { deleteProductMirror, deleteSourceMirror } from '../../../../core/mirror/store'
 import { assertAnotherAdmin, assertInWorkspace, assertNoTickets, blockedBy } from '../../../../lib/settings-guards'
-import { deployErrors } from '../../lib/product-setup'
 import { listRepos, only, presetFor, run, type FormState } from '../../lib/settings'
 import { currentWorkspace, payloadClient, workspacesOf } from '../../lib/session'
 import { OTHER_REPO, slugOf } from '../../lib/new-product'
@@ -99,20 +98,6 @@ const makeProduct = async (c: Awaited<ReturnType<typeof ctx>>, fd: FormData) => 
   return (await c.payload.create({ collection: 'products', data: { name, slug, workspace: inWorkspace(c) }, ...c.w } as never)).id as number
 }
 
-const TEXT_FIELDS = ['stagingUrl', 'deployMode', 'deployWebhookUrl', 'deployChecks', 'productionWebhookUrl', 'productionChecks'] as const
-
-export const saveDeploy = act({}, async (c, fd) => {
-  only(c.user)
-  await inWs(c, 'products', id(fd))
-  const data: Record<string, unknown> = Object.fromEntries(TEXT_FIELDS.filter((k) => fd.has(k)).map((k) => [k, s(fd, k)]))
-  if (fd.has('productionGateShown')) data.productionGate = fd.get('productionGate') === 'on'
-  const before = (await c.payload.findByID({ collection: 'products', id: id(fd), select: { stagingUrl: true, deployMode: true, deployWebhookUrl: true, productionWebhookUrl: true, productionGate: true, productionChecks: true }, depth: 0, overrideAccess: true })) as Record<string, unknown>
-  const merged = { stagingUrl: '', deployWebhookUrl: '', productionWebhookUrl: '', productionChecks: '', deployMode: 'observe-ci', productionGate: false, ...before, ...data } as Parameters<typeof deployErrors>[0]
-  const errors = Object.entries(deployErrors(merged)).filter(([path]) => path in data).map(([path, message]) => ({ path, message }))
-  if (errors.length) throw Object.assign(new Error('Deploy settings invalid.'), { data: { errors } })
-  await c.payload.update({ collection: 'products', id: id(fd), data, ...c.w } as never)
-})
-
 const makeRepository = async (c: Awaited<ReturnType<typeof ctx>>, product: number, fd: FormData) => {
   const connection = Number(s(fd, 'connection')) || undefined
   const fullName = s(fd, 'fullName')
@@ -130,7 +115,9 @@ const makeRepository = async (c: Awaited<ReturnType<typeof ctx>>, product: numbe
 export const addRepository = act({}, async (c, fd) => {
   only(c.user)
   await inWs(c, 'products', id(fd))
+  const first = !(await c.payload.count({ collection: 'ticket_sources', where: { product: { equals: id(fd) } }, overrideAccess: true })).totalDocs
   await makeRepository(c, id(fd), fd)
+  if (first && fd.get('readTickets') === 'on') redirect(`/settings/products/${id(fd)}/connect`)
 })
 
 export async function repositoriesOf(connection: number): Promise<string[] | null> {
@@ -157,7 +144,7 @@ export const createProductWithRepo = act({}, async (c, fd) => {
     await c.payload.delete({ collection: 'products', id: product, ...c.w } as never)
     throw e
   }
-  if (fd.get('open') === '1') redirect(`/settings/products/${product}?tab=deploy#staging`)
+  if (fd.get('open') === '1') redirect(`/settings/products/${product}/connect`)
 })
 
 const COLLECTIONS = ['products', 'repositories', 'ticket_sources', 'bauherren']

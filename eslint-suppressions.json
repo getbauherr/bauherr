@@ -167,10 +167,10 @@
       "count": 1
     },
     "max-len": {
-      "count": 37
+      "count": 33
     },
     "no-restricted-syntax": {
-      "count": 24
+      "count": 23
     }
   },
   "apps/server/src/app/(app)/(shell)/settings/api-key/page.tsx": {
@@ -216,14 +216,8 @@
     }
   },
   "apps/server/src/app/(app)/(shell)/settings/products/[id]/page.tsx": {
-    "complexity": {
-      "count": 1
-    },
     "max-len": {
-      "count": 15
-    },
-    "max-lines-per-function": {
-      "count": 1
+      "count": 3
     }
   },
   "apps/server/src/app/(app)/(shell)/settings/products/new/page.tsx": {
@@ -360,7 +354,7 @@
   },
   "apps/server/src/app/(app)/components/ProductForms.tsx": {
     "max-len": {
-      "count": 19
+      "count": 4
     }
   },
   "apps/server/src/app/(app)/components/SettingsConnectionForm.tsx": {
@@ -392,7 +386,7 @@
   },
   "apps/server/src/app/(app)/components/SettingsParts.tsx": {
     "max-len": {
-      "count": 9
+      "count": 7
     }
   },
   "apps/server/src/app/(app)/components/ShellHeader.tsx": {
@@ -531,11 +525,6 @@
       "count": 2
     }
   },
-  "apps/server/src/app/(app)/components/ui/tabs.tsx": {
-    "max-len": {
-      "count": 1
-    }
-  },
   "apps/server/src/app/(app)/components/ui/textarea.tsx": {
     "max-len": {
       "count": 1
@@ -577,14 +566,6 @@
       "count": 3
     }
   },
-  "apps/server/src/app/(app)/lib/product-setup.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 8
-    }
-  },
   "apps/server/src/app/(app)/lib/session.ts": {
     "max-len": {
       "count": 5
@@ -610,10 +591,10 @@
       "count": 1
     },
     "complexity": {
-      "count": 2
+      "count": 1
     },
     "max-len": {
-      "count": 36
+      "count": 30
     },
     "no-restricted-syntax": {
       "count": 26
@@ -1552,13 +1533,10 @@
   },
   "apps/server/tests/product-settings.test.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 8
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 1
+      "count": 4
     },
     "max-len": {
-      "count": 15
+      "count": 9
     }
   },
   "apps/server/tests/providers-auth.test.ts": {
