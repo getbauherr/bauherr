@@ -7,7 +7,10 @@ import { upsertItem } from '../../src/core/mirror/store'
 import { TOOLS } from '../../src/core/run/mcp/registry'
 import { openMcp, type Mcp } from './mcp-harness'
 
-vi.mock('../../src/lean', async () => ({ MODULES: (await import('./harness')).TEST_MODULES }))
+vi.mock('../../src/lean', async () => ({
+  MODULES: (await import('./harness')).TEST_MODULES,
+  skillFor: () => Promise.resolve(null),
+}))
 
 let m: Mcp
 let route: typeof import('../../src/app/mcp/route')

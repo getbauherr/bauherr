@@ -1,6 +1,7 @@
 import type { z } from 'zod'
 import { inLockedRecord, type Conn } from './conn'
 import { runEffects } from './effects'
+import type { Stage } from './events'
 import { advance, type AdvanceDeps } from './engine'
 import { fold } from './fold'
 import { gate } from './gate'
@@ -21,7 +22,8 @@ import { authorize, expire, release, type Expired } from './run/leases'
 import type { Run } from './run/schema'
 import { finishRun, markRefused, readRun } from './run/store'
 
-export type SubmitDeps = AdvanceDeps & { modules: Modules }
+export type SkillLoader = (stage: Stage) => Promise<string | null>
+export type SubmitDeps = AdvanceDeps & { modules: Modules; skills?: SkillLoader }
 export type SubmitResult = { status: 'accepted' } | { status: 'retry' | 'failed'; problems: Problem[] }
 type Accepted = { status: 'accepted'; effects: Effect[] }
 type Refused = Exclude<SubmitResult, { status: 'accepted' }>
