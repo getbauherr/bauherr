@@ -44,9 +44,11 @@ const adopt = async (deps: AdvanceDeps, candidate: AdoptionCandidate): Promise<n
 
 export const enterIssues = async (deps: AdvanceDeps): Promise<number[]> => {
   const entered: number[] = []
-  for (const candidate of await loadAdoptions(deps.payload, null)) entered.push(await adopt(deps, candidate))
+  for (const candidate of await loadAdoptions(deps.payload, null)) {
+    if (candidate.imported) entered.push(await adopt(deps, candidate))
+  }
   for (const { candidate, selection } of await classify(deps.payload, deps.now, null)) {
-    if (selection.action !== 'enter') continue
+    if (selection.action !== 'enter' || !candidate.imported) continue
     const input = {
       workspace: candidate.workspace,
       product: candidate.product,

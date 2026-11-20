@@ -145,4 +145,29 @@ describe('adopting pull requests', () => {
     await enterIssues(deps())
     expect((await look()).pullRequests).toEqual({ open: 2, closingAnIssue: 1, notClosingAnIssue: 1 })
   })
+
+  it('enters nothing of a source before its import is complete, so an issue never becomes a second fix', async () => {
+    const { repo, fake } = await setup()
+    const pull = await openPull(fake, repo, 'fix', 'Closes #1')
+    await connected()
+    let hidden = true
+    const real = readerOf(fake)
+    const reader = {
+      tickets: real.tickets,
+      forge: {
+        ...real.forge,
+        listOpenPullRequests: (repoName: string, page: number, perPage: number) =>
+          hidden ? Promise.resolve([]) : real.forge.listOpenPullRequests(repoName, page, perPage),
+      },
+    }
+    await h.sync({ [repo]: reader })
+    expect(await recordsOf(repo)).toHaveLength(0)
+    expect(await enterIssues(deps())).toEqual([])
+    hidden = false
+    await h.settle({ [repo]: reader })
+    expect(await enterIssues(deps())).toHaveLength(1)
+    const rows = await recordsOf(repo)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.data).toMatchObject({ source: { adopted: { pr: pull.number } } })
+  })
 })

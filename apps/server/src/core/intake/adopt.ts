@@ -65,6 +65,7 @@ export type AdoptionCandidate = {
   issueTrusted: boolean
   issueCreatedAt: string
   connectedAt: string | null
+  imported: boolean
 }
 
 const count = z.coerce.number()
@@ -84,6 +85,7 @@ const rowSchema = z.object({
   author_is_bot: z.boolean().nullable(),
   forge_created_at: z.coerce.date(),
   connected_at: z.coerce.date().nullable(),
+  imported: z.boolean(),
   excluded: z.array(z.string()).nullable(),
   linked: z.array(
     z.object({
@@ -130,13 +132,15 @@ const candidateOf = (row: Row, pull: AdoptablePull, issue: number): AdoptionCand
     issueTrusted: linked?.author_trusted === true,
     issueCreatedAt: linked?.created_at.toISOString() ?? pull.createdAt,
     connectedAt: pull.connectedAt,
+    imported: row.imported,
   }
 }
 
 const query = (product: number | null) => sql`
     SELECT pr."workspace_id", pr."product_id", c."kind"::text AS forge, pr."repo", pr."number", pr."head_sha",
       pr."state", pr."draft", (pr."gone_at" IS NOT NULL) AS gone, pr."author", pr."author_trusted",
-      pr."author_is_bot", pr."forge_created_at", p."connected_at", p."intake_excluded_labels" AS excluded,
+      pr."author_is_bot", pr."forge_created_at", p."connected_at", (s."imported_at" IS NOT NULL) AS imported,
+      p."intake_excluded_labels" AS excluded,
       coalesce((
         SELECT jsonb_agg(jsonb_build_object('number', i."number", 'state', i."state",
           'gone', i."gone_at" IS NOT NULL, 'labels', i."labels", 'author', i."author",

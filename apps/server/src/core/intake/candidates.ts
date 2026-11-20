@@ -14,6 +14,7 @@ export type Candidate = {
   url: string
   createdAt: string
   connectedAt: string | null
+  imported: boolean
   item: IntakeItem
   settings: IntakeSettings
 }
@@ -33,6 +34,7 @@ const candidateRow = z.object({
   url: z.string().nullable(),
   forge_created_at: z.coerce.date(),
   connected_at: z.coerce.date().nullable(),
+  imported: z.boolean(),
   kind: z.enum(['issue', 'pr']),
   state: z.enum(['open', 'closed', 'merged']),
   gone: z.boolean(),
@@ -60,6 +62,7 @@ const toCandidate = (row: unknown): Candidate => {
     url: r.url ?? '',
     createdAt: r.forge_created_at.toISOString(),
     connectedAt: r.connected_at?.toISOString() ?? null,
+    imported: r.imported,
     item: {
       kind: r.kind,
       state: r.state,
@@ -77,7 +80,8 @@ const toCandidate = (row: unknown): Candidate => {
 export const loadCandidates = async (payload: Payload, product: number | null): Promise<Candidate[]> => {
   const result = await payload.db.drizzle.execute(sql`
     SELECT i."id" AS item_id, i."workspace_id", i."product_id", c."kind"::text AS forge, i."repo", i."number",
-      i."title", i."url", i."forge_created_at", p."connected_at", i."kind", i."state",
+      i."title", i."url", i."forge_created_at", p."connected_at", (s."imported_at" IS NOT NULL) AS imported,
+      i."kind", i."state",
       (i."gone_at" IS NOT NULL) AS gone,
       i."author", i."author_trusted", i."author_is_bot", i."labels", i."assignees",
       p."intake_excluded_labels" AS excluded, p."outside_issues_per_day" AS per_day
