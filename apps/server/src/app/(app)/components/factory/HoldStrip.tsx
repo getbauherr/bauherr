@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { Hold } from '../../../../core/views/holds'
+import { STAGE_NAMES } from '../../lib/factory'
 import { STUCK_SENTENCES } from '../../lib/status-words'
 import { Time } from '../Time'
 
@@ -27,7 +28,10 @@ function Sentence({ hold }: { hold: Hold }) {
       )
     case 'no-agent-connected':
       return (
-        <>No {hold.role} session is connected: {plural(hold.queued, 'run waits', 'runs wait')} in {hold.stage}.</>
+        <>
+          No {hold.role} session is connected: {plural(hold.queued, 'run waits', 'runs wait')} in{' '}
+          {STAGE_NAMES[hold.stage]}.
+        </>
       )
     case 'sync-failed':
       return (

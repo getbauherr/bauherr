@@ -1,10 +1,8 @@
 import { cn } from '@/lib/utils'
 import type { StageStat } from '../../../../core/views/stats'
 import { STATES } from '../../../../core/views/status'
-import type { Worker } from '../../lib/factory'
+import { STAGE_NAMES, type Worker } from '../../lib/factory'
 import { duration } from '../../lib/format'
-
-const STAGE_NAMES = { intake: 'Intake', brief: 'Brief', build: 'Build', verify: 'Verify', ship: 'Ship', done: 'Done' }
 
 const STATE_WORDS = { owner: 'for you', agents: 'working', stuck: 'stuck', others: 'on others' } as const
 const STATE_BARS = { owner: 'bg-warn', agents: 'bg-primary', stuck: 'bg-destructive', others: 'bg-muted-foreground' }

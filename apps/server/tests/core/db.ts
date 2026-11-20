@@ -17,6 +17,19 @@ export type CoreDb = {
   drop: () => Promise<void>
 }
 
+export type CoreIds = { workspace: number; otherWorkspace: number; product: number }
+
+export const coreDbOn = (payload: Payload, ids: CoreIds, drop: () => Promise<void>): CoreDb => {
+  let n = 0
+  const fresh = async (inWorkspace = ids.workspace): Promise<number> => {
+    n++
+    const numbered = { ...source, number: 1000 + n }
+    const input = { workspace: inWorkspace, product: ids.product, source: numbered, type: 'bug' as const }
+    return (await createRecord(payload, input)).id
+  }
+  return { payload, ...ids, fresh, drop }
+}
+
 export const openCoreDb = async (suite: string): Promise<CoreDb> => {
   const testDb: TestDb = await createTestDb(suite)
   process.env.DATABASE_URL = testDb.url
@@ -31,14 +44,9 @@ export const openCoreDb = async (suite: string): Promise<CoreDb> => {
   const otherWorkspace = idOf(await make('beta'))
   const data = { name: 'p', slug: 'p', workspace }
   const product = idOf(await payload.create({ collection: 'products', data, ...o }))
-  let n = 0
-  const fresh = async (inWorkspace = workspace): Promise<number> => {
-    n++
-    const input = { workspace: inWorkspace, product, source: { ...source, number: 1000 + n }, type: 'bug' as const }
-    return (await createRecord(payload, input)).id
-  }
-  return { payload, workspace, otherWorkspace, product, fresh, drop: async () => {
+  const drop = async () => {
     await payload.destroy()
     await testDb.drop(payload)
-  } }
+  }
+  return coreDbOn(payload, { workspace, otherWorkspace, product }, drop)
 }

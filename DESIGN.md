@@ -258,7 +258,7 @@ Slow and unobtrusive: motion confirms a state change, never decorates. Use only 
 | `ease-out` | cubic-bezier(0.2, 0.7, 0.2, 1) | Every entrance and state change; elements move at most 8px while fading in. |
 | `ease-in` | cubic-bezier(0.6, 0, 0.8, 0.4) | Exits only, at half the entrance duration. |
 
-A spinner is a 1.5px arc rotating once per 1.6s, in `accent`, and, besides the running-Ticket indicator, the only looping motion in the product. The indicator marks a Ticket whose Run is `running`: a dashed accent border marching at 1.6s on Graph nodes, a stripe sliding along the edge of Board cards, always with the activity word (building, reviewing, planning, deploying). Under `prefers-reduced-motion` it is a solid accent border plus the word.
+A spinner is a 1.5px arc rotating once per 1.6s, in `accent`, and, besides the running-Ticket indicator, the only looping motion in the product. The indicator marks a Ticket whose Run is `running`: a dashed accent border marching at 1.6s on Graph nodes, a static dashed accent border on Factory cards, always with the activity word (building, reviewing, planning, deploying). Under `prefers-reduced-motion` it is a solid accent border plus the word.
 
 ## Elevation & Depth
 
@@ -375,6 +375,10 @@ Rule: a page that pairs the conversation with the state uses one split: summary 
 ### Transitions
 
 Rule: a state change that stops or redirects work opens a shadcn Dialog (never `window.confirm`, `wire:confirm` or another native dialog) that names the object, lists what happens ("Run 1030 is stopped. Its branch and pull request stay.") and has a verb button naming the result ("Send back to Plan"). An optional comment field appears when the next agent run reads it ("The agent reads this before it starts."); required only when no findings exist to fall back on (staging "Request changes"). The confirm button is the modal's primary; `danger` text only when a session ends or data is deleted (Disconnect, Delete workspace; deleting asks to type the name). The action is a conditional update on the current stage; on conflict the dialog says "The ticket moved while this was open. Reload to see where it is now." Result: the sentence names who and what ("Sent back to Plan by you"), an inline conversation row records it, focus returns to the trigger, the audit log gets a row. Why: the agent must not lose work silently and the owner must be able to say why.
+
+### Factory view
+
+Rule: the home page is the lifecycle as six stages (Intake, Brief, Build, Verify, Ship, Done), each with a header (count, bar by state, breakdown, who is working, median stay) and its cards. A card is one link to `/tickets/<id>` with number, time in stage, title, one `StatusChip` and one caption. The filter row (All, Waiting on you, Agents working, Stuck, Waiting on others, Product) is a set of links that keep `?show=` and `?product=` in the URL and work without JavaScript; a filter dims the cards that do not match (opacity, `duration-state`) and never removes them. "Holding up work" is one strip under the filters, shown only when something holds work. Held issues sit under Intake and parked tickets under Brief, each with its reason. Order within a stage is the rank: drag, Alt+ArrowUp and Alt+ArrowDown on a focused card, or the card's "Move to top / Move up / Move down" menu set it through one action; a card never leaves its stage. The Inbox lists the same tickets in four groups, Waiting on you first. Status words and tones come from one map, `apps/server/src/app/(app)/lib/status-words.ts`. Why: where work is, who has the turn and what is stuck are one glance, and priority is set where the work is seen.
 
 ### Live updates
 

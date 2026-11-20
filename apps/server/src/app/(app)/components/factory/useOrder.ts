@@ -30,10 +30,11 @@ export function useOrder<T>(items: Item<T>[]) {
     const next = moved(order, from, to)
     setOrder(next)
     setFailed(false)
-    setStatus(`Moved ${card.label} to position ${to + 1} of ${order.length}`)
+    setStatus('')
     focus.current = card.id
     const result = await moveCard(card.id, next[to - 1]?.id ?? null).catch(() => ({ moved: false }))
-    if (!result.moved) setFailed(true)
+    if (result.moved) setStatus(`Moved ${card.label} to position ${to + 1} of ${order.length}`)
+    else setFailed(true)
     router.refresh()
   }
   return { order, reorder, failed, status }

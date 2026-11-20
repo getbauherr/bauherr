@@ -91,10 +91,11 @@ export type Engine = {
   drop: () => Promise<void>
 }
 
-export const openEngine = async (suite: string, modules: Modules = TEST_MODULES): Promise<Engine> => {
-  const db = await openCoreDb(suite)
+const CLOCK = '2026-11-19T10:00:00Z'
+
+export const engineOn = (db: CoreDb, modules: Modules = TEST_MODULES, now = new Date(CLOCK)): Engine => {
   const merges: number[] = []
-  const clock = { now: new Date('2026-11-19T10:00:00Z') }
+  const clock = { now }
   const mergeWith: { fn: MergeFn } = {
     fn: (target) => {
       merges.push(target.pr)
@@ -140,3 +141,6 @@ export const openEngine = async (suite: string, modules: Modules = TEST_MODULES)
   }
   return engine
 }
+
+export const openEngine = async (suite: string, modules: Modules = TEST_MODULES): Promise<Engine> =>
+  engineOn(await openCoreDb(suite), modules)

@@ -1,11 +1,21 @@
 import type { Payload } from 'payload'
 import { z } from 'zod'
+import type { Stage } from '../../../core/events'
 import { board, type Board, type BoardCard } from '../../../core/views/board'
 import { holds } from '../../../core/views/holds'
 import { stageStats, type StageStat } from '../../../core/views/stats'
 
 export const SHOWS = ['all', 'you', 'working', 'stuck', 'others'] as const
 export type Show = (typeof SHOWS)[number]
+export const STAGE_NAMES: Record<Stage, string> = {
+  intake: 'Intake',
+  brief: 'Brief',
+  build: 'Build',
+  verify: 'Verify',
+  ship: 'Ship',
+  done: 'Done',
+}
+
 export type Who = Exclude<Show, 'all'>
 
 export const SHOW_LABELS: Record<Show, string> = {

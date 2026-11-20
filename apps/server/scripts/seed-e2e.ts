@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { getPayload } from 'payload'
 import config from '../src/payload.config'
+import { readRecord } from '../src/core/record/store'
+import { coreDbOn } from '../tests/core/db'
+import { engineOn } from '../tests/core/harness'
+import { begin, seedScenario, type ScenarioNames } from '../tests/core/scenario'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -12,6 +16,24 @@ const o = { overrideAccess: true } as const
 const ensure = async (collection: string, where: Record<string, unknown>, data: Record<string, unknown>) => {
   const found = await payload.find({ collection, where: Object.fromEntries(Object.entries(where).map(([k, v]) => [k, { equals: v }])) as never, limit: 1, depth: 0, ...o })
   return found.docs[0] ?? (await payload.create({ collection, data: data as never, ...o }))
+}
+
+const FACTORY_TITLES: Record<keyof ScenarioNames, string> = {
+  intakeQueued: 'Queued for triage',
+  intakeWorking: 'Triage in progress',
+  reporterAsked: 'PDF report shows wrong year',
+  failedRuns: 'Import skips empty rows',
+  reporterSilent: 'Reporter went silent',
+  briefQueued: 'Brief being drafted',
+  briefCard: 'Export fails for large files',
+  building: 'Rename report columns',
+  verifyRounds: 'Tag filter keeps failing',
+  waitingChecks: 'Speed up measure search',
+  verifying: 'Review of the date filter',
+  resultCard: 'Add target-year check',
+  accepted: 'Fix date format',
+  closed: 'Login broken on Safari',
+  parked: 'Parked behind the Brief limit',
 }
 
 const email = env('E2E_EMAIL')
@@ -47,6 +69,21 @@ await ensure('products', { slug: 'acme-bare' }, { name: 'Acme Bare', slug: 'acme
 await ensure('connections', { name: 'GitHub Settingsco' }, { name: 'GitHub Settingsco', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: settingsco })
 const settingsApp = (await ensure('products', { slug: 'settingsco-app' }, { name: 'Settings App', slug: 'settingsco-app', workspace: settingsco, stagingUrl: 'https://staging.example.com' })).id
 await ensure('repositories', { fullName: 'settingsco/app' }, { fullName: 'settingsco/app', product: settingsApp, workspace: settingsco })
+
+const factory = Number((await ensure('workspaces', { slug: 'factory' }, { name: 'Factory', slug: 'factory' })).id)
+const factoryProduct = { name: 'Factory App', slug: 'factory-app', workspace: factory, state: 'active' }
+const factoryApp = Number((await ensure('products', { slug: 'factory-app' }, factoryProduct)).id)
+const inFactory = { workspace: { equals: factory } }
+const seeded = await payload.find({ collection: 'records', where: inFactory, limit: 1, depth: 0, ...o })
+if (!seeded.docs.length) {
+  const ids = { workspace: factory, otherWorkspace: Number(workspace), product: factoryApp }
+  const engine = engineOn(coreDbOn(payload, ids, async () => {}), undefined, new Date())
+  const scenario = await seedScenario(engine, (name) => FACTORY_TITLES[name])
+  for (const title of ['Reorder first', 'Reorder second']) {
+    const { record } = await readRecord(payload, await begin(engine))
+    await scenario.item(record.source.number, { title })
+  }
+}
 
 await ensure('human_touches', { kind: 'e2e:audit' }, { kind: 'e2e:audit', actor: 'e2e-audit-actor', at: '2026-10-30T09:00:00Z', workspace })
 
