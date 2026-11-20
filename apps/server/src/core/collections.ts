@@ -22,6 +22,7 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'card', type: 'json' },
       { name: 'statusCommentId', type: 'text' },
       { name: 'statusCommentHash', type: 'text' },
+      { name: 'parked', type: 'text' },
       { name: 'data', type: 'json', required: true },
     ],
     indexes: [{ fields: ['workspace', 'sourceForge', 'sourceRepo', 'sourceNumber'], unique: true }],

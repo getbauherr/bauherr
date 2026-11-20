@@ -33,6 +33,7 @@ export type StoredRecord = {
   waitingOn: WaitingOn
   rank: number
   card: StoredCard | null
+  parked: string | null
   record: TicketRecord
 }
 
@@ -55,6 +56,7 @@ const rowSchema = z.object({
   waiting_on: z.enum(WAITING_ON),
   rank: z.coerce.number(),
   card: cardSchema.nullable(),
+  parked: z.string().nullable(),
   data: z.unknown(),
 })
 
@@ -85,7 +87,7 @@ const parseRecord = (id: number, data: unknown): TicketRecord => {
 
 export const readRecord = async (payload: Conn, id: number): Promise<StoredRecord> => {
   const result = await payload.db.drizzle.execute(
-    sql`SELECT "id", "workspace_id", "version", "stage", "waiting_on", "rank", "card", "data"
+    sql`SELECT "id", "workspace_id", "version", "stage", "waiting_on", "rank", "card", "parked", "data"
       FROM "records" WHERE "id" = ${id}`,
   )
   const row = result.rows[0]
@@ -99,6 +101,7 @@ export const readRecord = async (payload: Conn, id: number): Promise<StoredRecor
     waitingOn: parsed.waiting_on,
     rank: parsed.rank,
     card: parsed.card,
+    parked: parsed.parked,
     record: parseRecord(id, parsed.data),
   }
 }
@@ -160,6 +163,13 @@ export const setCard = async (payload: Conn, id: number, card: StoredCard | null
   const value = card === null ? null : json(cardSchema.parse(card))
   const updated = await payload.db.drizzle.execute(
     sql`UPDATE "records" SET "card" = ${value}::jsonb, "updated_at" = now() WHERE "id" = ${id} RETURNING "id"`,
+  )
+  if (!updated.rows[0]) throw new RecordNotFound(`Record ${id} does not exist: check the id.`)
+}
+
+export const setParked = async (payload: Conn, id: number, reason: string | null): Promise<void> => {
+  const updated = await payload.db.drizzle.execute(
+    sql`UPDATE "records" SET "parked" = ${reason}, "updated_at" = now() WHERE "id" = ${id} RETURNING "id"`,
   )
   if (!updated.rows[0]) throw new RecordNotFound(`Record ${id} does not exist: check the id.`)
 }

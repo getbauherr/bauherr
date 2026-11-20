@@ -1,15 +1,21 @@
 import { createHash } from 'node:crypto'
 import type { AppEvent, EventOf, Stage } from './events'
-import type { State } from './fold'
+import { fold, type FoldOptions, type State } from './fold'
 import type { TicketRecord } from './record/schema'
 
-export { fold, type State } from './fold'
+export { fold, type State }
+
+export const foldOptions = (config: Pick<Config, 'productionGate' | 'requiredChecks'>): FoldOptions => ({
+  productionGate: config.productionGate,
+  requiredChecks: config.requiredChecks,
+})
 
 export type Config = {
   caps: { verifyRounds: number; reporterRounds: number; failedRuns: number }
   riskAreas: string[]
   productionGate: boolean
   deployChecks: boolean
+  requiredChecks: boolean
 }
 
 export type Role = 'builder' | 'reviewer' | 'verifier'

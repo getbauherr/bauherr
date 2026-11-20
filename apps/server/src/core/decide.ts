@@ -3,8 +3,9 @@ import { isBauherr } from '../lib/people'
 import { inLockedRecord } from './conn'
 import { AGENT_ASK, agentEntry, DECISIONS, type DecisionEntry } from './decisions'
 import { advance, type AdvanceDeps } from './engine'
+import { resumeParked } from './intake/pacing'
 import { fold, type Card } from './fold'
-import { next, type State, type Step } from './lifecycle'
+import { foldOptions, next, type State, type Step } from './lifecycle'
 import { appendEvent, readEvents, readRecord } from './record/store'
 
 export const NOTE_MAX = 1000
@@ -62,17 +63,19 @@ export const decide = async (
   deps: AdvanceDeps,
 ): Promise<void> => {
   const config = await deps.configFor(recordId)
-  await inLockedRecord(deps.payload, recordId, async (tx) => {
+  const backlogBrief = await inLockedRecord(deps.payload, recordId, async (tx) => {
     const stored = await readRecord(tx, recordId)
     if (!mayDecide(person, stored.workspace)) {
       throw new NotAllowedToDecide(`Person ${person.id} may not decide on record ${recordId}: ask a Bauherr of it.`)
     }
-    const state = fold(await readEvents(tx, recordId), { productionGate: config.productionGate })
+    const state = fold(await readEvents(tx, recordId), foldOptions(config))
     const asked = askedOf(next(stored.record, state, config), state)
     const { entry, note } = entryOf(asked, stored.card?.seq, decision, state.card)
     const patch = state.patch
     const events = entry.events({ note, patchId: patch?.id ?? '', headSha: patch?.headSha ?? '' })
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
+    return asked === 'brief' && stored.record.source.backlog
   })
   await advance(recordId, deps)
+  if (backlogBrief) await resumeParked(deps, recordId)
 }

@@ -216,6 +216,7 @@ describe('the nine tools through the route', () => {
       forgeClosedAt: null,
       headSha: null,
       headRef: null,
+      mergeSha: null,
       closes: [],
       draft: false,
     }

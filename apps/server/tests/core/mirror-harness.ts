@@ -4,7 +4,7 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, beforeEach } from 'vitest'
 import { z } from 'zod'
 import type { ForgeReader, ReadTickets } from '../../src/core/forge/reader'
-import { syncSources } from '../../src/core/mirror/sync'
+import { syncSources, type SyncDeps } from '../../src/core/mirror/sync'
 import { createTestDb, type TestDb } from '../helpers/test-db'
 
 export const o = { overrideAccess: true } as const
@@ -58,9 +58,10 @@ export const mirrorHarness = (suite: string) => {
     }
   }
 
-  const sync = async (readers: Readers) => {
+  const sync = async (readers: Readers, afterStored?: SyncDeps['afterStored']) => {
     await ensureSources(Object.keys(readers))
     return syncSources(payload, {
+      afterStored,
       now: () => state.clock,
       reader: async (source) => {
         const reader = readers[source.repo]

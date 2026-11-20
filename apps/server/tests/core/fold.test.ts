@@ -46,15 +46,35 @@ describe('fold', () => {
 
   it('tracks the reporter', () => {
     const asked = fold([ev('intake.asked', { round: 1 })])
-    expect(asked.reporter).toEqual({ rounds: 1, waiting: true })
+    expect(asked.reporter).toEqual({ rounds: 1, waiting: true, reminded: false })
     expect(fold([ev('intake.asked', { round: 1 }), ev('reporter.replied')]).reporter).toEqual({
       rounds: 1,
       waiting: false,
+      reminded: false,
     })
     expect(fold([ev('intake.asked', { round: 2 }), ev('reporter.silent')]).reporter).toEqual({
       rounds: 2,
       waiting: false,
+      reminded: false,
     })
+  })
+
+  it('records one reminder per question round', () => {
+    const reminded = fold([ev('intake.asked', { round: 1 }), ev('reporter.reminded')])
+    expect(reminded.reporter).toEqual({ rounds: 1, waiting: true, reminded: true })
+    expect(reminded.last).toBe('reporter.reminded')
+    const again = fold([ev('intake.asked', { round: 1 }), ev('reporter.reminded'), ev('intake.asked', { round: 2 })])
+    expect(again.reporter).toEqual({ rounds: 2, waiting: true, reminded: false })
+  })
+
+  it('closes on a ticket closed on the forge', () => {
+    expect(fold([...inBuild, ev('ticket.closed', { reason: 'closed-on-forge' })]).closed).toBe('closed-on-forge')
+  })
+
+  it('has no pending checks when the Product requires none', () => {
+    expect(fold(inVerify, { productionGate: false, requiredChecks: false }).checks).toBe('none')
+    expect(fold(inVerify, { productionGate: false, requiredChecks: true }).checks).toBe('pending')
+    expect(fold(inVerify).checks).toBe('pending')
   })
 
   it('keeps a run live until a submit of that run, a failure or a release', () => {

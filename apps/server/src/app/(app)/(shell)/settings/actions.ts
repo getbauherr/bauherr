@@ -11,6 +11,7 @@ import { parsePathSets, type PathSets } from '../../../../lib/path-sets'
 import { rotateKey } from '../../../../lib/gateway'
 import { refreshPrices } from '../../../../lib/prices'
 import { PRESET_FIELDS } from '../../../../lib/providers'
+import { markConnected } from '../../../../core/intake/connected'
 import { deleteProductMirror, deleteSourceMirror } from '../../../../core/mirror/store'
 import { assertAnotherAdmin, assertInWorkspace, assertNoTickets, blockedBy } from '../../../../lib/settings-guards'
 import { deployErrors } from '../../lib/product-setup'
@@ -120,6 +121,7 @@ const makeRepository = async (c: Awaited<ReturnType<typeof ctx>>, product: numbe
   if (fd.get('readTickets') !== 'on') return
   try {
     await c.payload.create({ collection: 'ticket_sources', data: { repo: fullName, connection, product, workspace: inWorkspace(c) }, ...c.w } as never)
+    await markConnected(c.payload, product, new Date())
   } catch (e) {
     await c.payload.delete({ collection: 'repositories', id: repo.id, ...c.w } as never)
     throw e

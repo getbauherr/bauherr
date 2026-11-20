@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import type { AdvanceDeps } from '../../engine'
 import { fold } from '../../fold'
+import { foldOptions } from '../../lifecycle'
 import type { TicketRecord } from '../../record/schema'
 import { readEvents, readRecord } from '../../record/store'
 import { releaseRun } from '../../submit'
@@ -33,7 +34,8 @@ const roleOf = async ({ deps, workspace, keyId }: AgentContext, session: string)
 const pendingNote = async (deps: AdvanceDeps, run: Run): Promise<string | null> => {
   const events = await readEvents(deps.payload, run.recordId)
   const started = events.findIndex((e) => e.type === 'run.started' && e.data.runId === String(run.id))
-  return fold(started < 0 ? events : events.slice(0, started)).note
+  const options = foldOptions(await deps.configFor(run.recordId))
+  return fold(started < 0 ? events : events.slice(0, started), options).note
 }
 
 export const next = defineTool({
