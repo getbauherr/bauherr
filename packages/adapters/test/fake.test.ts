@@ -6,7 +6,9 @@ import { contractSuite } from './contract.js';
 for (const native of [true, false]) {
   const backend = new FakeBackend({ native, user: 'octo' });
   contractSuite(`fake (${native ? 'native' : 'body-convention'})`, {
-    backend, repo: 'acme/app', user: 'octo',
+    backend,
+    repo: 'acme/app',
+    user: 'octo',
     commitFile: async (branch, path, content) => {
       backend.commit('acme/app', branch, path, content);
     },
@@ -14,12 +16,15 @@ for (const native of [true, false]) {
   });
 }
 
-describe('fake: releases', () => {
-  it('lists releases newest first; a commit is its own ancestor, others only when set', async () => {
+void describe('fake: releases', () => {
+  void it('lists releases newest first; a commit is its own ancestor, others only when set', async () => {
     const b = new FakeBackend();
     b.addRelease('o/r', { tag: 'v1', sha: 'a' });
     b.addRelease('o/r', { tag: 'v2', sha: 'b' });
-    assert.deepEqual((await b.forge.listReleases('o/r')).map((r) => r.tag), ['v2', 'v1']);
+    assert.deepEqual(
+      (await b.forge.listReleases('o/r')).map((r) => r.tag),
+      ['v2', 'v1'],
+    );
     assert.equal(await b.forge.isAncestor('o/r', 'a', 'a'), true);
     assert.equal(await b.forge.isAncestor('o/r', 'a', 'b'), false);
     b.setAncestors('o/r', 'b', ['a']);
@@ -27,7 +32,7 @@ describe('fake: releases', () => {
   });
 });
 
-describe('fake: mergePullRequest', () => {
+void describe('fake: mergePullRequest', () => {
   const setup = async () => {
     const b = new FakeBackend();
     await b.forge.createBranch('o/r', 'feat');
@@ -35,7 +40,7 @@ describe('fake: mergePullRequest', () => {
     const pr = await b.forge.openPullRequest('o/r', { title: 't', head: 'feat', base: 'main' });
     return { b, pr };
   };
-  it('squash-merges, records the merge sha and deletes the branch', async () => {
+  void it('squash-merges, records the merge sha and deletes the branch', async () => {
     const { b, pr } = await setup();
     const { mergeSha } = await b.forge.mergePullRequest('o/r', pr.number, { method: 'squash', deleteBranch: true });
     const merged = await b.forge.getPullRequest('o/r', pr.number);
@@ -43,23 +48,29 @@ describe('fake: mergePullRequest', () => {
     assert.equal(merged.mergeSha, mergeSha);
     assert.ok(!(await b.forge.listBranches('o/r')).some((x) => x.name === 'feat'));
   });
-  it('retargets the PRs stacked on the deleted head branch to the merged PR base', async () => {
+  void it('retargets the PRs stacked on the deleted head branch to the merged PR base', async () => {
     const { b, pr } = await setup();
     await b.forge.createBranch('o/r', 'child', 'feat');
     const child = await b.forge.openPullRequest('o/r', { title: 'c', head: 'child', base: 'feat' });
     await b.forge.mergePullRequest('o/r', pr.number, { method: 'squash', deleteBranch: true });
-    assert.deepEqual(await b.forge.getPullRequest('o/r', child.number).then((p) => [p.state, p.base]), ['open', 'main']);
+    assert.deepEqual(await b.forge.getPullRequest('o/r', child.number).then((p) => [p.state, p.base]), [
+      'open',
+      'main',
+    ]);
   });
-  it('refuses a moved head and a PR that is not open', async () => {
+  void it('refuses a moved head and a PR that is not open', async () => {
     const { b, pr } = await setup();
-    await assert.rejects(b.forge.mergePullRequest('o/r', pr.number, { method: 'squash', expectSha: 'stale' }), /head moved/);
+    await assert.rejects(
+      b.forge.mergePullRequest('o/r', pr.number, { method: 'squash', expectSha: 'stale' }),
+      /head moved/,
+    );
     await b.forge.mergePullRequest('o/r', pr.number, { method: 'squash' });
     await assert.rejects(b.forge.mergePullRequest('o/r', pr.number, { method: 'squash' }), /merged/);
   });
 });
 
-describe('fake: closePullRequest', () => {
-  it('closes an open PR and leaves a merged one merged', async () => {
+void describe('fake: closePullRequest', () => {
+  void it('closes an open PR and leaves a merged one merged', async () => {
     const b = new FakeBackend();
     await b.forge.createBranch('o/r', 'feat');
     const pr = await b.forge.openPullRequest('o/r', { title: 't', head: 'feat', base: 'main' });
@@ -68,8 +79,8 @@ describe('fake: closePullRequest', () => {
   });
 });
 
-describe('fake: mergeable', () => {
-  it('setMergeable(false) makes the merge throw; a new commit on the head resets it', async () => {
+void describe('fake: mergeable', () => {
+  void it('setMergeable(false) makes the merge throw; a new commit on the head resets it', async () => {
     const b = new FakeBackend();
     await b.forge.createBranch('o/r', 'feat');
     b.commit('o/r', 'feat', 'a.txt', 'a');
@@ -83,8 +94,8 @@ describe('fake: mergeable', () => {
   });
 });
 
-describe('fake: reopen', () => {
-  it('reopens a closed ticket, drops the close-reason label, and is idempotent', async () => {
+void describe('fake: reopen', () => {
+  void it('reopens a closed ticket, drops the close-reason label, and is idempotent', async () => {
     const b = new FakeBackend({ native: false });
     const ts = b.tickets('o/r');
     const t = await ts.create({ title: 't' });
@@ -97,7 +108,7 @@ describe('fake: reopen', () => {
   });
 });
 
-describe('fake: merge queue', () => {
+void describe('fake: merge queue', () => {
   const setup = async (n: number) => {
     const b = new FakeBackend();
     b.setQueueSupport('o/r', true);
@@ -109,7 +120,7 @@ describe('fake: merge queue', () => {
     }
     return { b, prs };
   };
-  it('advanceQueue merges the head entry with a merge sha, in order', async () => {
+  void it('advanceQueue merges the head entry with a merge sha, in order', async () => {
     const { b, prs } = await setup(2);
     for (const p of prs) await b.forge.enqueuePullRequest('o/r', p.number, { expectSha: p.headSha });
     assert.equal(b.advanceQueue('o/r'), 1);
@@ -119,42 +130,55 @@ describe('fake: merge queue', () => {
     assert.equal(b.advanceQueue('o/r'), 2);
     assert.equal(b.advanceQueue('o/r'), null);
   });
-  it('a failed entry drops out and stays open', async () => {
+  void it('a failed entry drops out and stays open', async () => {
     const { b, prs } = await setup(1);
     await b.forge.enqueuePullRequest('o/r', 1, { expectSha: prs[0]!.headSha });
     b.advanceQueue('o/r', { fail: [1] });
-    assert.deepEqual([(await b.forge.getPullRequest('o/r', 1)).state, await b.forge.isQueued('o/r', 1)], ['open', false]);
+    assert.deepEqual(
+      [(await b.forge.getPullRequest('o/r', 1)).state, await b.forge.isQueued('o/r', 1)],
+      ['open', false],
+    );
   });
-  it('enqueuing an already merged PR reports merged with its sha', async () => {
+  void it('enqueuing an already merged PR reports merged with its sha', async () => {
     const { b } = await setup(1);
     const sha = b.merge('o/r', 1);
-    assert.deepEqual(await b.forge.enqueuePullRequest('o/r', 1, { expectSha: 'x' }), { state: 'merged', mergeSha: sha });
+    assert.deepEqual(await b.forge.enqueuePullRequest('o/r', 1, { expectSha: 'x' }), {
+      state: 'merged',
+      mergeSha: sha,
+    });
   });
 });
 
-describe('fake: train branch', () => {
-  it('resetBranch sets a branch to a commit; mergeIntoBranch merges heads, reports a contained head and conflicts', async () => {
-    const b = new FakeBackend();
-    const main = (await b.forge.getBranch('o/r', 'main'))!.sha;
-    const heads: string[] = [];
-    for (const [i, file, content] of [[1, 'a.txt', 'x'], [2, 'b.txt', 'y'], [3, 'a.txt', 'z']] as const) {
-      await b.forge.createBranch('o/r', `f${i}`);
-      heads.push(b.commit('o/r', `f${i}`, file, content));
-    }
-    await b.forge.resetBranch('o/r', 'train', main);
-    assert.equal((await b.forge.getBranch('o/r', 'train'))!.sha, main);
-    const m1 = await b.forge.mergeIntoBranch('o/r', 'train', heads[0]!);
-    assert.ok('sha' in m1 && m1.sha !== main);
-    assert.deepEqual(await b.forge.mergeIntoBranch('o/r', 'train', heads[0]!), m1);
-    assert.ok('sha' in (await b.forge.mergeIntoBranch('o/r', 'train', heads[1]!)));
-    assert.deepEqual(await b.forge.mergeIntoBranch('o/r', 'train', heads[2]!), { conflict: true });
-    await b.forge.resetBranch('o/r', 'train', main);
-    assert.deepEqual((await b.forge.listFiles('o/r', 'train')).paths, []);
-  });
+void describe('fake: train branch', () => {
+  void it(
+    'resetBranch sets a branch to a commit; mergeIntoBranch merges heads, ' + 'reports a contained head and conflicts',
+    async () => {
+      const b = new FakeBackend();
+      const main = (await b.forge.getBranch('o/r', 'main'))!.sha;
+      const heads: string[] = [];
+      for (const [i, file, content] of [
+        [1, 'a.txt', 'x'],
+        [2, 'b.txt', 'y'],
+        [3, 'a.txt', 'z'],
+      ] as const) {
+        await b.forge.createBranch('o/r', `f${i}`);
+        heads.push(b.commit('o/r', `f${i}`, file, content));
+      }
+      await b.forge.resetBranch('o/r', 'train', main);
+      assert.equal((await b.forge.getBranch('o/r', 'train'))!.sha, main);
+      const m1 = await b.forge.mergeIntoBranch('o/r', 'train', heads[0]!);
+      assert.ok('sha' in m1 && m1.sha !== main);
+      assert.deepEqual(await b.forge.mergeIntoBranch('o/r', 'train', heads[0]!), m1);
+      assert.ok('sha' in (await b.forge.mergeIntoBranch('o/r', 'train', heads[1]!)));
+      assert.deepEqual(await b.forge.mergeIntoBranch('o/r', 'train', heads[2]!), { conflict: true });
+      await b.forge.resetBranch('o/r', 'train', main);
+      assert.deepEqual((await b.forge.listFiles('o/r', 'train')).paths, []);
+    },
+  );
 });
 
-describe('fake: deleteBranch', () => {
-  it('removes the branch; deleting it again is fine', async () => {
+void describe('fake: deleteBranch', () => {
+  void it('removes the branch; deleting it again is fine', async () => {
     const b = new FakeBackend();
     await b.forge.createBranch('o/r', 'epic');
     await b.forge.deleteBranch('o/r', 'epic');
@@ -163,8 +187,8 @@ describe('fake: deleteBranch', () => {
   });
 });
 
-describe('fake: author', () => {
-  it('is the credential user unless the test names one', async () => {
+void describe('fake: author', () => {
+  void it('is the credential user unless the test names one', async () => {
     const ts = new FakeBackend({ native: true, user: 'octo' }).tickets('o/r');
     assert.equal((await ts.get((await ts.create({ title: 'a' })).id)).author, 'octo');
     assert.equal((await ts.get((await ts.create({ title: 'b', author: 'requester' })).id)).author, 'requester');

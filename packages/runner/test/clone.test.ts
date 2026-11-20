@@ -7,15 +7,23 @@ import { test } from 'node:test';
 import { cloneRepo, commitAndPush, mergeBase, patchId } from '../src/clone.js';
 import { makeBareRepo } from './helpers.js';
 
-test('clone, commit, push to local bare repo; token not persisted; cleanup', async () => {
+await test('clone, commit, push to local bare repo; token not persisted; cleanup', async () => {
   const base = makeBareRepo();
-  const c = await cloneRepo({ baseUrl: base, repo: 'o/n', defaultBranch: 'main', token: 'SECRET-TOKEN', branch: 'bauherr/7-r1' });
+  const c = await cloneRepo({
+    baseUrl: base,
+    repo: 'o/n',
+    defaultBranch: 'main',
+    token: 'SECRET-TOKEN',
+    branch: 'bauherr/7-r1',
+  });
   try {
     assert.equal(await commitAndPush(c, c.env, 'noop'), false);
     writeFileSync(join(c.dir, 'new.txt'), 'x');
     assert.equal(await commitAndPush(c, c.env, 'add new'), true);
     const bare = base.replace('file://', '') + '/o/n.git';
-    const files = execFileSync('git', ['ls-tree', '-r', '--name-only', 'bauherr/7-r1'], { cwd: bare }).toString().split('\n');
+    const files = execFileSync('git', ['ls-tree', '-r', '--name-only', 'bauherr/7-r1'], { cwd: bare })
+      .toString()
+      .split('\n');
     assert.ok(files.includes('new.txt'));
     assert.ok(!readFileSync(join(c.dir, '.git/config'), 'utf8').includes('SECRET'));
     assert.equal(c.env.GIT_CONFIG_KEY_0, 'http.extraheader');
@@ -25,29 +33,51 @@ test('clone, commit, push to local bare repo; token not persisted; cleanup', asy
   assert.ok(!existsSync(c.dir));
 });
 
-test('checkout of an existing branch pushes to that same branch', async () => {
+await test('checkout of an existing branch pushes to that same branch', async () => {
   const base = makeBareRepo();
   const bare = base.replace('file://', '') + '/o/n.git';
-  const first = await cloneRepo({ baseUrl: base, repo: 'o/n', defaultBranch: 'main', token: 't', branch: 'bauherr/7-r1' });
+  const first = await cloneRepo({
+    baseUrl: base,
+    repo: 'o/n',
+    defaultBranch: 'main',
+    token: 't',
+    branch: 'bauherr/7-r1',
+  });
   writeFileSync(join(first.dir, 'a.txt'), 'a');
   await commitAndPush(first, first.env, 'first');
   await first.cleanup();
-  const c = await cloneRepo({ baseUrl: base, repo: 'o/n', defaultBranch: 'main', token: 't', branch: 'bauherr/7-r2', checkout: 'bauherr/7-r1' });
+  const c = await cloneRepo({
+    baseUrl: base,
+    repo: 'o/n',
+    defaultBranch: 'main',
+    token: 't',
+    branch: 'bauherr/7-r2',
+    checkout: 'bauherr/7-r1',
+  });
   try {
     assert.equal(c.branch, 'bauherr/7-r1');
     assert.ok(existsSync(join(c.dir, 'a.txt')));
     writeFileSync(join(c.dir, 'b.txt'), 'b');
     assert.equal(await commitAndPush(c, c.env, 'second'), true);
-    assert.ok(execFileSync('git', ['ls-tree', '-r', '--name-only', 'bauherr/7-r1'], { cwd: bare }).toString().includes('b.txt'));
+    assert.ok(
+      execFileSync('git', ['ls-tree', '-r', '--name-only', 'bauherr/7-r1'], { cwd: bare }).toString().includes('b.txt'),
+    );
     assert.throws(() => execFileSync('git', ['rev-parse', 'bauherr/7-r2'], { cwd: bare, stdio: 'pipe' }));
   } finally {
     await c.cleanup();
   }
 });
 
-test('clone auth: x-access-token by default, the given user (GitLab oauth2) otherwise', async () => {
+await test('clone auth: x-access-token by default, the given user (GitLab oauth2) otherwise', async () => {
   const header = async (user?: string) => {
-    const c = await cloneRepo({ baseUrl: makeBareRepo(), repo: 'o/n', defaultBranch: 'main', token: 'T', ...(user ? { user } : {}), branch: 'bauherr/7-r1' });
+    const c = await cloneRepo({
+      baseUrl: makeBareRepo(),
+      repo: 'o/n',
+      defaultBranch: 'main',
+      token: 'T',
+      ...(user ? { user } : {}),
+      branch: 'bauherr/7-r1',
+    });
     await c.cleanup();
     return Buffer.from(c.env.GIT_CONFIG_VALUE_0!.replace('Authorization: Basic ', ''), 'base64').toString();
   };
@@ -56,12 +86,30 @@ test('clone auth: x-access-token by default, the given user (GitLab oauth2) othe
 });
 
 const sh = (cwd: string, ...a: string[]) =>
-  execFileSync('git', a, { cwd, stdio: 'pipe', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } }).toString().trim();
+  execFileSync('git', a, {
+    cwd,
+    stdio: 'pipe',
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: 't',
+      GIT_AUTHOR_EMAIL: 't@t',
+      GIT_COMMITTER_NAME: 't',
+      GIT_COMMITTER_EMAIL: 't@t',
+    },
+  })
+    .toString()
+    .trim();
 
 async function mrFixture() {
   const base = makeBareRepo();
   const bare = base.replace('file://', '') + '/o/n.git';
-  const first = await cloneRepo({ baseUrl: base, repo: 'o/n', defaultBranch: 'main', token: 't', branch: 'bauherr/7-r1' });
+  const first = await cloneRepo({
+    baseUrl: base,
+    repo: 'o/n',
+    defaultBranch: 'main',
+    token: 't',
+    branch: 'bauherr/7-r1',
+  });
   writeFileSync(join(first.dir, 'a.txt'), 'one\ntwo\nthree\n');
   await commitAndPush(first, first.env, 'mr change');
   await first.cleanup();
@@ -73,11 +121,15 @@ async function mrFixture() {
     sh(w, 'commit', '-qm', 'main moves');
     sh(w, 'push', '-q', 'origin', 'main');
   };
-  const open = () => cloneRepo({ baseUrl: base, repo: 'o/n', defaultBranch: 'main', token: 't', branch: 'x', checkout: 'bauherr/7-r1' });
+  const open = () =>
+    cloneRepo({ baseUrl: base, repo: 'o/n', defaultBranch: 'main', token: 't', branch: 'x', checkout: 'bauherr/7-r1' });
   return { bare, moveMain, open };
 }
 
-test('mergeBase: up to date, clean (fast-forward push) and conflict; patch-id survives a clean merge', async () => {
+const MERGE_BASE_CASE =
+  'mergeBase: up to date, clean (fast-forward push) and conflict; patch-id survives a clean merge';
+
+await test(MERGE_BASE_CASE, async () => {
   const { bare, moveMain, open } = await mrFixture();
   const c = await open();
   try {
@@ -98,7 +150,7 @@ test('mergeBase: up to date, clean (fast-forward push) and conflict; patch-id su
   }
 });
 
-test('mergeBase: a conflict leaves the merge in progress until it is resolved', async () => {
+await test('mergeBase: a conflict leaves the merge in progress until it is resolved', async () => {
   const { moveMain, open } = await mrFixture();
   const c = await open();
   try {

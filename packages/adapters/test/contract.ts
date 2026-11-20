@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
-import { APPROVED_PLAN, Conflict, NotQueueableError, closeReasonLabel, setStage, stageLabel, stageOf, type Backend, type CloseReason } from '../src/index.js';
+import {
+  APPROVED_PLAN,
+  Conflict,
+  NotQueueableError,
+  closeReasonLabel,
+  setStage,
+  stageLabel,
+  stageOf,
+  type Backend,
+  type CloseReason,
+} from '../src/index.js';
 
 const ORDER = ['triage', 'plan', 'build', 'review', 'release', 'done'];
 
@@ -36,12 +46,13 @@ export function contractSuite(name: string, env: ContractEnv): void {
   };
   after(async () => env.cleanup?.(made));
 
-  describe(`${name}: TicketSource`, () => {
-    it('declares capabilities', () => {
-      for (const k of ['attachments', 'nativeSubTickets', 'nativeBlocking', 'webhooks'] as const) assert.equal(typeof backend.capabilities[k], 'boolean');
+  void describe(`${name}: TicketSource`, () => {
+    void it('declares capabilities', () => {
+      for (const k of ['attachments', 'nativeSubTickets', 'nativeBlocking', 'webhooks'] as const)
+        assert.equal(typeof backend.capabilities[k], 'boolean');
     });
 
-    it('create + get round-trips', async () => {
+    void it('create + get round-trips', async () => {
       const t = await mk('create', { body: 'hello', labels: ['bauherr:test'] });
       const g = await ts.get(t.id);
       assert.equal(g.title, 'contract: create');
@@ -55,7 +66,7 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.match(g.updatedAt, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
     });
 
-    it('list filters by state and labels', async () => {
+    void it('list filters by state and labels', async () => {
       const label = `bauherr:list-${Date.now()}`;
       made.labels.push(label);
       const a = await mk('list-a', { labels: [label] });
@@ -69,42 +80,51 @@ export function contractSuite(name: string, env: ContractEnv): void {
       });
     });
 
-    it('comments and lists them', async () => {
+    void it('comments and lists them', async () => {
       const t = await mk('comment');
       const c = await ts.comment(t.id, 'first');
       assert.equal(c.body, 'first');
-      assert.deepEqual((await ts.listComments(t.id)).map((x) => x.body), ['first']);
+      assert.deepEqual(
+        (await ts.listComments(t.id)).map((x) => x.body),
+        ['first'],
+      );
     });
 
-    it('adds and removes labels, tolerating absent ones', async () => {
+    void it('adds and removes labels, tolerating absent ones', async () => {
       const t = await mk('labels');
       await ts.addLabels(t.id, ['bauherr:a', 'bauherr:b']);
       await ts.removeLabels(t.id, ['bauherr:a', 'bauherr:never-there']);
       assert.deepEqual((await ts.get(t.id)).labels, ['bauherr:b']);
     });
 
-    it('records label events with actor and order', async () => {
+    void it('records label events with actor and order', async () => {
       const t = await mk('label-events');
       await ts.addLabels(t.id, ['bauherr:a']);
       await ts.removeLabels(t.id, ['bauherr:a']);
       const events = (await ts.labelEvents(t.id)).filter((e) => e.label === 'bauherr:a');
-      assert.deepEqual(events.map((e) => e.action), ['labeled', 'unlabeled']);
+      assert.deepEqual(
+        events.map((e) => e.action),
+        ['labeled', 'unlabeled'],
+      );
       assert.ok(events.every((e) => e.actor && e.at));
       assert.equal(events[0]!.actor, await ts.whoami());
     });
 
-    it('setStage keeps exactly one stage label', async () => {
+    void it('setStage keeps exactly one stage label', async () => {
       const t = await mk('stage', { labels: ['keep'] });
       await setStage(ts, t.id, 'plan');
       await ts.addLabels(t.id, [APPROVED_PLAN]);
       await setStage(ts, t.id, 'build');
       const { labels } = await ts.get(t.id);
-      assert.deepEqual(labels.filter((l) => l.startsWith('bauherr:stage:')), [stageLabel('build')]);
+      assert.deepEqual(
+        labels.filter((l) => l.startsWith('bauherr:stage:')),
+        [stageLabel('build')],
+      );
       assert.equal(stageOf(labels, ORDER), 'build');
       assert.ok(labels.includes('keep') && labels.includes(APPROVED_PLAN));
     });
 
-    it('claims and releases', async () => {
+    void it('claims and releases', async () => {
       const t = await mk('claim');
       await ts.claim(t.id, user);
       assert.equal((await ts.get(t.id)).assignee?.toLowerCase(), user.toLowerCase());
@@ -112,13 +132,13 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.equal((await ts.get(t.id)).assignee, null);
     });
 
-    it('claim of an unknown login throws', async () => {
+    void it('claim of an unknown login throws', async () => {
       const t = await mk('claim-bad');
       await assert.rejects(ts.claim(t.id, 'nonexistent-user-zzz9-bauherr'));
     });
 
     for (const reason of ['completed', 'not_planned', 'duplicate'] as CloseReason[]) {
-      it(`closes with reason ${reason}`, async () => {
+      void it(`closes with reason ${reason}`, async () => {
         const t = await mk(`close-${reason}`);
         await ts.close(t.id, reason);
         const g = await ts.get(t.id);
@@ -128,17 +148,20 @@ export function contractSuite(name: string, env: ContractEnv): void {
       });
     }
 
-    it('links sub-tickets and lists them', async () => {
+    void it('links sub-tickets and lists them', async () => {
       const p = await mk('parent');
       const c = await mk('child');
       await ts.addSubTicket(p.id, c.id);
-      assert.deepEqual((await ts.listSubTickets(p.id)).map((s) => s.id), [c.id]);
+      assert.deepEqual(
+        (await ts.listSubTickets(p.id)).map((s) => s.id),
+        [c.id],
+      );
       assert.equal((await ts.get(c.id)).parent, p.id);
       assert.equal((await ts.get(p.id)).parent, null);
       await assert.rejects(ts.addSubTicket((await mk('other-parent')).id, c.id));
     });
 
-    it('frontier excludes blocked and closed sub-tickets', async () => {
+    void it('frontier excludes blocked and closed sub-tickets', async () => {
       const p = await mk('f-parent');
       const a = await mk('f-a');
       const b = await mk('f-b');
@@ -149,10 +172,13 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.deepEqual((await ts.frontier(p.id)).map((s) => s.id).sort(), [a.id, c.id].sort());
       await ts.close(a.id, 'completed');
       await ts.close(c.id, 'not_planned');
-      assert.deepEqual((await ts.frontier(p.id)).map((s) => s.id), [b.id]);
+      assert.deepEqual(
+        (await ts.frontier(p.id)).map((s) => s.id),
+        [b.id],
+      );
     });
 
-    it('adds links without leaking the relations block into body', async () => {
+    void it('adds links without leaking the relations block into body', async () => {
       const t = await mk('link', { body: 'text' });
       await ts.addLink(t.id, 'https://example.com/a');
       await ts.addLink(t.id, 'https://example.com/b');
@@ -161,7 +187,7 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.deepEqual(g.links, ['https://example.com/a', 'https://example.com/b']);
     });
 
-    it('polls: null cursor sees everything, cursor sees only newer, at-least-once', async () => {
+    void it('polls: null cursor sees everything, cursor sees only newer, at-least-once', async () => {
       const all = await ts.poll(null);
       assert.ok(all.changes.length >= made.tickets.length);
       assert.equal(all.next, all.changes.at(-1)?.updatedAt);
@@ -178,15 +204,15 @@ export function contractSuite(name: string, env: ContractEnv): void {
 
   if (env.ticketsOnly) return;
 
-  describe(`${name}: Forge`, () => {
-    it('reads repositories', async () => {
+  void describe(`${name}: Forge`, () => {
+    void it('reads repositories', async () => {
       const r = await backend.forge.getRepository(repo);
       assert.equal(r.fullName.toLowerCase(), repo.toLowerCase());
       assert.ok(r.defaultBranch);
       assert.ok((await backend.forge.listRepositories()).some((x) => x.fullName.toLowerCase() === repo.toLowerCase()));
     });
 
-    it('branch -> PR -> comment -> files -> checks', async () => {
+    void it('branch -> PR -> comment -> files -> checks', async () => {
       const f = backend.forge;
       const branch = `bauherr-contract-${Date.now()}`;
       const b = await f.createBranch(repo, branch);
@@ -199,15 +225,24 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.equal(p.state, 'open');
       assert.equal((await f.getPullRequest(repo, p.number)).head, branch);
       assert.ok((await f.listPullRequests(repo)).some((x) => x.number === p.number));
-      assert.deepEqual((await f.listPullRequests(repo, 'all', branch)).map((x) => x.number), [p.number]);
+      assert.deepEqual(
+        (await f.listPullRequests(repo, 'all', branch)).map((x) => x.number),
+        [p.number],
+      );
       assert.deepEqual(await f.listPullRequests(repo, 'all', `${branch}-none`), []);
       assert.equal((await f.commentOnPullRequest(repo, p.number, 'lgtm')).body, 'lgtm');
       assert.ok((await f.listPullRequestComments(repo, p.number)).some((c) => c.body === 'lgtm'));
-      const review = await f.reviewPullRequest(repo, p.number, { body: 'review summary', comments: [{ path: 'contract/hello.txt', line: 1, body: 'inline' }] });
+      const review = await f.reviewPullRequest(repo, p.number, {
+        body: 'review summary',
+        comments: [{ path: 'contract/hello.txt', line: 1, body: 'inline' }],
+      });
       assert.equal(review.body, 'review summary');
       assert.ok((await f.listPullRequestComments(repo, p.number)).some((c) => c.body === 'review summary'));
       const files = await f.listPullRequestFiles(repo, p.number);
-      assert.deepEqual(files.map((x) => x.filename), ['contract/hello.txt']);
+      assert.deepEqual(
+        files.map((x) => x.filename),
+        ['contract/hello.txt'],
+      );
       assert.equal(files[0]?.status, 'added');
       const diff = await f.compare(repo, b.sha, (await f.getPullRequest(repo, p.number)).headSha);
       assert.ok(diff.includes('contract/hello.txt') && diff.includes('+hello'));
@@ -215,13 +250,17 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.equal(await f.rerunFailed(repo, []), false);
     });
 
-    it('queue: support is a boolean and dequeuing a PR that is not queued is a no-op', async () => {
+    void it('queue: support is a boolean and dequeuing a PR that is not queued is a no-op', async () => {
       const f = backend.forge;
       const branch = `bauherr-contract-queue-${Date.now()}`;
       await f.createBranch(repo, branch);
       made.branches.push(branch);
       await env.commitFile(branch, 'contract/queue.txt', 'q\n');
-      const p = await f.openPullRequest(repo, { title: 'contract queue PR', head: branch, base: (await f.getRepository(repo)).defaultBranch });
+      const p = await f.openPullRequest(repo, {
+        title: 'contract queue PR',
+        head: branch,
+        base: (await f.getRepository(repo)).defaultBranch,
+      });
       made.prs.push(p.number);
       assert.equal(typeof (await f.queueSupport(repo)), 'boolean');
       assert.equal(await f.isQueued(repo, p.number), false);
@@ -239,7 +278,7 @@ export function contractSuite(name: string, env: ContractEnv): void {
       assert.equal(await f.isQueued(repo, p.number), false);
     });
 
-    it('files: putFile -> getFile -> listFiles, stale expectSha conflicts', async () => {
+    void it('files: putFile -> getFile -> listFiles, stale expectSha conflicts', async () => {
       const f = backend.forge;
       const branch = `bauherr-contract-files-${Date.now()}`;
       await f.createBranch(repo, branch);
@@ -250,7 +289,10 @@ export function contractSuite(name: string, env: ContractEnv): void {
       const first = await f.getFile(repo, path, branch);
       assert.equal(first.content, '# One\n');
       await f.putFile(repo, { branch, path, content: '# Two\n', message: 'edit', expectSha: first.sha });
-      await assert.rejects(f.putFile(repo, { branch, path, content: '# Three\n', message: 'stale', expectSha: first.sha }), Conflict);
+      await assert.rejects(
+        f.putFile(repo, { branch, path, content: '# Three\n', message: 'stale', expectSha: first.sha }),
+        Conflict,
+      );
       assert.equal((await f.getFile(repo, path, branch)).content, '# Two\n');
       const listed = await f.listFiles(repo, branch);
       assert.ok(listed.paths.includes(path));

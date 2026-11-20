@@ -1,15 +1,9 @@
 import { closingIssues } from './closing-issues.js';
+import { field, labelName, list, text, wire } from './wire.js';
 
 const TRUSTED_ASSOCIATIONS = ['OWNER', 'MEMBER', 'COLLABORATOR'];
 const PROJECT_BOT = /^(project|group)_\d+_bot/;
 
-type Wire = Record<string, unknown>;
-
-const wire = (value: unknown): Wire =>
-  typeof value === 'object' && value !== null ? Object.fromEntries(Object.entries(value)) : {};
-const text = (value: unknown): string => (typeof value === 'string' ? value : '');
-const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
-const field = (value: unknown, key: string): string => text(wire(value)[key]);
 const closed = (value: unknown): { closedAt?: string } => (typeof value === 'string' ? { closedAt: value } : {});
 
 export const secs = (iso: string): string => iso.replace(/\.\d+Z$/, 'Z');
@@ -31,7 +25,7 @@ export const githubPullFields = (pull: unknown) => {
   return {
     ...githubIssueFields(pull),
     updatedAt: text(w.updated_at),
-    labels: list(w.labels).map((label) => (typeof label === 'string' ? label : field(label, 'name'))),
+    labels: list(w.labels).map(labelName),
     assignees: list(w.assignees).map((a) => field(a, 'login')),
     closes: closingIssues(text(w.body)),
   };

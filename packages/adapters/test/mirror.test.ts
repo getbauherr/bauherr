@@ -29,39 +29,80 @@ void describe('closingIssues', () => {
 
 void describe('github mirror fields', () => {
   const issue = (association: string, type = 'User') => ({
-    number: 1, html_url: 'u', title: 't', state: 'closed', labels: [], assignee: null, assignees: [{ login: 'a' }],
-    created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-02T10:00:00Z', closed_at: '2026-10-02T09:00:00Z',
-    user: { login: 'jo', type }, author_association: association,
+    number: 1,
+    html_url: 'u',
+    title: 't',
+    state: 'closed',
+    labels: [],
+    assignee: null,
+    assignees: [{ login: 'a' }],
+    created_at: '2026-10-01T10:00:00Z',
+    updated_at: '2026-10-02T10:00:00Z',
+    closed_at: '2026-10-02T09:00:00Z',
+    user: { login: 'jo', type },
+    author_association: association,
   });
   const backend = (body: unknown) => new GithubBackend({ auth: patAuth('t'), fetch: async () => json(body) });
 
   void it('maps author, trust, bot, dates and assignees of an issue', async () => {
-    const { changes } = await backend([issue('MEMBER')]).tickets('o/r').poll(null);
+    const { changes } = await backend([issue('MEMBER')])
+      .tickets('o/r')
+      .poll(null);
     assert.deepEqual(changes[0], {
-      id: '1', number: 1, url: 'u', title: 't', state: 'closed', labels: [], assignee: null, assignees: ['a'],
-      updatedAt: '2026-10-02T10:00:00Z', createdAt: '2026-10-01T10:00:00Z', closedAt: '2026-10-02T09:00:00Z',
-      author: 'jo', authorTrusted: true, authorIsBot: false,
+      id: '1',
+      number: 1,
+      url: 'u',
+      title: 't',
+      state: 'closed',
+      labels: [],
+      assignee: null,
+      assignees: ['a'],
+      updatedAt: '2026-10-02T10:00:00Z',
+      createdAt: '2026-10-01T10:00:00Z',
+      closedAt: '2026-10-02T09:00:00Z',
+      author: 'jo',
+      authorTrusted: true,
+      authorIsBot: false,
     });
   });
   void it('trusts OWNER, MEMBER and COLLABORATOR only', async () => {
-    const cases = [['OWNER', true], ['COLLABORATOR', true], ['CONTRIBUTOR', false], ['NONE', false]] as const;
+    const cases = [
+      ['OWNER', true],
+      ['COLLABORATOR', true],
+      ['CONTRIBUTOR', false],
+      ['NONE', false],
+    ] as const;
     for (const [association, trusted] of cases) {
-      const { changes } = await backend([issue(association)]).tickets('o/r').poll(null);
+      const { changes } = await backend([issue(association)])
+        .tickets('o/r')
+        .poll(null);
       assert.equal(changes[0]!.authorTrusted, trusted, association);
     }
   });
   void it('flags a bot author', async () => {
-    const { changes } = await backend([issue('NONE', 'Bot')]).tickets('o/r').poll(null);
+    const { changes } = await backend([issue('NONE', 'Bot')])
+      .tickets('o/r')
+      .poll(null);
     assert.equal(changes[0]!.authorIsBot, true);
   });
   void it('maps a pull request with its closing issues and pages the open list', async () => {
     const urls: string[] = [];
     const pull = {
-      number: 5, html_url: 'u', title: 'p', body: 'Fixes #2 and closes o/x#9', state: 'open', draft: false,
-      head: { ref: 'h', sha: 's', repo: { full_name: 'o/r' } }, base: { ref: 'main', repo: { full_name: 'o/r' } },
-      user: { login: 'jo', type: 'User' }, author_association: 'OWNER', labels: [{ name: 'x' }],
+      number: 5,
+      html_url: 'u',
+      title: 'p',
+      body: 'Fixes #2 and closes o/x#9',
+      state: 'open',
+      draft: false,
+      head: { ref: 'h', sha: 's', repo: { full_name: 'o/r' } },
+      base: { ref: 'main', repo: { full_name: 'o/r' } },
+      user: { login: 'jo', type: 'User' },
+      author_association: 'OWNER',
+      labels: [{ name: 'x' }],
       assignees: [{ login: 'a' }],
-      created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-02T10:00:00Z', closed_at: null,
+      created_at: '2026-10-01T10:00:00Z',
+      updated_at: '2026-10-02T10:00:00Z',
+      closed_at: null,
     };
     const b = new GithubBackend({ auth: patAuth('t'), fetch: async (u) => (urls.push(urlOf(u)), json([pull])) });
     const [p] = await b.forge.listOpenPullRequests('o/r', 2, 30);
@@ -79,8 +120,11 @@ void describe('github mirror fields', () => {
   void it('reads the update time of a comment', async () => {
     const b = backend([
       {
-        id: 1, user: { login: 'jo' }, body: 'x',
-        created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-03T10:00:00Z',
+        id: 1,
+        user: { login: 'jo' },
+        body: 'x',
+        created_at: '2026-10-01T10:00:00Z',
+        updated_at: '2026-10-03T10:00:00Z',
       },
     ]);
     assert.equal((await b.tickets('o/r').listComments('1'))[0]!.updatedAt, '2026-10-03T10:00:00Z');
@@ -88,13 +132,25 @@ void describe('github mirror fields', () => {
 });
 
 void describe('gitlab mirror fields', () => {
-  const issue = { id: 1, iid: 1, title: 't', state: 'opened', labels: [], assignees: [{ username: 'a' }], web_url: 'u',
-    created_at: '2026-10-01T10:00:00.000Z', updated_at: '2026-10-02T10:00:00.000Z', closed_at: null,
-    author: { id: 7, username: 'jo' } };
+  const issue = {
+    id: 1,
+    iid: 1,
+    title: 't',
+    state: 'opened',
+    labels: [],
+    assignees: [{ username: 'a' }],
+    web_url: 'u',
+    created_at: '2026-10-01T10:00:00.000Z',
+    updated_at: '2026-10-02T10:00:00.000Z',
+    closed_at: null,
+    author: { id: 7, username: 'jo' },
+  };
   const setup = (levels: Record<number, number>, extra: unknown = issue) => {
     const paths: string[] = [];
     const b = new GitlabBackend({
-      auth: gitlabPat('t'), baseUrl: 'https://gitlab.test', sleep: async () => {},
+      auth: gitlabPat('t'),
+      baseUrl: 'https://gitlab.test',
+      sleep: async () => {},
       fetch: async (u) => {
         const path = urlOf(u).slice('https://gitlab.test/api/v4'.length);
         paths.push(path);
@@ -129,10 +185,23 @@ void describe('gitlab mirror fields', () => {
   });
   void it('maps a merge request and pages the open list', async () => {
     const mr = {
-      id: 9, iid: 3, title: 'm', description: 'Closes #4', state: 'opened', draft: false, source_branch: 'h',
-      target_branch: 'main', sha: 's', source_project_id: 1, target_project_id: 1, web_url: 'u',
-      author: { id: 7, username: 'jo' }, labels: ['x'],
-      assignees: [{ username: 'a' }], created_at: '2026-10-01T10:00:00.000Z', updated_at: '2026-10-02T10:00:00.000Z',
+      id: 9,
+      iid: 3,
+      title: 'm',
+      description: 'Closes #4',
+      state: 'opened',
+      draft: false,
+      source_branch: 'h',
+      target_branch: 'main',
+      sha: 's',
+      source_project_id: 1,
+      target_project_id: 1,
+      web_url: 'u',
+      author: { id: 7, username: 'jo' },
+      labels: ['x'],
+      assignees: [{ username: 'a' }],
+      created_at: '2026-10-01T10:00:00.000Z',
+      updated_at: '2026-10-02T10:00:00.000Z',
     };
     const { b, paths } = setup({ 7: 30 }, mr);
     const [p] = await b.forge.listOpenPullRequests('g/p', 3, 20);
@@ -159,7 +228,11 @@ void describe('fake mirror fields', () => {
     for (const author of ['owner', 'stranger', 'robot']) made.push(await st.create({ title: author, author }));
     assert.deepEqual(
       made.map((t) => [t.authorTrusted, t.authorIsBot]),
-      [[true, false], [false, false], [false, true]],
+      [
+        [true, false],
+        [false, false],
+        [false, true],
+      ],
     );
   });
   void it('stamps creation, closing and the comment edit time', async () => {
@@ -171,7 +244,10 @@ void describe('fake mirror fields', () => {
     const comment = await ts.comment(t.id, 'one');
     const edited = await ts.updateComment(t.id, comment.id, 'two');
     assert.ok(edited.updatedAt > edited.createdAt);
-    assert.deepEqual((await ts.listComments(t.id, edited.updatedAt)).map((c) => c.body), ['two']);
+    assert.deepEqual(
+      (await ts.listComments(t.id, edited.updatedAt)).map((c) => c.body),
+      ['two'],
+    );
     assert.deepEqual(await ts.listComments(t.id, `${edited.updatedAt}x`), []);
     await ts.close(t.id, 'completed');
     assert.ok((await ts.get(t.id)).closedAt);
@@ -186,8 +262,14 @@ void describe('fake mirror fields', () => {
     }
     f.close('o/r', 3);
     f.setPullRequest('o/r', 1, { title: 'touched' });
-    assert.deepEqual((await f.forge.listOpenPullRequests('o/r', 1, 1)).map((p) => p.number), [1]);
-    assert.deepEqual((await f.forge.listOpenPullRequests('o/r', 2, 1)).map((p) => [p.number, p.closes]), [[2, [2]]]);
+    assert.deepEqual(
+      (await f.forge.listOpenPullRequests('o/r', 1, 1)).map((p) => p.number),
+      [1],
+    );
+    assert.deepEqual(
+      (await f.forge.listOpenPullRequests('o/r', 2, 1)).map((p) => [p.number, p.closes]),
+      [[2, [2]]],
+    );
     assert.deepEqual(await f.forge.listOpenPullRequests('o/r', 3, 1), []);
   });
   void it('numbers issues and pull requests from one sequence per repository', async () => {

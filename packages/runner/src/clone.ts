@@ -37,7 +37,15 @@ export function git(dir: string, env: NodeJS.ProcessEnv, ...args: string[]): Pro
   return exec('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd: dir, env }).then((r) => r.stdout.trim());
 }
 
-export async function cloneRepo(o: { baseUrl: string; repo: string; defaultBranch: string; token: string; user?: string; branch: string; checkout?: string }): Promise<Clone & { env: NodeJS.ProcessEnv; home: string }> {
+export async function cloneRepo(o: {
+  baseUrl: string;
+  repo: string;
+  defaultBranch: string;
+  token: string;
+  user?: string;
+  branch: string;
+  checkout?: string;
+}): Promise<Clone & { env: NodeJS.ProcessEnv; home: string }> {
   const root = await mkdtemp(join(tmpdir(), 'bauherr-run-'));
   const dir = join(root, 'repo');
   const home = join(root, 'home');
@@ -59,13 +67,27 @@ export async function cloneRepo(o: { baseUrl: string; repo: string; defaultBranc
 
 export async function fetchBase(c: Clone, env: NodeJS.ProcessEnv, base: string): Promise<void> {
   const shallow = (await git(c.dir, env, 'rev-parse', '--is-shallow-repository')) === 'true';
-  await git(c.dir, env, 'fetch', ...(shallow ? ['--unshallow'] : []), '--no-tags', 'origin', `${base}:refs/remotes/origin/${base}`);
+  await git(
+    c.dir,
+    env,
+    'fetch',
+    ...(shallow ? ['--unshallow'] : []),
+    '--no-tags',
+    'origin',
+    `${base}:refs/remotes/origin/${base}`,
+  );
 }
 
-export async function mergeBase(c: Clone, env: NodeJS.ProcessEnv, base: string): Promise<'uptodate' | 'clean' | 'conflict'> {
+export async function mergeBase(
+  c: Clone,
+  env: NodeJS.ProcessEnv,
+  base: string,
+): Promise<'uptodate' | 'clean' | 'conflict'> {
   await fetchBase(c, env, base);
   try {
-    return (await git(c.dir, env, 'merge', '--no-edit', `origin/${base}`)).includes('Already up to date') ? 'uptodate' : 'clean';
+    return (await git(c.dir, env, 'merge', '--no-edit', `origin/${base}`)).includes('Already up to date')
+      ? 'uptodate'
+      : 'clean';
   } catch (e) {
     if ((await git(c.dir, env, 'diff', '--name-only', '--diff-filter=U')) !== '') return 'conflict';
     throw e;
@@ -74,8 +96,12 @@ export async function mergeBase(c: Clone, env: NodeJS.ProcessEnv, base: string):
 
 export async function patchId(c: Clone, env: NodeJS.ProcessEnv, base: string, rev = 'HEAD'): Promise<string> {
   const range = `${await git(c.dir, env, 'merge-base', `origin/${base}`, rev)}..${rev}`;
-  const { stdout } = await exec('sh', ['-c', 'git diff "$0" | git patch-id --stable', range], { cwd: c.dir, env, maxBuffer: 1 << 28 });
-  return stdout.split(' ')[0]!.trim();
+  const { stdout } = await exec('sh', ['-c', 'git diff "$0" | git patch-id --stable', range], {
+    cwd: c.dir,
+    env,
+    maxBuffer: 1 << 28,
+  });
+  return stdout.split(' ')[0].trim();
 }
 
 export async function commitAll(c: Clone, env: NodeJS.ProcessEnv, message: string): Promise<boolean> {
