@@ -7,6 +7,7 @@ import { coreDbOn } from '../tests/core/db'
 import { engineOn } from '../tests/core/harness'
 import { begin, seedScenario, type ScenarioNames } from '../tests/core/scenario'
 import { seedTickets } from '../tests/core/ticket-scenario'
+import { seedConnect } from './seed-connect'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -97,6 +98,7 @@ if (!ticketsSeeded.docs.length) {
   const ids = { workspace: ticketsWs, otherWorkspace: Number(workspace), product: ticketsProduct }
   await seedTickets(engineOn(coreDbOn(payload, ids, async () => {}), undefined, new Date()))
 }
+await seedConnect(payload)
 
 await ensure('human_touches', { kind: 'e2e:audit' }, { kind: 'e2e:audit', actor: 'e2e-audit-actor', at: '2026-10-30T09:00:00Z', workspace })
 

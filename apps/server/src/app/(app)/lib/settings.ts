@@ -1,4 +1,3 @@
-import type { Check, Forge } from '@bauherr/adapters'
 import { ValidationError } from 'payload'
 import { budgetStatus, DEFAULT_MODEL_BY_TIER, gatewayEnabled } from '../../../lib/gateway'
 import { PRESETS, presetOf } from '../../../lib/providers'
@@ -8,7 +7,6 @@ import { blockedBy, recordCountOf } from '../../../lib/settings-guards'
 import { formatPathSets } from '../../../lib/path-sets'
 import { backendFor } from '../../../lib/adapters'
 import { connectionInput } from '../../../lib/connection'
-import { forgeOf } from '../../../lib/forge'
 import { setupOf } from './product-setup'
 import { payloadClient, workspacesOf, type Bauherr } from './session'
 
@@ -80,7 +78,7 @@ export async function loadProducts(workspace: number) {
           id: p.id as number,
           name: p.name as string,
           slug: p.slug as string,
-          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, mode: (p.deployMode ?? 'observe-ci') as string, webhookUrl: (p.deployWebhookUrl ?? '') as string, checks: (p.deployChecks ?? '') as string, productionGate: !!p.productionGate, productionWebhookUrl: (p.productionWebhookUrl ?? '') as string, productionChecks: (p.productionChecks ?? '') as string },
+          deploy: { stagingUrl: (p.stagingUrl ?? '') as string, productionGate: !!p.productionGate },
           pathSetsText: formatPathSets(p.pathSets),
           state: p.state === 'active' ? ('active' as const) : ('observing' as const),
           tickets: await recordCountOf(payload, p.id as number),
@@ -93,55 +91,6 @@ export async function loadProducts(workspace: number) {
         return { ...product, setup: setupOf(product) }
       }),
     ),
-  }
-}
-
-export async function loadProduct(workspace: number, id: number) {
-  const { products, connections } = await loadProducts(workspace)
-  const product = products.find((p) => p.id === id)
-  return product ? { product, connections } : undefined
-}
-
-export type RecentCheck = { name: string; seen: number; of: number; lastConclusion: string }
-
-const RECENT_COMMITS = 5
-const MAX_COMMITS_READ = 10
-
-export async function collectChecks(forge: Forge, repo: string, extraShas: string[], timeoutMs = 3000): Promise<RecentCheck[] | null> {
-  const read = async () => {
-    const { defaultBranch } = await forge.getRepository(repo)
-    const head = (await forge.listBranches(repo)).find((b) => b.name === defaultBranch)?.sha
-    const newest = head ? (await forge.listCommits(repo, { to: head })).slice(0, RECENT_COMMITS).map((c) => c.sha) : []
-    const shas = [...new Set([...newest, ...extraShas])].slice(0, MAX_COMMITS_READ)
-    const runs = (await Promise.all(shas.map((sha) => forge.listChecks(repo, sha).catch(() => null)))).filter((r): r is Check[] => r !== null)
-    if (shas.length && !runs.length) return null
-    const byName = new Map<string, RecentCheck>()
-    for (const checks of runs) {
-      const latest = new Map<string, Check>()
-      for (const c of checks) if (!latest.has(c.name) || (c.id ?? 0) >= (latest.get(c.name)!.id ?? 0)) latest.set(c.name, c)
-      for (const [name, c] of latest) {
-        const seen = byName.get(name)
-        byName.set(name, { name, seen: (seen?.seen ?? 0) + 1, of: runs.length, lastConclusion: seen?.lastConclusion ?? c.conclusion ?? c.status })
-      }
-    }
-    return [...byName.values()].sort((a, b) => b.seen - a.seen || a.name.localeCompare(b.name))
-  }
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([read(), new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), timeoutMs)))])
-  } catch {
-    return null
-  } finally {
-    clearTimeout(timer)
-  }
-}
-
-export async function recentChecks(productId: number): Promise<RecentCheck[] | null> {
-  try {
-    const { backend, repo } = await forgeOf(await payloadClient(), productId)
-    return await collectChecks(backend.forge, repo, [])
-  } catch {
-    return null
   }
 }
 

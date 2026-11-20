@@ -32,7 +32,7 @@ const scoped = (collection: string, key: Record<string, unknown>, data: Record<s
 
 const github = await scoped('connections', { name: 'github' }, { kind: 'github', config: {}, secret: env('GITHUB_TOKEN'), capabilities: { attachments: false, nativeSubTickets: true, nativeBlocking: true, webhooks: false } })
 await scoped('connections', { name: 'anthropic' }, { kind: 'llm-provider', config: { provider: 'anthropic' }, secret: anthropicKey })
-const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr', productionGate: true, productionChecks: 'production' })
+const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr', productionGate: true })
 await scoped('repositories', { fullName: 'getbauherr/bauherr' }, { product: product.id })
 await scoped('ticket_sources', { repo: 'getbauherr/bauherr', product: product.id }, { connection: github.id })
 

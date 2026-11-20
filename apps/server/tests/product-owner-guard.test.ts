@@ -26,8 +26,12 @@ const BAUHERR_ACTIONS = [
   '(shell)/tickets/actions.ts#decideTicket',
   '(shell)/settings/state-action.ts#setProductState',
 ].concat(
-  ['saveGeneral', 'saveModels', 'savePathSets', 'rotateWorkspaceKey', 'updatePricesNow', 'saveDeploy', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'removeDoc', 'saveConnection', 'verifyConnection', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'deleteWorkspace', 'restoreWorkspaceAction', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey'].map((n) => `(shell)/settings/actions.ts#${n}`),
+  ['saveGeneral', 'saveModels', 'savePathSets', 'rotateWorkspaceKey', 'updatePricesNow', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'removeDoc', 'saveConnection', 'verifyConnection', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'deleteWorkspace', 'restoreWorkspaceAction', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey'].map((n) => `(shell)/settings/actions.ts#${n}`),
 )
+const CONNECT_PAGES = ['settings/products/[id]/connect']
+BAUHERR_PAGES.push(...CONNECT_PAGES)
+const PRODUCT_SECTION_ACTIONS = ['saveExecutor', 'saveIntake', 'saveGates', 'saveProof', 'copyForgeChecks']
+BAUHERR_ACTIONS.push(...PRODUCT_SECTION_ACTIONS.map((n) => `(shell)/settings/products/[id]/actions.ts#${n}`))
 const PO_COLLECTIONS: Record<string, Record<string, string>> = {
   bauherren: { read: 'own account only', update: 'own account: uiPrefs, password and the linked forge login (one account per login) only' },
   'payload-preferences': { read: 'own preferences (Payload built-in, keyed to the user)', create: 'own preferences', update: 'own preferences', delete: 'own preferences' },
@@ -211,7 +215,7 @@ describe('server actions', () => {
 
   it('every action not listed is refused with a 404 for a Product owner', async () => {
     session.cookie = productOwnerCookie
-    expect(files.length).toBe(6)
+    expect(files.length).toBe(7)
     let checked = 0
     for (const f of files) {
       const rel = f.slice((APP + '(app)/').length)
