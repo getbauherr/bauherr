@@ -25,13 +25,15 @@ const setup = async () => {
   })
   const writer = createWriter(h.payload(), { backend: async () => fake, now: () => clock.now })
   const ask = async (round: number) => {
-    const event = await appendEvent(h.payload(), record.id, {
-      type: 'intake.asked',
-      data: { round },
-      actor: 'agent',
+    await appendEvent(h.payload(), record.id, { type: 'intake.asked', data: { round }, actor: 'agent' })
+    const target = { repo: record.record.source.repo, number: record.record.source.number }
+    const posted = await appendEvent(h.payload(), record.id, {
+      type: 'forge.write.done',
+      data: { kind: 'question', target },
+      actor: 'factory',
     })
     await advance(record.id, deps())
-    return Date.parse(event.createdAt)
+    return Date.parse(posted.createdAt)
   }
   const at = (askedMs: number, days: number) => void (clock.now = new Date(askedMs + days * DAY))
   const remind = () => remindReporters(deps(), writer)
@@ -64,7 +66,7 @@ describe('the reporter timing job', () => {
     const comments = await s.comments()
     expect(comments).toHaveLength(1)
     expect(comments[0]?.body.startsWith(DISCLOSURE)).toBe(true)
-    expect(await s.count('forge.write.done')).toBe(1)
+    expect(await s.count('forge.write.done')).toBe(2)
   })
 
   it('reminds again in the next question round', async () => {
@@ -110,7 +112,7 @@ describe('the reporter timing job', () => {
     await s.remind()
     expect(await s.count('reporter.reminded')).toBe(1)
     expect(await s.comments()).toEqual([])
-    expect((await s.types()).some((t) => t.startsWith('forge.write.'))).toBe(false)
+    expect(await s.count('forge.write.started')).toBe(0)
   })
 
   it('ignores a ticket that is not waiting on the reporter', async () => {

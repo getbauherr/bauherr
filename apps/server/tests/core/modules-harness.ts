@@ -134,7 +134,8 @@ export const flowHarness = (suite: string) => {
 
   const backdateAsked = (recordId: number) =>
     h.rows(sql`UPDATE "events" SET "created_at" = '2025-12-01T00:00:00Z'
-      WHERE "record_id" = ${recordId} AND "type" = 'intake.asked'`)
+      WHERE "record_id" = ${recordId}
+        AND ("type" = 'intake.asked' OR ("type" = 'forge.write.done' AND "data"->>'kind' = 'question'))`)
 
   const steps = { start, work, claimRun, submitTo, proof, types, view, comments, pullFor, green, toVerify }
   return { ...ih, ...steps, fake, subDeps, backdateAsked }

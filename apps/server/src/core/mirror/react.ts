@@ -10,7 +10,7 @@ export type ReactCheck = { status: string; conclusion: string | null }
 export type ReactInput = {
   record: TicketRecord
   state: State
-  askedAt: string | null
+  postedAt: string | null
   issue: ReactItem
   pull: ReactItem | null
   comments: ReactComment[]
@@ -23,13 +23,13 @@ const PASSING = ['success', 'neutral', 'skipped']
 
 const isFactory = (comment: ReactComment): boolean => comment.body.trimStart().startsWith(DISCLOSURE)
 
-export const reporterReplied: Reaction = ({ record, state, askedAt, comments }) => {
-  if (!state.reporter.waiting || askedAt === null) return []
+export const reporterReplied: Reaction = ({ record, state, postedAt, comments }) => {
+  if (!state.reporter.waiting || postedAt === null) return []
   const replied = comments.some(
     (comment) =>
       comment.author === record.source.reporter &&
       !isFactory(comment) &&
-      Date.parse(comment.createdAt) > Date.parse(askedAt),
+      Date.parse(comment.createdAt) > Date.parse(postedAt),
   )
   return replied ? [{ type: 'reporter.replied', data: {} }] : []
 }

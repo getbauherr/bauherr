@@ -94,6 +94,9 @@ export const asked = async (e: Engine, id: number, round: number) => {
   if (!claimed) throw new Error('no run queued')
   await finishRun(e.db.payload, claimed.run.id, { status: 'submitted', now: e.clock.now })
   await appendEvent(e.db.payload, id, { type: 'intake.asked', data: { round }, actor: 'agent' })
+  const target = { repo: 'acme/app', number: 1 }
+  const done = { type: 'forge.write.done', data: { kind: 'question', target }, actor: 'factory' } as const
+  await appendEvent(e.db.payload, id, done)
   await advance(id, e.deps())
 }
 

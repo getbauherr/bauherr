@@ -47,6 +47,7 @@ const LABELS: Labels = {
   'forge.write.started': (e) => `Writing ${WRITES[e.data.kind]} to the forge`,
   'forge.write.done': (e) => `Wrote ${WRITES[e.data.kind]} to the forge`,
   'forge.write.failed': (e) => `Writing ${WRITES[e.data.kind]} to the forge failed: ${e.data.reason}`,
+  'forge.write.deferred': (e) => `Drafted ${WRITES[e.data.kind]}: it is sent when the Product is switched on`,
 }
 
 const label = <T extends EventType>(event: EventOf<T>): string => LABELS[event.type](event)

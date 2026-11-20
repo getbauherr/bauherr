@@ -26,11 +26,14 @@ const BAD: [EventType, unknown][] = [
   ['forge.write.started', { kind: 'delete', target: { repo: 'a/b', number: 1 } }],
   ['forge.write.failed', { kind: 'merge', target: { repo: 'a/b', number: 1 } }],
   ['forge.write.done', { kind: 'merge', target: { repo: 'a/b', number: 0 } }],
+  ['forge.write.deferred', { kind: 'merge', target: { repo: 'a/b', number: 1 } }],
+  ['forge.write.deferred', { kind: 'question', target: { repo: 'a/b', number: 1 } }],
+  ['forge.write.deferred', { kind: 'close', target: { repo: 'a/b', number: 1 }, reason: 'done' }],
 ]
 
 describe('parseEvent', () => {
   it('has a sample for every event type, and parses each', () => {
-    expect(Object.keys(SAMPLES)).toHaveLength(32)
+    expect(Object.keys(SAMPLES)).toHaveLength(33)
     for (const [type, data] of Object.entries(SAMPLES)) {
       expect(parseEvent({ type, data })).toEqual({ type, data })
     }

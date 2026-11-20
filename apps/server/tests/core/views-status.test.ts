@@ -7,7 +7,8 @@ import { SAMPLES } from './fixtures'
 const card = (kind: 'brief' | 'result' | 'question', reason: string) => ({ card: kind, reason, options: [], seq: 1 })
 
 const base: StatusInput = {
-  stage: 'build', waitingOn: 'agents', card: null, parked: null, hasRun: true, claimed: true, ended: null,
+  stage: 'build', waitingOn: 'agents', card: null, parked: null, hasRun: true, claimed: true,
+  questionDrafted: false, ended: null,
 }
 
 describe('stuck', () => {
@@ -43,6 +44,9 @@ describe('state and status', () => {
     expect(status({ stage: 'verify' })).toBe('verifying')
     expect(status({ stage: 'ship', hasRun: false, claimed: false })).toBe('waiting-for-deploy')
     expect(status({ waitingOn: 'reporter', stage: 'intake', hasRun: false })).toBe('reporter-asked')
+    expect(status({ waitingOn: 'reporter', stage: 'intake', hasRun: false, questionDrafted: true })).toBe(
+      'question-drafted',
+    )
     expect(status({ waitingOn: 'owner', card: card('brief', 'backlog') })).toBe('brief-needs-approval')
     expect(status({ waitingOn: 'owner', card: card('result', 'result') })).toBe('result-ready')
     expect(status({ waitingOn: 'owner', card: card('question', 'disputed') })).toBe('question')

@@ -12,6 +12,7 @@ import {
 import type { TicketRecord } from '../record/schema'
 import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
+import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
 import { labelOf } from './labels'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
@@ -90,11 +91,14 @@ const endOf = (stored: StoredRecord, events: StoredEvent[]) => {
   return { ended, closedAs: ended === 'closed' ? closedAsOf(type, reasonOf(last)) : null }
 }
 
-const statusFor = (stored: StoredRecord, runs: RunView[], ended: 'accepted' | 'closed' | null): TicketStatus => {
+type Ended = 'accepted' | 'closed' | null
+
+const statusFor = (stored: StoredRecord, runs: RunView[], events: StoredEvent[], ended: Ended): TicketStatus => {
   const live = runs.find((run) => run.status === 'queued' || run.status === 'claimed')
   const { stage, waitingOn, card, parked } = stored
   const claimed = live?.status === 'claimed'
-  return statusOf({ stage, waitingOn, card, parked, hasRun: live !== undefined, claimed, ended })
+  const questionDrafted = questionPostedAt(events) === null
+  return statusOf({ stage, waitingOn, card, parked, hasRun: live !== undefined, claimed, questionDrafted, ended })
 }
 
 export const ticket = async (payload: Payload, filter: TicketFilter): Promise<TicketView> => {
@@ -113,7 +117,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     recordId: stored.id,
     number,
     title: issue?.title ?? `#${number}`,
-    status: statusFor(stored, runs, ended),
+    status: statusFor(stored, runs, events, ended),
     closedAs,
     ended,
     facts: stored.stage === 'intake' ? await loadIntakeFacts(payload, stored) : null,

@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import type { Conn } from '../conn'
 import type { State } from '../fold'
+import { questionPostedAt } from '../intake/posted'
 import type { StoredEvent, StoredRecord } from '../record/store'
 import type { ReactCheck, ReactComment, ReactInput, ReactItem } from './react'
 
@@ -59,11 +60,10 @@ export const loadReactInput = async (
   const issue = await findItem(conn, stored.workspace, repo, number)
   if (!issue) return null
   const pr = state.patch ? await findItem(conn, stored.workspace, repo, state.patch.pr) : null
-  const asked = events.findLast((event) => event.type === 'intake.asked')
   return {
     record: stored.record,
     state,
-    askedAt: asked?.createdAt ?? null,
+    postedAt: questionPostedAt(events),
     issue: issue.item,
     pull: pr?.item ?? null,
     comments: await readComments(conn, issue.id),

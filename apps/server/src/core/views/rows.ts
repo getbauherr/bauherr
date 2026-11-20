@@ -24,6 +24,7 @@ const rowSchema = z.object({
   entered_at: z.coerce.date(),
   verify_rounds: count,
   reporter_round: count.nullable(),
+  question_drafted: z.boolean(),
   terminal_type: z.string().nullable(),
   terminal_at: z.coerce.date().nullable(),
   role: z.enum(['builder', 'reviewer', 'verifier']).nullable(),
@@ -50,6 +51,7 @@ export type TicketRow = {
   enteredAt: Date
   verifyRounds: number
   reporterRound: number | null
+  questionDrafted: boolean
   ended: 'accepted' | 'closed' | null
   closedAs: ClosedAs | null
   criteria: { met: number; total: number }
@@ -86,6 +88,7 @@ const toRow = (raw: unknown): TicketRow => {
     enteredAt: r.entered_at,
     verifyRounds: r.verify_rounds,
     reporterRound: r.reporter_round,
+    questionDrafted: r.question_drafted,
     ended: r.waiting_on === 'nobody' && r.parked === null ? (ended ?? 'closed') : null,
     endedAt: r.terminal_at,
     closedAs: ended === 'closed' ? closedAsOf(r.terminal_type, r.terminal_reason) : null,
@@ -98,7 +101,7 @@ export const loadRows = async (payload: Payload, filter: RowFilter): Promise<Tic
   const result = await payload.db.drizzle.execute(sql`
     SELECT r."id", r."product_id", p."name" AS product_name, r."source_repo", r."source_number", r."stage",
       r."waiting_on", r."rank", r."card", r."parked", i."title", ev."entered_at", ev."verify_rounds",
-      ev."reporter_round", ev."terminal_type", ev."terminal_at", s."role", s."leased_by",
+      ev."reporter_round", ev."question_drafted", ev."terminal_type", ev."terminal_at", s."role", s."leased_by",
       s."steps" -> -1 ->> 'text' AS step, ev."terminal_reason",
       jsonb_array_length(coalesce(r."data" -> 'criteria', '[]'::jsonb)) AS criteria_total,
       (SELECT count(*) FROM jsonb_array_elements(coalesce(r."data" -> 'criteria', '[]'::jsonb)) c
@@ -113,6 +116,8 @@ export const loadRows = async (payload: Payload, filter: RowFilter): Promise<Tic
           WHERE m."stage" = CASE WHEN ${LIVE_SQL} THEN r."stage" ELSE 'done' END), r."created_at") AS entered_at,
         count(*) FILTER (WHERE e."type" = 'verify.changes') AS verify_rounds,
         max((e."data"->>'round')::integer) FILTER (WHERE e."type" = 'intake.asked') AS reporter_round,
+        NOT coalesce(max(e."id") FILTER (WHERE e."type" = 'forge.write.done' AND e."data"->>'kind' = 'question')
+          > max(e."id") FILTER (WHERE e."type" = 'intake.asked'), false) AS question_drafted,
         (array_agg(e."type" ORDER BY e."id" DESC) FILTER (WHERE e."type" IN (${TERMINAL_LIST})))[1] AS terminal_type,
         (array_agg(e."data" ->> 'reason' ORDER BY e."id" DESC) FILTER (WHERE e."type" IN (${TERMINAL_LIST})))[1]
           AS terminal_reason,
