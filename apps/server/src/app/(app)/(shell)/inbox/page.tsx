@@ -1,6 +1,7 @@
 import { isProductOwner } from '../../../../lib/people'
 import { board } from '../../../../core/views/board'
 import { stageStats } from '../../../../core/views/stats'
+import { AutoRefresh } from '../../components/AutoRefresh'
 import { EmptyState } from '../../components/EmptyState'
 import { InboxGroup } from '../../components/inbox/InboxGroup'
 import { Badge } from '../../components/ui/badge'
@@ -30,6 +31,7 @@ export default async function Inbox() {
         </p>
       </div>
       {GROUPS.map((id) => <InboxGroup key={id} id={id} rows={rows[id]} />)}
+      <AutoRefresh />
     </>
   )
 }

@@ -14,7 +14,7 @@ const PO_ROUTES: Record<string, string> = {
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
 }
-const BAUHERR_ROUTES: string[] = ['mcp GET', 'mcp POST', 'mcp DELETE']
+const BAUHERR_ROUTES: string[] = ['api/changes GET', 'mcp GET', 'mcp POST', 'mcp DELETE']
 const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
@@ -280,7 +280,7 @@ describe('routes', () => {
       }
     }
     for (const key of Object.keys(OPEN_ROUTES)) expect(seen, `OPEN_ROUTES names a route that does not exist: ${key}`).toContain(key)
-    expect(seen.length).toBe(6)
+    expect(seen.length).toBe(7)
     partition('routes', seen, Object.keys(PO_ROUTES), BAUHERR_ROUTES)
   })
 })

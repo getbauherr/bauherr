@@ -1,4 +1,5 @@
 import { isProductOwner } from '../../../lib/people'
+import { AutoRefresh } from '../components/AutoRefresh'
 import { EmptyState } from '../components/EmptyState'
 import { FilterRow } from '../components/factory/FilterRow'
 import { HoldStrip } from '../components/factory/HoldStrip'
@@ -56,6 +57,7 @@ export default async function Factory({ searchParams }: { searchParams: Promise<
           ))}
         </div>
       </div>
+      <AutoRefresh />
     </>
   )
 }
