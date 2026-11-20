@@ -30,6 +30,7 @@ const closeBuiltIns = (config: SanitizedConfig): SanitizedConfig => {
 export default buildConfig({
   secret: secret('PAYLOAD_SECRET'),
   serverURL: process.env.PUBLIC_URL,
+  logger: { options: { level: process.env.LOG_LEVEL || 'info' } },
   admin: { user: 'bauherren' },
   i18n: {
     translations: {
