@@ -1,5 +1,5 @@
 import { sql } from '@payloadcms/db-postgres'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { advance } from '../../src/core/engine'
 import { appendEvent } from '../../src/core/record/store'
 import { RecordNotFound } from '../../src/core/record/errors'
@@ -10,6 +10,7 @@ import { openViews, seed, type Seeded } from './views-harness'
 
 let s: Seeded
 const MIN = 60_000
+const QUERIES = 6
 const DAY = 86_400_000
 const run = (query: ReturnType<typeof sql>) => s.e.db.payload.db.drizzle.execute(query)
 const session = (role: string, lastSeen: Date, disconnected = false) =>
@@ -143,7 +144,14 @@ describe('firstLook', () => {
         heldForOutsideAuthor: 1, assignedToPerson: 1,
       },
       pullRequests: { open: 2, closingAnIssue: 1, notClosingAnIssue: 1 },
-      repository: { requiredChecks: [], syncCompleted: false, issuesMirrored: 20, pullRequestsMirrored: 4 },
+      repository: {
+        requiredChecks: [], syncCompleted: false, issuesMirrored: 20, pullRequestsMirrored: 4,
+        suggestForgeChecks: false,
+        repositories: [{
+          repo: 'acme/app', defaultBranch: null, branchProtected: null, requiredChecksOnForge: [],
+          hasAgentsFile: null, issueForms: null, readAt: null,
+        }],
+      },
     })
   })
 
@@ -153,6 +161,45 @@ describe('firstLook', () => {
     expect((await look()).repository).toMatchObject({ requiredChecks: ['ci', 'lint'], syncCompleted: true })
   })
 
+  const setFacts = (protectedState: string, checks: string[]) => run(sql`
+    UPDATE "ticket_sources" SET "default_branch" = 'main', "branch_protected" = ${protectedState},
+      "required_check_names" = ${JSON.stringify(checks)}::jsonb, "has_agents_file" = true, "issue_form_count" = 3,
+      "facts_at" = '2026-11-19T10:00:00Z'::timestamptz`)
+
+  it('returns the facts read from the forge and suggests its checks while the Product has none', async () => {
+    await run(sql`UPDATE "products" SET "required_checks" = NULL`)
+    await setFacts('yes', ['ci', 'lint'])
+    const { repository } = await look()
+    expect(repository.repositories).toEqual([{
+      repo: 'acme/app', defaultBranch: 'main', branchProtected: 'yes', requiredChecksOnForge: ['ci', 'lint'],
+      hasAgentsFile: true, issueForms: 3, readAt: '2026-11-19T10:00:00.000Z',
+    }])
+    expect(repository.suggestForgeChecks).toBe(true)
+    await run(sql`UPDATE "products" SET "required_checks" = 'ci'`)
+    expect((await look()).repository.suggestForgeChecks).toBe(false)
+  })
+
+  it('returns unknown protection as unknown and suggests nothing without checks on the forge', async () => {
+    await run(sql`UPDATE "products" SET "required_checks" = NULL`)
+    await setFacts('unknown', [])
+    const { repository } = await look()
+    expect(repository.repositories[0]).toMatchObject({ branchProtected: 'unknown', requiredChecksOnForge: [] })
+    expect(repository.suggestForgeChecks).toBe(false)
+  })
+
+  it('shows the facts of the Workspace asked for only', async () => {
+    await setFacts('yes', ['ci'])
+    expect((await look(s.e.db.otherWorkspace)).repository.repositories).toEqual([])
+  })
+
+  it('makes a fixed number of queries', async () => {
+    const execute = vi.spyOn(s.e.db.payload.db.drizzle, 'execute')
+    await look()
+    const calls = execute.mock.calls.length
+    execute.mockRestore()
+    expect(calls).toBeLessThanOrEqual(QUERIES)
+  })
+
   it('counts only the records and mirror items of the Workspace asked for', async () => {
     expect(await look(s.e.db.otherWorkspace)).toEqual({
       issues: {
@@ -160,7 +207,10 @@ describe('firstLook', () => {
         heldForOutsideAuthor: 0, assignedToPerson: 0,
       },
       pullRequests: { open: 0, closingAnIssue: 0, notClosingAnIssue: 0 },
-      repository: { requiredChecks: [], syncCompleted: false, issuesMirrored: 0, pullRequestsMirrored: 0 },
+      repository: {
+        requiredChecks: [], syncCompleted: false, issuesMirrored: 0, pullRequestsMirrored: 0,
+        suggestForgeChecks: false, repositories: [],
+      },
     })
   })
 })

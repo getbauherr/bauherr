@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
+import type { BranchProtection } from '../mirror/facts'
 import { classifiedIn } from './classified'
 import { ago } from './sql'
 
@@ -15,7 +16,24 @@ export type FirstLook = {
     assignedToPerson: number
   }
   pullRequests: { open: number; closingAnIssue: number; notClosingAnIssue: number }
-  repository: { requiredChecks: string[]; syncCompleted: boolean; issuesMirrored: number; pullRequestsMirrored: number }
+  repository: {
+    requiredChecks: string[]
+    syncCompleted: boolean
+    issuesMirrored: number
+    pullRequestsMirrored: number
+    suggestForgeChecks: boolean
+    repositories: RepositoryFacts[]
+  }
+}
+
+export type RepositoryFacts = {
+  repo: string
+  defaultBranch: string | null
+  branchProtected: BranchProtection | null
+  requiredChecksOnForge: string[]
+  hasAgentsFile: boolean | null
+  issueForms: number | null
+  readAt: string | null
 }
 
 export type FirstLookFilter = { workspace: number; product: number; now: Date }
@@ -35,6 +53,36 @@ const mirrorRow = z.object({
 const recordRow = z.object({ ready: count, needing: count, duplicates: count })
 
 const sourceRow = z.object({ required: z.string().nullable(), sources: count, imported: count })
+
+const factsRow = z.object({
+  repo: z.string(),
+  default_branch: z.string().nullable(),
+  branch_protected: z.enum(['yes', 'no', 'unknown']).nullable(),
+  required_check_names: z.array(z.string()).nullable(),
+  has_agents_file: z.boolean().nullable(),
+  issue_form_count: count.nullable(),
+  facts_at: z.coerce.date().nullable(),
+})
+
+const repositoryFacts = async (payload: Payload, f: FirstLookFilter): Promise<RepositoryFacts[]> => {
+  const result = await payload.db.drizzle.execute(sql`
+    SELECT "repo", "default_branch", "branch_protected", "required_check_names", "has_agents_file",
+      "issue_form_count", "facts_at"
+    FROM "ticket_sources" WHERE "product_id" = ${f.product} AND "workspace_id" = ${f.workspace}
+    ORDER BY "id"`)
+  return result.rows.map((row) => {
+    const parsed = factsRow.parse(row)
+    return {
+      repo: parsed.repo,
+      defaultBranch: parsed.default_branch,
+      branchProtected: parsed.branch_protected,
+      requiredChecksOnForge: parsed.required_check_names ?? [],
+      hasAgentsFile: parsed.has_agents_file,
+      issueForms: parsed.issue_form_count,
+      readAt: parsed.facts_at?.toISOString() ?? null,
+    }
+  })
+}
 
 const mirrorCounts = async (payload: Payload, f: FirstLookFilter) => {
   const result = await payload.db.drizzle.execute(sql`
@@ -75,6 +123,8 @@ export const firstLook = async (payload: Payload, filter: FirstLookFilter): Prom
   const records = await recordCounts(payload, filter)
   const sources = await sourceFacts(payload, filter)
   const classified = await classifiedIn(payload, filter)
+  const repositories = await repositoryFacts(payload, filter)
+  const requiredChecks = (sources.required ?? '').split(',').map((name) => name.trim()).filter((name) => name !== '')
   const picked = (action: string) => classified.filter(({ selection }) => selection.action === action).length
   return {
     issues: {
@@ -92,10 +142,12 @@ export const firstLook = async (payload: Payload, filter: FirstLookFilter): Prom
       notClosingAnIssue: mirror.open_pulls - mirror.closing,
     },
     repository: {
-      requiredChecks: (sources.required ?? '').split(',').map((name) => name.trim()).filter((name) => name !== ''),
+      requiredChecks,
       syncCompleted: sources.sources > 0 && sources.imported === sources.sources,
       issuesMirrored: mirror.issues,
       pullRequestsMirrored: mirror.pulls,
+      suggestForgeChecks: requiredChecks.length === 0 && repositories.some((r) => r.requiredChecksOnForge.length > 0),
+      repositories,
     },
   }
 }
