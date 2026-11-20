@@ -59,7 +59,13 @@ function NoteDialog(props: {
         </DialogHeader>
         <div className="grid gap-3">
           <Label htmlFor={NOTE_ID}>Note</Label>
-          <Textarea id={NOTE_ID} value={note} onChange={(event) => setNote(event.target.value)} maxLength={1000} />
+          <Textarea
+            id={NOTE_ID}
+            className="font-sans"
+            value={note}
+            maxLength={1000}
+            onChange={(event) => setNote(event.target.value)}
+          />
           {props.error && <p role="alert" className="small text-destructive">{props.error}</p>}
           <DialogFooter>
             <Button type="button" disabled={props.pending || note.trim() === ''} onClick={() => props.onSend(note)}>
@@ -84,7 +90,7 @@ function ActionBar(props: {
       data-testid="action-bar"
       className="flex flex-wrap items-center gap-2 rounded-b-md border-t border-border bg-card px-4 py-3"
     >
-      <p className="mr-auto min-w-0 flex-[1_1_20ch]">{props.sentence}</p>
+      <p className="min-w-full flex-[1_1_20ch] sm:mr-auto sm:min-w-0">{props.sentence}</p>
       {props.error && <span role="alert" className="small text-destructive">{props.error}</span>}
       {props.actions.map((action) => (
         <Button

@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from 'react'
 import { CAPS } from '../../../../core/caps'
 import { REQUIRED_FIELDS } from '../../../../core/intake/facts'
 import type { TicketView } from '../../../../core/views/ticket'
@@ -5,11 +6,16 @@ import { Card, Facts, Section } from './Section'
 
 const TYPE_WORDS = { bug: 'Bug', feature: 'Feature', change: 'Change', chore: 'Chore' } as const
 
-const fieldsOf = (view: TicketView): string => {
+const fieldsOf = (view: TicketView): ReactNode => {
   const required = REQUIRED_FIELDS[view.record.type]
   if (required.length === 0) return 'None required for this type.'
   const missing = view.facts?.missing ?? []
-  return required.map((field) => `${field} ${missing.includes(field) ? 'missing' : 'given'}`).join(' · ')
+  return required.map((field, index) => (
+    <Fragment key={field}>
+      {index > 0 && ' · '}
+      {missing.includes(field) ? <span className="text-warn">{field} missing</span> : `${field} ✓`}
+    </Fragment>
+  ))
 }
 
 const duplicatesOf = (view: TicketView): string => {

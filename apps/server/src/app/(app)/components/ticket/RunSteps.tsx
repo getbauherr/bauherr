@@ -2,7 +2,7 @@ import type { RunPage } from '../../../../core/views/run'
 import { Time } from '../Time'
 import { Card, Section } from './Section'
 
-const STEP = 'grid grid-cols-[64px_minmax(0,1fr)] gap-3 border-t border-border py-2 first:border-t-0'
+const STEP = 'grid grid-cols-[112px_minmax(0,1fr)] gap-3 border-t border-border py-2 first:border-t-0'
 
 const handoffText = (run: RunPage): string | null => {
   if (run.status === 'claimed') return 'Not written yet. The run is still working.'
