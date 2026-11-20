@@ -27,6 +27,8 @@ const BAUHERR_ACTIONS = [
 ].concat(
   ['saveGeneral', 'saveModels', 'savePathSets', 'rotateWorkspaceKey', 'updatePricesNow', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'removeDoc', 'saveConnection', 'verifyConnection', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'deleteWorkspace', 'restoreWorkspaceAction', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey'].map((n) => `(shell)/settings/actions.ts#${n}`),
 )
+const CONNECT_PAGES = ['settings/products/[id]/connect']
+BAUHERR_PAGES.push(...CONNECT_PAGES)
 const PRODUCT_SECTION_ACTIONS = ['saveExecutor', 'saveIntake', 'saveGates', 'saveProof', 'copyForgeChecks']
 BAUHERR_ACTIONS.push(...PRODUCT_SECTION_ACTIONS.map((n) => `(shell)/settings/products/[id]/actions.ts#${n}`))
 const PO_COLLECTIONS: Record<string, Record<string, string>> = {
