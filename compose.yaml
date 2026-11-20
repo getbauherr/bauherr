@@ -28,6 +28,7 @@ x-app: &app
     BAUHERR_ENABLE_ADMIN: ${BAUHERR_ENABLE_ADMIN:-}
     # Runs the worker works at once (default 2).
     BAUHERR_MAX_RUNS: ${BAUHERR_MAX_RUNS:-}
+    LOG_LEVEL: ${LOG_LEVEL:-}
     # Postgres pool per container (app, worker, poller).
     DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-20}
     DATABASE_POOL_TIMEOUT_MS: ${DATABASE_POOL_TIMEOUT_MS:-10000}
