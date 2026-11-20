@@ -5,7 +5,11 @@ type Row = { label: string; value: number; note: string }
 
 const issueRows = (issues: FirstLook['issues']): Row[] => [
   { label: 'Ready for a Brief', value: issues.readyForBrief, note: 'Complete, no duplicate, trusted author' },
-  { label: 'Needs information', value: issues.needingInformation, note: 'Waiting for the reporter to answer' },
+  {
+    label: 'Needs information',
+    value: issues.needingInformation,
+    note: 'Questions are drafted and sent when you switch on.',
+  },
   { label: 'Duplicates', value: issues.closedAsDuplicate, note: 'Each with the issue it repeats' },
   {
     label: 'No activity for a year',

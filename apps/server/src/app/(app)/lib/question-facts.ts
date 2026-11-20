@@ -1,0 +1,37 @@
+import type { TicketView } from '../../../core/views/ticket'
+
+const times = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
+
+const failedRuns = (view: TicketView): string[] => {
+  const failed = view.runs.filter((run) => run.status === 'failed')
+  const error = failed.at(-1)?.error
+  return [`${times(failed.length, 'run')} failed.`, ...(error ? [`Last error: ${error}`] : [])]
+}
+
+const reporterSilent = (view: TicketView): string[] => {
+  const asked = view.events.filter((event) => event.type === 'intake.asked').length
+  return [`The reporter was asked in ${times(asked, 'round')} and did not reply.`]
+}
+
+const disputed = (view: TicketView): string[] =>
+  view.facts && view.facts.missing.length > 0 ? [`Missing from the issue: ${view.facts.missing.join(', ')}.`] : []
+
+const verifyRounds = (view: TicketView): string[] => {
+  const rounds = view.events.filter((event) => event.type === 'verify.changes').length
+  const open = view.record.findings.filter((f) => f.status === 'open' || f.status === 'fixing').length
+  return [`Review asked for changes ${times(rounds, 'time')}.`, `${times(open, 'finding')} still open.`]
+}
+
+const production = (view: TicketView): string[] =>
+  view.pullRequest ? [`Pull request #${view.pullRequest.number} is merged.`] : []
+
+const FACTS: Record<string, (view: TicketView) => string[]> = {
+  'failed-runs': failedRuns,
+  'reporter-silent': reporterSilent,
+  disputed,
+  'verify-rounds': verifyRounds,
+  production,
+  'production-held': production,
+}
+
+export const questionFacts = (view: TicketView, reason: string): string[] => FACTS[reason]?.(view) ?? []

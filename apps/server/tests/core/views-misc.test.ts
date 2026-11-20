@@ -5,6 +5,8 @@ import { appendEvent } from '../../src/core/record/store'
 import { RecordNotFound } from '../../src/core/record/errors'
 import { firstLook } from '../../src/core/views/first-look'
 import { holds } from '../../src/core/views/holds'
+import { RunNotFound } from '../../src/core/run/errors'
+import { runPage } from '../../src/core/views/run'
 import { ticket } from '../../src/core/views/ticket'
 import { openViews, seed, type Seeded } from './views-harness'
 
@@ -120,10 +122,67 @@ describe('ticket', () => {
     expect(t.pullRequest).not.toBeNull()
   })
 
+  it('names the ticket and its status, and reads the intake facts only in Intake', async () => {
+    const waiting = await view(s.names.resultCard)
+    expect(waiting).toMatchObject({ status: 'result-ready', ended: null, closedAs: null, facts: null })
+    expect(waiting.number).toBe(waiting.record.source.number)
+    expect(waiting.title).toBe(waiting.source?.title)
+    const intake = await view(s.names.reporterAsked)
+    expect(intake).toMatchObject({ status: 'reporter-asked', stage: 'intake' })
+    expect(intake.facts?.rounds).toEqual([])
+  })
+
+  it('shows an accepted and a closed ticket as done', async () => {
+    expect(await view(s.names.accepted)).toMatchObject({ stage: 'done', status: 'accepted', ended: 'accepted' })
+    expect(await view(s.names.closed)).toMatchObject({
+      stage: 'done',
+      status: 'closed',
+      ended: 'closed',
+      closedAs: 'discarded',
+    })
+  })
+
   it('does not find a record of another Workspace', async () => {
     await expect(view(s.names.verifying, s.e.db.otherWorkspace)).rejects.toThrow(RecordNotFound)
     await expect(view(s.names.foreign)).rejects.toThrow(RecordNotFound)
     expect((await view(s.names.foreign, s.e.db.otherWorkspace)).recordId).toBe(s.names.foreign)
+  })
+})
+
+describe('runPage', () => {
+  const page = async (recordId: number, withCost: boolean, workspace = s.e.db.workspace) => {
+    const found = await s.e.db.payload.db.drizzle.execute(
+      sql`SELECT "id" FROM "stage_runs" WHERE "record_id" = ${recordId} ORDER BY "id" DESC LIMIT 1`,
+    )
+    return runPage(s.e.db.payload, { workspace, runId: Number(found.rows[0]?.id), withCost })
+  }
+
+  beforeAll(async () => {
+    const set = sql`UPDATE "stage_runs" SET "cost_usd" = 0.74 WHERE "record_id" = ${s.names.verifying}`
+    await s.e.db.payload.db.drizzle.execute(set)
+  })
+
+  it('names the ticket, the stage, the parts it was given and carries the cost only when asked', async () => {
+    const withCost = await page(s.names.verifying, true)
+    expect(withCost).toMatchObject({ stage: 'verify', role: 'verifier', status: 'queued', costUsd: 0.74 })
+    expect(withCost.ticket.recordId).toBe(s.names.verifying)
+    expect(withCost.parts.map((p) => p.label)).toEqual(['Stage skill', 'Record', 'Result schema'])
+    expect(withCost.parts[1]?.detail).toBe('goal, 3 criteria, 0 decisions')
+    const without = await page(s.names.verifying, false)
+    expect(without.costUsd).toBeNull()
+    expect(JSON.stringify(without)).not.toContain('0.74')
+  })
+
+  it('writes a handoff only for an ended build run, and does not find a run of another Workspace', async () => {
+    const runs = await s.e.db.payload.db.drizzle.execute(
+      sql`SELECT "id" FROM "stage_runs" WHERE "record_id" = ${s.names.verifying} AND "stage" = 'build'`,
+    )
+    const id = Number(runs.rows[0]?.id)
+    const build = await runPage(s.e.db.payload, { workspace: s.e.db.workspace, runId: id, withCost: false })
+    expect(build.handoff).toBe('built p1')
+    expect((await page(s.names.verifying, false)).handoff).toBeNull()
+    const foreign = { workspace: s.e.db.otherWorkspace, runId: id, withCost: false }
+    await expect(runPage(s.e.db.payload, foreign)).rejects.toThrow(RunNotFound)
   })
 })
 

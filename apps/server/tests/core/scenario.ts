@@ -74,19 +74,19 @@ export const begin = async (e: Engine): Promise<number> => {
   return id
 }
 
-const toBrief = async (e: Engine, open: boolean): Promise<number> => {
+export const toBrief = async (e: Engine, open: boolean): Promise<number> => {
   const id = await begin(e)
   await workOn(e, id, 'builder', { verdict: 'accept' })
   await workOn(e, id, 'builder', { goal: 'Fix it', open })
   return id
 }
 
-const patch = async (e: Engine, id: number, n: number) => {
+export const patch = async (e: Engine, id: number, n: number) => {
   await workOn(e, id, 'builder', { patchId: `p${n}`, headSha: `h${n}`, pr: n })
   await e.checks(id)
 }
 
-const asked = async (e: Engine, id: number, round: number) => {
+export const asked = async (e: Engine, id: number, round: number) => {
   await setRank(e.db.payload, id, -1000)
   const input = { workspace: e.db.workspace, role: 'builder', by: 'x', now: e.clock.now } as const
   const claimed = await claim(e.db.payload, input)
@@ -94,6 +94,9 @@ const asked = async (e: Engine, id: number, round: number) => {
   if (!claimed) throw new Error('no run queued')
   await finishRun(e.db.payload, claimed.run.id, { status: 'submitted', now: e.clock.now })
   await appendEvent(e.db.payload, id, { type: 'intake.asked', data: { round }, actor: 'agent' })
+  const target = { repo: 'acme/app', number: 1 }
+  const done = { type: 'forge.write.done', data: { kind: 'question', target }, actor: 'factory' } as const
+  await appendEvent(e.db.payload, id, done)
   await advance(id, e.deps())
 }
 

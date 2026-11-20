@@ -33,7 +33,9 @@ type Setup = Awaited<ReturnType<typeof setup>>
 
 const asked = async (s: Setup) => {
   const event = await s.append({ type: 'intake.asked', data: { round: 1 } })
-  await h.rows(sql`UPDATE "events" SET "created_at" = '2025-12-01T00:00:00Z' WHERE "id" = ${event.id}`)
+  const target = { repo: s.repo, number: 1 }
+  const posted = await s.append({ type: 'forge.write.done', data: { kind: 'question', target } })
+  await h.rows(sql`UPDATE "events" SET "created_at" = '2025-12-01T00:00:00Z' WHERE "id" IN (${event.id}, ${posted.id})`)
 }
 
 const stageIs = (s: Setup, stage: string) =>
@@ -85,7 +87,7 @@ describe('the reporter replied', () => {
     await s.fake.tickets(s.repo).comment('1', 'answer')
     await s.sync()
     expect(await s.count('reporter.replied')).toBe(1)
-    expect((await s.types()).some((t) => t.startsWith('forge.write.'))).toBe(false)
+    expect(await s.count('forge.write.started')).toBe(0)
     expect(await s.fake.tickets(s.repo).listComments('1')).toHaveLength(1)
   })
 })

@@ -47,28 +47,27 @@ const inFactory = (url: string) => async (page: Page) => {
   return url
 }
 
+const inTickets = (title: string, query = '') => async (page: Page) => {
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url: base }])
+  await page.goto('/inbox')
+  const href = await page.getByRole('link', { name: new RegExp(title) }).first().getAttribute('href')
+  expect(href, `a ticket titled ${title}`).toBeTruthy()
+  return `${href}${query}`
+}
+
+const runOf = (title: string) => async (page: Page) => {
+  await page.goto(await inTickets(title)(page))
+  const href = await page.locator('main a[href^="/runs/"]').first().getAttribute('href')
+  expect(href, 'a run link on the ticket').toBeTruthy()
+  return href!
+}
+
 const signedOut: Record<string, string> = {
   '/login': '/login',
 }
 
 const redirects: Record<string, RegExp> = { '/settings': /^\/settings\/profile$/ }
-
-const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
-  '/': inFactory('/'),
-  '/inbox': inFactory('/inbox'),
-  '/settings': '/settings',
-  '/settings/api-key': '/settings/api-key',
-  '/settings/audit': '/settings/audit',
-  '/settings/bauherren': '/settings/bauherren',
-  '/settings/connections': '/settings/connections',
-  '/settings/health': '/settings/health',
-  '/settings/models': '/settings/models',
-  '/settings/products': '/settings/products',
-  '/settings/products/[id]': linkOn('/settings/products', /^\/settings\/products\/\d+$/),
-  '/settings/products/new': '/settings/products/new',
-  '/settings/profile': '/settings/profile',
-  '/settings/workspace': '/settings/workspace',
-}
 
 const connectOf = (product: string, path = '/connect') => async (page: Page) => {
   const base = process.env.BASE_URL ?? 'http://localhost:3000'
@@ -78,12 +77,40 @@ const connectOf = (product: string, path = '/connect') => async (page: Page) => 
   return `${href}${path}`
 }
 
-const connectRoutes: Record<string, (page: Page) => Promise<string>> = {
-  '/settings/products/[id] (connect workspace)': connectOf('Look App', ''),
-  '/settings/products/[id]/connect': connectOf('Look App'),
-  '/settings/products/[id]/connect (importing)': connectOf('Importing App'),
+type Target = string | ((page: Page) => Promise<string>)
+
+const routes: Record<string, Target | Record<string, Target>> = {
+  '/': inFactory('/'),
+  '/inbox': inFactory('/inbox'),
+  '/tickets/[id]': {
+    'Brief card': inTickets('Brief with a decision for the tabs'),
+    'Result card': inTickets('Result to read'),
+    'Result tab': inTickets('Result to read', '?tab=result'),
+    'Activity tab': inTickets('Result to read', '?tab=activity'),
+    'question card': inTickets('Question to read'),
+    'Intake': inTickets('Intake waiting for the reporter'),
+  },
+  '/runs/[id]': runOf('Build with reported steps'),
+  '/settings': '/settings',
+  '/settings/api-key': '/settings/api-key',
+  '/settings/audit': '/settings/audit',
+  '/settings/bauherren': '/settings/bauherren',
+  '/settings/connections': '/settings/connections',
+  '/settings/health': '/settings/health',
+  '/settings/models': '/settings/models',
+  '/settings/products': '/settings/products',
+  '/settings/products/[id]': {
+    'first Product': linkOn('/settings/products', /^\/settings\/products\/\d+$/),
+    'imported Product': connectOf('Look App', ''),
+  },
+  '/settings/products/[id]/connect': {
+    'first look': connectOf('Look App'),
+    importing: connectOf('Importing App'),
+  },
+  '/settings/products/new': '/settings/products/new',
+  '/settings/profile': '/settings/profile',
+  '/settings/workspace': '/settings/workspace',
 }
-Object.assign(routes, connectRoutes)
 
 test.describe('keyboard', () => {
   test('sign in with the keyboard only, then skip link, then a visible focus ring on every Tab stop', async ({ page }) => {
@@ -150,8 +177,15 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
     })
   }
 
-  for (const [route, target] of Object.entries(routes)) {
-    test(route, async ({ browser }) => {
+  type Scan = [route: string, title: string, target: Target]
+  const variantsOf = (route: string, target: Record<string, Target>): Scan[] =>
+    Object.entries(target).map(([name, variant]) => [route, `${route}: ${name}`, variant])
+  const scans = Object.entries(routes).flatMap(([route, target]): Scan[] =>
+    typeof target === 'string' || typeof target === 'function' ? [[route, route, target]] : variantsOf(route, target),
+  )
+
+  for (const [route, title, target] of scans) {
+    test(title, async ({ browser }) => {
       test.setTimeout(120_000)
       const page = await (await browser.newContext({ storageState: session })).newPage()
       const url = typeof target === 'string' ? target : await target(page)

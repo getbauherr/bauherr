@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { AdvanceDeps } from './engine'
+import type { Deferred } from './events'
 import { fold } from './fold'
 import { ProductObserving, TargetNotFound, WrongItemKind } from './forge/errors'
 import { renderStatus } from './forge/status'
@@ -50,9 +51,26 @@ const perform = async (deps: AdvanceDeps, stored: StoredRecord, target: Target, 
   }
 }
 
+const deferral = (effect: Effect, target: Deferred['target']): Deferred | null => {
+  switch (effect.kind) {
+    case 'question':
+      return { kind: 'question', target, body: effect.body }
+    case 'close':
+      return { kind: 'close', target, reason: effect.reason }
+    case 'status':
+      return null
+  }
+}
+
 const recordRefusal = async (deps: AdvanceDeps, stored: StoredRecord, effect: Effect, error: Error) => {
   const { repo, number } = stored.record.source
-  const data = { kind: KINDS[effect.kind], target: { repo, number }, reason: error.message.trim() || error.name }
+  const target = { repo, number }
+  const deferred = error instanceof ProductObserving ? deferral(effect, target) : null
+  if (deferred !== null) {
+    await appendEvent(deps.payload, stored.id, { type: 'forge.write.deferred', data: deferred, actor: 'factory' })
+    return
+  }
+  const data = { kind: KINDS[effect.kind], target, reason: error.message.trim() || error.name }
   await appendEvent(deps.payload, stored.id, { type: 'forge.write.failed', data, actor: 'factory' })
 }
 

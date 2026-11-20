@@ -13,13 +13,20 @@ export const decide = defineTool({
     ask: z.string().min(1).max(100),
     choice: z.string().min(1).max(100),
     seq: z.number().int().min(0),
+    answers: z.record(z.string().min(1).max(100), z.string().min(1).max(100)).optional(),
     note: z
       .string()
       .max(NOTE_MAX * 2)
       .optional(),
   }),
-  run: async ({ record, ask, choice, seq, note }, { deps, person }) => {
-    const decision = { ask, choice, seq, ...(note === undefined ? {} : { note }) }
+  run: async ({ record, ask, choice, seq, note, answers }, { deps, person }) => {
+    const decision = {
+      ask,
+      choice,
+      seq,
+      ...(note === undefined ? {} : { note }),
+      ...(answers === undefined ? {} : { answers }),
+    }
     await decideRecord(record, person, decision, deps)
     return { status: 'decided' as const }
   },

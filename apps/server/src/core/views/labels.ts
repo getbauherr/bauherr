@@ -11,6 +11,8 @@ const WRITES: Record<EventOf<'forge.write.done'>['data']['kind'], string> = {
   'pull-request': 'opening the pull request',
 }
 
+const article = (word: string): string => (/^[aeiou]/.test(word) ? 'An' : 'A')
+
 const LABELS: Labels = {
   'intake.accepted': () => 'The issue was accepted and goes to a Brief',
   'intake.asked': (e) => `The reporter was asked questions (round ${e.data.round})`,
@@ -19,9 +21,9 @@ const LABELS: Labels = {
   'reporter.silent': () => 'The reporter did not answer in time',
   'intake.closed': (e) => `The issue was closed as ${e.data.reason.replace(/-/g, ' ')}`,
   'intake.disputed': () => 'The agent disputes that this is a change to make',
-  'run.started': (e) => `A ${e.data.stage} run was queued`,
-  'run.failed': (e) => `A ${e.data.stage} run failed: ${e.data.reason}`,
-  'run.released': (e) => `A ${e.data.stage} run was released`,
+  'run.started': (e) => `${article(e.data.stage)} ${e.data.stage} run was queued`,
+  'run.failed': (e) => `${article(e.data.stage)} ${e.data.stage} run failed: ${e.data.reason}`,
+  'run.released': (e) => `${article(e.data.stage)} ${e.data.stage} run was released`,
   'brief.submitted': () => 'A Brief was submitted',
   'brief.approved': (e) => (e.data.by === 'owner' ? 'The owner approved the Brief' : 'The Brief was approved by rule'),
   'brief.changes-requested': (e) => `The owner asked for changes to the Brief: ${e.data.note}`,
@@ -45,6 +47,7 @@ const LABELS: Labels = {
   'forge.write.started': (e) => `Writing ${WRITES[e.data.kind]} to the forge`,
   'forge.write.done': (e) => `Wrote ${WRITES[e.data.kind]} to the forge`,
   'forge.write.failed': (e) => `Writing ${WRITES[e.data.kind]} to the forge failed: ${e.data.reason}`,
+  'forge.write.deferred': (e) => `Drafted ${WRITES[e.data.kind]}: it is sent when the Product is switched on`,
 }
 
 const label = <T extends EventType>(event: EventOf<T>): string => LABELS[event.type](event)

@@ -81,19 +81,13 @@ describe('an issue from the mirror to done with the real modules', () => {
 describe('an observing Product', () => {
   it('reaches the Brief card and writes nothing to the forge', async () => {
     const s = await f.start('observing')
-    await f.work(s.id, 'builder', NEEDS_INFO)
-    await f.backdateAsked(s.id)
-    f.fake().actingAs = 'jo'
-    await f.fake().tickets(s.repo).comment('1', 'yes')
-    f.fake().actingAs = 'factory'
-    await s.sync()
     await f.work(s.id, 'builder', ACCEPTED)
     await f.work(s.id, 'builder', { ...BRIEF, risk: { door: 'one-way', areas: [], rollback: 'restore a backup' } })
     expect(await f.view(s.id)).toMatchObject({ stage: 'brief', waitingOn: 'owner', card: { card: 'brief' } })
-    expect((await f.comments(s.repo)).map((c) => c.author)).toEqual(['jo'])
+    expect(await f.comments(s.repo)).toEqual([])
     expect((await f.fake().tickets(s.repo).get('1')).labels).toEqual([])
     const types = await f.types(s.id)
-    expect(types).toContain('forge.write.failed')
+    expect(types).not.toContain('forge.write.started')
     expect(types).not.toContain('forge.write.done')
   })
 })
