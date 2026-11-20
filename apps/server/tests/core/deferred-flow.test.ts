@@ -7,6 +7,7 @@ import { remindReporters } from '../../src/core/intake/timing'
 import { readEvents } from '../../src/core/record/store'
 import { board } from '../../src/core/views/board'
 import { firstLook } from '../../src/core/views/first-look'
+import { ticket } from '../../src/core/views/ticket'
 import { flowHarness } from './modules-harness'
 
 const f = flowHarness('core_deferred_flow')
@@ -51,6 +52,9 @@ const status = async (id: number) => {
   return cards.find((card) => card.recordId === id)?.status
 }
 
+const pageStatus = async (id: number) =>
+  (await ticket(f.h.payload(), { workspace: f.h.ids.workspace, recordId: id })).status
+
 describe('an observing Product with a question for the reporter', () => {
   it('keeps the question as a draft, starts no clock and says so on the board', async () => {
     const s = await f.start('observing')
@@ -67,6 +71,7 @@ describe('an observing Product with a question for the reporter', () => {
       expect(await countOf(s.id, 'reporter.silent')).toBe(0)
     }
     expect(await status(s.id)).toBe('question-drafted')
+    expect(await pageStatus(s.id)).toBe('question-drafted')
     const look = await firstLook(f.h.payload(), {
       workspace: f.h.ids.workspace,
       product: f.h.ids.product,
@@ -86,6 +91,7 @@ describe('switching the Product on', () => {
     expect(comments[0]?.body.startsWith(DISCLOSURE)).toBe(true)
     expect(comments[0]?.body).toContain('Questions, round 1')
     expect(await status(s.id)).toBe('reporter-asked')
+    expect(await pageStatus(s.id)).toBe('reporter-asked')
 
     await stamp(s.id, '2025-11-01T00:00:00Z', '2025-12-01T00:00:00Z')
     at(POSTED + 6.9 * DAY)
