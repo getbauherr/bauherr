@@ -4,21 +4,33 @@ import { join } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it, vi } from 'vitest'
+import { z } from 'zod'
+import { migrationUp } from './helpers/migration-db'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 const renderFail = vi.hoisted(() => ({ on: false }))
 vi.mock('../src/lib/gateway', async (orig) => {
   const actual = await orig<typeof import('../src/lib/gateway')>()
-  return { ...actual, renderModels: (...a: Parameters<typeof actual.renderModels>) => (renderFail.on ? Promise.reject(new Error('boom')) : actual.renderModels(...a)) }
+  return {
+    ...actual,
+    renderModels: (...a: Parameters<typeof actual.renderModels>) =>
+      renderFail.on ? Promise.reject(new Error('boom')) : actual.renderModels(...a),
+  }
 })
 
 let payload: Payload
 const o = { overrideAccess: true } as const
 const dir = mkdtempSync(join(tmpdir(), 'gw-'))
 const conn = (workspace: number, provider: string, extra: object = {}) =>
-  payload.create({ collection: 'connections', data: { name: provider, kind: 'llm-provider', provider, secret: 'dummy-key', workspace, ...extra } as never, ...o })
-const ws = async (slug: string) => (await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id as number
-const reload = (id: number) => payload.findByID({ collection: 'workspaces', id, ...o }) as unknown as Promise<{ modelByTier: Record<string, string>; budgetUnit: string }>
+  payload.create({
+    collection: 'connections',
+    data: { name: provider, kind: 'llm-provider', provider, secret: 'dummy-key', workspace, ...extra },
+    ...o,
+  })
+const ws = async (slug: string) =>
+  (await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id as number
+const reloaded = z.object({ modelByTier: z.record(z.string(), z.string()), budgetUnit: z.string() })
+const reload = async (id: number) => reloaded.parse(await payload.findByID({ collection: 'workspaces', id, ...o }))
 
 let testDb: TestDb
 beforeAll(async () => {
@@ -70,23 +82,36 @@ it('connection slugs: derived from the preset, unique per Workspace, fixed after
   expect([a.slug, b.slug]).toEqual(['anthropic', 'anthropic-2'])
   await expect(conn(w, 'anthropic', { slug: 'anthropic' })).rejects.toThrow(/invalid: slug/)
   await expect(conn(w, 'anthropic', { slug: 'Bad/Slug' })).rejects.toThrow(/invalid: slug/)
-  await expect(payload.update({ collection: 'connections', id: a.id, data: { slug: 'other' }, ...o })).rejects.toThrow(/invalid: slug/)
+  await expect(payload.update({ collection: 'connections', id: a.id, data: { slug: 'other' }, ...o })).rejects.toThrow(
+    /invalid: slug/,
+  )
   expect((await conn(await ws('slugs-2'), 'anthropic')).slug).toBe('anthropic')
 })
 
-it('tiers are <connection>/<model>, may point at different Connections, and unknown Connections are refused', async () => {
-  const w = await ws('tiers')
-  expect((await reload(w)).modelByTier.cheap).toBe('claude-haiku-5-5')
-  await conn(w, 'anthropic')
-  await conn(w, 'greenpt')
-  expect(await reload(w)).toMatchObject({ modelByTier: { cheap: 'anthropic/claude-haiku-5-5', strong: 'anthropic/claude-opus-5-5' } })
-  const tiers = { cheap: 'greenpt/glm-5.3-flash', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' }
-  await payload.update({ collection: 'workspaces', id: w, data: { modelByTier: tiers }, ...o })
-  expect((await reload(w)).modelByTier).toEqual(tiers)
-  for (const bad of ['nope/x', 'claude-haiku-5-5', 'greenpt/']) {
-    await expect(payload.update({ collection: 'workspaces', id: w, data: { modelByTier: { ...tiers, cheap: bad } }, ...o })).rejects.toThrow(/invalid: cheap/)
-  }
-})
+it(
+  'tiers are <connection>/<model>, may point at different ' + 'Connections, and unknown Connections are refused',
+  async () => {
+    const w = await ws('tiers')
+    expect((await reload(w)).modelByTier.cheap).toBe('claude-haiku-5-5')
+    await conn(w, 'anthropic')
+    await conn(w, 'greenpt')
+    expect(await reload(w)).toMatchObject({
+      modelByTier: { cheap: 'anthropic/claude-haiku-5-5', strong: 'anthropic/claude-opus-5-5' },
+    })
+    const tiers = {
+      cheap: 'greenpt/glm-5.3-flash',
+      standard: 'anthropic/claude-sonnet-5-5',
+      strong: 'anthropic/claude-opus-5-5',
+    }
+    await payload.update({ collection: 'workspaces', id: w, data: { modelByTier: tiers }, ...o })
+    expect((await reload(w)).modelByTier).toEqual(tiers)
+    for (const bad of ['nope/x', 'claude-haiku-5-5', 'greenpt/']) {
+      await expect(
+        payload.update({ collection: 'workspaces', id: w, data: { modelByTier: { ...tiers, cheap: bad } }, ...o }),
+      ).rejects.toThrow(/invalid: cheap/)
+    }
+  },
+)
 
 it('budget unit is tokens while any Connection has no USD catalog, usd again when it is gone', async () => {
   const w = await ws('budget')
@@ -101,18 +126,26 @@ it('budget unit is tokens while any Connection has no USD catalog, usd again whe
 it('the migration backfills slugs and prefixes tiers, and running it again changes nothing', async () => {
   const w = await ws('mig')
   const [a, b] = [await conn(w, 'anthropic'), await conn(w, 'anthropic')]
-  const db = (payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> } }).drizzle
+  const db = payload.db.drizzle
   await db.execute(sql`UPDATE connections SET slug = NULL WHERE workspace_id = ${w}`)
-  await db.execute(sql`UPDATE workspaces SET model_by_tier = '{"cheap":"claude-haiku-5-5","standard":"x/y","strong":"claude-opus-5-5"}'::jsonb WHERE id = ${w}`)
-  const { up } = await import('../src/migrations/20261102_150144_connection_slugs')
+  await db.execute(
+    sql`UPDATE workspaces SET model_by_tier =
+      '{"cheap":"claude-haiku-5-5","standard":"x/y","strong":"claude-opus-5-5"}'::jsonb WHERE id = ${w}`,
+  )
+  const up = migrationUp(await import('../src/migrations/20261102_150144_connection_slugs'))
   const state = async () => ({
-    slugs: (await payload.find({ collection: 'connections', where: { workspace: { equals: w } }, sort: 'id', ...o })).docs.map((c) => c.slug),
+    slugs: (
+      await payload.find({ collection: 'connections', where: { workspace: { equals: w } }, sort: 'id', ...o })
+    ).docs.map((c) => z.string().parse(c.slug)),
     tiers: (await reload(w)).modelByTier,
   })
-  await up({ db, payload, req: {} } as never)
+  await up({ db, payload, req: {} })
   const first = await state()
-  expect(first).toEqual({ slugs: ['anthropic', 'anthropic-2'], tiers: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/x/y', strong: 'anthropic/claude-opus-5-5' } })
-  await up({ db, payload, req: {} } as never)
+  expect(first).toEqual({
+    slugs: ['anthropic', 'anthropic-2'],
+    tiers: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/x/y', strong: 'anthropic/claude-opus-5-5' },
+  })
+  await up({ db, payload, req: {} })
   expect(await state()).toEqual(first)
   expect([a.id, b.id]).toHaveLength(2)
 })
@@ -121,10 +154,32 @@ it('a Connection that tiers point at cannot be deleted; an unreferenced one can'
   const w = await ws('del-ref')
   const a = await conn(w, 'anthropic')
   const g = await conn(w, 'greenpt')
-  await payload.update({ collection: 'workspaces', id: w, data: { modelByTier: { cheap: 'greenpt/glm-5.3-flash', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } }, ...o })
+  await payload.update({
+    collection: 'workspaces',
+    id: w,
+    data: {
+      modelByTier: {
+        cheap: 'greenpt/glm-5.3-flash',
+        standard: 'anthropic/claude-sonnet-5-5',
+        strong: 'anthropic/claude-opus-5-5',
+      },
+    },
+    ...o,
+  })
   await expect(payload.delete({ collection: 'connections', id: g.id, ...o })).rejects.toThrow(/cheap/)
   expect((await reload(w)).modelByTier.cheap).toBe('greenpt/glm-5.3-flash')
-  await payload.update({ collection: 'workspaces', id: w, data: { modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' } }, ...o })
+  await payload.update({
+    collection: 'workspaces',
+    id: w,
+    data: {
+      modelByTier: {
+        cheap: 'anthropic/claude-haiku-5-5',
+        standard: 'anthropic/claude-sonnet-5-5',
+        strong: 'anthropic/claude-opus-5-5',
+      },
+    },
+    ...o,
+  })
   await payload.delete({ collection: 'connections', id: g.id, ...o })
   await expect(payload.delete({ collection: 'connections', id: a.id, ...o })).rejects.toThrow(/cheap, standard, strong/)
 })
@@ -138,40 +193,50 @@ it('concurrent creates cannot share a slug', async () => {
 it('the migration fills missing tiers for a Workspace with exactly one Connection', async () => {
   const w = await ws('mig-fill')
   await conn(w, 'anthropic')
-  const db = (payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<unknown> } }).drizzle
+  const db = payload.db.drizzle
   await db.execute(sql`UPDATE workspaces SET model_by_tier = '{"cheap":"claude-haiku-5-5"}'::jsonb WHERE id = ${w}`)
-  const { up } = await import('../src/migrations/20261102_150144_connection_slugs')
-  await up({ db, payload, req: {} } as never)
-  expect((await reload(w)).modelByTier).toEqual({ cheap: 'anthropic/claude-haiku-5-5', standard: 'anthropic/claude-sonnet-5-5', strong: 'anthropic/claude-opus-5-5' })
+  const up = migrationUp(await import('../src/migrations/20261102_150144_connection_slugs'))
+  await up({ db, payload, req: {} })
+  expect((await reload(w)).modelByTier).toEqual({
+    cheap: 'anthropic/claude-haiku-5-5',
+    standard: 'anthropic/claude-sonnet-5-5',
+    strong: 'anthropic/claude-opus-5-5',
+  })
 })
 
-it('the migration never renders the gateway config (a failed Payload query would kill its transaction): schema committed, config untouched', async () => {
-  const w = await ws('mig-rollback')
-  await conn(w, 'anthropic')
-  const q = (s: ReturnType<typeof sql>) => (payload.db as unknown as { drizzle: { execute: (q: unknown) => Promise<{ rows: Record<string, unknown>[] }> } }).drizzle.execute(s)
-  await q(sql`DROP INDEX IF EXISTS "workspace_slug_idx"`)
-  await q(sql`ALTER TABLE connections DROP COLUMN slug`)
-  const cfgPath = join(dir, 'config.yaml')
-  const before = readFileSync(cfgPath)
-  const error = vi.spyOn(payload.logger, 'error').mockImplementation(() => undefined)
-  vi.stubGlobal('fetch', async () => ({ ok: true, json: async () => ({ resources: [] }) }))
-  process.env.GATEWAY_ADMIN_URL = 'http://gw.invalid'
-  renderFail.on = true
-  const { up } = await import('../src/migrations/20261102_150144_connection_slugs')
-  const txId = (await payload.db.beginTransaction()) as string
-  try {
-    const db = (payload.db as unknown as { sessions: Record<string, { db: never }> }).sessions[txId].db
-    await up({ db, payload, req: { payload, transactionID: txId } } as never)
-    await payload.db.commitTransaction(txId)
-  } finally {
-    renderFail.on = false
-    delete process.env.GATEWAY_ADMIN_URL
-    vi.unstubAllGlobals()
-  }
-  const col = await q(sql`SELECT 1 AS ok FROM information_schema.columns WHERE table_name = 'connections' AND column_name = 'slug'`)
-  expect(col.rows).toHaveLength(1)
-  expect((await q(sql`SELECT slug FROM connections WHERE workspace_id = ${w}`)).rows).toEqual([{ slug: 'anthropic' }])
-  expect(readFileSync(cfgPath).equals(before)).toBe(true)
-  expect(error).not.toHaveBeenCalledWith(expect.stringContaining('gateway config not rendered'))
-  error.mockRestore()
-})
+it(
+  'the migration never renders the gateway config (a failed Payload query would ' +
+    'kill its transaction): schema committed, config untouched',
+  async () => {
+    const w = await ws('mig-rollback')
+    await conn(w, 'anthropic')
+    const q = (s: ReturnType<typeof sql>) => payload.db.drizzle.execute(s)
+    await q(sql`DROP INDEX IF EXISTS "workspace_slug_idx"`)
+    await q(sql`ALTER TABLE connections DROP COLUMN slug`)
+    const cfgPath = join(dir, 'config.yaml')
+    const before = readFileSync(cfgPath)
+    const error = vi.spyOn(payload.logger, 'error').mockImplementation(() => undefined)
+    vi.stubGlobal('fetch', async () => ({ ok: true, json: async () => ({ resources: [] }) }))
+    process.env.GATEWAY_ADMIN_URL = 'http://gw.invalid'
+    renderFail.on = true
+    const up = migrationUp(await import('../src/migrations/20261102_150144_connection_slugs'))
+    const txId = (await payload.db.beginTransaction()) as string
+    try {
+      const db = payload.db.sessions![txId].db
+      await up({ db, payload, req: { payload, transactionID: txId } })
+      await payload.db.commitTransaction(txId)
+    } finally {
+      renderFail.on = false
+      delete process.env.GATEWAY_ADMIN_URL
+      vi.unstubAllGlobals()
+    }
+    const col = await q(
+      sql`SELECT 1 AS ok FROM information_schema.columns WHERE table_name = 'connections' AND column_name = 'slug'`,
+    )
+    expect(col.rows).toHaveLength(1)
+    expect((await q(sql`SELECT slug FROM connections WHERE workspace_id = ${w}`)).rows).toEqual([{ slug: 'anthropic' }])
+    expect(readFileSync(cfgPath).equals(before)).toBe(true)
+    expect(error).not.toHaveBeenCalledWith(expect.stringContaining('gateway config not rendered'))
+    error.mockRestore()
+  },
+)

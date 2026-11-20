@@ -24,41 +24,79 @@ afterAll(async () => {
 
 it('productSettings answers null for a Product of another Workspace and reads the defaults', async () => {
   const { productSettings } = await import('../src/core/views/product-settings')
-  const [mine, other] = await Promise.all(['ps-mine', 'ps-other'].map((slug) => payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })))
-  const product = await payload.create({ collection: 'products', data: { name: 'Shop', slug: 'shop', workspace: mine!.id as number }, ...o })
-  expect(await productSettings(payload, { workspace: other!.id as number, product: product.id as number })).toBeNull()
-  expect(await productSettings(payload, { workspace: mine!.id as number, product: product.id as number })).toMatchObject({
-    state: 'observing',
-    executor: 'session',
-    riskAreas: [],
-    excludedLabels: [],
-    outsideIssuesPerDay: 5,
-    reporterRemindDays: 7,
-    reporterSilentDays: 21,
-    backlogBriefLimit: 5,
-    autoClose: true,
-    productionGate: false,
-    sources: [],
+  const [mine, other] = await Promise.all(
+    ['ps-mine', 'ps-other'].map((slug) =>
+      payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o }),
+    ),
+  )
+  const product = await payload.create({
+    collection: 'products',
+    data: { name: 'Shop', slug: 'shop', workspace: mine.id },
+    ...o,
   })
+  expect(await productSettings(payload, { workspace: other.id as number, product: product.id as number })).toBeNull()
+  expect(await productSettings(payload, { workspace: mine.id as number, product: product.id as number })).toMatchObject(
+    {
+      state: 'observing',
+      executor: 'session',
+      riskAreas: [],
+      excludedLabels: [],
+      outsideIssuesPerDay: 5,
+      reporterRemindDays: 7,
+      reporterSilentDays: 21,
+      backlogBriefLimit: 5,
+      autoClose: true,
+      productionGate: false,
+      sources: [],
+    },
+  )
 })
 
-it('loadWorkspaceSettings offers the preset models and shows the first Connection\'s tiers as bare ids', async () => {
+it("loadWorkspaceSettings offers the preset models and shows the first Connection's tiers as bare ids", async () => {
   const { loadWorkspaceSettings } = await import('../src/app/(app)/lib/settings')
-  const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'ps-tiers', slug: 'ps-tiers' }, ...o })).id as number
-  await payload.create({ collection: 'connections', data: { name: 'Anthropic', kind: 'llm-provider', provider: 'anthropic', config: {}, secret: 'k', workspace }, ...o })
-  await payload.create({ collection: 'connections', data: { name: 'Greenpt', kind: 'llm-provider', provider: 'greenpt', config: {}, secret: 'k', workspace }, ...o })
-  await payload.update({ collection: 'workspaces', id: workspace, data: { modelByTier: { cheap: 'anthropic/claude-haiku-5-5', standard: 'greenpt/glm-5.3', strong: 'anthropic/claude-opus-5-5' } }, ...o })
+  const workspace = (
+    await payload.create({ collection: 'workspaces', data: { name: 'ps-tiers', slug: 'ps-tiers' }, ...o })
+  ).id as number
+  await payload.create({
+    collection: 'connections',
+    data: { name: 'Anthropic', kind: 'llm-provider', provider: 'anthropic', config: {}, secret: 'k', workspace },
+    ...o,
+  })
+  await payload.create({
+    collection: 'connections',
+    data: { name: 'Greenpt', kind: 'llm-provider', provider: 'greenpt', config: {}, secret: 'k', workspace },
+    ...o,
+  })
+  await payload.update({
+    collection: 'workspaces',
+    id: workspace,
+    data: {
+      modelByTier: {
+        cheap: 'anthropic/claude-haiku-5-5',
+        standard: 'greenpt/glm-5.3',
+        strong: 'anthropic/claude-opus-5-5',
+      },
+    },
+    ...o,
+  })
   const w = await loadWorkspaceSettings(workspace)
   expect(w.modelChoices).toEqual(['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'])
   expect(w.modelByTier).toEqual({ cheap: 'claude-haiku-5-5', standard: 'greenpt/glm-5.3', strong: 'claude-opus-5-5' })
 })
 
-const base = { repositories: [{}], sources: [{}], deploy: { stagingUrl: 'https://s.example.com', productionGate: true } }
+const base = {
+  repositories: [{}],
+  sources: [{}],
+  deploy: { stagingUrl: 'https://s.example.com', productionGate: true },
+}
 
 it('setupOf counts open steps and words the production approval', () => {
   expect(setupOf(base)).toMatchObject({ open: 0, production: 'On' })
   const open = setupOf({ ...base, repositories: [], deploy: { ...base.deploy, stagingUrl: '' } })
   expect(open).toMatchObject({ open: 2, production: 'On' })
   expect(open.rows.map((r) => r.word)).toEqual(['Needs setup', 'Needs setup'])
-  expect(setupOf({ ...base, deploy: { ...base.deploy, productionGate: false } })).toMatchObject({ open: 0, production: 'Off' })
+  expect(setupOf({ ...base, deploy: { ...base.deploy, productionGate: false } })).toMatchObject({
+    open: 0,
+    production: 'Off',
+  })
 })

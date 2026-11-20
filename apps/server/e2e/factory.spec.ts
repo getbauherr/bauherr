@@ -41,7 +41,9 @@ test('the Factory view shows the six stages with their cards', async ({ page }) 
 
 test('a filter marks the URL and dims the cards that do not match', async ({ page }) => {
   await enter(page, '/')
-  await filters(page).getByRole('link', { name: /^Waiting on you/ }).click()
+  await filters(page)
+    .getByRole('link', { name: /^Waiting on you/ })
+    .click()
   await expect(page).toHaveURL(/\?show=you$/)
   await expect(filters(page).getByRole('link', { name: /^Waiting on you/ })).toHaveAttribute('aria-current', 'true')
   await expect(card(page, 'Rename report columns')).toHaveClass(/opacity-20/)

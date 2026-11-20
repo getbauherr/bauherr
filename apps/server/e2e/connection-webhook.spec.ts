@@ -6,8 +6,7 @@ import { confirmClick } from './confirm'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-const sign = (secret: string, body: string) =>
-  `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`
+const sign = (secret: string, body: string) => `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`
 
 test('Admin creates and replaces a webhook secret, and sees the delivery arrive', async ({ page }) => {
   const anonymousApiProbe = page.request

@@ -5,9 +5,10 @@ import { confirmClick } from './confirm'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-const ownWorkspace = (page: Page) => page.context().addCookies([{ name: 'bauherr-ws', value: 'settingsco', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
-
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
+const ownWorkspace = (page: Page) =>
+  page
+    .context()
+    .addCookies([{ name: 'bauherr-ws', value: 'settingsco', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
 
 test('Admin edits budget, adds a Connection with a missing field and a Bauherr', async ({ page }) => {
   await ownWorkspace(page)
@@ -67,7 +68,11 @@ test('Admin edits budget, adds a Connection with a missing field and a Bauherr',
   await expect(row.getByLabel('Role')).toBeVisible()
   await row.getByText('Edit', { exact: true }).click()
 
-  await confirmClick(row.getByRole('button', { name: 'Remove' }), row.getByRole('button', { name: 'Confirm remove' }), (t) => expect(page.getByRole('row', { name: new RegExp(added) })).toHaveCount(0, { timeout: t }))
+  await confirmClick(
+    row.getByRole('button', { name: 'Remove' }),
+    row.getByRole('button', { name: 'Confirm remove' }),
+    (t) => expect(page.getByRole('row', { name: new RegExp(added) })).toHaveCount(0, { timeout: t }),
+  )
   await expect(page.getByRole('row', { name: new RegExp(added) })).toHaveCount(0)
 
   await nav.getByRole('link', { name: 'General' }).click()
@@ -107,12 +112,20 @@ test('Models & budget: model tiers are selects with Other...', async ({ page }) 
   const tier = page.getByLabel('Standard', { exact: true })
   await expect(tier).toHaveRole('combobox')
   await tier.click()
-  await expect(page.getByRole('option')).toHaveText(['Preset default (claude-sonnet-5-5)', 'claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'Other...'])
+  await expect(page.getByRole('option')).toHaveText([
+    'Preset default (claude-sonnet-5-5)',
+    'claude-haiku-5-5',
+    'claude-sonnet-5-5',
+    'claude-opus-5-5',
+    'Other...',
+  ])
   await page.getByRole('option', { name: 'Other...' }).click()
   await expect(page.getByLabel('Standard, other')).toBeVisible()
 })
 
-test('the Settings nav is grouped by scope, the sidebar link opens Profile, and the old anchors still land', async ({ page }) => {
+test('the Settings nav is grouped by scope, the sidebar link opens Profile, and the old anchors still land', async ({
+  page,
+}) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
@@ -122,7 +135,11 @@ test('the Settings nav is grouped by scope, the sidebar link opens Profile, and 
   await expect(page).toHaveURL(/\/settings\/profile$/)
   const nav = page.getByRole('navigation', { name: 'Settings' })
   await expect(nav.getByRole('group')).toHaveCount(3)
-  for (const [group, links] of [['Account', ['Profile', 'API keys']], ['Workspace', ['General', 'Products', 'Connections', 'Models & budget', 'People']], ['Admin', ['Health', 'Audit']]] as const) {
+  for (const [group, links] of [
+    ['Account', ['Profile', 'API keys']],
+    ['Workspace', ['General', 'Products', 'Connections', 'Models & budget', 'People']],
+    ['Admin', ['Health', 'Audit']],
+  ] as const) {
     await expect(nav.getByRole('group', { name: group }).getByRole('link')).toHaveText([...links])
   }
   await expect(nav.getByRole('link', { name: 'Profile' })).toHaveAttribute('aria-current', 'page')

@@ -16,7 +16,8 @@ const DIRECTIVES: [string, RegExp][] = [
   ['bundler-hint', /webpackChunkName|@vite-ignore/],
   ['license', /license|copyright|SPDX-License/i],
 ]
-const EXTERNAL_TRACKER = /https?:\/\/(?:github|gitlab)\.com\/(?!getbauherr\/)[\w.-]+\/[\w.-]+\/(?:issues|pull|merge_requests|discussions)\//
+const EXTERNAL_TRACKER =
+  /https?:\/\/(?:github|gitlab)\.com\/(?!getbauherr\/)[\w.-]+\/[\w.-]+\/(?:issues|pull|merge_requests|discussions)\//
 const PUBLIC_API = /^packages\/(?:cli|adapters)\/src\//
 
 export function sourceFiles(): string[] {
@@ -34,18 +35,33 @@ function classify(file: string, text: string, start: number, end: number): strin
 }
 
 export function scanComments(file: string, text = readFileSync(join(repoRoot, file), 'utf8')): FoundComment[] {
-  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, /\.tsx$/.test(file) ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
+  const sf = ts.createSourceFile(
+    file,
+    text,
+    ts.ScriptTarget.Latest,
+    true,
+    /\.tsx$/.test(file) ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  )
   const seen = new Map<number, FoundComment>()
   const visit = (node: ts.Node): void => {
     if (node.kind >= ts.SyntaxKind.FirstJSDocNode && node.kind <= ts.SyntaxKind.LastJSDocNode) return
     const children = node.getChildren(sf)
     if (children.length) return children.forEach(visit)
     if (node.kind === ts.SyntaxKind.JsxText) return
-    const ranges = [...(ts.getLeadingCommentRanges(text, node.pos) ?? []), ...(ts.getTrailingCommentRanges(text, node.end) ?? [])]
+    const ranges = [
+      ...(ts.getLeadingCommentRanges(text, node.pos) ?? []),
+      ...(ts.getTrailingCommentRanges(text, node.end) ?? []),
+    ]
     for (const r of ranges) {
       if (seen.has(r.pos)) continue
       const line = sf.getLineAndCharacterOfPosition(r.pos).line + 1
-      seen.set(r.pos, { start: r.pos, end: r.end, line, text: text.slice(r.pos, r.end), allowed: classify(file, text, r.pos, r.end) })
+      seen.set(r.pos, {
+        start: r.pos,
+        end: r.end,
+        line,
+        text: text.slice(r.pos, r.end),
+        allowed: classify(file, text, r.pos, r.end),
+      })
     }
   }
   visit(sf)

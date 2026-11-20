@@ -32,7 +32,10 @@ const enterOpen = async (page: Page, base: string) => {
   await signIn(page)
   await page.goto('/inbox')
   const waiting = page.getByRole('region', { name: 'Waiting on you' })
-  await waiting.getByRole('link', { name: new RegExp(`${base} \\d`) }).first().click()
+  await waiting
+    .getByRole('link', { name: new RegExp(`${base} \\d`) })
+    .first()
+    .click()
   await expect(page.getByRole('heading', { level: 1, name: new RegExp(`^${base} \\d$`) })).toBeVisible()
   return new URL(page.url()).pathname
 }

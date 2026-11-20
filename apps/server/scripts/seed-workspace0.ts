@@ -9,16 +9,21 @@ const env = (k: string): string => {
   return v
 }
 
-const anthropicKey = process.env.ANTHROPIC_API_KEY_FILE ? readFileSync(process.env.ANTHROPIC_API_KEY_FILE, 'utf8').trim() : env('ANTHROPIC_API_KEY')
-const adminPassword = process.env.BAUHERR_ADMIN_PASSWORD_FILE ? readFileSync(process.env.BAUHERR_ADMIN_PASSWORD_FILE, 'utf8').trim() : env('BAUHERR_ADMIN_PASSWORD')
+const anthropicKey = process.env.ANTHROPIC_API_KEY_FILE
+  ? readFileSync(process.env.ANTHROPIC_API_KEY_FILE, 'utf8').trim()
+  : env('ANTHROPIC_API_KEY')
+const adminPassword = process.env.BAUHERR_ADMIN_PASSWORD_FILE
+  ? readFileSync(process.env.BAUHERR_ADMIN_PASSWORD_FILE, 'utf8').trim()
+  : env('BAUHERR_ADMIN_PASSWORD')
 
 const payload = await getPayload({ config })
 const o = { overrideAccess: true } as const
 
-const eq = (where: Record<string, unknown>) => Object.fromEntries(Object.entries(where).map(([k, v]) => [k, { equals: v }]))
+const eq = (where: Record<string, unknown>) =>
+  Object.fromEntries(Object.entries(where).map(([k, v]) => [k, { equals: v }]))
 const ensure = async (collection: string, where: Record<string, unknown>, data: Record<string, unknown>) => {
-  const found = await payload.find({ collection, where: eq(where) as never, limit: 1, depth: 0, ...o })
-  return found.docs[0] ?? (await payload.create({ collection, data: data as never, ...o }))
+  const found = await payload.find({ collection, where: eq(where), limit: 1, depth: 0, ...o })
+  return found.docs[0] ?? (await payload.create({ collection, data, ...o }))
 }
 
 const email = env('BAUHERR_ADMIN_EMAIL')
@@ -27,11 +32,26 @@ await payload.update({ collection: 'bauherren', id: admin.id, data: { password: 
 
 const ws = await ensure('workspaces', { slug: 'getbauherr' }, { name: 'getbauherr', slug: 'getbauherr' })
 const workspace = ws.id
-if (gatewayEnabled()) await ensureSessionKey({ id: ws.id, slug: ws.slug as string, budgetUsd30d: ws.budgetUsd30d as number | null })
-const scoped = (collection: string, key: Record<string, unknown>, data: Record<string, unknown>) => ensure(collection, { workspace, ...key }, { workspace, ...key, ...data })
+if (gatewayEnabled())
+  await ensureSessionKey({ id: ws.id, slug: ws.slug as string, budgetUsd30d: ws.budgetUsd30d as number | null })
+const scoped = (collection: string, key: Record<string, unknown>, data: Record<string, unknown>) =>
+  ensure(collection, { workspace, ...key }, { workspace, ...key, ...data })
 
-const github = await scoped('connections', { name: 'github' }, { kind: 'github', config: {}, secret: env('GITHUB_TOKEN'), capabilities: { attachments: false, nativeSubTickets: true, nativeBlocking: true, webhooks: false } })
-await scoped('connections', { name: 'anthropic' }, { kind: 'llm-provider', config: { provider: 'anthropic' }, secret: anthropicKey })
+const github = await scoped(
+  'connections',
+  { name: 'github' },
+  {
+    kind: 'github',
+    config: {},
+    secret: env('GITHUB_TOKEN'),
+    capabilities: { attachments: false, nativeSubTickets: true, nativeBlocking: true, webhooks: false },
+  },
+)
+await scoped(
+  'connections',
+  { name: 'anthropic' },
+  { kind: 'llm-provider', config: { provider: 'anthropic' }, secret: anthropicKey },
+)
 const product = await scoped('products', { slug: 'bauherr' }, { name: 'bauherr', productionGate: true })
 await scoped('repositories', { fullName: 'getbauherr/bauherr' }, { product: product.id })
 await scoped('ticket_sources', { repo: 'getbauherr/bauherr', product: product.id }, { connection: github.id })

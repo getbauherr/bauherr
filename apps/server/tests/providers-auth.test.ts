@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Payload, PayloadRequest } from 'payload'
+import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
+import { localReq } from './helpers/local-req'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
 let payload: Payload
@@ -33,14 +34,30 @@ it('inline secret: absent from API reads, present only in a 0600 config.yaml, no
   const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'iam', slug: 'iam' }, ...o })).id
   const c = await payload.create({
     collection: 'connections',
-    data: { name: 'iam', kind: 'llm-provider', provider: 'bedrock-iam', awsRegion: 'us-east-1', secret: IAM, workspace },
+    data: {
+      name: 'iam',
+      kind: 'llm-provider',
+      provider: 'bedrock-iam',
+      awsRegion: 'us-east-1',
+      secret: IAM,
+      workspace,
+    },
     ...o,
   })
-  const admin = await payload.create({ collection: 'bauherren', data: { email: 'admin@example.com', password: 'pw-admin-12345' }, ...o } as never)
-  const read = await payload.findByID({ collection: 'connections', id: c.id, user: { ...admin, collection: 'bauherren' } as never, overrideAccess: false })
+  const admin = await payload.create({
+    collection: 'bauherren',
+    data: { email: 'admin@example.com', password: 'pw-admin-12345' },
+    ...o,
+  })
+  const read = await payload.findByID({
+    collection: 'connections',
+    id: c.id,
+    user: { ...admin, collection: 'bauherren' },
+    overrideAccess: false,
+  })
   expect(JSON.stringify(read)).not.toContain('inline-s3cret')
   const { renderModels } = await import('../src/lib/gateway')
-  await renderModels({ payload } as unknown as PayloadRequest)
+  await renderModels(await localReq(payload))
   const path = join(dir, 'config.yaml')
   expect(readFileSync(path, 'utf8')).toContain('inline-s3cret')
   expect(statSync(path).mode & 0o777).toBe(0o600)
@@ -48,19 +65,30 @@ it('inline secret: absent from API reads, present only in a 0600 config.yaml, no
   expect(() => statSync(join(dir, 'providers', 'ws-iam.json'))).toThrow()
 })
 
-it('ambient identity: refused with several Workspaces, allowed with one, then a second Workspace is refused', async () => {
-  const [a, b] = await Promise.all([
-    payload.create({ collection: 'workspaces', data: { name: 'amb-a', slug: 'amb-a' }, ...o }),
-    payload.create({ collection: 'workspaces', data: { name: 'amb-b', slug: 'amb-b' }, ...o }),
-  ])
-  const data = { name: 'amb', kind: 'llm-provider' as const, provider: 'bedrock-ambient' as const, awsRegion: 'us-east-1', workspace: a.id }
-  await expect(payload.create({ collection: 'connections', data, ...o })).rejects.toThrow(/invalid: provider/)
-  for (const slug of ['iam', 'amb-b']) {
-    const ws = (await payload.find({ collection: 'workspaces', where: { slug: { equals: slug } }, ...o })).docs[0]
-    await payload.delete({ collection: 'connections', where: { workspace: { equals: ws.id } }, ...o })
-    await payload.delete({ collection: 'workspaces', id: ws.id, ...o })
-  }
-  await payload.create({ collection: 'connections', data, ...o })
-  await expect(payload.create({ collection: 'workspaces', data: { name: 'c', slug: 'c' }, ...o })).rejects.toThrow(/invalid: name/)
-  expect(b.slug).toBe('amb-b')
-})
+it(
+  'ambient identity: refused with several Workspaces, allowed ' + 'with one, then a second Workspace is refused',
+  async () => {
+    const [a, b] = await Promise.all([
+      payload.create({ collection: 'workspaces', data: { name: 'amb-a', slug: 'amb-a' }, ...o }),
+      payload.create({ collection: 'workspaces', data: { name: 'amb-b', slug: 'amb-b' }, ...o }),
+    ])
+    const data = {
+      name: 'amb',
+      kind: 'llm-provider' as const,
+      provider: 'bedrock-ambient' as const,
+      awsRegion: 'us-east-1',
+      workspace: a.id,
+    }
+    await expect(payload.create({ collection: 'connections', data, ...o })).rejects.toThrow(/invalid: provider/)
+    for (const slug of ['iam', 'amb-b']) {
+      const ws = (await payload.find({ collection: 'workspaces', where: { slug: { equals: slug } }, ...o })).docs[0]
+      await payload.delete({ collection: 'connections', where: { workspace: { equals: ws.id } }, ...o })
+      await payload.delete({ collection: 'workspaces', id: ws.id, ...o })
+    }
+    await payload.create({ collection: 'connections', data, ...o })
+    await expect(payload.create({ collection: 'workspaces', data: { name: 'c', slug: 'c' }, ...o })).rejects.toThrow(
+      /invalid: name/,
+    )
+    expect(b.slug).toBe('amb-b')
+  },
+)

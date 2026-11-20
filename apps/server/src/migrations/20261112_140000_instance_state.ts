@@ -14,11 +14,13 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   ALTER TYPE "public"."enum_payload_jobs_log_task_slug" ADD VALUE IF NOT EXISTS 'refresh-prices';
   ALTER TYPE "public"."enum_payload_jobs_task_slug" ADD VALUE IF NOT EXISTS 'refresh-prices';
   ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "instance_state_id" integer;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_instance_state_fk" FOREIGN KEY ("instance_state_id") REFERENCES "public"."instance_state"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_instance_state_fk" FOREIGN
+      KEY ("instance_state_id") REFERENCES "public"."instance_state"("id") ON DELETE cascade ON UPDATE no action;
   CREATE UNIQUE INDEX "instance_state_key_idx" ON "instance_state" USING btree ("key");
   CREATE INDEX "instance_state_updated_at_idx" ON "instance_state" USING btree ("updated_at");
   CREATE INDEX "instance_state_created_at_idx" ON "instance_state" USING btree ("created_at");
-  CREATE INDEX "payload_locked_documents_rels_instance_state_id_idx" ON "payload_locked_documents_rels" USING btree ("instance_state_id");`)
+  CREATE INDEX "payload_locked_documents_rels_instance_state_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("instance_state_id");`)
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {

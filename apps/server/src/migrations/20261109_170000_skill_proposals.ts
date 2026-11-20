@@ -23,16 +23,21 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   );
 
   ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "skill_proposals_id" integer;
-  ALTER TABLE "skill_proposals" ADD CONSTRAINT "skill_proposals_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "skill_proposals" ADD CONSTRAINT "skill_proposals_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."tickets"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "skill_proposals" ADD CONSTRAINT "skill_proposals_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."runs"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "skill_proposals" ADD CONSTRAINT "skill_proposals_workspace_id_workspaces_id_fk" FOREIGN KEY
+      ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "skill_proposals" ADD CONSTRAINT "skill_proposals_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id")
+      REFERENCES "public"."tickets"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "skill_proposals" ADD CONSTRAINT "skill_proposals_run_id_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES
+      "public"."runs"("id") ON DELETE set null ON UPDATE no action;
   CREATE INDEX "skill_proposals_workspace_idx" ON "skill_proposals" USING btree ("workspace_id");
   CREATE UNIQUE INDEX "skill_proposals_ticket_idx" ON "skill_proposals" USING btree ("ticket_id");
   CREATE INDEX "skill_proposals_run_idx" ON "skill_proposals" USING btree ("run_id");
   CREATE INDEX "skill_proposals_updated_at_idx" ON "skill_proposals" USING btree ("updated_at");
   CREATE INDEX "skill_proposals_created_at_idx" ON "skill_proposals" USING btree ("created_at");
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_skill_proposals_fk" FOREIGN KEY ("skill_proposals_id") REFERENCES "public"."skill_proposals"("id") ON DELETE cascade ON UPDATE no action;
-  CREATE INDEX "payload_locked_documents_rels_skill_proposals_id_idx" ON "payload_locked_documents_rels" USING btree ("skill_proposals_id");`)
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_skill_proposals_fk" FOREIGN
+      KEY ("skill_proposals_id") REFERENCES "public"."skill_proposals"("id") ON DELETE cascade ON UPDATE no action;
+  CREATE INDEX "payload_locked_documents_rels_skill_proposals_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("skill_proposals_id");`)
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {

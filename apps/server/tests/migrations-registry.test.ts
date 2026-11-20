@@ -30,13 +30,28 @@ it('the generated registry lists every migration file once, sorted by name', asy
 
 it('keeps the order the hand-edited index had (prefix is frozen)', async () => {
   const { migrations } = await import('../src/migrations')
-  expect(migrations.slice(0, 3).map((m) => m.name)).toEqual(['20261029_165423_initial', '20261030_000000_reconcile_costs', '20261030_120000_provider_presets'])
+  expect(migrations.slice(0, 3).map((m) => m.name)).toEqual([
+    '20261029_165423_initial',
+    '20261030_000000_reconcile_costs',
+    '20261030_120000_provider_presets',
+  ])
   expect(migrations.at(-1)?.name).toBe(migrationNames(readdirSync(dir)).at(-1))
 })
 
 it('renders the registry shape', () => {
   expect(renderMigrations(['20260101_000000_a'])).toBe(
-    "import * as migration_20260101_000000_a from './20260101_000000_a';\n\nexport const migrations = [\n  {\n    up: migration_20260101_000000_a.up,\n    down: migration_20260101_000000_a.down,\n    name: '20260101_000000_a'\n  }\n];\n",
+    [
+      "import * as migration_20260101_000000_a from './20260101_000000_a';",
+      '',
+      'export const migrations = [',
+      '  {',
+      '    up: migration_20260101_000000_a.up,',
+      '    down: migration_20260101_000000_a.down,',
+      "    name: '20260101_000000_a'",
+      '  }',
+      '];',
+      '',
+    ].join('\n'),
   )
 })
 
@@ -49,7 +64,11 @@ it('rejects malformed and duplicate names', () => {
 it('syncJobEnums adds a missing slug and is a no-op on the second call', async () => {
   const { syncJobEnums } = await import('../src/jobs')
   const { sql } = await import('@payloadcms/db-postgres')
-  const labels = async () => ((await payload.db.drizzle.execute(sql`SELECT unnest(enum_range(NULL::enum_payload_jobs_task_slug))::text AS v`)).rows as { v: string }[]).map((r) => r.v)
+  const labels = async () =>
+    (
+      (await payload.db.drizzle.execute(sql`SELECT unnest(enum_range(NULL::enum_payload_jobs_task_slug))::text AS v`))
+        .rows as { v: string }[]
+    ).map((r) => r.v)
   expect(await labels()).not.toContain('new-test-task')
   await syncJobEnums(payload, ['new-test-task'])
   await syncJobEnums(payload, ['new-test-task'])
