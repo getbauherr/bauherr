@@ -3,7 +3,12 @@ import { it } from 'node:test';
 import { appAuth, GithubBackend, GitlabBackend, gitlabPat, patAuth } from '../src/index.js';
 
 const hang: typeof fetch = (_url, init) =>
-  new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)));
+  new Promise((_, reject) =>
+    init?.signal?.addEventListener('abort', () => {
+      const reason: unknown = init.signal?.reason;
+      reject(reason instanceof Error ? reason : new Error(String(reason)));
+    }),
+  );
 
 void it('github request rejects after the timeout', async () => {
   const b = new GithubBackend({ auth: patAuth('t'), fetch: hang, timeoutMs: 20 });
