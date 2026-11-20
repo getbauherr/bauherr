@@ -22,6 +22,18 @@ describe('reviewText', () => {
     )
   })
 
+  it('lists the open findings first, then the criteria that are not met', () => {
+    const criteria = [criterion(1, { status: 'met' }), criterion(2, { status: 'partial' }), criterion(3)]
+    expect(reviewText('abcdef1234', [finding('f1', 'open')], criteria)).toBe(
+      [
+        'Verification of abcdef1 asks for changes:',
+        '- finding f1 (test: tests/f1.test.ts)',
+        '- criterion 2 (partial)',
+        '- criterion 3 (open)',
+      ].join('\n'),
+    )
+  })
+
   it('lists the unmet criteria when there is no open finding', () => {
     const text = reviewText('abcdef1234', [], [criterion(1, { status: 'met' }), criterion(2, { status: 'missing' })])
     expect(text).toBe('Verification of abcdef1 asks for changes:\n- criterion 2 (missing)')

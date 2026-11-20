@@ -115,10 +115,11 @@ export const release = async (payload: Conn, runId: number, token: string, now: 
   return row ? toRun(row) : refusal(payload, runId)
 }
 
-export const releaseLive = async (payload: Conn, recordId: number, now: Date): Promise<Run[]> => {
+export const releaseLive = async (payload: Conn, recordId: number, now: Date, stage?: Stage): Promise<Run[]> => {
   const updated = await payload.db.drizzle.execute(sql`
     UPDATE "stage_runs" SET "status" = 'released', "finished_at" = ${now.toISOString()}, "updated_at" = now()
     WHERE "record_id" = ${recordId} AND "status" IN ('queued', 'claimed')
+      AND (${stage ?? null}::text IS NULL OR "stage" = ${stage ?? null}::text)
     RETURNING ${RUN_COLUMNS}`)
   return updated.rows.map(toRun)
 }

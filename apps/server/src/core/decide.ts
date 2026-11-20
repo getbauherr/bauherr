@@ -73,7 +73,7 @@ const answersOf = (asked: string | null, decision: Decision, record: TicketRecor
 }
 
 const sentBackReview = (asked: string | null, choice: string, state: State, note: string): Effect[] => {
-  const adoptedPatch = state.adopted ? state.patch : null
+  const adoptedPatch = state.adopted && !state.merged ? state.patch : null
   if (asked !== 'result' || choice !== 'send-back' || adoptedPatch === null) return []
   return [{ kind: 'review', pr: adoptedPatch.pr, body: note }]
 }

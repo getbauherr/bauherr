@@ -7,7 +7,7 @@ import { adoptedSource, adoptEvent, briefed, CONFIG, decision, ev, fail, inVerif
 
 type Case = { name: string; events: AppEvent[]; expected: Step; config?: Partial<Config>; record?: TicketRecord }
 
-const run = (stage: 'brief' | 'verify', role: 'builder' | 'verifier' = 'builder'): Step => ({
+const run = (stage: 'brief' | 'build' | 'verify', role: 'builder' | 'verifier' = 'builder'): Step => ({
   kind: 'run',
   stage,
   role,
@@ -31,6 +31,12 @@ const sentBack = [...passed, ev('result.sent-back')]
 const mergedByPerson = [...verifying, ev('ship.merged')]
 const secondCommit = [adoptEvent('h2'), checksDoneAt('h2')]
 const atCap = [...verifying, ...changed('r2'), ...secondCommit, ...changed('r3')]
+const mergedAndPassed = [
+  ...mergedByPerson,
+  start('verify', 'r2'),
+  ev('verify.passed', { runId: 'r2', patchId: 'adopted:h1' }),
+]
+const released = ev('run.released', { stage: 'verify', runId: 'r2' })
 const gated = { productionGate: true }
 const closedOnForge = ev('ticket.closed', { reason: 'closed-on-forge' })
 
@@ -135,6 +141,21 @@ const CASES: Case[] = [
     events: [...passed, adoptEvent('h2')],
     expected: wait('checks'),
   },
+  {
+    name: 'a new commit that released the live Verify run waits for its checks, without a failed run',
+    events: [...verifying, start('verify', 'r2'), adoptEvent('h2'), released],
+    expected: wait('checks'),
+  },
+  {
+    name: 'a released Verify run is verified again once the checks of the new commit finished',
+    events: [...verifying, start('verify', 'r2'), ...secondCommit, released],
+    expected: run('verify', 'verifier'),
+  },
+  {
+    name: 'a send-back after a person merged the pull request goes to Build with the note',
+    events: [...mergedAndPassed, ev('result.sent-back')],
+    expected: run('build'),
+  },
   { name: 'a closed pull request is done', events: [...verifying, closedOnForge], expected: { kind: 'done' } },
   { name: 'a live verify run waits on the run', events: [...verifying, start('verify', 'r2')], expected: wait('run') },
   {
@@ -218,6 +239,16 @@ describe('fold on the adopted path', () => {
 
   it('the merge after the accept finishes the ticket', () => {
     expect(fold([...passed, ev('result.accepted'), ev('ship.merged')], options).stage).toBe('done')
+  })
+
+  it('a release of a live Verify run counts no failed run', () => {
+    const state = fold([...verifying, start('verify', 'r2'), adoptEvent('h2'), released], options)
+    expect(state).toMatchObject({ failedRuns: 0, run: null, stage: 'verify' })
+  })
+
+  it('a send-back after a merge by a person continues as an ordinary ticket in Build', () => {
+    const state = fold([...mergedAndPassed, ev('result.sent-back', { note: 'fix the label' })], options)
+    expect(state).toMatchObject({ stage: 'build', adopted: false, accepted: false, note: 'fix the label' })
   })
 
   it('leaves an ordinary ticket without the adopted state', () => {

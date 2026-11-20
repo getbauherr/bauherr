@@ -1,6 +1,9 @@
 import { sql } from '@payloadcms/db-postgres'
 import { describe, expect, it } from 'vitest'
 import { decide } from '../../src/core/decide'
+import { fold } from '../../src/core/lifecycle'
+import { readEvents } from '../../src/core/record/store'
+import { heartbeat } from '../../src/core/run/leases'
 import { DISCLOSURE } from '../../src/core/forge/disclosure'
 import { sendDeferred } from '../../src/core/deferred'
 import { board } from '../../src/core/views/board'
@@ -104,6 +107,50 @@ describe('an adopted pull request against the fake forge', () => {
     const view = await ticket(f.h.payload(), { workspace: f.h.ids.workspace, recordId: s.id })
     expect(view).toMatchObject({ status: 'waiting-on-author', adopted: { pr: s.pr, author: 'jo' } })
     expect(view.pullRequest).toMatchObject({ number: s.pr, author: 'jo' })
+  })
+
+  it('releases a live Verify run on a new commit: no failure, a stale lease, a new run after the checks', async () => {
+    const s = await toVerify()
+    const claimed = await f.claimRun(s.id, 'verifier')
+    await authorCommits(s, 'b.txt')
+    const types = await f.types(s.id)
+    expect(types.filter((t) => t === 'run.released')).toHaveLength(1)
+    expect(types).not.toContain('run.failed')
+    await expect(f.submitTo(claimed, await verifyResult(s.id, s.headSha, {}))).rejects.toThrow()
+    await expect(heartbeat(f.h.payload(), claimed.run.id, claimed.token, { now: f.clock.now })).rejects.toThrow()
+    expect(fold(await readEvents(f.h.payload(), s.id)).failedRuns).toBe(0)
+    expect(await f.view(s.id)).toMatchObject({ stage: 'verify', waitingOn: 'agents' })
+    expect(await stages(s.id)).toEqual(['brief', 'verify', 'verify'])
+    await f.claimRun(s.id, 'verifier')
+  })
+
+  it('does not merge a commit pushed after the verdict', async () => {
+    const s = await toVerify()
+    await f.work(s.id, 'verifier', await verifyResult(s.id, s.headSha, {}))
+    f.fake().actingAs = 'jo'
+    f.fake().commit(s.repo, 'fix', 'late.txt', 'late')
+    await f.fake().forge.getPullRequest(s.repo, s.pr)
+    f.fake().actingAs = 'factory'
+    const seq = (await f.view(s.id)).card?.seq ?? -1
+    await decide(s.id, owner(), { ask: 'result', choice: 'accept', seq }, f.subDeps())
+    expect((await f.fake().forge.getPullRequest(s.repo, s.pr)).state).toBe('open')
+    expect(await f.types(s.id)).not.toContain('ship.merged')
+    expect(await f.types(s.id)).toContain('run.failed')
+  })
+
+  it('builds the fix itself when the owner sends back a pull request a person already merged', async () => {
+    const s = await toVerify()
+    await f.fake().forge.mergePullRequest(s.repo, s.pr, { method: 'squash', expectSha: s.headSha })
+    f.h.later(DAY)
+    await s.sync()
+    await f.work(s.id, 'verifier', await verifyResult(s.id, s.headSha, {}))
+    const seq = (await f.view(s.id)).card?.seq ?? -1
+    const note = 'The empty state still needs a message'
+    await decide(s.id, owner(), { ask: 'result', choice: 'send-back', note, seq }, f.subDeps())
+    expect(await f.view(s.id)).toMatchObject({ stage: 'build', waitingOn: 'agents', card: null })
+    expect(await stages(s.id)).toEqual(['brief', 'verify', 'build'])
+    const comments = await f.fake().forge.listPullRequestComments(s.repo, s.pr)
+    expect(comments.filter((c) => c.body.includes(note))).toEqual([])
   })
 
   it('posts the note of a send-back as a review comment and waits on the author', async () => {

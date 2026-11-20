@@ -209,6 +209,12 @@ const merged = (state: State, options: FoldOptions): State => {
   return finished({ ...entered, merged: true }, options)
 }
 
+const sentBack = (state: State, note: string): State => {
+  if (!state.adopted) return { ...enter(state, 'build'), accepted: false, note }
+  if (state.merged) return { ...enter(state, 'build'), adopted: false, accepted: false, verdict: null, note }
+  return { ...enter(state, 'verify'), accepted: false, verdict: null, waitingAuthor: true, note }
+}
+
 const ship: Reducer = (state, event, options) => {
   switch (event.type) {
     case 'ship.merged':
@@ -218,10 +224,7 @@ const ship: Reducer = (state, event, options) => {
     case 'result.accepted':
       return finished({ ...state, accepted: true }, options)
     case 'result.sent-back':
-      if (state.adopted) {
-        return { ...enter(state, 'verify'), accepted: false, verdict: null, waitingAuthor: true, note: event.data.note }
-      }
-      return { ...enter(state, 'build'), accepted: false, note: event.data.note }
+      return sentBack(state, event.data.note)
     case 'production.approved':
       return finished({ ...state, productionApproved: true }, options)
     case 'production.held':
