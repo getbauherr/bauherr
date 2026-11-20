@@ -437,6 +437,32 @@ class GithubForge implements Forge {
     const rules = await this.h.json('GET', `/repos/${repo}/rules/branches/${branch.split('/').map(enc).join('/')}`);
     return (rules as any[]).filter((r) => r.type === 'required_status_checks').flatMap((r) => (r.parameters?.required_status_checks ?? []).map((c: { context: string }) => c.context));
   }
+  async isBranchProtected(repo: RepoRef, branch: string) {
+    const name = branch.split('/').map(enc).join('/');
+    const b = await this.h.json<{ protected?: boolean }>('GET', `/repos/${repo}/branches/${name}`);
+    return b.protected === true;
+  }
+  async fileExists(repo: RepoRef, path: string, ref: string) {
+    const url = `/repos/${repo}/contents/${path.split('/').map(enc).join('/')}?ref=${enc(ref)}`;
+    try {
+      await this.h.raw('GET', url);
+      return true;
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 404) return false;
+      throw e;
+    }
+  }
+  async countIssueForms(repo: RepoRef, ref: string) {
+    let entries: { type: string; name: string }[];
+    try {
+      entries = await this.h.json('GET', `/repos/${repo}/contents/.github/ISSUE_TEMPLATE?ref=${enc(ref)}`);
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 404) return 0;
+      throw e;
+    }
+    const form = /^(?!config\.ya?ml$).+\.ya?ml$/;
+    return entries.filter((f) => f.type === 'file' && form.test(f.name)).length;
+  }
   async enqueuePullRequest(repo: RepoRef, n: number, o: { expectSha: string }) {
     const p = await this.getPullRequest(repo, n);
     if (p.state === 'merged') return { state: 'merged' as const, ...(p.mergeSha ? { mergeSha: p.mergeSha } : {}) };

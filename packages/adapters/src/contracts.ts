@@ -210,6 +210,14 @@ export interface Forge {
   mergePullRequest(repo: RepoRef, number: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }): Promise<{ mergeSha: string; branchDeleteError?: string }>;
   queueSupport(repo: RepoRef): Promise<boolean>;
   requiredChecks(repo: RepoRef, branch: string): Promise<string[]>;
+  /** Whether `branch` is protected; `null` when the forge does not let this token (or plan) read it. */
+  isBranchProtected(repo: RepoRef, branch: string): Promise<boolean | null>;
+  fileExists(repo: RepoRef, path: string, ref: string): Promise<boolean>;
+  /**
+   * Number of issue form files on `ref`: GitHub `.github/ISSUE_TEMPLATE/*.yml|yaml` (not `config.yml`),
+   * GitLab `.gitlab/issue_templates/*.md`.
+   */
+  countIssueForms(repo: RepoRef, ref: string): Promise<number>;
   enqueuePullRequest(repo: RepoRef, number: number, o: { expectSha: string }): Promise<{ state: 'queued' | 'merged'; mergeSha?: string }>;
   dequeuePullRequest(repo: RepoRef, number: number): Promise<void>;
   isQueued(repo: RepoRef, number: number): Promise<boolean>;
