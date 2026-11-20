@@ -61,11 +61,21 @@ describe('runEffects', () => {
     expect((await s.fake.tickets(s.repo).get(s.issue.id)).state).toBe('closed')
   })
 
-  it('records the refusal of an observing Product once per effect and writes nothing', async () => {
+  it('keeps a refused question and close of an observing Product as drafts and records a refused status', async () => {
     const s = await setup()
     await active('observing')
-    await runEffects(s.deps, s.record.id, [{ kind: 'question', body: 'why?' }, { kind: 'status' }])
-    expect(await types(s.record.id)).toEqual(['forge.write.failed', 'forge.write.failed'])
+    await runEffects(s.deps, s.record.id, [
+      { kind: 'question', body: 'why?' },
+      { kind: 'close', reason: 'not_planned' },
+      { kind: 'status' },
+    ])
+    const events = await readEvents(h.payload(), s.record.id)
+    expect(events.map((e) => e.type)).toEqual(['forge.write.deferred', 'forge.write.deferred', 'forge.write.failed'])
+    expect(events.map((e) => e.data)).toMatchObject([
+      { kind: 'question', body: 'why?' },
+      { kind: 'close', reason: 'not_planned' },
+      { kind: 'status-comment' },
+    ])
     expect(await comments(s)).toEqual([])
   })
 

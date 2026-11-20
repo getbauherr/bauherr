@@ -82,6 +82,7 @@ export const SAMPLES: Record<EventType, unknown> = {
   'forge.write.started': { kind: 'stage-label', target: { repo: 'acme/app', number: 7 } },
   'forge.write.done': { kind: 'close', target: { repo: 'acme/app', number: 7 } },
   'forge.write.failed': { kind: 'merge', target: { repo: 'acme/app', number: 7 }, reason: 'head moved' },
+  'forge.write.deferred': { kind: 'question', target: { repo: 'acme/app', number: 7 }, body: 'Which browser?' },
 }
 
 export const ev = <T extends EventType>(type: T, data: Record<string, unknown> = {}): AppEvent =>
