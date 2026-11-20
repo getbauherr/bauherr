@@ -155,7 +155,14 @@ describe('a delivery on the fake forge', () => {
       data: { round: 1 },
       actor: 'factory',
     })
-    await h.rows(sql`UPDATE "events" SET "created_at" = '2025-12-01T00:00:00Z' WHERE "id" = ${asked.id}`)
+    const target = { repo, number: issue.number }
+    const posted = await appendEvent(h.payload(), record.id, {
+      type: 'forge.write.done',
+      data: { kind: 'question', target },
+      actor: 'factory',
+    })
+    const ids = sql`${asked.id}, ${posted.id}`
+    await h.rows(sql`UPDATE "events" SET "created_at" = '2025-12-01T00:00:00Z' WHERE "id" IN (${ids})`)
     fake.actingAs = 'jo'
     await fake.tickets(repo).comment(String(issue.number), 'the answer is yes')
 
