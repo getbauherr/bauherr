@@ -7,7 +7,8 @@ import { readerFor } from '../../core/forge/reader'
 import { createWriter } from '../../core/forge/writer'
 import type { Role } from '../../core/lifecycle'
 import { MODULES, skillFor } from '../../lean'
-import { connectionInput, isGithubApp, webOrigin } from '../../lib/connection'
+import { gitToken } from '../../lib/adapters'
+import { connectionInput, webOrigin, type ConnectionInput } from '../../lib/connection'
 import { tierModels } from '../../lib/gateway'
 import { decrypt } from '../../lib/secrets'
 import { engineDeps } from '../engine-deps'
@@ -40,15 +41,22 @@ const repoAccess = async (payload: Payload, recordId: number): Promise<RepoAcces
   if (!row) throw new Error(`Record ${recordId} has no ticket source: connect the repository first.`)
   const { connection_id: connectionId, source_repo: repo } = connectionRow.parse(row)
   const connection = await connectionInput(payload, connectionId)
-  if (!connection.secret) throw new Error(`Connection ${connection.id} has no secret.`)
-  if (isGithubApp(connection)) throw new Error('A GitHub App connection cannot clone yet: use a token connection.')
   const forgeRepo = await readerFor(connection).forge.getRepository(repo)
+  return gitAccess(connection, repo, forgeRepo.defaultBranch)
+}
+
+export const gitAccess = (
+  connection: ConnectionInput,
+  repo: string,
+  defaultBranch: string,
+  limits: { fetch?: typeof fetch } = {},
+): RepoAccess => {
   const override = process.env.BAUHERR_GIT_BASE_URL
   return {
     baseUrl: override || (connection.kind === 'gitlab' ? webOrigin(connection) : 'https://github.com'),
     repo,
-    defaultBranch: forgeRepo.defaultBranch,
-    token: connection.secret,
+    defaultBranch,
+    token: () => gitToken(connection, limits),
     ...(connection.kind === 'gitlab' ? { user: 'oauth2' } : {}),
   }
 }

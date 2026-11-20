@@ -1,5 +1,5 @@
 import { sql } from '@payloadcms/db-postgres'
-import { commitAndPush, fetchBase, git, patchId, type cloneRepo } from '@bauherr/runner'
+import { commitAndPush, fetchBase, git, patchId, useToken, type cloneRepo } from '@bauherr/runner'
 import { z } from 'zod'
 import { pullDescription, pullTitle } from '../../core/forge/pull-description'
 import type { State } from '../../core/fold'
@@ -36,19 +36,34 @@ const issueItemOf = async ({ stored, deps }: PlanInput): Promise<number> => {
   return idRow.parse(row).id
 }
 
-const headFacts = async (checkout: Checkout, base: string, fetchFirst: boolean) => {
-  if (fetchFirst) await fetchBase(checkout, checkout.env, base)
+const freshToken = async (checkout: Checkout, access: RepoAccess): Promise<void> => {
+  useToken(checkout, await access.token(), access.user)
+}
+
+const headFacts = async (checkout: Checkout, access: RepoAccess, fetchFirst: boolean) => {
+  if (fetchFirst) {
+    await freshToken(checkout, access)
+    await fetchBase(checkout, checkout.env, access.defaultBranch)
+  }
+  const base = access.defaultBranch
   return {
     headSha: await git(checkout.dir, checkout.env, 'rev-parse', 'HEAD'),
     patchId: await patchId(checkout, checkout.env, base),
   }
 }
 
-const cloneAt = (input: PlanInput, branch: string, checkout?: string): CloneOptions => ({
-  ...input.access,
-  branch,
-  ...(checkout === undefined ? {} : { checkout }),
-})
+const cloneAt = async (input: PlanInput, branch: string, checkout?: string): Promise<CloneOptions> => {
+  const { baseUrl, repo, defaultBranch, user } = input.access
+  return {
+    baseUrl,
+    repo,
+    defaultBranch,
+    token: await input.access.token(),
+    ...(user === undefined ? {} : { user }),
+    branch,
+    ...(checkout === undefined ? {} : { checkout }),
+  }
+}
 
 const openPull = async (input: PlanInput, checkout: Checkout): Promise<number> => {
   const { record } = input.stored
@@ -66,16 +81,17 @@ const build = async (input: PlanInput): Promise<Plan> => {
   const { stored, state, run, access } = input
   const existing = state.patch
   const branch = `bauherr/${stored.record.source.number}-${run.id}`
-  const clone = existing ? cloneAt(input, branch, await headRefOf(input, existing.pr)) : cloneAt(input, branch)
+  const clone = await (existing ? cloneAt(input, branch, await headRefOf(input, existing.pr)) : cloneAt(input, branch))
   return {
     clone,
     seal: async (checkout) => {
       const message = `${pullTitle(stored.record)} (#${stored.record.source.number})`
+      await freshToken(checkout, access)
       if (!(await commitAndPush(checkout, checkout.env, message))) {
         return { ok: false, reason: 'the agent left no change in the checkout' }
       }
       const pr = existing ? existing.pr : await openPull(input, checkout)
-      return { ok: true, facts: { pr, ...(await headFacts(checkout, access.defaultBranch, existing !== null)) } }
+      return { ok: true, facts: { pr, ...(await headFacts(checkout, access, existing !== null)) } }
     },
   }
 }
@@ -83,13 +99,18 @@ const build = async (input: PlanInput): Promise<Plan> => {
 const verify = async (input: PlanInput): Promise<Plan> => {
   const { state, run, access } = input
   if (!state.patch) throw new Error('The record has no patch to verify: send it back to Build.')
-  const clone = cloneAt(input, `bauherr/verify-${run.id}`, await headRefOf(input, state.patch.pr))
+  const clone = await cloneAt(input, `bauherr/verify-${run.id}`, await headRefOf(input, state.patch.pr))
   const seal = async (checkout: Checkout): Promise<Sealed> => ({
     ok: true,
-    facts: await headFacts(checkout, access.defaultBranch, true),
+    facts: await headFacts(checkout, access, true),
   })
   return { clone, seal }
 }
+
+const plain = async (input: PlanInput): Promise<Plan> => ({
+  clone: await cloneAt(input, `bauherr/${input.run.stage}-${input.run.id}`),
+  seal: () => Promise.resolve({ ok: true, facts: {} }),
+})
 
 export const planFor = (input: PlanInput): Promise<Plan> => {
   switch (input.run.stage) {
@@ -98,9 +119,6 @@ export const planFor = (input: PlanInput): Promise<Plan> => {
     case 'verify':
       return verify(input)
     default:
-      return Promise.resolve({
-        clone: cloneAt(input, `bauherr/${input.run.stage}-${input.run.id}`),
-        seal: () => Promise.resolve({ ok: true, facts: {} }),
-      })
+      return plain(input)
   }
 }

@@ -10,8 +10,14 @@ export const WORK_DIR = '.bauherr';
 
 export type Clone = { dir: string; branch: string; baseSha: string; cleanup(): Promise<void> };
 
+const authHeader = (token: string, user: string): string =>
+  `Authorization: Basic ${Buffer.from(`${user}:${token}`).toString('base64')}`;
+
+export function useToken(c: { env: NodeJS.ProcessEnv }, token: string, user = 'x-access-token'): void {
+  c.env.GIT_CONFIG_VALUE_0 = authHeader(token, user);
+}
+
 export function gitEnv(token: string, home: string, user = 'x-access-token'): NodeJS.ProcessEnv {
-  const basic = Buffer.from(`${user}:${token}`).toString('base64');
   return {
     PATH: process.env.PATH,
     HOME: home,
@@ -23,7 +29,7 @@ export function gitEnv(token: string, home: string, user = 'x-access-token'): No
     GIT_COMMITTER_EMAIL: 'bauherr@users.noreply.invalid',
     GIT_CONFIG_COUNT: '1',
     GIT_CONFIG_KEY_0: 'http.extraheader',
-    GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
+    GIT_CONFIG_VALUE_0: authHeader(token, user),
   };
 }
 

@@ -7,7 +7,7 @@ import { beforeEach } from 'vitest'
 import { createWriter } from '../../src/core/forge/writer'
 import { readEvents } from '../../src/core/record/store'
 import { workNext } from '../../src/jobs/runner'
-import type { AgentOutcome, AgentRequest, RunnerDeps } from '../../src/jobs/runner/types'
+import type { AgentOutcome, AgentRequest, RepoAccess, RunnerDeps } from '../../src/jobs/runner/types'
 import { BRIEF, buildResult, finding, flowHarness } from './modules-harness'
 
 const GIT_ENV = {
@@ -57,8 +57,9 @@ export const runnerHarness = (suite: string) => {
   const f = flowHarness(suite)
   const remote = makeRemote()
   const seen: Seen[] = []
-  const state: { behaviour: Behaviour | null; record: number; prompts: string[] } = {
+  const state: { behaviour: Behaviour | null; record: number; prompts: string[]; access: RepoAccess | null } = {
     behaviour: null,
+    access: null,
     record: 0,
     prompts: [],
   }
@@ -101,7 +102,15 @@ export const runnerHarness = (suite: string) => {
   const deps = (): RunnerDeps => ({
     engine: () => ({ ...f.subDeps(), skills: (stage) => Promise.resolve(`# skill for ${stage}`) }),
     writer: createWriter(f.h.payload(), { backend: async () => f.fake(), now: () => f.clock.now }),
-    access: () => Promise.resolve({ baseUrl: remote.baseUrl, repo: 'o/n', defaultBranch: 'main', token: 'secret' }),
+    access: () =>
+      Promise.resolve(
+        state.access ?? {
+          baseUrl: remote.baseUrl,
+          repo: 'o/n',
+          defaultBranch: 'main',
+          token: () => Promise.resolve('secret'),
+        },
+      ),
     model: (_workspace, role) => Promise.resolve(`model-for-${role}`),
     agent,
     beatMs: 10,
@@ -156,6 +165,7 @@ export const runnerHarness = (suite: string) => {
   beforeEach(() => {
     seen.length = 0
     state.behaviour = null
+    state.access = null
     state.prompts = []
   })
 

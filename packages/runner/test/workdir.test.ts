@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { cloneRepo, commitAndPush, fetchBase, patchId } from '../src/clone.js';
+import { cloneRepo, commitAndPush, fetchBase, patchId, useToken } from '../src/clone.js';
 import { makeBareRepo } from './helpers.js';
 
 const sh = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString().trim();
@@ -45,6 +45,18 @@ void test('patchId needs the base branch, which fetchBase brings to a branch clo
     await assert.rejects(patchId(c, c.env, 'main'));
     await fetchBase(c, c.env, 'main');
     assert.match(await patchId(c, c.env, 'main'), /^[0-9a-f]{40}$/);
+  } finally {
+    await c.cleanup();
+  }
+});
+
+void test('useToken replaces the credential the git commands receive, and writes nothing to disk', async () => {
+  const c = await open(makeBareRepo());
+  try {
+    useToken(c, 'NEW-TOKEN', 'oauth2');
+    const header = c.env.GIT_CONFIG_VALUE_0 ?? '';
+    assert.equal(Buffer.from(header.replace('Authorization: Basic ', ''), 'base64').toString(), 'oauth2:NEW-TOKEN');
+    assert.ok(!readFileSync(join(c.dir, '.git/config'), 'utf8').includes('NEW-TOKEN'));
   } finally {
     await c.cleanup();
   }

@@ -6,7 +6,7 @@ export type RepoAccess = {
   baseUrl: string
   repo: string
   defaultBranch: string
-  token: string
+  token: () => Promise<string>
   user?: string
 }
 
