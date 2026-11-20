@@ -14,6 +14,7 @@ const productRow = z.object({
   deploy_checks: z.string().nullable(),
   risk_areas: z.array(z.string()).nullable(),
   required_checks: z.string().nullable(),
+  auto_close: z.boolean().nullable(),
 })
 
 const hasNames = (list: string | null | undefined): boolean =>
@@ -21,7 +22,7 @@ const hasNames = (list: string | null | undefined): boolean =>
 
 export const lifecycleConfig = async (payload: Payload, recordId: number): Promise<Config> => {
   const found = await payload.db.drizzle.execute(sql`
-    SELECT p."production_gate", p."deploy_checks", p."risk_areas", p."required_checks" FROM "records" r
+    SELECT p."production_gate", p."deploy_checks", p."risk_areas", p."required_checks", p."auto_close" FROM "records" r
     JOIN "products" p ON p."id" = r."product_id" WHERE r."id" = ${recordId}`)
   const row = found.rows[0] ? productRow.parse(found.rows[0]) : null
   return {
@@ -30,6 +31,7 @@ export const lifecycleConfig = async (payload: Payload, recordId: number): Promi
     productionGate: row?.production_gate === true,
     deployChecks: hasNames(row?.deploy_checks),
     requiredChecks: hasNames(row?.required_checks),
+    autoClose: row?.auto_close !== false,
   }
 }
 
@@ -47,10 +49,14 @@ export const mergeVia =
     return { sha: mergeSha }
   }
 
-export const engineDeps = (payload: Payload): AdvanceDeps => ({
-  payload,
-  now: new Date(),
-  configFor: (recordId) => lifecycleConfig(payload, recordId),
-  merge: mergeVia(payload, createWriter(payload)),
-  mayStart: pacing(payload),
-})
+export const engineDeps = (payload: Payload): AdvanceDeps => {
+  const writer = createWriter(payload)
+  return {
+    payload,
+    now: new Date(),
+    configFor: (recordId) => lifecycleConfig(payload, recordId),
+    merge: mergeVia(payload, writer),
+    mayStart: pacing(payload),
+    forge: writer,
+  }
+}

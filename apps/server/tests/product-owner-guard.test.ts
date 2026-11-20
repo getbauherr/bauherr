@@ -31,7 +31,7 @@ const PO_COLLECTIONS: Record<string, Record<string, string>> = {
   bauherren: { read: 'own account only', update: 'own account: uiPrefs, password and the linked forge login (one account per login) only' },
   'payload-preferences': { read: 'own preferences (Payload built-in, keyed to the user)', create: 'own preferences', update: 'own preferences', delete: 'own preferences' },
 }
-const BAUHERR_COLLECTIONS = ['agent_keys', 'agent_sessions', 'connections', 'events', 'human_touches', 'instance_state', 'knowledge_chunks', 'mirror_checks', 'mirror_comments', 'mirror_items', 'products', 'proofs', 'records', 'repositories', 'stage_runs', 'ticket_sources', 'workspaces', 'payload-kv', 'payload-locked-documents', 'payload-jobs', 'payload-migrations']
+const BAUHERR_COLLECTIONS = ['agent_keys', 'agent_sessions', 'connections', 'events', 'human_touches', 'instance_state', 'knowledge_chunks', 'mirror_checks', 'mirror_comments', 'mirror_items', 'products', 'proofs', 'records', 'repositories', 'stage_runs', 'statements', 'ticket_sources', 'workspaces', 'payload-kv', 'payload-locked-documents', 'payload-jobs', 'payload-migrations']
 const COLLECTIONS: Record<string, 'closed' | Record<string, string>> = { ...Object.fromEntries(BAUHERR_COLLECTIONS.map((c) => [c, 'closed' as const])), ...PO_COLLECTIONS }
 const OPEN_PAGES = PO_PAGES
 const OPEN_ROUTES = PO_ROUTES

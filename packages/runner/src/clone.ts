@@ -1,15 +1,23 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { appendFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 
+export const WORK_DIR = '.bauherr';
+
 export type Clone = { dir: string; branch: string; baseSha: string; cleanup(): Promise<void> };
 
+const authHeader = (token: string, user: string): string =>
+  `Authorization: Basic ${Buffer.from(`${user}:${token}`).toString('base64')}`;
+
+export function useToken(c: { env: NodeJS.ProcessEnv }, token: string, user = 'x-access-token'): void {
+  c.env.GIT_CONFIG_VALUE_0 = authHeader(token, user);
+}
+
 export function gitEnv(token: string, home: string, user = 'x-access-token'): NodeJS.ProcessEnv {
-  const basic = Buffer.from(`${user}:${token}`).toString('base64');
   return {
     PATH: process.env.PATH,
     HOME: home,
@@ -21,7 +29,7 @@ export function gitEnv(token: string, home: string, user = 'x-access-token'): No
     GIT_COMMITTER_EMAIL: 'bauherr@users.noreply.invalid',
     GIT_CONFIG_COUNT: '1',
     GIT_CONFIG_KEY_0: 'http.extraheader',
-    GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
+    GIT_CONFIG_VALUE_0: authHeader(token, user),
   };
 }
 
@@ -40,6 +48,7 @@ export async function cloneRepo(o: { baseUrl: string; repo: string; defaultBranc
     const url = `${o.baseUrl.replace(/\/$/, '')}/${o.repo}.git`;
     await git(root, env, 'clone', '--depth', '50', '--no-tags', '--branch', o.checkout ?? o.defaultBranch, url, dir);
     if (!o.checkout) await git(dir, env, 'switch', '-c', o.branch);
+    await appendFile(join(dir, '.git/info/exclude'), `\n/${WORK_DIR}/\n`);
     const baseSha = await git(dir, env, 'rev-parse', 'HEAD');
     return { dir, branch: o.checkout ?? o.branch, baseSha, cleanup, env, home };
   } catch (e) {
@@ -48,9 +57,13 @@ export async function cloneRepo(o: { baseUrl: string; repo: string; defaultBranc
   }
 }
 
-export async function mergeBase(c: Clone, env: NodeJS.ProcessEnv, base: string): Promise<'uptodate' | 'clean' | 'conflict'> {
+export async function fetchBase(c: Clone, env: NodeJS.ProcessEnv, base: string): Promise<void> {
   const shallow = (await git(c.dir, env, 'rev-parse', '--is-shallow-repository')) === 'true';
   await git(c.dir, env, 'fetch', ...(shallow ? ['--unshallow'] : []), '--no-tags', 'origin', `${base}:refs/remotes/origin/${base}`);
+}
+
+export async function mergeBase(c: Clone, env: NodeJS.ProcessEnv, base: string): Promise<'uptodate' | 'clean' | 'conflict'> {
+  await fetchBase(c, env, base);
   try {
     return (await git(c.dir, env, 'merge', '--no-edit', `origin/${base}`)).includes('Already up to date') ? 'uptodate' : 'clean';
   } catch (e) {

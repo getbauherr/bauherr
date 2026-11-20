@@ -16,6 +16,7 @@ export type Config = {
   productionGate: boolean
   deployChecks: boolean
   requiredChecks: boolean
+  autoClose: boolean
 }
 
 export type Role = 'builder' | 'reviewer' | 'verifier'

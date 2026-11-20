@@ -24,6 +24,7 @@ describe('lifecycleConfig', () => {
       productionGate: false,
       deployChecks: false,
       requiredChecks: false,
+      autoClose: true,
     })
     expect(CAPS.verifyRounds).toBe(3)
   })

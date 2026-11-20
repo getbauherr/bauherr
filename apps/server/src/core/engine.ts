@@ -1,4 +1,5 @@
 import type { Payload } from 'payload'
+import { runEffects, type ForgePort } from './effects'
 import type { AppEvent, Stage } from './events'
 import { fingerprint, fold, foldOptions, next, type Config, type State, type Step } from './lifecycle'
 import type { RecordSource } from './record/schema'
@@ -13,7 +14,7 @@ import {
   type StoredRecord,
   type WaitingOn,
 } from './record/store'
-import { enqueue } from './run/leases'
+import { enqueue, releaseLive } from './run/leases'
 
 export const MAX_ADVANCE_STEPS = 10
 
@@ -27,6 +28,7 @@ export type AdvanceDeps = {
   now: Date
   merge: MergeFn
   mayStart?: MayStartFn
+  forge?: ForgePort
 }
 
 type Ctx = { deps: AdvanceDeps; stored: StoredRecord; state: State; seq: number }
@@ -55,6 +57,9 @@ const raised = (ctx: Ctx, card: Raised | null, seq: number): StoredCard | null =
 
 const project = async (ctx: Ctx, waitingOn: WaitingOn, card: Raised | null, stage: Stage = ctx.state.stage) => {
   await setProjection(ctx.deps.payload, ctx.stored.id, { stage, waitingOn })
+  if (stage !== ctx.stored.stage && ctx.state.brief === 'approved') {
+    await runEffects(ctx.deps, ctx.stored.id, [{ kind: 'status' }])
+  }
   await setCard(ctx.deps.payload, ctx.stored.id, raised(ctx, card, ctx.seq))
 }
 
@@ -105,6 +110,14 @@ const waitStep = async (step: Extract<Step, { kind: 'wait' }>, ctx: Ctx): Promis
   return 'stop'
 }
 
+const releaseLiveRuns = async (ctx: Ctx): Promise<void> => {
+  const ended = await releaseLive(ctx.deps.payload, ctx.stored.id, ctx.deps.now)
+  for (const run of ended) {
+    if (ctx.state.run?.runId !== String(run.id)) continue
+    await append(ctx, { type: 'run.released', data: { stage: run.stage, runId: String(run.id) } })
+  }
+}
+
 const handle = async (step: Step, ctx: Ctx): Promise<Outcome> => {
   switch (step.kind) {
     case 'run':
@@ -120,6 +133,7 @@ const handle = async (step: Step, ctx: Ctx): Promise<Outcome> => {
     case 'wait':
       return waitStep(step, ctx)
     case 'done':
+      await releaseLiveRuns(ctx)
       await project(ctx, 'nobody', null)
       return 'stop'
   }

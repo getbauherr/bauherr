@@ -4,7 +4,9 @@ import type { ForgeReader, ReadForge, ReadTickets } from '../../src/core/forge/r
 describe('the read-only forge view', () => {
   it('offers the read methods of the sync and no write method', () => {
     expectTypeOf<keyof ReadTickets>().toEqualTypeOf<'list' | 'get' | 'poll' | 'listComments'>()
-    expectTypeOf<keyof ReadForge>().toEqualTypeOf<'listOpenPullRequests' | 'getPullRequest' | 'listChecks'>()
+    expectTypeOf<keyof ReadForge>().toEqualTypeOf<
+      'listOpenPullRequests' | 'getPullRequest' | 'listChecks' | 'getRepository'
+    >()
     expectTypeOf<ReadTickets>().not.toHaveProperty('comment')
     expectTypeOf<ReadTickets>().not.toHaveProperty('addLabels')
     expectTypeOf<ReadTickets>().not.toHaveProperty('close')

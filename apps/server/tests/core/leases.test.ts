@@ -157,3 +157,25 @@ describe('expire', () => {
     expect((await readRun(db.payload, c.run.id)).status).toBe('queued')
   })
 })
+
+describe('claim by executor', () => {
+  const setExecutor = (executor: string) =>
+    db.payload.db.drizzle.execute(sql`UPDATE "products" SET "executor" = ${executor} WHERE "id" = ${db.product}`)
+  const claimFor = (executor: 'session' | 'runner') =>
+    claim(db.payload, { workspace: db.workspace, role: 'builder', by: 'x', now: t0, executor })
+
+  it('leaves a run of a session Product to sessions and never to the runner', async () => {
+    await setExecutor('session')
+    const { run } = await queued()
+    expect(await claimFor('runner')).toBeNull()
+    expect((await claimFor('session'))?.run.id).toBe(run.id)
+  })
+
+  it('leaves a run of a runner Product to the runner and never to sessions', async () => {
+    await setExecutor('runner')
+    const { run } = await queued()
+    expect(await claimFor('session')).toBeNull()
+    expect((await claimFor('runner'))?.run.id).toBe(run.id)
+    await setExecutor('session')
+  })
+})

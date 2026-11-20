@@ -466,6 +466,16 @@ export const collections: CollectionConfig[] = [
       defaultValue: 21,
       admin: { description: 'Days after a question before the reporter counts as silent.' },
     },
+    text('executor', {
+      defaultValue: 'session',
+      admin: { description: 'Who works the runs: session (an agent session over MCP) or runner (the factory).' },
+    }),
+    {
+      name: 'autoClose',
+      type: 'checkbox',
+      defaultValue: true,
+      admin: { description: 'Close an issue on the forge when intake finds a duplicate or declines it.' },
+    },
     {
       name: 'backlogBriefLimit',
       type: 'number',

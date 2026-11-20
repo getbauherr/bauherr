@@ -35,6 +35,7 @@ const setup = async () => {
       productionGate: false,
       deployChecks: false,
       requiredChecks: false,
+      autoClose: true,
     }),
     now: new Date('2026-11-19T12:00:00Z'),
     merge: mergeVia(h.payload(), writer),

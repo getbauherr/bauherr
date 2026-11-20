@@ -43,6 +43,11 @@ export const backendFor = (connection: ConnectionInput, limits: Limits = {}): Ba
   return new GithubBackend({ auth: githubAuth(connection, connection.secret, limits), ...(typeof baseUrl === 'string' ? { baseUrl } : {}), ...limits })
 }
 
+export const gitToken = async (connection: ConnectionInput, limits: Limits = {}): Promise<string> => {
+  if (!connection.secret) throw new Error(`connection ${connection.id} has no secret`)
+  return isGithubApp(connection) ? githubAuth(connection, connection.secret, limits).token() : connection.secret
+}
+
 export const verifyForge = async (connection: ConnectionInput, limits: Limits = {}): Promise<void> => {
   const backend = backendFor(connection, limits)
   if (!isGithubApp(connection)) {
