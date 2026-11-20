@@ -3,7 +3,17 @@ import { backendFor } from '../../lib/adapters'
 import type { ConnectionInput } from '../../lib/connection'
 
 export type ReadTickets = Pick<TicketSource, 'list' | 'get' | 'poll' | 'listComments'>
-export type ReadForge = Pick<Forge, 'listOpenPullRequests' | 'getPullRequest' | 'listChecks' | 'getRepository'>
+export type ReadForge = Pick<
+  Forge,
+  | 'listOpenPullRequests'
+  | 'getPullRequest'
+  | 'listChecks'
+  | 'getRepository'
+  | 'requiredChecks'
+  | 'isBranchProtected'
+  | 'fileExists'
+  | 'countIssueForms'
+>
 export type ForgeReader = { tickets: (repo: RepoRef) => ReadTickets; forge: ReadForge }
 
 export const readerFor = (connection: ConnectionInput): ForgeReader => {
