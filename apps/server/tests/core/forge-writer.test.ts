@@ -55,6 +55,7 @@ describe('an observing Product', () => {
       () => s.writer.postQuestion(s.target('issue'), 'why?'),
       () => s.writer.mergePullRequest(s.target('pr'), s.sha),
       () => s.writer.closeIssue(s.target('issue'), 'completed'),
+      () => s.writer.openPullRequest(s.target('issue'), { title: 't', body: 'b', head: 'fix', base: 'main' }),
     ]
     for (const call of calls) await expect(call()).rejects.toBeInstanceOf(ProductObserving)
     expect(s.backend).not.toHaveBeenCalled()
@@ -124,6 +125,30 @@ describe('mergePullRequest and closeIssue', () => {
     await s.writer.closeIssue(s.target('issue'), 'not_planned')
     expect((await s.fake.tickets(s.repo).get(s.issue.id)).state).toBe('closed')
     expect((await h.items(s.repo)).find((r) => r.kind === 'issue')?.state).toBe('closed')
+  })
+})
+
+describe('openPullRequest', () => {
+  it('opens the pull request with the disclosure line on top and mirrors it', async () => {
+    const s = await setup()
+    await s.fake.forge.createBranch(s.repo, 'bauherr/1-run')
+    const pull = await s.writer.openPullRequest(s.target('issue'), {
+      title: 'Fix it',
+      body: 'Goal\n\nCloses #1',
+      head: 'bauherr/1-run',
+      base: 'main',
+    })
+    expect(pull.body).toBe(`${DISCLOSURE}\n\nGoal\n\nCloses #1`)
+    const mirrored = (await h.items(s.repo)).find((r) => r.kind === 'pr' && Number(r.number) === pull.number)
+    expect(mirrored?.head_ref).toBe('bauherr/1-run')
+    expect(await writeEvents(s.record.id)).toEqual(['forge.write.started', 'forge.write.done'])
+  })
+
+  it('refuses an item that is a pull request', async () => {
+    const s = await setup()
+    await expect(
+      s.writer.openPullRequest(s.target('pr'), { title: 't', body: 'b', head: 'fix', base: 'main' }),
+    ).rejects.toBeInstanceOf(WrongItemKind)
   })
 })
 

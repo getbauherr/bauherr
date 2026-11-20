@@ -8,6 +8,7 @@ const WRITES: Record<EventOf<'forge.write.done'>['data']['kind'], string> = {
   question: 'a question comment',
   merge: 'the merge',
   close: 'closing the issue',
+  'pull-request': 'opening the pull request',
 }
 
 const LABELS: Labels = {

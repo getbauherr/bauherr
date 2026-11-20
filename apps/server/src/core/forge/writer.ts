@@ -1,11 +1,11 @@
-import type { Backend, CloseReason, Comment, Forge, TicketSource } from '@bauherr/adapters'
+import type { Backend, CloseReason, Comment, Forge, NewPullRequest, PullRequest, TicketSource } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { backendFor } from '../../lib/adapters'
 import { connectionInput } from '../../lib/connection'
 import { appendEvent } from '../record/store'
 import { WRITE_KINDS, type Stage } from '../events'
-import { upsertComments } from '../mirror/store'
-import { commentRow, errorText } from '../mirror/map'
+import { commentRow, errorText, itemFromPull } from '../mirror/map'
+import { upsertComments, upsertItem } from '../mirror/store'
 import { disclosed, hashBody, planStageLabels } from './disclosure'
 import { HeadMoved, ProductObserving, WrongItemKind } from './errors'
 import { loadWriteRow, saveClosed, saveLabels, saveStatusComment, type Target, type WriteRow } from './write-store'
@@ -111,6 +111,17 @@ const mergePullRequest = async (ctx: Ctx, target: Target, expectedHeadSha: strin
   return merged.mergeSha
 }
 
+const openPullRequest = async (ctx: Ctx, target: Target, input: NewPullRequest): Promise<PullRequest> => {
+  const session = await open(ctx, target, 'issue')
+  return perform(ctx, target, 'pull-request', session, {
+    call: ({ forge, row }) => forge.openPullRequest(row.repo, { ...input, body: disclosed(input.body ?? '') }),
+    mirror: async ({ row }, pull) => {
+      const { workspace, product, source, repo } = row
+      await upsertItem(ctx.payload, { workspace, product, source, repo }, itemFromPull(pull), ctx.deps.now())
+    },
+  })
+}
+
 const closeIssue = async (ctx: Ctx, target: Target, reason: CloseReason): Promise<void> => {
   const session = await open(ctx, target, 'issue')
   await perform(ctx, target, 'close', session, {
@@ -126,6 +137,7 @@ export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(pa
     upsertStatusComment: (target: Target, body: string) => upsertStatusComment(ctx, target, body),
     postQuestion: (target: Target, body: string) => postQuestion(ctx, target, body),
     mergePullRequest: (target: Target, expectedHeadSha: string) => mergePullRequest(ctx, target, expectedHeadSha),
+    openPullRequest: (target: Target, input: NewPullRequest) => openPullRequest(ctx, target, input),
     closeIssue: (target: Target, reason: CloseReason) => closeIssue(ctx, target, reason),
   }
 }

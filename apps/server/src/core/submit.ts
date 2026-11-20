@@ -128,6 +128,21 @@ export const releaseRun = async (runId: number, token: string, deps: AdvanceDeps
   await advance(run.recordId, deps)
 }
 
+export const failRun = async (runId: number, token: string, reason: string, deps: AdvanceDeps): Promise<void> => {
+  const run = await readRun(deps.payload, runId)
+  const text = reason.trim().slice(0, 300) || 'the run failed'
+  await inLockedRecord(deps.payload, run.recordId, async (tx) => {
+    const current = await authorize(tx, runId, token)
+    await finishRun(tx, runId, { status: 'failed', error: text, now: deps.now })
+    await appendEvent(tx, current.recordId, {
+      type: 'run.failed',
+      data: { stage: current.stage, runId: String(runId), reason: text },
+      actor: 'factory',
+    })
+  })
+  await advance(run.recordId, deps)
+}
+
 export const expireRuns = async (deps: AdvanceDeps): Promise<Expired[]> => {
   const expired = await expire(deps.payload, deps.now)
   for (const run of expired) {

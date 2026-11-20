@@ -30,6 +30,20 @@ const toBrief = async (): Promise<{ record: number; runId: number; leaseToken: s
 }
 
 describe('run tools', () => {
+  it('does not hand a session the run of a runner Product', async () => {
+    await m.e.drain()
+    const executor = (value: string) =>
+      rows(sql`UPDATE "products" SET "executor" = ${value} WHERE "id" = ${m.e.db.product}`)
+    await executor('runner')
+    await m.begin()
+    const { session } = z
+      .object({ session: z.string() })
+      .parse(await m.call('connect', { role: 'builder' }, m.agent(m.alpha)))
+    expect(await m.call('next_work', { session }, m.agent(m.alpha))).toEqual({ status: 'idle' })
+    await executor('session')
+    await m.e.drain()
+  })
+
   it('extends the lease and records the step', async () => {
     await m.e.drain()
     await m.begin()
