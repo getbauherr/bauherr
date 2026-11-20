@@ -24,9 +24,13 @@ const pullRows = (pulls: FirstLook['pullRequests']): Row[] => [
   {
     label: 'Linked to an issue',
     value: pulls.closingAnIssue,
-    note: 'Can enter at Verify: proof and review, you accept',
+    note: 'Ready pull requests of your team. They enter at Verify: proof and review, you accept',
   },
-  { label: 'Not linked', value: pulls.notClosingAnIssue, note: 'Listed, not touched' },
+  {
+    label: 'Other pull requests',
+    value: pulls.notClosingAnIssue,
+    note: 'Drafts, outside authors or no single open issue. Listed, not touched',
+  },
 ]
 
 function Group({ title, total, rows }: { title: string; total: number; rows: Row[] }) {
