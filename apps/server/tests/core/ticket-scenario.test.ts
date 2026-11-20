@@ -32,6 +32,12 @@ describe('the tickets the end-to-end specs read', () => {
     ])
     expect(used.brief.every((s) => s.record === names.resultReadonly)).toBe(true)
     expect((await view(names.briefTitle)).statementsUsed).toEqual({ brief: [], result: [] })
+    const result = (await view(names.resultReadonly)).statementsUsed.result
+    expect(result.map((s) => s.text)).toEqual([
+      'Run the old export tests before the new ones.',
+      'No new export formats before the reporting rework.',
+    ])
+    expect(result.every((s) => s.record === names.briefTitle)).toBe(true)
   })
 
   it('stops every Result ticket at a Result with proofs, findings, a pull request and a factory decision', async () => {

@@ -3,7 +3,8 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { Stage } from '../events'
 import type { AgentsFile } from '../mirror/facts'
-import { similarItems, titleAlternatives } from '../mirror/search'
+import { anyWord, queryWords, requiredShared, sharedWords } from '../mirror/match'
+import { similarItems } from '../mirror/search'
 import type { StoredRecord } from '../record/store'
 import { STATEMENT_KINDS } from '../statements'
 import { closedAsOf, endedOf } from '../views/rows'
@@ -69,8 +70,6 @@ const issueRow = z.object({ id: count.nullable(), title: z.string().nullable(), 
 const ids = (values: number[]) => sql.join(values.map((value) => sql`${value}`), sql`, `)
 const inOrder = <T extends { id: number }>(wanted: number[], found: T[]): T[] =>
   wanted.flatMap((id) => found.filter((row) => row.id === id))
-
-export const statementQuery = (title: string, goal: string): string => titleAlternatives(`${title} ${goal}`)
 
 export const loadStatements = async (payload: Payload, wanted: number[]): Promise<UsedStatement[]> => {
   if (wanted.length === 0) return []
@@ -150,15 +149,16 @@ export const selectContext = async (
       AND i."number" = r."source_number" AND i."kind" = 'issue'
     WHERE r."id" = ${stored.id}`)
   const issue = issueRow.parse(found.rows[0])
-  const query = statementQuery(issue.title ?? '', stored.record.goal)
+  const words = queryWords(`${issue.title ?? ''} ${stored.record.goal}`)
+  const vector = sql`to_tsvector('simple', s."text")`
+  const shared = sharedWords(vector, words)
   const statements =
-    STATEMENT_STAGES.includes(stage) && query !== ''
+    STATEMENT_STAGES.includes(stage) && words.length > 0
       ? await payload.db.drizzle.execute(sql`
           SELECT s."id" FROM "statements" s
           WHERE s."product_id" = ${issue.product_id} AND s."record_id" <> ${stored.id}
-            AND to_tsvector('simple', s."text") @@ websearch_to_tsquery('simple', ${query})
-          ORDER BY ts_rank(to_tsvector('simple', s."text"), websearch_to_tsquery('simple', ${query})) DESC,
-            s."created_at" DESC, s."id" DESC
+            AND ${vector} @@ ${anyWord(words)} AND ${shared} >= ${requiredShared(words)}
+          ORDER BY ${shared} DESC, ts_rank(${vector}, ${anyWord(words)}) DESC, s."created_at" DESC, s."id" DESC
           LIMIT ${STATEMENT_LIMIT}`)
       : { rows: [] }
   const similar =

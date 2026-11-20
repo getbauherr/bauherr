@@ -5,7 +5,7 @@ import type { Stage } from '../../src/core/events'
 import type { Role } from '../../src/core/lifecycle'
 import { AGENTS_FILE_MAX, cutAgentsFile } from '../../src/core/mirror/facts'
 import { appendEvent, createRecord } from '../../src/core/record/store'
-import { statementQuery } from '../../src/core/run/context'
+import { queryWords } from '../../src/core/mirror/match'
 import { contextPack } from '../../src/core/run/pack'
 import { enqueue, claim } from '../../src/core/run/leases'
 import { recordFor } from '../../src/core/run/role-view'
@@ -17,15 +17,17 @@ import { briefed, source } from './fixtures'
 import { openEngine, type Engine } from './harness'
 import { mirrorSource } from './scenario'
 
-describe('statementQuery', () => {
-  it('joins the words of the title and the goal with or, once each', () => {
-    expect(statementQuery('Export timeout', 'Exports finish: no timeout')).toBe(
-      'export or timeout or exports or finish or no',
-    )
-  })
-
-  it('is empty without words', () => {
-    expect(statementQuery('', '')).toBe('')
+describe('queryWords', () => {
+  it('keeps the distinct words of at least 4 letters or digits, lowercased', () => {
+    expect(queryWords('Export the Timeout: with 2024 exports, export!')).toEqual([
+      'export',
+      'timeout',
+      'with',
+      '2024',
+      'exports',
+    ])
+    expect(queryWords('Fix a bug or two')).toEqual([])
+    expect(queryWords('')).toEqual([])
   })
 })
 
@@ -115,15 +117,15 @@ const said = (record: number, text: string, kind: 'answer' | 'guidance' = 'answe
 describe('matching owner statements', () => {
   it('reach a brief, build and verify run from the Product\'s other tickets, best first, at most 5', async () => {
     const other = await ticketWith('Unrelated')
-    const own = await ticketWith('Export timeout', 'Exports finish')
-    await said(other, 'Exports over a gigabyte go to object storage')
-    await said(other, 'Timeouts are logged, exports finish in the background and timeout is retried')
-    for (let i = 0; i < 6; i++) await said(other, `Another export note ${i}`)
+    const own = await ticketWith('Export timeout')
+    await said(other, 'Export notes without the other word')
+    await said(other, 'The export timeout is logged and the export timeout is retried')
+    for (let i = 0; i < 6; i++) await said(other, `Another export timeout note ${i}`)
     await said(other, 'Something else entirely')
     const pack = await packOf(own, 'brief')
     expect(pack.statements).toHaveLength(5)
-    expect(pack.statements[0]?.text).toContain('Timeouts are logged')
-    expect(pack.statements.every((s) => s.text.includes('xport'))).toBe(true)
+    expect(pack.statements[0]?.text).toContain('is retried')
+    expect(pack.statements.every((s) => s.text.includes('timeout'))).toBe(true)
     expect(Object.keys(pack.statements[0] ?? {}).sort()).toEqual(['at', 'id', 'kind', 'text', 'ticket'])
     expect(pack.statements[0]).toMatchObject({ kind: 'answer', ticket: await number(other) })
     expect((await packOf(own, 'build')).statements).toHaveLength(5)
@@ -138,28 +140,49 @@ describe('matching owner statements', () => {
       overrideAccess: true,
     })
     const abroad = await ticketWith('Export timeout', '', { product: Number(foreign.id), number: 9001 })
-    await said(own, 'Export rules of this very ticket')
-    await said(abroad, 'Export rules of another Product')
+    await said(own, 'Export timeout rules of this very ticket')
+    await said(abroad, 'Export timeout rules of another Product')
     expect((await packOf(own, 'brief')).statements).toEqual([])
     const near = await ticketWith('Reports')
-    await said(near, 'Export rules of a neighbour')
+    await said(near, 'Export timeout rules of a neighbour')
     expect((await packOf(own, 'intake')).statements).toEqual([])
-    expect((await packOf(own, 'build')).statements.map((s) => s.text)).toEqual(['Export rules of a neighbour'])
+    expect((await packOf(own, 'build')).statements.map((s) => s.text)).toEqual(['Export timeout rules of a neighbour'])
   })
 
   it('stay the same for the run when a new matching statement is stored', async () => {
     const other = await ticketWith('Reports')
     const own = await ticketWith('Export timeout')
-    await said(other, 'First export note')
+    await said(other, 'First export timeout note')
     const run = await runOf(own, 'build')
     const first = await contextPack(e.deps(), run)
-    await said(other, 'Second export note')
+    await said(other, 'Second export timeout note')
     const second = await contextPack(e.deps(), run)
     const third = await contextPack(e.deps(), await readRun(e.db.payload, run.id))
-    expect(first.statements.map((s) => s.text)).toEqual(['First export note'])
+    expect(first.statements.map((s) => s.text)).toEqual(['First export timeout note'])
     expect(second.statements).toEqual(first.statements)
     expect(third.statements).toEqual(first.statements)
     expect((await readRun(e.db.payload, run.id)).context?.statements).toEqual(first.statements.map((s) => s.id))
+  })
+})
+
+describe('the shared-word rule for statements', () => {
+  it('needs two shared words, ranks more first, and lets one word match a one-word query', async () => {
+    const other = await ticketWith('Reports')
+    const own = await ticketWith('Export timeout', 'Exports finish')
+    await said(other, 'Export notes only')
+    await said(other, 'Export timeout notes')
+    await said(other, 'Export timeout, exports finish: three or more words')
+    await said(other, 'Timeout only')
+    expect((await packOf(own, 'build')).statements.map((s) => s.text)).toEqual([
+      'Export timeout, exports finish: three or more words',
+      'Export timeout notes',
+    ])
+    const single = await ticketWith('Billing is on')
+    await said(other, 'Billing rules')
+    await said(other, 'Invoices rules')
+    expect((await packOf(single, 'build')).statements.map((s) => s.text)).toEqual(['Billing rules'])
+    const none = await ticketWith('Fix it now')
+    expect((await packOf(none, 'build')).statements).toEqual([])
   })
 })
 
@@ -228,20 +251,23 @@ describe('what a run used is shown', () => {
   it('lists the statements in the run view and in the ticket view, each once', async () => {
     const other = await ticketWith('Reports')
     const own = await ticketWith('Export timeout')
-    await said(other, 'Export note one', 'guidance')
+    await said(other, 'Export timeout note one', 'guidance')
     const brief = await runOf(own, 'brief')
     await contextPack(e.deps(), brief)
-    await said(other, 'Export note two')
+    await said(other, 'Export timeout note two')
     const view = { workspace: e.db.workspace }
     const before = await ticket(e.db.payload, { ...view, recordId: own })
-    expect(before.statementsUsed.brief.map((s) => s.text)).toEqual(['Export note one'])
+    expect(before.statementsUsed.brief.map((s) => s.text)).toEqual(['Export timeout note one'])
     expect(before.statementsUsed.result).toEqual([])
     await appendEvent(e.db.payload, own, { type: 'brief.approved', data: { by: 'owner' }, actor: 'owner' })
     await contextPack(e.deps(), await runOf(own, 'build'))
     await contextPack(e.deps(), await runOf(own, 'verify', 'verifier'))
     const after = await ticket(e.db.payload, { ...view, recordId: own })
-    expect(after.statementsUsed.brief.map((s) => s.text)).toEqual(['Export note one'])
-    expect(after.statementsUsed.result.map((s) => s.text).sort()).toEqual(['Export note one', 'Export note two'])
+    expect(after.statementsUsed.brief.map((s) => s.text)).toEqual(['Export timeout note one'])
+    expect(after.statementsUsed.result.map((s) => s.text).sort()).toEqual([
+      'Export timeout note one',
+      'Export timeout note two',
+    ])
     expect(after.statementsUsed.brief[0]).toMatchObject({
       kind: 'guidance',
       ticket: await number(other),

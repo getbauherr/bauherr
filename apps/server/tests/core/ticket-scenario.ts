@@ -13,7 +13,7 @@ import { asked, begin, mirrorSource, patch, toBrief, workOn } from './scenario'
 
 export const TICKET_TITLES = {
   briefTitle: 'Brief with a decision for the tabs',
-  briefAnswers: 'Brief with earlier answers',
+  briefAnswers: 'Large export needs earlier answers',
   resultReadonly: 'Result to read',
   questionRead: 'Question to read',
   intake: 'Intake waiting for the reporter',
@@ -186,17 +186,20 @@ const EARLIER_ANSWERS = [
   'No new export formats before the reporting rework.',
 ]
 
-const answered = async (e: Engine, id: number, from: number) => {
-  for (const text of EARLIER_ANSWERS) await storeStatement(e.db.payload, from, { kind: 'answer', text })
-  const found = await e.db.payload.db.drizzle.execute(
-    sql`SELECT "id" FROM "statements" WHERE "record_id" = ${from} ORDER BY "id"`,
-  )
-  const run = await e.db.payload.db.drizzle.execute(
-    sql`SELECT "id" FROM "stage_runs" WHERE "record_id" = ${id} AND "stage" = 'brief' ORDER BY "id" DESC LIMIT 1`,
-  )
+const RESULT_ANSWERS = ['Run the old export tests before the new ones.', EARLIER_ANSWERS[1] ?? '']
+
+const answered = async (e: Engine, id: number, stages: string[], from: number, texts: string[]) => {
+  for (const text of texts) await storeStatement(e.db.payload, from, { kind: 'answer', text })
+  const db = e.db.payload.db.drizzle
+  const found = await db.execute(sql`SELECT "id" FROM "statements" WHERE "record_id" = ${from} ORDER BY "id"`)
   const statements = found.rows.map((row) => proofRow.parse(row).id)
   const agentsFile = { given: false, cut: false }
-  await rememberContext(e.db.payload, proofRow.parse(run.rows[0]).id, { statements, similar: [], agentsFile })
+  for (const stage of stages) {
+    const runs = await db.execute(sql`SELECT "id" FROM "stage_runs" WHERE "record_id" = ${id} AND "stage" = ${stage}`)
+    for (const run of runs.rows) {
+      await rememberContext(e.db.payload, proofRow.parse(run).id, { statements, similar: [], agentsFile })
+    }
+  }
 }
 
 const pooled = async (make: (n: number) => Promise<number>): Promise<number[]> => {
@@ -239,7 +242,8 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     runSteps: await toBrief(e, false),
   }
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
-  await answered(e, names.briefAnswers, names.resultReadonly)
+  await answered(e, names.briefAnswers, ['brief'], names.resultReadonly, EARLIER_ANSWERS)
+  await answered(e, names.resultReadonly, ['build', 'verify'], names.briefTitle, RESULT_ANSWERS)
   await reportedSteps(e, names.runSteps)
   for (let n = 11; n <= pr; n++) await mirror.item(n, { kind: 'pr', head: `h${n}`, title: `Pull request ${n}` })
   for (const [id, title] of titled) {

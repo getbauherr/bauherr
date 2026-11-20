@@ -76,7 +76,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
   '/inbox': inFactory('/inbox'),
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
-    'Brief card with earlier answers': inTickets('Brief with earlier answers'),
+    'Brief card with earlier answers': inTickets('Large export needs earlier answers'),
     'Result card': inTickets('Result to read'),
     'Result tab': inTickets('Result to read', '?tab=result'),
     'Activity tab': inTickets('Result to read', '?tab=activity'),
