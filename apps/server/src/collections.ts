@@ -517,6 +517,12 @@ export const collections: CollectionConfig[] = [
     date('lookbackAt'),
     date('reconciledAt'),
     date('importedAt'),
+    text('defaultBranch'),
+    text('branchProtected'),
+    json('requiredCheckNames'),
+    { name: 'hasAgentsFile', type: 'checkbox' },
+    { name: 'issueFormCount', type: 'number' },
+    date('factsAt'),
   ]),
   col('knowledge_chunks', [
     text('source', { required: true, index: true }),
