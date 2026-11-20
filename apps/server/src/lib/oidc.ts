@@ -19,7 +19,15 @@ const hasSecret = (): boolean => {
 }
 
 export const oidcMissing = (): string | undefined =>
-  !httpsUrl(process.env.OIDC_ISSUER) ? 'OIDC_ISSUER' : !process.env.OIDC_CLIENT_ID ? 'OIDC_CLIENT_ID' : !hasSecret() ? 'OIDC_CLIENT_SECRET' : !process.env.PUBLIC_URL ? 'PUBLIC_URL' : undefined
+  !httpsUrl(process.env.OIDC_ISSUER)
+    ? 'OIDC_ISSUER'
+    : !process.env.OIDC_CLIENT_ID
+      ? 'OIDC_CLIENT_ID'
+      : !hasSecret()
+        ? 'OIDC_CLIENT_SECRET'
+        : !process.env.PUBLIC_URL
+          ? 'PUBLIC_URL'
+          : undefined
 
 export const oidcEnabled = (): boolean => !oidcMissing()
 
@@ -47,14 +55,33 @@ export const OIDC_COOKIE = 'bauherr-oidc'
 
 type Claims = Record<string, unknown>
 
-export const claimAt = (claims: Claims, path: string): unknown => path.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Claims)[k] : undefined), claims)
+export const claimAt = (claims: Claims, path: string): unknown =>
+  path.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Claims)[k] : undefined), claims)
 
-const strings = (v: unknown): string[] => (typeof v === 'string' ? [v] : Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+const strings = (v: unknown): string[] =>
+  typeof v === 'string' ? [v] : Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 
-export const roleFrom = (claims: Claims, roleClaim = process.env.OIDC_ROLE_CLAIM || 'realm_access.roles', adminRole = process.env.OIDC_ADMIN_ROLE || 'bauherr-admin', productOwnerRole = process.env.OIDC_PRODUCT_OWNER_ROLE, bauherrRole = process.env.OIDC_BAUHERR_ROLE): Role | undefined => {
-  const roles = strings(claimAt(claims, roleClaim))
-  return roles.includes(adminRole) ? 'admin' : productOwnerRole && roles.includes(productOwnerRole) ? 'product-owner' : !bauherrRole || roles.includes(bauherrRole) ? 'bauherr' : undefined
-}
+const claimedRole = (
+  roles: string[],
+  adminRole: string,
+  productOwnerRole?: string,
+  bauherrRole?: string,
+): Role | undefined =>
+  roles.includes(adminRole)
+    ? 'admin'
+    : productOwnerRole && roles.includes(productOwnerRole)
+      ? 'product-owner'
+      : !bauherrRole || roles.includes(bauherrRole)
+        ? 'bauherr'
+        : undefined
+
+export const roleFrom = (
+  claims: Claims,
+  roleClaim = process.env.OIDC_ROLE_CLAIM || 'realm_access.roles',
+  adminRole = process.env.OIDC_ADMIN_ROLE || 'bauherr-admin',
+  productOwnerRole = process.env.OIDC_PRODUCT_OWNER_ROLE,
+  bauherrRole = process.env.OIDC_BAUHERR_ROLE,
+): Role | undefined => claimedRole(strings(claimAt(claims, roleClaim)), adminRole, productOwnerRole, bauherrRole)
 
 export const roleRequired = (): boolean => !!process.env.OIDC_BAUHERR_ROLE
 
@@ -66,21 +93,39 @@ export const syncFrom = (claims: Claims): { role?: Role; slugs?: string[] } => (
   ...(Array.isArray(claimAt(claims, workspaceClaim())) && { slugs: workspaceSlugsFrom(claims) }),
 })
 
-export const emailOk = (claims: Claims): boolean => typeof claims.email === 'string' && !!claims.email && claims.email_verified === true
+export const emailOk = (claims: Claims): boolean =>
+  typeof claims.email === 'string' && !!claims.email && claims.email_verified === true
 
 export const mergeClaims = (info: Claims, id: Claims): Claims => ({ ...info, ...id })
 
-export const resolveAccount = (a: { subject: string; email: string; existingBySubject?: unknown; existingByEmail?: unknown }): { action: 'login' | 'create' | 'refuse'; reason?: 'link-required' } =>
-  a.existingBySubject ? { action: 'login' } : a.existingByEmail ? { action: 'refuse', reason: 'link-required' } : { action: 'create' }
+export const resolveAccount = (a: {
+  subject: string
+  email: string
+  existingBySubject?: unknown
+  existingByEmail?: unknown
+}): { action: 'login' | 'create' | 'refuse'; reason?: 'link-required' } =>
+  a.existingBySubject
+    ? { action: 'login' }
+    : a.existingByEmail
+      ? { action: 'refuse', reason: 'link-required' }
+      : { action: 'create' }
 
-export const workspaceSlugsFrom = (claims: Claims, claim = process.env.OIDC_WORKSPACE_CLAIM || 'groups'): string[] => strings(claimAt(claims, claim)).map((g) => g.replace(/^\//, ''))
+export const workspaceSlugsFrom = (claims: Claims, claim = process.env.OIDC_WORKSPACE_CLAIM || 'groups'): string[] =>
+  strings(claimAt(claims, claim)).map((g) => g.replace(/^\//, ''))
 
 let config: Promise<client.Configuration> | undefined
 const discover = () =>
-  (config ??= client.discovery(new URL(process.env.OIDC_ISSUER!), process.env.OIDC_CLIENT_ID!, undefined, client.ClientSecretPost(secret('OIDC_CLIENT_SECRET'))).catch((e) => {
-    config = undefined
-    throw e
-  }))
+  (config ??= client
+    .discovery(
+      new URL(process.env.OIDC_ISSUER!),
+      process.env.OIDC_CLIENT_ID!,
+      undefined,
+      client.ClientSecretPost(secret('OIDC_CLIENT_SECRET')),
+    )
+    .catch((e) => {
+      config = undefined
+      throw e
+    }))
 
 export type OidcTransaction = { state: string; nonce: string; verifier: string }
 
@@ -99,7 +144,12 @@ export const beginLogin = async (): Promise<{ url: URL; tx: OidcTransaction }> =
 
 export const finishLogin = async (current: URL, tx: OidcTransaction): Promise<Claims> => {
   const cfg = await discover()
-  const tokens = await client.authorizationCodeGrant(cfg, current, { pkceCodeVerifier: tx.verifier, expectedState: tx.state, expectedNonce: tx.nonce, idTokenExpected: true })
+  const tokens = await client.authorizationCodeGrant(cfg, current, {
+    pkceCodeVerifier: tx.verifier,
+    expectedState: tx.state,
+    expectedNonce: tx.nonce,
+    idTokenExpected: true,
+  })
   const id = tokens.claims()!
   const info = await client.fetchUserInfo(cfg, tokens.access_token, id.sub)
   return mergeClaims(info, id)

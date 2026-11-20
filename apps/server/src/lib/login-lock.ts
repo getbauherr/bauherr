@@ -19,11 +19,19 @@ let warnedAt = -Infinity
 
 export const clientIp = (headers: Headers, hops = loginLimits().trustedProxyHops): string | undefined => {
   if (!hops) return undefined
-  const parts = headers.get('x-forwarded-for')?.split(',').map((p) => p.trim()).filter(Boolean) ?? []
+  const parts =
+    headers
+      .get('x-forwarded-for')
+      ?.split(',')
+      .map((p) => p.trim())
+      .filter(Boolean) ?? []
   if (parts.length >= hops) return parts[parts.length - hops]
   if (Date.now() - warnedAt >= WARN_EVERY_MS) {
     warnedAt = Date.now()
-    console.warn(`login IP key: request had ${parts.length} x-forwarded-for entries, TRUSTED_PROXY_HOPS=${hops}; check the proxy chain`)
+    console.warn(
+      `login IP key: request had ${parts.length} x-forwarded-for entries, ` +
+        `TRUSTED_PROXY_HOPS=${hops}; check the proxy chain`,
+    )
   }
   return UNVERIFIED_IP
 }
@@ -71,7 +79,9 @@ export const withLoginLock = async <T>(email: string, fn: () => Promise<T>): Pro
 export const signInWithPassword = async (payload: Payload, email: string, password: string, ip?: string) => {
   if (ip && ipBlocked(ip)) throw new LoginBusy()
   try {
-    const result = await withLoginLock(email, () => payload.login({ collection: 'bauherren', data: { email, password } }))
+    const result = await withLoginLock(email, () =>
+      payload.login({ collection: 'bauherren', data: { email, password } }),
+    )
     if (!result.token) throw Object.assign(new Error('no token'), { status: 401 })
     return { ...result, token: result.token }
   } catch (e) {

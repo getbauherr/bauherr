@@ -6,7 +6,10 @@ const build = (): FakeBackend => {
   fake.commit('acme/picker', 'main', 'README.md', '# Picker\n')
   const checks = fake.commit('acme/checks', 'main', 'README.md', '# Checks\n')
   fake.setCommits('acme/checks', [{ sha: checks, message: 'Deploy to production' }])
-  fake.setChecks('acme/checks', checks, [{ name: 'deploy-production', status: 'completed', conclusion: 'success' }, { name: 'lint', status: 'completed', conclusion: 'success' }])
+  fake.setChecks('acme/checks', checks, [
+    { name: 'deploy-production', status: 'completed', conclusion: 'success' },
+    { name: 'lint', status: 'completed', conclusion: 'success' },
+  ])
   return fake
 }
 

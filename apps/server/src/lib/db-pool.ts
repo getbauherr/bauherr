@@ -2,7 +2,8 @@ export const envInt = (env: Record<string, string | undefined>, name: string, fa
   const raw = env[name]?.trim()
   if (!raw) return fallback
   const n = Number(raw)
-  if (!Number.isInteger(n) || n < min) throw new Error(`${name} must be ${min > 0 ? 'a positive' : 'a non-negative'} integer, got "${raw}"`)
+  if (!Number.isInteger(n) || n < min)
+    throw new Error(`${name} must be ${min > 0 ? 'a positive' : 'a non-negative'} integer, got "${raw}"`)
   return n
 }
 
