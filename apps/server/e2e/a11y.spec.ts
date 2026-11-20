@@ -95,6 +95,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'Result tab': inTickets('Result to read', '?tab=result'),
     'Activity tab': inTickets('Result to read', '?tab=activity'),
     'question card': inTickets('Question to read'),
+    'deploy that did not finish': inTickets('Deploy that did not finish'),
     'Intake': inTickets('Intake waiting for the reporter'),
     'adopted, waiting on the author': inTickets('Adopted pull request waiting on its author'),
     'adopted, Result card': inTickets('Adopted pull request with a result'),

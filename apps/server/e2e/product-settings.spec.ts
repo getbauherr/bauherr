@@ -132,7 +132,7 @@ test('Gates save path sets, risk areas, the production switch and the Brief limi
   })
 })
 
-test('Proof saves the required checks, the deploy checks and the staging site', async ({ page }) => {
+test('Proof saves the required checks, the deploy checks, the deploy wait and the staging site', async ({ page }) => {
   test.setTimeout(120_000)
   await ownProduct(page, async () => {
     const proof = page.locator('#proof')
@@ -142,12 +142,15 @@ test('Proof saves the required checks, the deploy checks and the staging site', 
     const deploy = proof.getByRole('group', { name: 'Deploy checks' })
     await deploy.getByRole('textbox', { name: 'Add a deploy check' }).fill('deploy-staging')
     await deploy.getByRole('button', { name: 'Add' }).click()
+    const wait = proof.getByRole('spinbutton', { name: /Ask me when the deploy has not finished after/ })
+    await wait.fill('45')
     await proof.getByRole('textbox', { name: 'Staging site' }).fill('https://staging.e2e.example.com')
     await proof.getByRole('button', { name: 'Save proof' }).click()
     await saved(page)
     await page.reload()
     await expect(required.getByRole('checkbox', { name: /test/ })).toBeChecked()
     await expect(deploy.getByRole('checkbox', { name: /deploy-staging/ })).toBeChecked()
+    await expect(wait).toHaveValue('45')
     await expect(proof.getByRole('textbox', { name: 'Staging site' })).toHaveValue('https://staging.e2e.example.com')
   })
 })
