@@ -31,6 +31,7 @@ interface FakeRepo {
   ancestors: Map<string, string[]>;
   queueSupport: boolean;
   requiredChecks: string[];
+  branchProtected: boolean | null;
   queue: number[];
   issued: number;
   snapshots: Map<string, Map<string, string>>;
@@ -194,6 +195,10 @@ export class FakeBackend implements Backend {
     this.repo(repo).requiredChecks = names;
   }
 
+  setBranchProtected(repo: RepoRef, value: boolean | null): void {
+    this.repo(repo).branchProtected = value;
+  }
+
   advanceQueue(repo: RepoRef, o: { fail?: number[] } = {}): number | null {
     const r = this.repo(repo);
     const n = r.queue.shift();
@@ -205,7 +210,7 @@ export class FakeBackend implements Backend {
   private repo(name: RepoRef): FakeRepo {
     let r = this.repos.get(name);
     if (!r) {
-      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], reviews: [], resolvedThreads: new Set(), commitDates: new Map(), releases: [], tags: [], tagShas: new Map(), contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], queue: [], issued: 0, snapshots: new Map() };
+      r = { defaultBranch: 'main', branches: new Map([['main', { sha: `sha${++this.seq}`, files: new Map() }]]), prs: [], checks: new Map(), rerunChecks: new Map(), reruns: [], reviews: [], resolvedThreads: new Set(), commitDates: new Map(), releases: [], tags: [], tagShas: new Map(), contains: new Map(), commits: [], ancestors: new Map(), queueSupport: false, requiredChecks: [], branchProtected: false, queue: [], issued: 0, snapshots: new Map() };
       r.snapshots.set(r.branches.get('main')!.sha, new Map());
       this.repos.set(name, r);
     }
@@ -388,6 +393,12 @@ export class FakeBackend implements Backend {
       },
       queueSupport: async (repo) => this.repo(repo).queueSupport,
       requiredChecks: async (repo) => this.repo(repo).requiredChecks,
+      isBranchProtected: async (repo) => this.repo(repo).branchProtected,
+      fileExists: async (repo, path, ref) => this.repo(repo).branches.get(ref)?.files.has(path) ?? false,
+      countIssueForms: async (repo, ref) => {
+        const form = /^\.(github\/ISSUE_TEMPLATE\/(?!config\.ya?ml$)[^/]+\.ya?ml|gitlab\/issue_templates\/[^/]+\.md)$/;
+        return [...(this.repo(repo).branches.get(ref)?.files.keys() ?? [])].filter((p) => form.test(p)).length;
+      },
       enqueuePullRequest: async (repo, n, o) => {
         const r = this.repo(repo);
         const pr = find(repo, n);

@@ -510,6 +510,36 @@ class GitlabForge implements Forge {
   async requiredChecks() {
     return [];
   }
+  async isBranchProtected(repo: RepoRef, branch: string) {
+    try {
+      await this.h.json('GET', `/projects/${enc(repo)}/protected_branches/${enc(branch)}`);
+      return true;
+    } catch (e) {
+      if (e instanceof GitlabError && e.status === 404) return false;
+      if (e instanceof GitlabError && (e.status === 401 || e.status === 403)) return null;
+      throw e;
+    }
+  }
+  async fileExists(repo: RepoRef, path: string, ref: string) {
+    try {
+      await this.file(repo, path, ref);
+      return true;
+    } catch (e) {
+      if (e instanceof GitlabError && e.status === 404) return false;
+      throw e;
+    }
+  }
+  async countIssueForms(repo: RepoRef, ref: string) {
+    const dir = enc('.gitlab/issue_templates');
+    let entries: { type: string; name: string }[];
+    try {
+      entries = await this.h.json('GET', `/projects/${enc(repo)}/repository/tree?path=${dir}&ref=${enc(ref)}`);
+    } catch (e) {
+      if (e instanceof GitlabError && e.status === 404) return 0;
+      throw e;
+    }
+    return entries.filter((f) => f.type === 'blob' && f.name.endsWith('.md')).length;
+  }
   async enqueuePullRequest(repo: RepoRef, n: number, o: { expectSha: string }) {
     const before = await this.getPullRequest(repo, n);
     if (before.state === 'merged') return { state: 'merged' as const, ...(before.mergeSha ? { mergeSha: before.mergeSha } : {}) };

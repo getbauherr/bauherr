@@ -5,7 +5,14 @@ describe('the read-only forge view', () => {
   it('offers the read methods of the sync and no write method', () => {
     expectTypeOf<keyof ReadTickets>().toEqualTypeOf<'list' | 'get' | 'poll' | 'listComments'>()
     expectTypeOf<keyof ReadForge>().toEqualTypeOf<
-      'listOpenPullRequests' | 'getPullRequest' | 'listChecks' | 'getRepository'
+      | 'listOpenPullRequests'
+      | 'getPullRequest'
+      | 'listChecks'
+      | 'getRepository'
+      | 'requiredChecks'
+      | 'isBranchProtected'
+      | 'fileExists'
+      | 'countIssueForms'
     >()
     expectTypeOf<ReadTickets>().not.toHaveProperty('comment')
     expectTypeOf<ReadTickets>().not.toHaveProperty('addLabels')

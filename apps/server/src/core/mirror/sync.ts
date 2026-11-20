@@ -2,6 +2,7 @@ import type { Ticket, TicketSummary } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { connectionInput } from '../../lib/connection'
 import { readerFor, type ForgeReader, type ReadTickets } from '../forge/reader'
+import { refreshFacts } from './facts'
 import { commentRow, errorText, isDue, itemFromTicket, laterOf, lookbackFrom, takeBatch } from './map'
 import { BATCH, isCurrent, reconcile, syncPulls, type PullContext } from './pulls'
 import {
@@ -72,6 +73,9 @@ const periodic = async (
   return patch
 }
 
+const factsAreDue = (source: SourceRow, now: Date): boolean =>
+  source.factsAt === null || (source.importedAt !== null && isDue(source.reconciledAt, now, RECONCILE_EVERY_MS))
+
 const syncOne = async (payload: Payload, source: SourceRow, reader: ForgeReader, now: Date): Promise<number[]> => {
   const touched = new Set<number>()
   const context: PullContext = {
@@ -90,7 +94,8 @@ const syncOne = async (payload: Payload, source: SourceRow, reader: ForgeReader,
   const pulls = await syncPulls(payload, context, reader.forge, imported)
   const idle = !polled.truncated && polled.stored === 0 && pulls.fresh === 0
   const due = await periodic(payload, context, source, reader, cursor)
-  const patch: SourcePatch = { error: null, polledAt: now, ...due }
+  const error = factsAreDue(source, now) ? await refreshFacts(payload, source, reader.forge, now) : null
+  const patch: SourcePatch = { error, polledAt: now, ...due }
   if (moved) patch.cursor = cursor
   if (!imported && idle) patch.importedAt = now
   await finishSource(payload, source.id, patch)

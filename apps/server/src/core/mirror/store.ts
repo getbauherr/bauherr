@@ -13,6 +13,7 @@ export type SourceRow = {
   lookbackAt: string | null
   reconciledAt: string | null
   importedAt: string | null
+  factsAt: string | null
 }
 
 export type ItemContext = {
@@ -47,6 +48,7 @@ const sourceRowSchema = z.object({
   lookback_at: instant,
   reconciled_at: instant,
   imported_at: instant,
+  facts_at: instant,
 })
 
 const knownRowSchema = z.object({
@@ -64,7 +66,7 @@ const latestRowSchema = z.object({ latest: instant })
 export const liveSources = async (payload: Payload): Promise<SourceRow[]> => {
   const result = await payload.db.drizzle.execute(sql`
     SELECT s."id", s."workspace_id", s."repo", s."product_id", s."connection_id", s."cursor",
-      s."lookback_at", s."reconciled_at", s."imported_at"
+      s."lookback_at", s."reconciled_at", s."imported_at", s."facts_at"
     FROM "ticket_sources" s
     JOIN "workspaces" w ON w."id" = s."workspace_id" AND w."archived_at" IS NULL
     ORDER BY s."id"`)
@@ -80,6 +82,7 @@ export const liveSources = async (payload: Payload): Promise<SourceRow[]> => {
       lookbackAt: iso(parsed.lookback_at),
       reconciledAt: iso(parsed.reconciled_at),
       importedAt: iso(parsed.imported_at),
+      factsAt: iso(parsed.facts_at),
     }
   })
 }
