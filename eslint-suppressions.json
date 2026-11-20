@@ -962,56 +962,5 @@
     "max-lines": {
       "count": 1
     }
-  },
-  "packages/cli/src/cli.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "complexity": {
-      "count": 2
-    },
-    "max-len": {
-      "count": 10
-    }
-  },
-  "packages/cli/src/lint.ts": {
-    "max-len": {
-      "count": 8
-    }
-  },
-  "packages/cli/src/preflight.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "complexity": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 6
-    }
-  },
-  "packages/cli/src/render.ts": {
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 2
-    }
-  },
-  "packages/cli/test/cli.test.ts": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 7
-    },
-    "max-len": {
-      "count": 9
-    }
-  },
-  "packages/cli/test/lint.test.ts": {
-    "@typescript-eslint/no-floating-promises": {
-      "count": 6
-    },
-    "max-len": {
-      "count": 6
-    }
   }
 }

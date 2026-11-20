@@ -8,7 +8,10 @@ const envFile = (dir: string) => join(dir, '.env')
 export const cliVersion = (): string =>
   (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }).version
 
-/** Repo-root compose.yaml turned into the installed one: image pinned, no build, no fixed db host port or container names, secrets from the env file. */
+/**
+ * Repo-root compose.yaml turned into the installed one: image pinned, no build, no fixed db host port or container
+ * names, secrets from the env file.
+ */
 export const renderCompose = (template: string, version: string): string =>
   template
     .replace('${BAUHERR_VERSION:-dev}', version)
@@ -22,15 +25,19 @@ export const renderCompose = (template: string, version: string): string =>
 /** Compose project name derived from the install dir; the path hash keeps two `bauherr` dirs apart. */
 export const projectName = (dir: string): string => {
   const abs = resolve(dir)
-  const slug = basename(abs).toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/^[^a-z0-9]+/, '') || 'bauherr'
+  const slug =
+    basename(abs)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '-')
+      .replace(/^[^a-z0-9]+/, '') || 'bauherr'
   return `${slug}-${createHash('sha1').update(abs).digest('hex').slice(0, 6)}`
 }
 
 export const parseEnv = (text: string): Map<string, string> =>
-  new Map([...text.matchAll(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/gm)].map((m) => [m[1]!, m[2]!]))
+  new Map([...text.matchAll(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/gm)].map((m): [string, string] => [m[1]!, m[2]!]))
 
 export const readEnv = (dir: string): Map<string, string> =>
-  existsSync(envFile(dir)) ? parseEnv(readFileSync(envFile(dir), 'utf8')) : new Map()
+  existsSync(envFile(dir)) ? parseEnv(readFileSync(envFile(dir), 'utf8')) : new Map<string, string>()
 
 type Settings = { PORT: string; GATEWAY_PORT: string; PUBLIC_URL: string }
 
@@ -49,7 +56,10 @@ export const writeEnv = (dir: string, values: Settings): Map<string, string> => 
 
 export const writeProject = (dir: string, version: string, values: Settings): Map<string, string> => {
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'compose.yaml'), renderCompose(readFileSync(new URL('compose.yaml', templates), 'utf8'), version))
+  writeFileSync(
+    join(dir, 'compose.yaml'),
+    renderCompose(readFileSync(new URL('compose.yaml', templates), 'utf8'), version),
+  )
   cpSync(new URL('deploy/', templates), join(dir, 'deploy'), { recursive: true })
   return writeEnv(dir, values)
 }
