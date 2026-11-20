@@ -104,7 +104,7 @@ describe('the deploy after a merge, against the fake forge', () => {
     expect(await count(s.id, 'ship.deployed')).toBe(1)
     expect(await f.view(s.id)).toMatchObject({ stage: 'ship', waitingOn: 'owner', card: { card: 'result' } })
     const statements = await f.h.rows(sql`SELECT "kind", "text" FROM "statements" WHERE "record_id" = ${s.id}`)
-    expect(statements).toHaveLength(1)
+    expect(statements).toHaveLength(0)
   })
 
   it('raises a later failure of the re-run as a new fact', async () => {

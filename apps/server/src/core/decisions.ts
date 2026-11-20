@@ -68,6 +68,30 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
   },
 }
 
+export const QUESTION_REASONS = [
+  'failed-runs',
+  'reporter-silent',
+  'disputed',
+  'verify-rounds',
+  'deploy-stalled',
+  'production',
+  'agent',
+] as const
+
+export type QuestionReason = (typeof QUESTION_REASONS)[number]
+
+export const REMEMBERED: Record<QuestionReason, boolean> = {
+  'failed-runs': false,
+  'reporter-silent': false,
+  disputed: true,
+  'verify-rounds': false,
+  'deploy-stalled': false,
+  production: false,
+  agent: true,
+}
+
+export const isRemembered = (reason: string): boolean => REMEMBERED[reason as QuestionReason] === true
+
 export const AGENT_ASK = 'question:agent'
 
 export const agentEntry = (card: AgentCard | null, choice: string): DecisionEntry | undefined =>

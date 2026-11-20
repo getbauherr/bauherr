@@ -1,5 +1,6 @@
 import type { Payload } from 'payload'
 import { commitChecksUrl } from '../deploy'
+import { isRemembered } from '../decisions'
 import type { Actor, EventType } from '../events'
 import { RecordNotFound } from '../record/errors'
 import {
@@ -72,6 +73,7 @@ export type TicketView = {
   otherPulls: OtherPull[]
   statementsUsed: StatementsUsed
   deploy: DeployView | null
+  answerRemembered: boolean
 }
 
 export type TicketFilter = { workspace: number; recordId: number }
@@ -165,6 +167,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     ...pulls,
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),
+    answerRemembered: stored.card?.card === 'question' && isRemembered(stored.card.reason),
     similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT, 'issue') : [],
   }
 }

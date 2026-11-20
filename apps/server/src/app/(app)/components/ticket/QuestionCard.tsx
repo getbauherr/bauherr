@@ -22,6 +22,7 @@ type Props = { view: TicketView; card: StoredCard; may: boolean }
 export function QuestionCard({ view, card, may }: Props) {
   const ask = askOf(card.reason)
   const facts = questionFacts(view, card.reason)
+  const remembered = view.answerRemembered ? 'Your answer is remembered for similar tickets.' : undefined
   const recommended = recommendedOption(view, card.reason)
   return (
     <Card bare>
@@ -30,7 +31,7 @@ export function QuestionCard({ view, card, may }: Props) {
         ask={ask}
         seq={card.seq}
         pick
-        sentence={may ? 'Your answer is remembered for similar tickets.' : 'A Bauherr of this Workspace answers.'}
+        sentence={may ? remembered : 'A Bauherr of this Workspace answers.'}
         actions={may ? [ANSWER_ACTION] : []}
       >
         <div className="grid gap-5 p-6">
