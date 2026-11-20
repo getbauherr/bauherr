@@ -1,5 +1,6 @@
-import { type PostgresAdapter, sql } from '@payloadcms/db-postgres'
+import { sql } from '@payloadcms/db-postgres'
 import { createLocalReq, type Payload, type Where } from 'payload'
+import { hasSessions } from './db-session'
 import { deleteKey, gatewayEnabled, removeWorkspaceProviders, renderModels } from './gateway'
 import { personOf } from './person'
 
@@ -207,8 +208,6 @@ const unlinkPeople = async (
     await payload.update({ collection: 'bauherren', id: u.id, data, overrideAccess: true, depth: 0, req })
   }
 }
-
-const hasSessions = (db: object): db is Pick<PostgresAdapter, 'sessions'> => 'sessions' in db
 
 export const purgeWorkspace = async (payload: Payload, workspace: number, now = new Date()): Promise<boolean> => {
   const req = await createLocalReq({}, payload)

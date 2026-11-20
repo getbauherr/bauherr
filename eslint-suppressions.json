@@ -608,38 +608,6 @@
       "count": 5
     }
   },
-  "apps/server/src/collections.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 4
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    },
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 16
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 16
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 48
-    },
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 4
-    },
-    "complexity": {
-      "count": 4
-    },
-    "max-len": {
-      "count": 85
-    },
-    "max-lines": {
-      "count": 1
-    },
-    "no-restricted-syntax": {
-      "count": 8
-    }
-  },
   "apps/server/src/jobs/index.ts": {
     "max-len": {
       "count": 5
@@ -927,7 +895,7 @@
       "count": 1
     },
     "max-len": {
-      "count": 5
+      "count": 1
     },
     "no-restricted-syntax": {
       "count": 1
