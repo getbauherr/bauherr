@@ -1,8 +1,10 @@
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import type { Conn } from '../conn'
+import { deploySince, type DeployCheck, type DeployWait } from '../deploy'
 import type { State } from '../fold'
 import { questionPostedAt } from '../intake/posted'
+import { next, type Config } from '../lifecycle'
 import type { StoredEvent, StoredRecord } from '../record/store'
 import type { ReactCheck, ReactComment, ReactInput, ReactItem } from './react'
 
@@ -18,6 +20,12 @@ const itemRow = z.object({
 
 const commentRow = z.object({ author: z.string().nullable(), body: z.string().nullable(), at: z.coerce.date() })
 const checkRow = z.object({ status: z.string().nullable(), conclusion: z.string().nullable() })
+const deployCheckRow = z.object({
+  name: z.string(),
+  status: z.string().nullable(),
+  conclusion: z.string().nullable(),
+  at: z.coerce.date(),
+})
 
 type Found = { id: number; item: ReactItem }
 
@@ -50,11 +58,48 @@ const readChecks = async (conn: Conn, item: number, sha: string): Promise<ReactC
   })
 }
 
+const readDeployChecks = async (conn: Conn, item: number, sha: string): Promise<DeployCheck[]> => {
+  const result = await conn.db.drizzle.execute(sql`
+    SELECT "name", "status", "conclusion", "updated_at" AS at FROM "mirror_checks"
+    WHERE "item_id" = ${item} AND "sha" = ${sha}`)
+  return result.rows.map((row) => {
+    const parsed = deployCheckRow.parse(row)
+    return {
+      name: parsed.name,
+      status: parsed.status ?? '',
+      conclusion: parsed.conclusion,
+      updatedAt: parsed.at.toISOString(),
+    }
+  })
+}
+
+const loadDeployWait = async (
+  conn: Conn,
+  stored: StoredRecord,
+  state: State,
+  events: StoredEvent[],
+  config: Config,
+  now: Date,
+): Promise<DeployWait | null> => {
+  const step = next(stored.record, state, config)
+  const since = deploySince(events)
+  if (step.kind !== 'wait' || step.on !== 'deploy' || since === null || !state.patch || state.mergeSha === null) {
+    return null
+  }
+  const { repo } = stored.record.source
+  const pull = await findItem(conn, stored.workspace, repo, state.patch.pr)
+  if (!pull) return null
+  const checks = await readDeployChecks(conn, pull.id, state.mergeSha)
+  return { names: config.deployNames, since, limitMinutes: config.deployWaitMinutes, now, checks }
+}
+
 export const loadReactInput = async (
   conn: Conn,
   stored: StoredRecord,
   state: State,
   events: StoredEvent[],
+  config: Config,
+  now: Date,
 ): Promise<ReactInput | null> => {
   const { repo, number } = stored.record.source
   const issue = await findItem(conn, stored.workspace, repo, number)
@@ -68,6 +113,7 @@ export const loadReactInput = async (
     pull: pr?.item ?? null,
     comments: await readComments(conn, issue.id),
     checks: pr && state.patch ? await readChecks(conn, pr.id, state.patch.headSha) : [],
+    deploy: await loadDeployWait(conn, stored, state, events, config, now),
   }
 }
 

@@ -8,6 +8,7 @@ import {
   knownItems,
   openItems,
   pullsAwaitingChecks,
+  pullsAwaitingDeploy,
   setGone,
   upsertChecks,
   upsertItem,
@@ -29,6 +30,19 @@ export const storePull = async (payload: Payload, context: PullContext, forge: R
   if (pull.headSha === '') return
   const checks = await forge.listChecks(context.repo, pull.headSha)
   await upsertChecks(payload, context.workspace, item, checks.map((check) => checkRow(pull.headSha, check)))
+}
+
+export const syncDeployChecks = async (
+  payload: Payload,
+  context: PullContext,
+  forge: ReadForge,
+  number: number | null = null,
+): Promise<void> => {
+  for (const { itemId, sha } of await pullsAwaitingDeploy(payload, context.source, number)) {
+    const checks = await forge.listChecks(context.repo, sha)
+    await upsertChecks(payload, context.workspace, itemId, checks.map((check) => checkRow(sha, check)))
+    context.touched?.add(itemId)
+  }
 }
 
 export const syncPulls = async (

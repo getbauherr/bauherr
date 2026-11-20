@@ -71,6 +71,7 @@ export const SAMPLES: Record<EventType, unknown> = {
   'verify.changes': { runId: 'r2', patchId: 'p1' },
   'ship.merged': { sha: 'abc123' },
   'ship.deployed': {},
+  'ship.deploy-stalled': { reason: 'failed', checks: ['deploy'] },
   'result.accepted': {},
   'result.sent-back': { note: 'not yet' },
   'production.approved': {},
@@ -94,6 +95,8 @@ export const CONFIG: Config = {
   riskAreas: ['security'],
   productionGate: false,
   deployChecks: false,
+  deployNames: [],
+  deployWaitMinutes: 60,
   requiredChecks: true,
   autoClose: true,
 }

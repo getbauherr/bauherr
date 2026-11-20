@@ -34,6 +34,8 @@ const setup = async () => {
       riskAreas: [],
       productionGate: false,
       deployChecks: false,
+      deployNames: [],
+      deployWaitMinutes: 60,
       requiredChecks: false,
       autoClose: true,
     }),

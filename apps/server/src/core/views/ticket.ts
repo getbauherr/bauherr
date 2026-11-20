@@ -1,4 +1,5 @@
 import type { Payload } from 'payload'
+import { commitChecksUrl } from '../deploy'
 import type { Actor, EventType } from '../events'
 import { RecordNotFound } from '../record/errors'
 import {
@@ -45,6 +46,8 @@ export type PullView = {
   checks: CheckView[]
 }
 
+export type DeployView = { reason: 'failed' | 'overdue'; checks: string[]; url: string }
+
 export type TicketView = {
   recordId: number
   number: number
@@ -68,6 +71,7 @@ export type TicketView = {
   adopted: { pr: number; author: string } | null
   otherPulls: OtherPull[]
   statementsUsed: StatementsUsed
+  deploy: DeployView | null
 }
 
 export type TicketFilter = { workspace: number; recordId: number }
@@ -95,6 +99,15 @@ const pullsOf = async (payload: Payload, stored: StoredRecord, events: StoredEve
     adopted: adopted === undefined ? null : { pr: adopted.pr, author: pullRequest?.author ?? '' },
     otherPulls: await loadOtherPulls(payload, { workspace: stored.workspace, repo, issue: number, except: pr }),
   }
+}
+
+const deployOf = (stored: StoredRecord, events: StoredEvent[], pull: PullView | null): DeployView | null => {
+  const stalled = events.findLast((event) => event.type === 'ship.deploy-stalled')
+  const merged = events.findLast((event) => event.type === 'ship.merged')
+  if (stored.card?.reason !== 'deploy-stalled' || stalled?.type !== 'ship.deploy-stalled') return null
+  if (merged?.type !== 'ship.merged' || pull === null) return null
+  const { reason, checks } = stalled.data
+  return { reason, checks, url: commitChecksUrl(stored.record.source.forge, pull.url, merged.data.sha) }
 }
 
 const NOT_ENDED = { ended: null, closedAs: null } as const
@@ -151,6 +164,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     proofs: await loadProofs(payload, stored.id),
     ...pulls,
     statementsUsed: await statementsUsed(payload, stored.id, events),
+    deploy: deployOf(stored, events, pulls.pullRequest),
     similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT, 'issue') : [],
   }
 }

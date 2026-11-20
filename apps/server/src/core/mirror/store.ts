@@ -243,6 +243,31 @@ export const pullsAwaitingChecks = async (payload: Payload, source: number): Pro
   return new Set(result.rows.map((row) => numberRowSchema.parse(row).number))
 }
 
+const awaitingDeployRow = z.object({ id: count, number: count, sha: z.string() })
+
+export type AwaitingDeploy = { itemId: number; number: number; sha: string }
+
+export const pullsAwaitingDeploy = async (
+  payload: Payload,
+  source: number,
+  number: number | null = null,
+): Promise<AwaitingDeploy[]> => {
+  const result = await payload.db.drizzle.execute(sql`
+    SELECT i."id", i."number", m."sha" FROM "records" r
+    JOIN "products" p ON p."id" = r."product_id" AND coalesce(p."deploy_checks", '') ~ '[^,[:space:]]'
+    JOIN "mirror_items" i ON i."workspace_id" = r."workspace_id" AND i."repo" = r."source_repo"
+      AND i."number" = r."pr" AND i."kind" = 'pr'
+    CROSS JOIN LATERAL (
+      SELECT e."data"->>'sha' AS sha FROM "events" e
+      WHERE e."record_id" = r."id" AND e."type" = 'ship.merged' ORDER BY e."id" DESC LIMIT 1) m
+    WHERE i."source_id" = ${source} AND i."gone_at" IS NULL AND r."stage" = 'ship' AND r."waiting_on" = 'agents'
+      AND m."sha" IS NOT NULL AND (${number}::int IS NULL OR i."number" = ${number}::int)`)
+  return result.rows.map((row) => {
+    const parsed = awaitingDeployRow.parse(row)
+    return { itemId: parsed.id, number: parsed.number, sha: parsed.sha }
+  })
+}
+
 export const openItems = async (
   payload: Payload,
   source: number,

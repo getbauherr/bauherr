@@ -18,6 +18,8 @@ export type Config = {
   riskAreas: string[]
   productionGate: boolean
   deployChecks: boolean
+  deployNames: string[]
+  deployWaitMinutes: number
   requiredChecks: boolean
   autoClose: boolean
 }
@@ -118,7 +120,9 @@ const verify: Rule = (_r, state) => {
 const resultCard: Step = { kind: 'card', card: 'result', reason: 'result', options: [] }
 
 const afterMerge = (state: State, config: Config): Step => {
-  if (config.deployChecks && !state.deployed) return wait('deploy')
+  if (config.deployChecks && !state.deployed) {
+    return state.deployStalled ? question('deploy-stalled', ['check-again', 'continue']) : wait('deploy')
+  }
   if (!state.accepted) return resultCard
   if (config.productionGate && !state.productionApproved) {
     return state.productionHeld ? wait('owner') : question('production', ['approve', 'hold'])

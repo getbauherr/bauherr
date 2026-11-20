@@ -441,6 +441,12 @@ export const collections: CollectionConfig[] = [
     text('state', { required: true, defaultValue: 'observing' }),
     date('connectedAt'),
     text('deployChecks', { admin: { description: 'Comma-separated check names that must be green; empty = all.' } }),
+    {
+      name: 'deployWaitMinutes',
+      type: 'number',
+      defaultValue: 60,
+      admin: { description: 'Minutes after a merge before the owner is asked about a deploy that has not finished.' },
+    },
     { name: 'productionGate', type: 'checkbox', defaultValue: false, admin: { description: 'Accepting on staging waits for an explicit production approval instead of moving to done; the Product\'s own pipeline deploys.' } },
     {
       name: 'riskAreas',

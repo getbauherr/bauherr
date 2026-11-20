@@ -133,7 +133,7 @@ describe('saveGates', () => {
 })
 
 describe('saveProof', () => {
-  const PROOF = { requiredChecks: ' test , lint,test', deployChecks: 'deploy-staging' }
+  const PROOF = { requiredChecks: ' test , lint,test', deployChecks: 'deploy-staging', deployWaitMinutes: '45' }
 
   it('trims and de-duplicates check names and keeps the staging address', async () => {
     const { saveProof } = await actions()
@@ -144,8 +144,16 @@ describe('saveProof', () => {
       ...UNTOUCHED,
       requiredChecks: 'test, lint',
       deployChecks: 'deploy-staging',
+      deployWaitMinutes: 45,
       stagingUrl: 'https://staging.example.com',
     })
+  })
+
+  it.each(['4', '1441', 'soon'])('refuses %s minutes as the deploy wait', async (minutes) => {
+    const { saveProof } = await actions()
+    const { product } = await setup(`sec-proof-wait-${minutes}`)
+    const result = await saveProof({}, form({ id: String(product), ...PROOF, deployWaitMinutes: minutes }))
+    expect(result.fields?.deployWaitMinutes).toBeTruthy()
   })
 
   it('refuses a staging address that is not a web address', async () => {
@@ -198,7 +206,7 @@ describe('who may call them', () => {
     saveExecutor: { executor: 'runner' },
     saveIntake: INTAKE,
     saveGates: { backlogBriefLimit: '9' },
-    saveProof: { requiredChecks: 'test', deployChecks: '', stagingUrl: '' },
+    saveProof: { requiredChecks: 'test', deployChecks: '', deployWaitMinutes: '60', stagingUrl: '' },
     copyForgeChecks: {},
   }
 

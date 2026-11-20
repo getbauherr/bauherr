@@ -25,6 +25,7 @@ const input = (events: ReturnType<typeof ev>[], extra: Partial<ReactInput> = {})
   pull: null,
   comments: [],
   checks: [],
+  deploy: null,
   ...extra,
 })
 

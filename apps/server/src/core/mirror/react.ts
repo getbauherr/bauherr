@@ -1,3 +1,4 @@
+import { deployOverdue, type DeployWait } from '../deploy'
 import type { AppEvent, Stage } from '../events'
 import type { State } from '../fold'
 import { DISCLOSURE } from '../forge/disclosure'
@@ -15,6 +16,7 @@ export type ReactInput = {
   pull: ReactItem | null
   comments: ReactComment[]
   checks: ReactCheck[]
+  deploy: DeployWait | null
 }
 
 export type Reaction = (input: ReactInput) => AppEvent[]
@@ -75,7 +77,27 @@ export const headMoved: Reaction = ({ state, pull }) => {
   return [{ type: 'pull.adopted', data }]
 }
 
-const REACTIONS: Reaction[] = [reporterReplied, checksFinished, pullMerged, headMoved]
+type DeployResult = 'success' | 'failure' | 'none'
+
+const deployResult = (wait: DeployWait, name: string): DeployResult => {
+  const check = wait.checks.find((candidate) => candidate.name === name)
+  if (check?.status !== 'completed') return 'none'
+  if (check.conclusion !== null && PASSING.includes(check.conclusion)) return 'success'
+  return Date.parse(check.updatedAt) > Date.parse(wait.since) ? 'failure' : 'none'
+}
+
+export const deployFinished: Reaction = ({ deploy }) => {
+  if (deploy === null) return []
+  const results = deploy.names.map((name) => ({ name, result: deployResult(deploy, name) }))
+  const namesOf = (result: DeployResult) => results.filter((r) => r.result === result).map((r) => r.name)
+  const failed = namesOf('failure')
+  if (failed.length > 0) return [{ type: 'ship.deploy-stalled', data: { reason: 'failed', checks: failed } }]
+  if (namesOf('success').length === results.length) return [{ type: 'ship.deployed', data: {} }]
+  if (!deployOverdue(deploy.since, deploy.now, deploy.limitMinutes)) return []
+  return [{ type: 'ship.deploy-stalled', data: { reason: 'overdue', checks: namesOf('none') } }]
+}
+
+const REACTIONS: Reaction[] = [reporterReplied, checksFinished, pullMerged, headMoved, deployFinished]
 
 export const react = (input: ReactInput): AppEvent[] => {
   const closed = [...pullClosed(input), ...issueClosed(input)]

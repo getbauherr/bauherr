@@ -55,6 +55,10 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
     },
     discard: answer('discard', discarded),
   },
+  'question:deploy-stalled': {
+    'check-again': answer('check-again'),
+    continue: answer('continue', { type: 'ship.deployed', data: {} }),
+  },
   'question:production': {
     approve: answer('approve', { type: 'production.approved', data: {} }),
     hold: answer('hold', { type: 'production.held', data: {} }),

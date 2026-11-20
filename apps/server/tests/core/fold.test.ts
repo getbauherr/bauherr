@@ -26,6 +26,16 @@ describe('fold', () => {
     })
   })
 
+  it('remembers the merge commit and a stalled deploy until the owner answers or it is deployed', () => {
+    const stalled = [...merged, ev('ship.deploy-stalled', { reason: 'overdue', checks: ['deploy'] })]
+    expect(fold(merged).mergeSha).toBe('abc123')
+    expect(fold(merged).deployStalled).toBeNull()
+    expect(fold(stalled).deployStalled).toEqual({ reason: 'overdue', checks: ['deploy'] })
+    const answered = [...stalled, ev('question.asked', { reason: 'deploy-stalled' }), ev('question.answered')]
+    expect(fold(answered)).toMatchObject({ deployStalled: null, deployed: false, card: null })
+    expect(fold([...stalled, ev('ship.deployed')])).toMatchObject({ deployStalled: null, deployed: true })
+  })
+
   it('ignores the forge write events completely', () => {
     const writes = [
       ev('forge.write.started'),

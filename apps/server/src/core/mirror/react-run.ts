@@ -26,7 +26,7 @@ const reactLocked = async (deps: AdvanceDeps, recordId: number, config: Config):
     const events = await readEvents(tx, recordId)
     const state = fold(events, foldOptions(config))
     if (state.closed !== null || state.stage === 'done') return 0
-    const input = await loadReactInput(tx, stored, state, events)
+    const input = await loadReactInput(tx, stored, state, events, config, deps.now)
     const derived = input ? react(input) : []
     for (const event of derived) await appendEvent(tx, recordId, { ...event, actor: actorOf(event) })
     if (derived.some((event) => event.type === 'pull.adopted')) await releaseStaleVerify(tx, recordId, state, deps.now)

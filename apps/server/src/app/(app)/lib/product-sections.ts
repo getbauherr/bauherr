@@ -5,6 +5,7 @@ export const EXECUTORS = ['session', 'runner'] as const
 
 export const DAYS = { min: 1, max: 90 } as const
 export const LIMIT = { min: 1, max: 50 } as const
+export const DEPLOY_MINUTES = { min: 5, max: 1440 } as const
 
 type FieldIssue = { path: string; message: string }
 
@@ -47,6 +48,7 @@ const intakeSchema = z.object({
 const proofSchema = z.object({
   requiredChecks: checkNames,
   deployChecks: checkNames,
+  deployWaitMinutes: whole(DEPLOY_MINUTES.min, DEPLOY_MINUTES.max),
   stagingUrl: z
     .string()
     .trim()

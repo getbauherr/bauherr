@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import { decrypt } from '../../lib/secrets'
+import { pullsAwaitingDeploy } from '../mirror/store'
 import type { HookHead, HookItem } from './reduce'
 
 const count = z.coerce.number()
@@ -40,5 +41,8 @@ export const openPullsAt = async (payload: Payload, source: number, head: HookHe
     SELECT "number" FROM "mirror_items"
     WHERE "source_id" = ${source} AND "kind" = 'pr' AND "state" = 'open' AND "gone_at" IS NULL
       AND "head_sha" = ${head.sha}`)
-  return result.rows.map((row) => ({ repo: head.repo, kind: 'pr' as const, number: numberRow.parse(row).number }))
+  const open = result.rows.map((row) => numberRow.parse(row).number)
+  const deploying = (await pullsAwaitingDeploy(payload, source)).filter((pull) => pull.sha === head.sha)
+  const numbers = new Set([...open, ...deploying.map((pull) => pull.number)])
+  return [...numbers].map((number) => ({ repo: head.repo, kind: 'pr' as const, number }))
 }

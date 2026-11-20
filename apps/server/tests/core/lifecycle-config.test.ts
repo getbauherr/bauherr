@@ -23,6 +23,8 @@ describe('lifecycleConfig', () => {
       riskAreas: [],
       productionGate: false,
       deployChecks: false,
+      deployNames: [],
+      deployWaitMinutes: 60,
       requiredChecks: false,
       autoClose: true,
     })
@@ -38,6 +40,7 @@ describe('lifecycleConfig', () => {
       riskAreas: ['security', 'billing'],
       productionGate: true,
       deployChecks: true,
+      deployNames: ['ci', 'deploy'],
     })
   })
 
@@ -47,6 +50,12 @@ describe('lifecycleConfig', () => {
     expect((await lifecycleConfig(db.payload, record)).requiredChecks).toBe(true)
     await setProduct(sql`"required_checks" = ' , '`)
     expect((await lifecycleConfig(db.payload, record)).requiredChecks).toBe(false)
+  })
+
+  it('reads the deploy wait limit from the Product', async () => {
+    const record = await db.fresh()
+    await setProduct(sql`"deploy_wait_minutes" = 15`)
+    expect((await lifecycleConfig(db.payload, record)).deployWaitMinutes).toBe(15)
   })
 
   it('treats blank deploy checks as none', async () => {

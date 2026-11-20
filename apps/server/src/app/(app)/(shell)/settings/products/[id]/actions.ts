@@ -40,8 +40,9 @@ export async function saveGates(_prev: FormState, fd: FormData): Promise<FormSta
 
 export async function saveProof(_prev: FormState, fd: FormData): Promise<FormState> {
   return save(fd, () => {
-    const { requiredChecks, deployChecks, stagingUrl } = parseProof(fd)
-    return { requiredChecks: requiredChecks.join(', '), deployChecks: deployChecks.join(', '), stagingUrl }
+    const { requiredChecks, deployChecks, deployWaitMinutes, stagingUrl } = parseProof(fd)
+    const checks = { requiredChecks: requiredChecks.join(', '), deployChecks: deployChecks.join(', ') }
+    return { ...checks, deployWaitMinutes, stagingUrl }
   })
 }
 
