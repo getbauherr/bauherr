@@ -48,12 +48,12 @@ export const layerOf = (
   repoProduct?: string,
 ): { layer: Layer; logical: string; product: string | null } => {
   if (repoProduct) return { layer: 'product', logical: `repo-docs/${path}`, product: repoProduct }
-  const p = /^products\/([^/]+)\/(.+)$/.exec(path)
-  if (p) return { layer: 'product', logical: p[2], product: p[1] }
+  const [, product = '', logical = ''] = /^products\/([^/]+)\/(.+)$/.exec(path) ?? []
+  if (logical) return { layer: 'product', logical, product }
   return { layer: 'workspace', logical: path.replace(/^workspace\//, ''), product: null }
 }
 
-export const repoOf = (source: string): string => source.split('#')[0]
+export const repoOf = (source: string): string => source.split('#')[0] ?? ''
 
 const isMd = (path: string) => /\.md$/.test(path)
 
@@ -157,7 +157,7 @@ const dropStaleKeys = (state: Sync, targets: Target[]): void => {
 const indexSource = async (
   state: Sync,
   forge: ReturnType<typeof backendFor>['forge'],
-  target: { key: string; repo: string; source: string; slug?: string },
+  target: { key: string; repo: string; source: string; slug?: string | undefined },
   pick: (path: string) => boolean,
 ): Promise<void> => {
   const { payload, ws, indexed } = state
@@ -180,7 +180,8 @@ const syncSource = async (
 ): Promise<void> => {
   const { payload, ws, indexed } = state
   const { key, failKey, repo, source, connection, slug } = target
-  const failedAt = indexed[failKey]?.startsWith(`${repo}|`) ? Date.parse(indexed[failKey].split('|')[1]) : 0
+  const failure = indexed[failKey]
+  const failedAt = failure?.startsWith(`${repo}|`) ? Date.parse(failure.split('|')[1] ?? '') : 0
   if (Date.now() - failedAt < BACKOFF_MS) return
   try {
     const forge = backendFor(await connectionInput(payload, connection)).forge

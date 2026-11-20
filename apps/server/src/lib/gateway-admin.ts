@@ -135,7 +135,7 @@ export const budgetStatus = async (slug: string): Promise<{ spentUsd: number; li
       [keyName(slug)],
     )
     const limit = await keyOf(slug)
-    const v = { spentUsd: Number(r.rows[0].spent), limitUsd: limit?.value.budgets?.[0]?.limit.amount ?? null }
+    const v = { spentUsd: Number(r.rows[0]?.spent), limitUsd: limit?.value.budgets?.[0]?.limit.amount ?? null }
     cache.set(slug, { at: Date.now(), v })
     return v
   } finally {
