@@ -1,11 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { z } from 'zod'
 import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
-
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-test.skip(!!process.env.E2E_FAKE_FORGE, 'perf budget runs in the plain e2e job')
 
 const PENDING_MS = 100
 const CONTENT_MS = 400
@@ -57,9 +55,19 @@ const targets: Target[] = [
   },
 ]
 
+type Perf = { t0: number | null; pending: number | null; content: number | null }
+
+declare global {
+  interface Window {
+    __perf: Perf
+  }
+}
+
+const reported = z.object({ pending: z.number(), content: z.number() })
+
 const observe = (c: Content) => {
-  const w = window as unknown as { __perf: { t0: number | null; pending: number | null; content: number | null } }
-  const perf = (w.__perf = { t0: null as number | null, pending: null, content: null })
+  const perf: Perf = { t0: null, pending: null, content: null }
+  window.__perf = perf
   const path = location.pathname + location.search
   document.addEventListener('click', () => (perf.t0 = performance.now()), { capture: true })
   const re = c.text ? new RegExp(c.text) : null
@@ -92,14 +100,8 @@ for (const t of targets) {
     await page.waitForLoadState('networkidle')
     await page.evaluate(observe, t.content)
     await t.click(page)
-    await page.waitForFunction(
-      () => (window as unknown as { __perf: { content: number | null } }).__perf.content !== null,
-      undefined,
-      { timeout: 15_000 },
-    )
-    const { pending, content } = await page.evaluate(
-      () => (window as unknown as { __perf: { pending: number; content: number } }).__perf,
-    )
+    await page.waitForFunction(() => window.__perf.content !== null, undefined, { timeout: 15_000 })
+    const { pending, content } = reported.parse(await page.evaluate(() => window.__perf))
     console.log(`PERF ${t.route} pending=${Math.round(pending)} content=${Math.round(content)}`)
     expect(pending, 'pending feedback').toBeLessThan(PENDING_MS)
     expect(content, 'content').toBeLessThan(CONTENT_MS)

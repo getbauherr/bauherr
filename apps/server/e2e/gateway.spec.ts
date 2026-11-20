@@ -4,8 +4,6 @@ import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-
 test(
   'Models & budget: the price status says when prices were updated or ' +
     'that none were fetched, and offers Update now',

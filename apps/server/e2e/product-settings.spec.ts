@@ -2,8 +2,6 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
 
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-
 const signIn = async (page: Page) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
@@ -200,35 +198,37 @@ test('a Product with a repository cannot be deleted', async ({ page }) => {
   await expect(page.locator('#danger').getByRole('button', { name: 'Delete Product' })).toHaveCount(0)
 })
 
-test('add a Product: pick the repository from the forge, a taken short name is refused', async ({ page }) => {
-  test.skip(!process.env.E2E_FAKE_FORGE, 'the Repository select needs the fake forge (BAUHERR_E2E_FAKE_FORGE=1)')
-  const name = `E2E Picker ${Date.now()}`
-  await signIn(page)
-  await page.goto('/settings/products/new')
-  await page.getByLabel('Product name').fill(name)
-  const repo = page.getByLabel('Repository', { exact: true })
-  await expect(repo.getByRole('option', { name: 'acme/picker' })).toHaveCount(1)
-  await expect(repo.getByRole('option', { name: 'Other...' })).toHaveCount(1)
-  await repo.selectOption('acme/picker')
-  await page.locator('#new summary', { hasText: 'Advanced' }).click()
-  await expect(page.getByLabel('Short name')).toHaveValue(/^e2e-picker-\d+$/)
-  await page.getByRole('button', { name: 'Add Product' }).click()
-  await expect(page).toHaveURL(/\/settings\/products\/\d+\/connect$/)
-  const path = new URL(page.url()).pathname.replace(/\/connect$/, '')
-  await page.goto(path)
-  await expect(page.locator('#repository')).toContainText('acme/picker')
+test(
+  'add a Product: pick the repository from the forge, a taken short name is refused',
+  { tag: '@fake-forge' },
+  async ({ page }) => {
+    const name = `E2E Picker ${Date.now()}`
+    await signIn(page)
+    await page.goto('/settings/products/new')
+    await page.getByLabel('Product name').fill(name)
+    const repo = page.getByLabel('Repository', { exact: true })
+    await expect(repo.getByRole('option', { name: 'acme/picker' })).toHaveCount(1)
+    await expect(repo.getByRole('option', { name: 'Other...' })).toHaveCount(1)
+    await repo.selectOption('acme/picker')
+    await page.locator('#new summary', { hasText: 'Advanced' }).click()
+    await expect(page.getByLabel('Short name')).toHaveValue(/^e2e-picker-\d+$/)
+    await page.getByRole('button', { name: 'Add Product' }).click()
+    await expect(page).toHaveURL(/\/settings\/products\/\d+\/connect$/)
+    const path = new URL(page.url()).pathname.replace(/\/connect$/, '')
+    await page.goto(path)
+    await expect(page.locator('#repository')).toContainText('acme/picker')
 
-  await page.goto('/settings/products/new')
-  await page.getByLabel('Product name').fill(name)
-  await expect(page.getByLabel('Repository', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Add Product' }).click()
-  await expect(page.getByText('Another Product already uses this short name.')).toBeVisible()
+    await page.goto('/settings/products/new')
+    await page.getByLabel('Product name').fill(name)
+    await expect(page.getByLabel('Repository', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Add Product' }).click()
+    await expect(page.getByText('Another Product already uses this short name.')).toBeVisible()
 
-  await deleteProduct(page, path)
-})
+    await deleteProduct(page, path)
+  },
+)
 
-test('Members: an unknown GitHub login is refused, a known one is saved', async ({ page }) => {
-  test.skip(!process.env.E2E_FAKE_FORGE, 'needs the fake forge (knows the logins fake and e2e-admin)')
+test('Members: an unknown GitHub login is refused, a known one is saved', { tag: '@fake-forge' }, async ({ page }) => {
   const member = () => page.getByRole('row', { name: new RegExp('^members-edit@example\\.com') })
   await signIn(page)
   await page.goto('/settings/bauherren')

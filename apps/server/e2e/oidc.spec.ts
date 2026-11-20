@@ -9,8 +9,7 @@ test('no OIDC button by default', async ({ page }) => {
   await expect(page.getByLabel('Password')).toBeVisible()
 })
 
-test('OIDC button when configured', async ({ page }) => {
-  test.skip(!process.env.E2E_OIDC, 'needs a server started with OIDC_* set')
+test('OIDC button when configured', { tag: '@oidc' }, async ({ page }) => {
   await page.goto('/login')
   await expect(button(page)).toHaveAttribute('href', '/auth/oidc/login')
   await expect(page.getByLabel('Password')).toBeHidden()

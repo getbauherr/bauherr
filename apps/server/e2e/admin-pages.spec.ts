@@ -5,8 +5,6 @@ import { confirmClick } from './confirm'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-
 const signIn = async (page: Page, who: string) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(who)
@@ -84,46 +82,55 @@ test('a Bauherr gets 404 on the Admin pages, sees only their own groups and no t
   await expect(page.getByRole('button', { name: 'Create agent key' })).toBeVisible()
 })
 
-test('by default /admin redirects to /settings, also for an Admin, and /api stays up', async ({ page }) => {
-  test.skip(process.env.E2E_ADMIN_ENABLED === '1', 'runs against a server without BAUHERR_ENABLE_ADMIN')
-  const anon = await page.request.get('/admin', { maxRedirects: 0 })
-  expect(anon.status()).toBe(307)
-  expect(new URL(anon.headers().location!, 'http://x.test').pathname).toBe('/settings')
-  await signIn(page, email)
-  const res = await page.request.get('/admin', { maxRedirects: 0 })
-  expect(res.status()).toBe(307)
-  expect(new URL(res.headers().location!, 'http://x.test').pathname).toBe('/settings')
-  const fn = await page.request.post('/admin', {
-    headers: { 'next-action': '0'.repeat(40), 'content-type': 'text/plain;charset=UTF-8' },
-    data: '[]',
-    maxRedirects: 0,
-  })
-  expect(fn.status()).toBe(307)
-  const anonymousApiProbe = page.request
-  expect((await anonymousApiProbe.get('/api/bauherren/me')).status()).toBe(200)
-})
+test(
+  'by default /admin redirects to /settings, also for an Admin, and /api stays up',
+  { tag: '@admin-disabled' },
+  async ({ page }) => {
+    const anon = await page.request.get('/admin', { maxRedirects: 0 })
+    expect(anon.status()).toBe(307)
+    expect(new URL(anon.headers().location!, 'http://x.test').pathname).toBe('/settings')
+    await signIn(page, email)
+    const res = await page.request.get('/admin', { maxRedirects: 0 })
+    expect(res.status()).toBe(307)
+    expect(new URL(res.headers().location!, 'http://x.test').pathname).toBe('/settings')
+    const fn = await page.request.post('/admin', {
+      headers: { 'next-action': '0'.repeat(40), 'content-type': 'text/plain;charset=UTF-8' },
+      data: '[]',
+      maxRedirects: 0,
+    })
+    expect(fn.status()).toBe(307)
+    const anonymousApiProbe = page.request
+    expect((await anonymousApiProbe.get('/api/bauherren/me')).status()).toBe(200)
+  },
+)
 
-test('with BAUHERR_ENABLE_ADMIN=1 an Admin reaches Payload and a non-Admin does not', async ({ page }) => {
-  test.skip(process.env.E2E_ADMIN_ENABLED !== '1', 'needs a server with BAUHERR_ENABLE_ADMIN=1')
-  await signIn(page, email)
-  const res = await page.request.get('/admin')
-  expect(res.status()).toBe(200)
-  expect(await res.text()).toMatch(/serverFunction/)
-  await page.context().clearCookies()
-  await signIn(page, 'member@example.com')
-  await page.goto('/admin')
-  await expect(page.getByText('Unauthorized')).toBeVisible()
-})
+test(
+  'with BAUHERR_ENABLE_ADMIN=1 an Admin reaches Payload and a non-Admin does not',
+  { tag: '@admin-enabled' },
+  async ({ page }) => {
+    await signIn(page, email)
+    const res = await page.request.get('/admin')
+    expect(res.status()).toBe(200)
+    expect(await res.text()).toMatch(/serverFunction/)
+    await page.context().clearCookies()
+    await signIn(page, 'member@example.com')
+    await page.goto('/admin')
+    await expect(page.getByText('Unauthorized')).toBeVisible()
+  },
+)
 
-test('with BAUHERR_ENABLE_ADMIN=1 the /admin sign-in form (REST login) reaches the dashboard', async ({ page }) => {
-  test.skip(process.env.E2E_ADMIN_ENABLED !== '1', 'needs a server with BAUHERR_ENABLE_ADMIN=1')
-  await page.goto('/admin/login')
-  await page.getByLabel('Email').fill(email)
-  await page.getByLabel('Password').fill(password())
-  await page.getByRole('button', { name: 'Login' }).click()
-  await expect(page).toHaveURL(/\/admin\/?$/)
-  await expect(page.getByRole('heading', { name: 'Collections' })).toBeVisible()
-})
+test(
+  'with BAUHERR_ENABLE_ADMIN=1 the /admin sign-in form (REST login) reaches the dashboard',
+  { tag: '@admin-enabled' },
+  async ({ page }) => {
+    await page.goto('/admin/login')
+    await page.getByLabel('Email').fill(email)
+    await page.getByLabel('Password').fill(password())
+    await page.getByRole('button', { name: 'Login' }).click()
+    await expect(page).toHaveURL(/\/admin\/?$/)
+    await expect(page.getByRole('heading', { name: 'Collections' })).toBeVisible()
+  },
+)
 
 test('every Settings nav link opens a page whose heading matches, none is an anchor', async ({ page }) => {
   await signIn(page, email)

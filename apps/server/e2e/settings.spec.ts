@@ -10,8 +10,6 @@ const ownWorkspace = (page: Page) =>
     .context()
     .addCookies([{ name: 'bauherr-ws', value: 'settingsco', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
 
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-
 test('Admin edits budget, adds a Connection with a missing field and a Bauherr', async ({ page }) => {
   await ownWorkspace(page)
   await page.goto('/login')
