@@ -14,7 +14,7 @@ const run = { stage: stageSchema, runId: id }
 const event = <T extends string, D extends z.ZodType>(type: T, data: D) =>
   z.object({ type: z.literal(type), data })
 
-export const WRITE_KINDS = ['stage-label', 'status-comment', 'question', 'merge', 'close'] as const
+export const WRITE_KINDS = ['stage-label', 'status-comment', 'question', 'merge', 'close', 'pull-request'] as const
 const write = { kind: z.enum(WRITE_KINDS), target: z.object({ repo: id, number: z.number().int().positive() }) }
 
 const eventSchema = z.discriminatedUnion('type', [

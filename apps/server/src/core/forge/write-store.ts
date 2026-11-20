@@ -7,6 +7,8 @@ export type Target = { recordId: number; itemId: number }
 
 export type WriteRow = {
   workspace: number
+  product: number
+  source: number
   repo: string
   number: number
   kind: 'issue' | 'pr'
@@ -22,6 +24,8 @@ const count = z.coerce.number()
 
 const rowSchema = z.object({
   workspace_id: count,
+  product_id: count,
+  source_id: count,
   repo: z.string(),
   number: count,
   kind: z.enum(['issue', 'pr']),
@@ -35,8 +39,9 @@ const rowSchema = z.object({
 
 export const loadWriteRow = async (payload: Payload, target: Target): Promise<WriteRow> => {
   const result = await payload.db.drizzle.execute(sql`
-    SELECT i."workspace_id", i."repo", i."number", i."kind", i."labels", s."connection_id",
-      p."name" AS product_name, p."state" AS product_state, r."status_comment_id", r."status_comment_hash"
+    SELECT i."workspace_id", i."product_id", i."source_id", i."repo", i."number", i."kind", i."labels",
+      s."connection_id", p."name" AS product_name, p."state" AS product_state,
+      r."status_comment_id", r."status_comment_hash"
     FROM "mirror_items" i
     JOIN "records" r ON r."id" = ${target.recordId} AND r."product_id" = i."product_id"
     JOIN "products" p ON p."id" = i."product_id"
@@ -51,6 +56,8 @@ export const loadWriteRow = async (payload: Payload, target: Target): Promise<Wr
   const parsed = rowSchema.parse(row)
   return {
     workspace: parsed.workspace_id,
+    product: parsed.product_id,
+    source: parsed.source_id,
     repo: parsed.repo,
     number: parsed.number,
     kind: parsed.kind,
