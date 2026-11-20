@@ -81,7 +81,7 @@ const EXCEPTIONS = [
 ]
 
 const DRIFT_HELP =
-  'Schema drift between src/migrations and src/collections.ts. Fix the place that is wrong: ' +
+  'Schema drift between src/migrations and src/collections. Fix the place that is wrong: ' +
   'a new migration when production must change, the collection when the collection is wrong. ' +
   'If the collection cannot express what the migration rightly creates, ' +
   'add an exception with its reason to EXCEPTIONS in this test.'

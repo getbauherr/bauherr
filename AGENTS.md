@@ -20,7 +20,7 @@ staged TypeScript. Hooks are installed by `pnpm install`.
 
 - `apps/server/src/core/`: the lifecycle core. `apps/server/src/modules/<name>/`: one lifecycle module each.
 - `apps/server/src/lib/`: kept helpers (connections, people, gateway, secrets, knowledge).
-- `apps/server/src/app/`: pages and server actions. `apps/server/src/collections.ts`: Payload collections.
+- `apps/server/src/app/`: pages and server actions. `apps/server/src/collections/`: Payload collections, assembled in `collections.ts`.
 - `packages/adapters`: GitHub, GitLab and fake forge. `packages/runner`: Claude Agent SDK runs. `packages/cli`: the CLI.
 - `pack/`: the roles' rules and skills. `docs/`: product and design documentation.
 - `CONTEXT.md` is the domain language, `DESIGN.md` the UI language.
