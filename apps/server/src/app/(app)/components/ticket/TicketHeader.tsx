@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { STAGES, type Stage } from '../../../../core/events'
 import type { TicketView } from '../../../../core/views/ticket'
 import { STAGE_NAMES } from '../../lib/factory'
+import { adoptedLine } from '../../lib/ticket'
 import { StatusChip } from '../StatusChip'
 
 const STEP = ['text-ok', 'font-medium text-foreground', undefined]
@@ -35,6 +36,7 @@ export function TicketHeader({ view }: { view: TicketView }) {
         <span className="mono">#{view.number}</span>
         <h1 className="title">{view.title}</h1>
         <StatusChip status={view.status} closedAs={view.closedAs} />
+        {view.adopted && <span className="small text-muted-foreground">{adoptedLine(view.adopted)}</span>}
       </div>
       <StagePath stage={view.stage} />
     </>

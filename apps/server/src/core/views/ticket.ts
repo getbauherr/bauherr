@@ -21,9 +21,11 @@ import { statusOf, type TicketStatus } from './status'
 import {
   loadChecks,
   loadItem,
+  loadOtherPulls,
   loadProofs,
   loadRuns,
   type CheckView,
+  type OtherPull,
   type ProofGroup,
   type RunView,
 } from './ticket-parts'
@@ -38,6 +40,7 @@ export type PullView = {
   url: string
   state: string
   headSha: string
+  author: string
   checks: CheckView[]
 }
 
@@ -61,6 +64,8 @@ export type TicketView = {
   proofs: ProofGroup[]
   pullRequest: PullView | null
   similarItems: ItemHit[]
+  adopted: { pr: number; author: string } | null
+  otherPulls: OtherPull[]
 }
 
 export type TicketFilter = { workspace: number; recordId: number }
@@ -74,8 +79,20 @@ const pullOf = async (
   if (number === undefined) return null
   const item = await loadItem(payload, { workspace, repo, number })
   if (!item) return null
-  const { title, url, state, headSha } = item
-  return { number, title, url, state, headSha, checks: await loadChecks(payload, item) }
+  const { title, url, state, headSha, author } = item
+  return { number, title, url, state, headSha, author, checks: await loadChecks(payload, item) }
+}
+
+const pullsOf = async (payload: Payload, stored: StoredRecord, events: StoredEvent[]) => {
+  const { repo, number, adopted } = stored.record.source
+  const built = events.findLast((event) => event.type === 'build.submitted')
+  const pr = adopted?.pr ?? (built?.type === 'build.submitted' ? built.data.pr : undefined)
+  const pullRequest = await pullOf(payload, stored.workspace, repo, pr)
+  return {
+    pullRequest,
+    adopted: adopted === undefined ? null : { pr: adopted.pr, author: pullRequest?.author ?? '' },
+    otherPulls: await loadOtherPulls(payload, { workspace: stored.workspace, repo, issue: number, except: pr }),
+  }
 }
 
 const NOT_ENDED = { ended: null, closedAs: null } as const
@@ -109,10 +126,9 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
   const { repo, number } = stored.record.source
   const events = await readEvents(payload, stored.id)
   const issue = await loadItem(payload, { workspace: stored.workspace, repo, number })
-  const built = events.findLast((event) => event.type === 'build.submitted')
-  const pr = built?.type === 'build.submitted' ? built.data.pr : undefined
   const runs = await loadRuns(payload, stored.id)
   const { ended, closedAs } = endOf(stored, events)
+  const pulls = await pullsOf(payload, stored, events)
   return {
     recordId: stored.id,
     number,
@@ -131,7 +147,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     events: events.map((e) => ({ id: e.id, type: e.type, actor: e.actor, at: e.createdAt, label: labelOf(e) })),
     runs,
     proofs: await loadProofs(payload, stored.id),
-    pullRequest: await pullOf(payload, stored.workspace, repo, pr),
+    ...pulls,
     similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT) : [],
   }
 }

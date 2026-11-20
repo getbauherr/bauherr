@@ -5,6 +5,7 @@ import { ResultBody } from './ResultBody'
 import { Card } from './Section'
 
 const ACCEPT = 'Accept the Result to finish the ticket.'
+const ACCEPT_ADOPTED = 'Accept the Result to merge the pull request and finish the ticket.'
 const NOT_ALLOWED = 'A Bauherr of this Workspace decides on the Result.'
 
 type Props = { view: TicketView; seq: number; proof: string | undefined; may: boolean }
@@ -16,7 +17,7 @@ export function ResultCard({ view, seq, proof, may }: Props) {
         recordId={view.recordId}
         ask="result"
         seq={seq}
-        sentence={may ? ACCEPT : NOT_ALLOWED}
+        sentence={may ? (view.adopted && view.pullRequest?.state !== 'merged' ? ACCEPT_ADOPTED : ACCEPT) : NOT_ALLOWED}
         actions={may ? RESULT_ACTIONS : []}
       >
         <div className="grid gap-5 p-6">

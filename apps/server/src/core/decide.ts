@@ -3,10 +3,12 @@ import { answersProblem, storeAnswers, type Answers } from './answers'
 import { isBauherr } from '../lib/people'
 import { inLockedRecord } from './conn'
 import { AGENT_ASK, agentEntry, DECISIONS, type DecisionEntry } from './decisions'
+import { runEffects } from './effects'
 import { advance, type AdvanceDeps } from './engine'
 import { resumeParked } from './intake/pacing'
 import { fold, type Card } from './fold'
 import { foldOptions, next, type State, type Step } from './lifecycle'
+import type { Effect } from './module'
 import type { TicketRecord } from './record/schema'
 import { appendEvent, readEvents, readRecord } from './record/store'
 import { storeGiven } from './statements'
@@ -70,6 +72,12 @@ const answersOf = (asked: string | null, decision: Decision, record: TicketRecor
   return answers
 }
 
+const sentBackReview = (asked: string | null, choice: string, state: State, note: string): Effect[] => {
+  const adoptedPatch = state.adopted ? state.patch : null
+  if (asked !== 'result' || choice !== 'send-back' || adoptedPatch === null) return []
+  return [{ kind: 'review', pr: adoptedPatch.pr, body: note }]
+}
+
 export const decide = async (
   recordId: number,
   person: Person,
@@ -77,7 +85,7 @@ export const decide = async (
   deps: AdvanceDeps,
 ): Promise<void> => {
   const config = await deps.configFor(recordId)
-  const backlogBrief = await inLockedRecord(deps.payload, recordId, async (tx) => {
+  const { backlogBrief, review } = await inLockedRecord(deps.payload, recordId, async (tx) => {
     const stored = await readRecord(tx, recordId)
     if (!mayDecide(person, stored.workspace)) {
       throw new NotAllowedToDecide(`Person ${person.id} may not decide on record ${recordId}: ask a Bauherr of it.`)
@@ -91,8 +99,12 @@ export const decide = async (
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
     if (answers) await storeAnswers(tx, recordId, stored, answers, deps.now)
     await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card })
-    return asked === 'brief' && stored.record.source.backlog
+    return {
+      backlogBrief: asked === 'brief' && stored.record.source.backlog,
+      review: sentBackReview(asked, decision.choice, state, note),
+    }
   })
   await advance(recordId, deps)
+  await runEffects(deps, recordId, review)
   if (backlogBrief) await resumeParked(deps, recordId)
 }

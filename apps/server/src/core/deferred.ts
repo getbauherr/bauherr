@@ -28,11 +28,20 @@ const recordsOf = async (payload: Payload, product: number) => {
   return result.rows.map((row) => recordRow.parse(row))
 }
 
+const effectOf = (data: z.infer<typeof deferredSchema>): Effect => {
+  switch (data.kind) {
+    case 'question':
+      return { kind: 'question', body: data.body }
+    case 'close':
+      return { kind: 'close', reason: data.reason }
+    case 'review':
+      return { kind: 'review', pr: data.target.number, body: data.body }
+  }
+}
+
 const send = async (deps: AdvanceDeps, recordId: number, data: z.infer<typeof deferredSchema>): Promise<void> => {
   if (data.kind === 'close' && !(await deps.configFor(recordId)).autoClose) return
-  const effect: Effect =
-    data.kind === 'question' ? { kind: 'question', body: data.body } : { kind: 'close', reason: data.reason }
-  await runEffects(deps, recordId, [effect])
+  await runEffects(deps, recordId, [effectOf(data)])
 }
 
 const workStarted = async (deps: AdvanceDeps, recordId: number): Promise<boolean> => {

@@ -9,6 +9,7 @@ const WAITING: Partial<Record<TicketView['status'], string>> = {
   'waiting-for-checks': 'Waiting for CI. The factory goes on when the checks finish.',
   'waiting-for-deploy': 'Waiting for the deploy. The factory goes on when it is done.',
   'reporter-asked': 'Waiting for the reporter. Nothing to do.',
+  'waiting-on-author': 'Waiting on the author of the pull request. The factory goes on when a new commit arrives.',
 }
 
 const liveRun = (view: TicketView): RunView | undefined =>

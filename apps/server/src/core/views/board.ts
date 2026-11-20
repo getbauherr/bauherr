@@ -25,6 +25,7 @@ export type BoardCard = {
   parkedReason: string | null
   closedAs: ClosedAs | null
   criteria: { met: number; total: number } | null
+  adopted: { pr: number; author: string } | null
 }
 
 export type Board = { stages: Record<Stage, BoardCard[]>; held: HeldItem[]; parked: BoardCard[] }
@@ -69,6 +70,7 @@ export const toCard = (row: TicketRow): BoardCard => {
     parkedReason: parked,
     closedAs: row.closedAs,
     criteria: row.criteria.total > 0 ? row.criteria : null,
+    adopted: row.adopted,
   }
 }
 

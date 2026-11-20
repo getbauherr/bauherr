@@ -78,7 +78,8 @@ export const recordsOfItems = async (conn: Conn, items: number[]): Promise<numbe
     JOIN "mirror_items" i ON i."workspace_id" = r."workspace_id" AND i."repo" = r."source_repo"
     WHERE i."id" IN (${sql.join(items.map((item) => sql`${item}`), sql`, `)})
       AND ((i."kind" = 'issue' AND i."number" = r."source_number")
-        OR (i."kind" = 'pr' AND r."stage" IN ('verify', 'ship')))`)
+        OR (i."kind" = 'pr' AND (r."stage" IN ('verify', 'ship')
+          OR (r."data"->'source'->'adopted' IS NOT NULL AND r."pr" = i."number"))))`)
   return result.rows.map((row) => idRow.parse(row).id)
 }
 

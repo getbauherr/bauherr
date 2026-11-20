@@ -55,6 +55,7 @@ describe('an observing Product', () => {
       () => s.writer.postQuestion(s.target('issue'), 'why?'),
       () => s.writer.mergePullRequest(s.target('pr'), s.sha),
       () => s.writer.closeIssue(s.target('issue'), 'completed'),
+      () => s.writer.reviewPullRequest(s.target('pr'), 'findings'),
       () => s.writer.openPullRequest(s.target('issue'), { title: 't', body: 'b', head: 'fix', base: 'main' }),
     ]
     for (const call of calls) await expect(call()).rejects.toBeInstanceOf(ProductObserving)
@@ -149,6 +150,24 @@ describe('openPullRequest', () => {
     await expect(
       s.writer.openPullRequest(s.target('pr'), { title: 't', body: 'b', head: 'fix', base: 'main' }),
     ).rejects.toBeInstanceOf(WrongItemKind)
+  })
+})
+
+describe('reviewPullRequest', () => {
+  it('posts one comment with the disclosure line on top, as a review without an approval, and mirrors it', async () => {
+    const s = await setup()
+    await s.writer.reviewPullRequest(s.target('pr'), 'one finding\n\n- the list drops a row')
+    const [pull] = await s.fake.forge.listOpenPullRequests(s.repo, 1, 10)
+    const comments = await s.fake.forge.listPullRequestComments(s.repo, pull?.number ?? 0)
+    expect(comments.map((c) => c.body)).toEqual([`${DISCLOSURE}\n\none finding\n\n- the list drops a row`])
+    expect(await writeEvents(s.record.id)).toEqual(['forge.write.started', 'forge.write.done'])
+    const mirrored = await h.rows(sql`SELECT 1 FROM "mirror_comments" WHERE "body" LIKE '%drops a row%'`)
+    expect(mirrored).toHaveLength(1)
+  })
+
+  it('refuses an item that is an issue', async () => {
+    const s = await setup()
+    await expect(s.writer.reviewPullRequest(s.target('issue'), 'findings')).rejects.toBeInstanceOf(WrongItemKind)
   })
 })
 

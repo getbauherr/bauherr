@@ -13,6 +13,7 @@ const source = z.object({
   reporter: z.string().trim().min(1),
   external: z.boolean(),
   backlog: z.boolean(),
+  adopted: z.object({ pr: z.number().int().positive() }).optional(),
 })
 
 export const criterionSchema = z.object({

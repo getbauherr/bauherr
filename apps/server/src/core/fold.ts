@@ -1,4 +1,4 @@
-import type { AppEvent, EventType, Stage } from './events'
+import type { AppEvent, EventOf, EventType, Stage } from './events'
 
 export type Card = { card: 'question'; reason: string; options: string[]; text?: string }
 export type Verdict = { patchId: string; headSha: string }
@@ -14,6 +14,8 @@ export type State = {
   extraRounds: number
   failedRuns: number
   brief: 'none' | 'submitted' | 'approved'
+  adopted: boolean
+  waitingAuthor: boolean
   patch: { id: string; pr: number; headSha: string } | null
   checks: 'none' | 'pending' | 'passed' | 'failed'
   verdict: Verdict | null
@@ -27,7 +29,7 @@ export type State = {
   last: EventType | null
 }
 
-export type FoldOptions = { productionGate: boolean; requiredChecks?: boolean }
+export type FoldOptions = { productionGate: boolean; requiredChecks?: boolean; deployChecks?: boolean }
 
 export const initialState = (): State => ({
   stage: 'intake',
@@ -39,6 +41,8 @@ export const initialState = (): State => ({
   extraRounds: 0,
   failedRuns: 0,
   brief: 'none',
+  adopted: false,
+  waitingAuthor: false,
   patch: null,
   checks: 'none',
   verdict: null,
@@ -114,13 +118,28 @@ const brief: Reducer = (state, event) => {
     case 'brief.submitted':
       return { ...submitted(state, event.data.runId), brief: 'submitted' }
     case 'brief.approved':
-      return { ...enter(state, 'build'), brief: 'approved' }
+      return { ...enter(state, state.adopted ? 'verify' : 'build'), brief: 'approved' }
     case 'brief.changes-requested':
       return { ...state, note: event.data.note }
     case 'brief.discarded':
       return { ...state, closed: 'discarded' }
     default:
       return null
+  }
+}
+
+const adopt = (state: State, data: EventOf<'pull.adopted'>['data'], options: FoldOptions): State => {
+  const stage = state.stage === 'intake' || state.stage === 'brief' ? 'brief' : 'verify'
+  return {
+    ...enter(state, stage),
+    adopted: true,
+    waitingAuthor: false,
+    patch: { id: data.patchId, pr: data.pr, headSha: data.headSha },
+    checks: options.requiredChecks === false ? 'none' : 'pending',
+    verdict: null,
+    accepted: false,
+    overridden: false,
+    productionHeld: false,
   }
 }
 
@@ -139,6 +158,8 @@ const patch: Reducer = (state, event, options) => {
       const checks = options.requiredChecks === false ? 'none' : 'pending'
       return { ...enter(fresh, 'verify'), patch: latest, checks, verdict: null }
     }
+    case 'pull.adopted':
+      return adopt(state, event.data, options)
     case 'checks.finished':
       if (state.patch?.id !== event.data.patchId) return state
       return { ...state, checks: event.data.passed ? 'passed' : 'failed' }
@@ -152,33 +173,54 @@ const verdictOf = (data: Verdict): Verdict => ({ patchId: data.patchId, headSha:
 const verify: Reducer = (state, event) => {
   switch (event.type) {
     case 'verify.passed':
-      return { ...enter(submitted(state, event.data.runId), 'ship'), verdict: verdictOf(event.data) }
+      return {
+        ...enter(submitted(state, event.data.runId), 'ship'),
+        verdict: verdictOf(event.data),
+        waitingAuthor: false,
+      }
     case 'verify.overridden':
       if (state.patch?.id !== event.data.patchId) return state
-      return { ...enter({ ...state, failedRuns: 0 }, 'ship'), verdict: verdictOf(event.data), overridden: true }
-    case 'verify.changes':
       return {
-        ...enter(submitted(state, event.data.runId), 'build'),
-        verifyRounds: state.verifyRounds + 1,
-        verdict: null,
+        ...enter({ ...state, failedRuns: 0 }, 'ship'),
+        verdict: verdictOf(event.data),
+        overridden: true,
+        waitingAuthor: false,
       }
+    case 'verify.changes': {
+      const rounded = { ...submitted(state, event.data.runId), verifyRounds: state.verifyRounds + 1, verdict: null }
+      return state.adopted ? { ...rounded, waitingAuthor: true } : enter(rounded, 'build')
+    }
     default:
       return null
   }
 }
 
+const shipped = (state: State, options: FoldOptions): boolean =>
+  !state.adopted || (state.merged && (options.deployChecks !== true || state.deployed))
+
 const finished = (state: State, options: FoldOptions): State =>
-  state.accepted && (!options.productionGate || state.productionApproved) ? enter(state, 'done') : state
+  state.accepted && shipped(state, options) && (!options.productionGate || state.productionApproved)
+    ? enter(state, 'done')
+    : state
+
+const merged = (state: State, options: FoldOptions): State => {
+  if (!state.adopted) return { ...state, merged: true }
+  const entered = state.stage === 'verify' ? enter(state, 'ship') : state
+  return finished({ ...entered, merged: true }, options)
+}
 
 const ship: Reducer = (state, event, options) => {
   switch (event.type) {
     case 'ship.merged':
-      return { ...state, merged: true }
+      return merged(state, options)
     case 'ship.deployed':
-      return { ...state, deployed: true }
+      return state.adopted ? finished({ ...state, deployed: true }, options) : { ...state, deployed: true }
     case 'result.accepted':
       return finished({ ...state, accepted: true }, options)
     case 'result.sent-back':
+      if (state.adopted) {
+        return { ...enter(state, 'verify'), accepted: false, verdict: null, waitingAuthor: true, note: event.data.note }
+      }
       return { ...enter(state, 'build'), accepted: false, note: event.data.note }
     case 'production.approved':
       return finished({ ...state, productionApproved: true }, options)

@@ -12,7 +12,7 @@ import { openViews, seed, type Seeded } from './views-harness'
 
 let s: Seeded
 const MIN = 60_000
-const QUERIES = 6
+const QUERIES = 7
 const DAY = 86_400_000
 const run = (query: ReturnType<typeof sql>) => s.e.db.payload.db.drizzle.execute(query)
 const session = (role: string, lastSeen: Date, disconnected = false) =>
@@ -196,7 +196,8 @@ describe('firstLook', () => {
     await s.item(9003, { updated: new Date(Date.now() - 400 * DAY).toISOString() })
     await s.item(9004, { author: 'visitor', trusted: false, labels: ['bauherr:intake'] })
     await s.item(9005, { state: 'closed' })
-    await s.item(8001, { kind: 'pr', closes: [1001] })
+    await run(sql`UPDATE "products" SET "connected_at" = now()`)
+    await s.item(8001, { kind: 'pr', closes: [9002], head: 'abc1234' })
     await s.item(8002, { kind: 'pr' })
     await s.item(8003, { kind: 'pr', state: 'merged' })
     const id = await s.e.db.fresh()

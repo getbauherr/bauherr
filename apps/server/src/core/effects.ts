@@ -11,20 +11,33 @@ import { foldOptions } from './lifecycle'
 import type { Effect } from './module'
 import { appendEvent, readEvents, readRecord, type StoredRecord } from './record/store'
 
-export type ForgePort = Pick<ForgeWriter, 'setStageLabel' | 'upsertStatusComment' | 'postQuestion' | 'closeIssue'>
+export type ForgePort = Pick<
+  ForgeWriter,
+  'setStageLabel' | 'upsertStatusComment' | 'postQuestion' | 'closeIssue' | 'reviewPullRequest'
+>
 
 const REFUSALS = [ProductObserving, TargetNotFound, WrongItemKind]
-const KINDS = { question: 'question', close: 'close', status: 'status-comment' } as const
+const KINDS = { question: 'question', close: 'close', status: 'status-comment', review: 'review' } as const
 
 const idRow = z.object({ id: z.coerce.number() })
 
-const issueItem = async (payload: Payload, stored: StoredRecord): Promise<number | null> => {
-  const { repo, number } = stored.record.source
+const mirrorItem = async (
+  payload: Payload,
+  stored: StoredRecord,
+  kind: 'issue' | 'pr',
+  number: number,
+): Promise<number | null> => {
   const found = await payload.db.drizzle.execute(sql`
     SELECT "id" FROM "mirror_items"
-    WHERE "workspace_id" = ${stored.workspace} AND "repo" = ${repo} AND "number" = ${number} AND "kind" = 'issue'`)
+    WHERE "workspace_id" = ${stored.workspace} AND "repo" = ${stored.record.source.repo}
+      AND "number" = ${number} AND "kind" = ${kind}`)
   return found.rows[0] ? idRow.parse(found.rows[0]).id : null
 }
+
+const itemOf = (payload: Payload, stored: StoredRecord, effect: Effect): Promise<number | null> =>
+  effect.kind === 'review'
+    ? mirrorItem(payload, stored, 'pr', effect.pr)
+    : mirrorItem(payload, stored, 'issue', stored.record.source.number)
 
 const statusOf = async (deps: AdvanceDeps, stored: StoredRecord, target: Target, writer: ForgePort) => {
   const events = await readEvents(deps.payload, stored.id)
@@ -48,6 +61,8 @@ const perform = async (deps: AdvanceDeps, stored: StoredRecord, target: Target, 
       return writer.closeIssue(target, effect.reason)
     case 'status':
       return statusOf(deps, stored, target, writer)
+    case 'review':
+      return writer.reviewPullRequest(target, effect.body)
   }
 }
 
@@ -57,6 +72,8 @@ const deferral = (effect: Effect, target: Deferred['target']): Deferred | null =
       return { kind: 'question', target, body: effect.body }
     case 'close':
       return { kind: 'close', target, reason: effect.reason }
+    case 'review':
+      return { kind: 'review', target: { ...target, number: effect.pr }, body: effect.body }
     case 'status':
       return null
   }
@@ -64,7 +81,7 @@ const deferral = (effect: Effect, target: Deferred['target']): Deferred | null =
 
 const recordRefusal = async (deps: AdvanceDeps, stored: StoredRecord, effect: Effect, error: Error) => {
   const { repo, number } = stored.record.source
-  const target = { repo, number }
+  const target = { repo, number: effect.kind === 'review' ? effect.pr : number }
   const deferred = error instanceof ProductObserving ? deferral(effect, target) : null
   if (deferred !== null) {
     await appendEvent(deps.payload, stored.id, { type: 'forge.write.deferred', data: deferred, actor: 'factory' })
@@ -78,10 +95,10 @@ export const runEffects = async (deps: AdvanceDeps, recordId: number, effects: E
   const writer = deps.forge
   if (!writer || effects.length === 0) return
   const stored = await readRecord(deps.payload, recordId)
-  const item = await issueItem(deps.payload, stored)
-  if (item === null) return
-  const target = { recordId, itemId: item }
   for (const effect of effects) {
+    const itemId = await itemOf(deps.payload, stored, effect)
+    if (itemId === null) continue
+    const target = { recordId, itemId }
     try {
       await perform(deps, stored, target, effect, writer)
     } catch (error) {

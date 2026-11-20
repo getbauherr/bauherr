@@ -14,13 +14,22 @@ const run = { stage: stageSchema, runId: id }
 const event = <T extends string, D extends z.ZodType>(type: T, data: D) =>
   z.object({ type: z.literal(type), data })
 
-export const WRITE_KINDS = ['stage-label', 'status-comment', 'question', 'merge', 'close', 'pull-request'] as const
+export const WRITE_KINDS = [
+  'stage-label',
+  'status-comment',
+  'question',
+  'merge',
+  'close',
+  'pull-request',
+  'review',
+] as const
 const target = z.object({ repo: id, number: z.number().int().positive() })
 const write = { kind: z.enum(WRITE_KINDS), target }
 
 export const deferredSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('question'), target, body: id }),
   z.object({ kind: z.literal('close'), target, reason: z.enum(['completed', 'not_planned', 'duplicate']) }),
+  z.object({ kind: z.literal('review'), target, body: id }),
 ])
 export type Deferred = z.infer<typeof deferredSchema>
 
@@ -40,6 +49,7 @@ const eventSchema = z.discriminatedUnion('type', [
   event('brief.changes-requested', z.object({ note: id })),
   event('brief.discarded', none),
   event('build.submitted', z.object({ runId: id, patchId: id, headSha: id, pr: z.number().int().positive() })),
+  event('pull.adopted', z.object({ pr: z.number().int().positive(), headSha: id, patchId: id })),
   event('checks.finished', z.object({ patchId: id, passed: z.boolean() })),
   event('verify.passed', z.object({ runId: id, patchId: id, headSha: id })),
   event('verify.changes', z.object({ runId: id, patchId: id })),

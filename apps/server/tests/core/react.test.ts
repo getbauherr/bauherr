@@ -152,3 +152,51 @@ describe('react', () => {
     expect(react(input([start('intake')]))).toEqual([])
   })
 })
+
+describe('reactions of an adopted ticket', () => {
+  const adoptedEvents = [
+    ev('pull.adopted', { pr: 12, headSha: 'h1', patchId: 'adopted:h1' }),
+    ev('intake.accepted'),
+    ev('brief.approved'),
+    ev('checks.finished', { patchId: 'adopted:h1' }),
+  ]
+  const adopted = (extra: Partial<ReactInput> = {}) => input(adoptedEvents, extra)
+
+  it('appends a new pull.adopted when the head commit of an open pull request changed', () => {
+    expect(react(adopted({ pull: pull({ headSha: 'h2' }) }))).toEqual([
+      { type: 'pull.adopted', data: { pr: 12, headSha: 'h2', patchId: 'adopted:h2' } },
+    ])
+  })
+
+  it('does nothing while the head commit is the adopted one, or the pull request is gone', () => {
+    expect(react(adopted({ pull: pull() }))).toEqual([])
+    expect(react(adopted({ pull: null }))).toEqual([])
+  })
+
+  it('does not react to a moved head of an ordinary ticket', () => {
+    expect(react(input(inVerify, { pull: pull({ headSha: 'other' }) }))).toEqual([])
+  })
+
+  it('closes the ticket when the pull request was closed without a merge', () => {
+    expect(react(adopted({ pull: pull({ state: 'closed' }) }))).toEqual([
+      { type: 'ticket.closed', data: { reason: 'closed-on-forge' } },
+    ])
+    expect(react(input(inVerify, { pull: pull({ state: 'closed' }) }))).toEqual([])
+  })
+
+  it('counts a merge by a person as merged at Verify, and the closed issue does not close the ticket', () => {
+    const merged = pull({ state: 'merged', mergeSha: 'm1' })
+    const closedIssue = { ...open, state: 'closed' as const }
+    expect(react(adopted({ pull: merged, issue: closedIssue }))).toEqual([
+      { type: 'ship.merged', data: { sha: 'm1' } },
+    ])
+  })
+
+  it('does not take a merge at Verify for an ordinary ticket', () => {
+    expect(pullMerged(input(inVerify, { pull: pull({ state: 'merged', mergeSha: 'm1' }) }))).toEqual([])
+  })
+
+  it('still closes an adopted ticket when the issue is closed without the pull request being merged', () => {
+    expect(issueClosed(adopted({ pull: pull(), issue: { ...open, state: 'closed' } }))).toHaveLength(1)
+  })
+})
