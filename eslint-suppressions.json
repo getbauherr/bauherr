@@ -136,7 +136,7 @@
       "count": 2
     },
     "max-len": {
-      "count": 8
+      "count": 7
     },
     "no-restricted-syntax": {
       "count": 2
@@ -631,7 +631,7 @@
       "count": 4
     },
     "max-len": {
-      "count": 88
+      "count": 85
     },
     "max-lines": {
       "count": 1

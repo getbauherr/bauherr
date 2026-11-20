@@ -163,7 +163,7 @@ test('Repository saves who works the runs and says how the mirror stands', async
     await page.reload()
     await expect(repository.getByRole('radio', { name: /The Runner/ })).toBeChecked()
     await expect(repository).toContainText('Observing: nothing is written to the forge')
-    await expect(repository.getByRole('link', { name: 'Connect and switch on' })).toBeVisible()
+    await expect(repository.getByRole('link', { name: 'See the first look' })).toBeVisible()
   })
 })
 

@@ -5,7 +5,6 @@ import { saveExecutor } from '../../(shell)/settings/products/[id]/actions'
 import { EmptyState } from '../EmptyState'
 import { RepositoryFields } from '../ProductForms'
 import { SettingsForm } from '../SettingsForm'
-import { Button } from '../ui/button'
 import { RadioCards, SettingsSection } from '../SettingsParts'
 import { Editable } from './Editable'
 import { MirrorState } from './MirrorState'
@@ -16,6 +15,8 @@ const EXECUTORS = [
   { value: 'session', title: 'An agent session', text: 'Your own agent connects over MCP and takes the queued runs.' },
   { value: 'runner', title: 'The Runner', text: 'Bauherr starts the agents itself and needs no session.' },
 ]
+
+const LINK = 'small text-primary underline underline-offset-2'
 
 type Connections = { id: number; name: string }[]
 type Props = { product: ProductSettings; connections: Connections; admin: boolean }
@@ -86,9 +87,9 @@ function State({ product, admin }: { product: ProductSettings; admin: boolean })
       <p className="small">{observing ? 'Observing: nothing is written to the forge' : 'Active'}</p>
       <div className="flex flex-wrap items-center gap-3">
         {observing && product.sources.length > 0 && (
-          <Button asChild variant="outline">
-            <Link href={`/settings/products/${product.id}/connect`}>Connect and switch on</Link>
-          </Button>
+          <Link href={`/settings/products/${product.id}/connect`} className={LINK}>
+            See the first look
+          </Link>
         )}
         {admin && <ProductStateForm product={product.id} state={product.state} />}
       </div>
