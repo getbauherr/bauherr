@@ -44,7 +44,7 @@
   },
   "apps/server/e2e/perf.spec.ts": {
     "max-len": {
-      "count": 8
+      "count": 7
     },
     "no-restricted-syntax": {
       "count": 5
@@ -73,7 +73,7 @@
   },
   "apps/server/e2e/shell.spec.ts": {
     "max-len": {
-      "count": 2
+      "count": 1
     },
     "no-restricted-syntax": {
       "count": 1

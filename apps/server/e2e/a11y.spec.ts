@@ -40,6 +40,12 @@ const linkOn = (from: string, re: RegExp) => async (page: Page) => {
   return href!
 }
 
+const inFactory = (url: string) => async (page: Page) => {
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'factory', url: base }])
+  return url
+}
+
 const signedOut: Record<string, string> = {
   '/login': '/login',
 }
@@ -47,7 +53,8 @@ const signedOut: Record<string, string> = {
 const redirects: Record<string, RegExp> = { '/settings': /^\/settings\/profile$/ }
 
 const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
-  '/': '/',
+  '/': inFactory('/'),
+  '/inbox': inFactory('/inbox'),
   '/settings': '/settings',
   '/settings/api-key': '/settings/api-key',
   '/settings/audit': '/settings/audit',

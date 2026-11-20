@@ -39,7 +39,12 @@ const targets: Target[] = [
       ['Audit', '/settings/audit'],
     ] as const
   ).map(([link, route]): Target => ({ route, from: '/settings/profile', click: (p) => settings(p).getByRole('link', { name: link, exact: true }).click(), content: h2(link) })),
-  { route: '/', from: '/settings/profile', click: (p) => main(p).getByRole('link', { name: 'Home' }).click(), content: { sel: 'main p.body', text: '^No project is connected' } },
+  {
+    route: '/',
+    from: '/settings/profile',
+    click: (p) => main(p).getByRole('link', { name: 'Factory' }).click(),
+    content: { sel: 'h1.title', text: '^Factory$' },
+  },
 ]
 
 const observe = (c: Content) => {

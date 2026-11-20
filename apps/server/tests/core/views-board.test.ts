@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { board } from '../../src/core/views/board'
+import { waitingOnOwner } from '../../src/core/views/owner'
 import { stageStats } from '../../src/core/views/stats'
 import { openViews, seed, type Seeded } from './views-harness'
 
@@ -94,6 +95,16 @@ describe('board', () => {
     const week = new Date(Date.now() + 8 * 86_400_000)
     const later = await board(s.e.db.payload, { workspace: s.e.db.workspace, now: week })
     expect(later.stages.done).toEqual([])
+  })
+})
+
+describe('waitingOnOwner', () => {
+  it('counts the tickets that wait on the owner or are stuck, as the board shows them', async () => {
+    const { stages } = await view()
+    const shown = Object.values(stages).flat().filter((c) => c.state === 'owner' || c.state === 'stuck')
+    expect(shown.length).toBeGreaterThan(3)
+    expect(await waitingOnOwner(s.e.db.payload, s.e.db.workspace)).toBe(shown.length)
+    expect(await waitingOnOwner(s.e.db.payload, s.e.db.otherWorkspace)).toBe(0)
   })
 })
 

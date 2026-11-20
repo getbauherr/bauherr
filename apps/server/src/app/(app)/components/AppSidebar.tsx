@@ -8,9 +8,9 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, Si
 import { UserMenu } from './UserMenu'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 
-type Props = { email: string; admin: boolean; workspaces: { slug: string; name: string }[]; current?: string; logout: () => Promise<void>; selectWorkspace: (slug: string) => Promise<void> }
+type Props = { email: string; admin: boolean; waitingOnYou: number; workspaces: { slug: string; name: string }[]; current?: string; logout: () => Promise<void>; selectWorkspace: (slug: string) => Promise<void> }
 
-export function AppSidebar({ email, admin, workspaces, current, logout, selectWorkspace }: Props) {
+export function AppSidebar({ email, admin, waitingOnYou, workspaces, current, logout, selectWorkspace }: Props) {
   const path = usePathname()
   const { setOpenMobile } = useSidebar()
   useEffect(() => setOpenMobile(false), [path, setOpenMobile])
@@ -20,6 +20,12 @@ export function AppSidebar({ email, admin, workspaces, current, logout, selectWo
         <Link href={href}>
           <Icon />
           <span>{label}</span>
+          {href === '/inbox' && waitingOnYou > 0 && (
+            <span className="mono ml-auto group-data-[collapsible=icon]:hidden" title="Waiting on you">
+              {waitingOnYou}
+              <span className="sr-only"> waiting on you</span>
+            </span>
+          )}
           <LinkPending />
         </Link>
       </SidebarMenuButton>

@@ -8,7 +8,7 @@ const PO_PAGES: Record<string, string> = {
   settings: 'redirects to the profile',
   'settings/profile': 'the profile',
 }
-const BAUHERR_PAGES = ['settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/connections', 'settings/health', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/workspace']
+const BAUHERR_PAGES = ['inbox', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/connections', 'settings/health', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/workspace']
 const PO_ROUTES: Record<string, string> = {
   'api/health GET': 'unauthenticated health probe',
   'auth/oidc/login GET': 'sign-in flow',
