@@ -171,11 +171,16 @@ test('Repository saves who works the runs and says how the mirror stands', async
   await ownProduct(page, async () => {
     const repository = page.locator('#repository')
     await expect(repository.getByRole('radio', { name: /An agent session/ })).toBeChecked()
+    await expect(repository.getByRole('link', { name: 'Connect a session' })).toHaveAttribute(
+      'href',
+      '/settings/api-key',
+    )
     await repository.getByRole('radio', { name: /The Runner/ }).check()
     await repository.getByRole('button', { name: 'Save', exact: true }).click()
     await saved(page)
     await page.reload()
     await expect(repository.getByRole('radio', { name: /The Runner/ })).toBeChecked()
+    await expect(repository.getByRole('link', { name: 'Connect a session' })).toHaveCount(0)
     await expect(repository).toContainText('Observing: nothing is written to the forge')
     await expect(repository.getByRole('link', { name: 'See the first look' })).toBeVisible()
   })
