@@ -47,13 +47,19 @@ it('stores a GitHub App private key encrypted and never returns it', async () =>
   const pem = generateKeyPairSync('rsa', { modulusLength: 2048 })
     .privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
   const config = { appId: '12', installationId: '34' }
-  const data = { name: 'app', kind: 'github', config, secret: pem, workspace } as const
+  const hook = 'whsec-literal-test-value'
+  const data = { name: 'app', kind: 'github', config, secret: pem, webhookSecret: hook, workspace } as const
   const c = await payload.create({ collection: 'connections', data, ...o })
   const read = JSON.stringify(await payload.findByID({ collection: 'connections', id: c.id, ...o }))
   expect(read).not.toContain('PRIVATE KEY')
+  expect(read).not.toContain(hook)
   const stored = await payload.findByID({ collection: 'connections', id: c.id, showHiddenFields: true, ...o })
   expect(JSON.stringify(stored)).not.toContain('PRIVATE KEY')
+  expect(JSON.stringify(stored)).not.toContain(hook)
   expect(JSON.stringify(stored)).toContain('secret')
+  expect(String(stored.webhookSecret)).toMatch(/^enc:v1:/)
+  const found = await payload.find({ collection: 'connections', where: { id: { equals: c.id } }, ...o })
+  expect(JSON.stringify(found)).not.toContain(hook)
   expect(await connectionInput(payload, c.id)).toMatchObject({ secret: pem, config })
 })
 

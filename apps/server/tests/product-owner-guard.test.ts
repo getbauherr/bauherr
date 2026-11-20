@@ -10,6 +10,7 @@ const PO_PAGES: Record<string, string> = {
 }
 const BAUHERR_PAGES = ['inbox', 'runs/[id]', 'tickets/[id]', 'settings/api-key', 'settings/audit', 'settings/bauherren', 'settings/connections', 'settings/health', 'settings/models', 'settings/products', 'settings/products/[id]', 'settings/products/new', 'settings/workspace']
 const PO_ROUTES: Record<string, string> = {
+  'api/hooks/[connection] POST': 'forge webhook: no session, signature-verified',
   'api/health GET': 'unauthenticated health probe',
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
@@ -25,6 +26,7 @@ const BAUHERR_ACTIONS = [
   '(shell)/actions.ts#moveCard',
   '(shell)/tickets/actions.ts#decideTicket',
   '(shell)/settings/state-action.ts#setProductState',
+  '(shell)/settings/webhook-action.ts#createWebhookSecret',
 ].concat(
   ['saveGeneral', 'saveModels', 'savePathSets', 'rotateWorkspaceKey', 'updatePricesNow', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'removeDoc', 'saveConnection', 'verifyConnection', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'deleteWorkspace', 'restoreWorkspaceAction', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey'].map((n) => `(shell)/settings/actions.ts#${n}`),
 )
@@ -215,7 +217,7 @@ describe('server actions', () => {
 
   it('every action not listed is refused with a 404 for a Product owner', async () => {
     session.cookie = productOwnerCookie
-    expect(files.length).toBe(7)
+    expect(files.length).toBe(8)
     let checked = 0
     for (const f of files) {
       const rel = f.slice((APP + '(app)/').length)
@@ -285,7 +287,7 @@ describe('routes', () => {
       }
     }
     for (const key of Object.keys(OPEN_ROUTES)) expect(seen, `OPEN_ROUTES names a route that does not exist: ${key}`).toContain(key)
-    expect(seen.length).toBe(7)
+    expect(seen.length).toBe(8)
     partition('routes', seen, Object.keys(PO_ROUTES), BAUHERR_ROUTES)
   })
 })
