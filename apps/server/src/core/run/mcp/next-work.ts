@@ -52,7 +52,8 @@ export const next = defineTool({
   run: async (input, context) => {
     const { deps, workspace } = context
     const role = await roleOf(context, input.session)
-    const claimed = await claim(deps.payload, { workspace, role, by: input.session, now: deps.now })
+    const by = input.session
+    const claimed = await claim(deps.payload, { workspace, role, by, now: deps.now, executor: 'session' })
     if (!claimed) return { status: 'idle' as const }
     const { run, token } = claimed
     const module = deps.modules[run.stage]
