@@ -205,6 +205,11 @@ export const appendEvent = async (payload: Conn, recordId: number, event: NewEve
     RETURNING "id", "record_id", "type", "actor", "actor_id", "data", "created_at"`)
   const row = inserted.rows[0]
   if (!row) throw new RecordNotFound(`Record ${recordId} does not exist: check the id.`)
+  if (valid.type === 'build.submitted') {
+    await payload.db.drizzle.execute(
+      sql`UPDATE "records" SET "pr" = ${valid.data.pr}, "updated_at" = now() WHERE "id" = ${recordId}`,
+    )
+  }
   return toStoredEvent(row)
 }
 

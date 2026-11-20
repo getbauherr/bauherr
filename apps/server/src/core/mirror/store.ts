@@ -217,6 +217,8 @@ export const upsertChecks = async (
 export const pullsAwaitingChecks = async (payload: Payload, source: number): Promise<Set<number>> => {
   const result = await payload.db.drizzle.execute(sql`
     SELECT i."number" FROM "mirror_items" i
+    JOIN "records" r ON r."workspace_id" = i."workspace_id" AND r."source_repo" = i."repo" AND r."pr" = i."number"
+      AND r."waiting_on" <> 'nobody'
     WHERE i."source_id" = ${source} AND i."kind" = 'pr' AND i."state" = 'open' AND i."gone_at" IS NULL
       AND coalesce(i."head_sha", '') <> '' AND (
         NOT EXISTS (SELECT 1 FROM "mirror_checks" c WHERE c."item_id" = i."id" AND c."sha" = i."head_sha")
