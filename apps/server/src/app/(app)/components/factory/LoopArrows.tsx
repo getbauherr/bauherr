@@ -13,13 +13,13 @@ const LABEL = cn(
 
 export function LoopArrows({ verify, ship }: { verify: number; ship: number }) {
   return (
-    <>
+    <div className="pointer-events-none absolute inset-0 max-md:hidden">
       <div className={cn(LOOP, 'h-3.5 w-[calc((100%-80px)/6+16px)]')}>
-        <span className={LABEL}>{verify} sent back from Verify</span>
+        <span id="loop-verify" className={LABEL}>{verify} sent back from Verify</span>
       </div>
       <div className={cn(LOOP, 'h-8.5 w-[calc((100%-80px)/6*2+32px)]')}>
-        <span className={LABEL}>{ship} sent back from Ship this week</span>
+        <span id="loop-ship" className={LABEL}>{ship} sent back from Ship this week</span>
       </div>
-    </>
+    </div>
   )
 }

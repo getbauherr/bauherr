@@ -7,7 +7,7 @@ import { duration } from '../../lib/format'
 const STATE_WORDS = { owner: 'for you', agents: 'working', stuck: 'stuck', others: 'on others' } as const
 const STATE_BARS = { owner: 'bg-warn', agents: 'bg-primary', stuck: 'bg-destructive', others: 'bg-muted-foreground' }
 
-const HEADER = 'relative mb-13 grid h-31 content-start gap-1.5 rounded-md border border-border bg-card p-3'
+const HEADER = 'relative mb-2 grid content-start md:mb-13 md:h-31 gap-1.5 rounded-md border border-border bg-card p-3'
 const ARROW = cn(
   "before:absolute before:top-5.5 before:-left-3 before:size-1.5 before:rotate-45 before:content-['']",
   'before:border-t-[1.5px] before:border-r-[1.5px] before:border-muted-foreground',

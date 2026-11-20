@@ -10,7 +10,7 @@ import { Badge } from '../ui/badge'
 const ROW = cn(
   'flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-4 py-2.5 outline-none',
   'hover:bg-secondary focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-  'md:grid md:grid-cols-[56px_minmax(0,1.6fr)_110px_200px_minmax(0,1.4fr)_64px]',
+  'md:grid md:grid-cols-[56px_minmax(0,1.6fr)_110px_200px_minmax(0,1.4fr)_96px]',
 )
 
 export function InboxRow({ row }: { row: Row }) {
@@ -38,7 +38,7 @@ export function InboxRow({ row }: { row: Row }) {
       <span className="small text-muted-foreground">{card.product.name}</span>
       <span><StatusChip status={card.status} /></span>
       <span className="small text-muted-foreground">{captionOf(card)}</span>
-      <Time iso={card.enteredAt} className="mono text-muted-foreground md:text-right" />
+      <Time iso={card.enteredAt} className="mono whitespace-nowrap text-muted-foreground md:text-right" />
     </Link>
   )
 }

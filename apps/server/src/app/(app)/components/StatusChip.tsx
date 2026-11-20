@@ -16,8 +16,7 @@ export function StatusChip({ status }: { status: TicketStatus }) {
     <Badge variant={tone} className="max-w-full whitespace-normal">
       {tone === 'accent' && <span className={SPINNER} />}
       {mark === 'clock' && <Clock className="size-3" />}
-      {(mark === 'check' || mark === 'cross') && <span aria-hidden>{MARKS[mark]}</span>}
-      {word}
+      {mark === 'check' || mark === 'cross' ? `${MARKS[mark]} ${word}` : word}
     </Badge>
   )
 }

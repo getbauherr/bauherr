@@ -11,6 +11,7 @@ import { currentPersonWorkspace, payloadClient } from '../lib/session'
 
 export const dynamic = 'force-dynamic'
 
+const LANE = 'relative grid grid-cols-1 items-start gap-4 md:min-w-275 md:grid-cols-6'
 const BOARD = 'overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
 const PROFILE = { href: '/settings/profile', label: 'Open your profile' }
@@ -41,7 +42,7 @@ export default async function Factory({ searchParams }: { searchParams: Promise<
       <FilterRow show={show} product={product} counts={countShows(lanes)} products={view.products} />
       <HoldStrip holds={view.held} />
       <div tabIndex={0} role="region" aria-label="Factory board" className={BOARD}>
-        <div className="relative grid min-w-275 grid-cols-6 items-start gap-4">
+        <div className={LANE}>
           <LoopArrows verify={totals.sentBackFromVerifyLast7Days} ship={totals.sentBackFromShipLast7Days} />
           {stats.stages.map((stat) => (
             <StageColumn
