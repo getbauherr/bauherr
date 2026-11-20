@@ -21,7 +21,9 @@ export type State = {
   verdict: Verdict | null
   overridden: boolean
   merged: boolean
+  mergeSha: string | null
   deployed: boolean
+  deployStalled: { reason: 'failed' | 'overdue'; checks: string[] } | null
   accepted: boolean
   productionApproved: boolean
   productionHeld: boolean
@@ -48,7 +50,9 @@ export const initialState = (): State => ({
   verdict: null,
   overridden: false,
   merged: false,
+  mergeSha: null,
   deployed: false,
+  deployStalled: null,
   accepted: false,
   productionApproved: false,
   productionHeld: false,
@@ -149,7 +153,9 @@ const patch: Reducer = (state, event, options) => {
       const fresh = {
         ...submitted(state, event.data.runId),
         merged: false,
+        mergeSha: null,
         deployed: false,
+        deployStalled: null,
         accepted: false,
         productionHeld: false,
         overridden: false,
@@ -203,10 +209,10 @@ const finished = (state: State, options: FoldOptions): State =>
     ? enter(state, 'done')
     : state
 
-const merged = (state: State, options: FoldOptions): State => {
-  if (!state.adopted) return { ...state, merged: true }
+const merged = (state: State, sha: string, options: FoldOptions): State => {
+  if (!state.adopted) return { ...state, merged: true, mergeSha: sha }
   const entered = state.stage === 'verify' ? enter(state, 'ship') : state
-  return finished({ ...entered, merged: true }, options)
+  return finished({ ...entered, merged: true, mergeSha: sha }, options)
 }
 
 const sentBack = (state: State, note: string): State => {
@@ -218,9 +224,13 @@ const sentBack = (state: State, note: string): State => {
 const ship: Reducer = (state, event, options) => {
   switch (event.type) {
     case 'ship.merged':
-      return merged(state, options)
-    case 'ship.deployed':
-      return state.adopted ? finished({ ...state, deployed: true }, options) : { ...state, deployed: true }
+      return merged(state, event.data.sha, options)
+    case 'ship.deploy-stalled':
+      return { ...state, deployStalled: { reason: event.data.reason, checks: event.data.checks } }
+    case 'ship.deployed': {
+      const deployed = { ...state, deployed: true, deployStalled: null }
+      return state.adopted ? finished(deployed, options) : deployed
+    }
     case 'result.accepted':
       return finished({ ...state, accepted: true }, options)
     case 'result.sent-back':
@@ -250,6 +260,7 @@ const questions: Reducer = (state, event) => {
       return {
         ...state,
         card: null,
+        deployStalled: null,
         failedRuns: 0,
         extraRounds: state.extraRounds + (event.data.option === 'one-more-round' ? 1 : 0),
       }

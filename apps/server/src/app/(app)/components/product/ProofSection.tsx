@@ -1,6 +1,6 @@
 import type { ProductSettings } from '../../../../core/views/product-settings'
 import { copyForgeChecks, saveProof } from '../../(shell)/settings/products/[id]/actions'
-import { namesIn } from '../../lib/product-sections'
+import { DEPLOY_MINUTES, namesIn } from '../../lib/product-sections'
 import { Field, MultiPick, SettingsForm } from '../SettingsForm'
 import { SettingsSection } from '../SettingsParts'
 import { Editable } from './Editable'
@@ -43,6 +43,16 @@ export function ProofSection({ product, forgeChecks, admin }: Props) {
             addLabel="Add a deploy check"
             example="deploy-staging"
             missingMeta="added by hand"
+          />
+          <Field
+            name="deployWaitMinutes"
+            label="Ask me when the deploy has not finished after … minutes"
+            type="number"
+            inputMode="numeric"
+            min={DEPLOY_MINUTES.min}
+            max={DEPLOY_MINUTES.max}
+            hint="Counted from the merge. You then choose to check again or to go on."
+            defaultValue={product.deployWaitMinutes}
           />
           <Field
             name="stagingUrl"

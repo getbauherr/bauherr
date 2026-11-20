@@ -17,7 +17,7 @@ type Props = {
   recordId: number
   ask: string
   seq: number
-  sentence: string
+  sentence?: string | undefined
   actions: DecisionAction[]
   pick?: boolean
   children: ReactNode
@@ -79,7 +79,7 @@ function NoteDialog(props: {
 }
 
 function ActionBar(props: {
-  sentence: string
+  sentence: string | undefined
   actions: DecisionAction[]
   error: string | null
   pending: boolean
@@ -90,7 +90,11 @@ function ActionBar(props: {
       data-testid="action-bar"
       className="flex flex-wrap items-center gap-2 rounded-b-md border-t border-border bg-card px-4 py-3"
     >
-      <p className="min-w-full flex-[1_1_20ch] sm:mr-auto sm:min-w-0">{props.sentence}</p>
+      {props.sentence ? (
+        <p className="min-w-full flex-[1_1_20ch] sm:mr-auto sm:min-w-0">{props.sentence}</p>
+      ) : (
+        <span className="sm:mr-auto" />
+      )}
       {props.error && <span role="alert" className="small text-destructive">{props.error}</span>}
       {props.actions.map((action) => (
         <Button

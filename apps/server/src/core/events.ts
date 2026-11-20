@@ -55,6 +55,7 @@ const eventSchema = z.discriminatedUnion('type', [
   event('verify.changes', z.object({ runId: id, patchId: id })),
   event('ship.merged', z.object({ sha: id })),
   event('ship.deployed', none),
+  event('ship.deploy-stalled', z.object({ reason: z.enum(['failed', 'overdue']), checks: z.array(id) })),
   event('result.accepted', none),
   event('result.sent-back', z.object({ note: id })),
   event('production.approved', none),

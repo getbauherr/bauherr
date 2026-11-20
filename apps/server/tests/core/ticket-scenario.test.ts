@@ -53,9 +53,18 @@ describe('the tickets the end-to-end specs read', () => {
     }
   })
 
+  it('stops one ticket at the card about a deploy that failed, with the link to the merge commit', async () => {
+    const t = await view(names.deployStalled)
+    expect(t.card).toMatchObject({ card: 'question', reason: 'deploy-stalled', options: ['check-again', 'continue'] })
+    expect(t.deploy).toMatchObject({ reason: 'failed', checks: ['deploy-staging'] })
+    expect(t.deploy?.url).toContain('/commit/sha-')
+    expect(t.answerRemembered).toBe(false)
+  })
+
   it('asks a question, waits for a reporter, and keeps a run with reported steps', async () => {
     for (const id of [...names.question, names.questionRead]) {
       expect((await view(id)).card).toMatchObject({ card: 'question', reason: 'agent' })
+      expect((await view(id)).answerRemembered).toBe(true)
     }
     const intake = await view(names.intake)
     expect(intake).toMatchObject({ stage: 'intake', status: 'reporter-asked' })

@@ -1,7 +1,7 @@
 import type { StoredCard } from '../../../../core/record/store'
 import type { TicketView } from '../../../../core/views/ticket'
 import { ANSWER_ACTION } from '../../lib/decision-actions'
-import { questionFacts } from '../../lib/question-facts'
+import { questionFacts, recommendedOption } from '../../lib/question-facts'
 import { CHOICE_WORDS, NOTE_PROMPTS, REASON_WORDS } from '../../lib/ticket-words'
 import { DecisionForm } from './DecisionForm'
 import { Card, Section } from './Section'
@@ -22,6 +22,8 @@ type Props = { view: TicketView; card: StoredCard; may: boolean }
 export function QuestionCard({ view, card, may }: Props) {
   const ask = askOf(card.reason)
   const facts = questionFacts(view, card.reason)
+  const remembered = view.answerRemembered ? 'Your answer is remembered for similar tickets.' : undefined
+  const recommended = recommendedOption(view, card.reason)
   return (
     <Card bare>
       <DecisionForm
@@ -29,7 +31,7 @@ export function QuestionCard({ view, card, may }: Props) {
         ask={ask}
         seq={card.seq}
         pick
-        sentence={may ? 'Your answer is remembered for similar tickets.' : 'A Bauherr of this Workspace answers.'}
+        sentence={may ? remembered : 'A Bauherr of this Workspace answers.'}
         actions={may ? [ANSWER_ACTION] : []}
       >
         <div className="grid gap-5 p-6">
@@ -38,6 +40,13 @@ export function QuestionCard({ view, card, may }: Props) {
             <Section title="Facts">
               <ul className="m-0 grid gap-1 pl-5">{facts.map((fact) => <li key={fact}>{fact}</li>)}</ul>
             </Section>
+          )}
+          {view.deploy && card.reason === 'deploy-stalled' && (
+            <p>
+              <a href={view.deploy.url} target="_blank" rel="noreferrer" className="underline">
+                See the checks of the merged change at the forge
+              </a>
+            </p>
           )}
           <fieldset className="m-0 grid gap-2 border-0 p-0">
             <legend className="sr-only">Answer</legend>
@@ -54,6 +63,7 @@ export function QuestionCard({ view, card, may }: Props) {
                     className="accent-primary"
                   />
                   <span className="font-medium">{label}</span>
+                  {option === recommended && <span className="small text-muted-foreground">recommended</span>}
                 </label>
               )
             })}

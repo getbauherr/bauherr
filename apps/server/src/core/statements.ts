@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import type { Conn } from './conn'
+import { isRemembered } from './decisions'
 import type { Card } from './fold'
 
 export const STATEMENT_MAX = 1000
@@ -24,6 +25,7 @@ export const statementOf = ({ asked, choice, note, card }: Given): Statement | n
   const kind = NOTE_KINDS[`${asked}/${choice}`]
   if (kind) return { kind, text: clip(note) }
   if (asked?.startsWith('question:')) {
+    if (!isRemembered(asked.slice('question:'.length))) return null
     const question = card?.text ?? asked.slice('question:'.length)
     return { kind: 'answer', text: clip(note === '' ? `${question}: ${choice}` : `${question}: ${choice}. ${note}`) }
   }

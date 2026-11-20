@@ -153,3 +153,12 @@ test('the run page lists the reported steps oldest first', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Context given to the agent' })).toBeVisible()
   await expect(page.getByRole('heading', { name: /^Cost so far/ })).toBeVisible()
 })
+
+test('only a question whose answer is remembered says so', async ({ page }) => {
+  const sentence = 'Your answer is remembered for similar tickets.'
+  await enter(page, 'Question to read')
+  await expect(page.getByText(sentence)).toBeVisible()
+  await open(page, 'Deploy that did not finish')
+  await expect(page.getByText(sentence)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Answer' })).toBeVisible()
+})

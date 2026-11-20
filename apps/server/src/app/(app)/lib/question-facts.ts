@@ -22,6 +22,17 @@ const verifyRounds = (view: TicketView): string[] => {
   return [`Review asked for changes ${times(rounds, 'time')}.`, `${times(open, 'finding')} still open.`]
 }
 
+const deployStalled = (view: TicketView): string[] => {
+  if (!view.deploy) return []
+  const names = view.deploy.checks.join(', ')
+  return view.deploy.reason === 'failed'
+    ? [`These deploy checks failed: ${names}.`]
+    : [`No result arrived in the time you set for: ${names}.`]
+}
+
+export const recommendedOption = (view: TicketView, reason: string): string | null =>
+  reason === 'deploy-stalled' && view.deploy?.reason === 'failed' ? 'check-again' : null
+
 const production = (view: TicketView): string[] =>
   view.pullRequest ? [`Pull request #${view.pullRequest.number} is merged.`] : []
 
@@ -30,6 +41,7 @@ const FACTS: Record<string, (view: TicketView) => string[]> = {
   'reporter-silent': reporterSilent,
   disputed,
   'verify-rounds': verifyRounds,
+  'deploy-stalled': deployStalled,
   production,
   'production-held': production,
 }

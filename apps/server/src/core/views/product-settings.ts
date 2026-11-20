@@ -24,6 +24,7 @@ export type ProductSettings = {
   productionGate: boolean
   requiredChecks: string
   deployChecks: string
+  deployWaitMinutes: number
   stagingUrl: string
   autoClose: boolean
   excludedLabels: string[]
@@ -56,6 +57,7 @@ const productRow = z.object({
   production_gate: flag(false),
   required_checks: text,
   deploy_checks: text,
+  deploy_wait_minutes: amount(60),
   staging_url: text,
   auto_close: flag(true),
   intake_excluded_labels: list,
@@ -124,6 +126,7 @@ const settingsOf = (row: z.output<typeof productRow>) => ({
   productionGate: row.production_gate,
   requiredChecks: row.required_checks,
   deployChecks: row.deploy_checks,
+  deployWaitMinutes: row.deploy_wait_minutes,
   stagingUrl: row.staging_url,
   autoClose: row.auto_close,
   excludedLabels: row.intake_excluded_labels,
@@ -136,7 +139,7 @@ const settingsOf = (row: z.output<typeof productRow>) => ({
 export const productSettings = async (payload: Payload, f: ProductFilter): Promise<ProductSettings | null> => {
   const result = await payload.db.drizzle.execute(sql`
     SELECT "id", "name", "slug", "state", "executor", "risk_areas", "path_sets", "production_gate",
-      "required_checks", "deploy_checks", "staging_url", "auto_close", "intake_excluded_labels",
+      "required_checks", "deploy_checks", "deploy_wait_minutes", "staging_url", "auto_close", "intake_excluded_labels",
       "outside_issues_per_day", "reporter_remind_days", "reporter_silent_days", "backlog_brief_limit"
     FROM "products" WHERE "id" = ${f.product} AND "workspace_id" = ${f.workspace}`)
   if (!result.rows[0]) return null

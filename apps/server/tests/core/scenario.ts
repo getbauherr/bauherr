@@ -45,13 +45,14 @@ export const mirrorSource = async (e: Pick<Engine, 'db'>, repo = 'acme/app') => 
       assignees: [], closes: [], updated: new Date().toISOString(), head: '', ...fields,
     }
     const json = (value: unknown) => JSON.stringify(value)
+    const url = `https://forge/${f.kind === 'pr' ? 'pull/' : ''}${number}`
     const result = await payload.db.drizzle.execute(sql`
       INSERT INTO "mirror_items" ("workspace_id", "source_id", "product_id", "repo", "number", "kind", "title", "body",
         "state", "author", "author_trusted", "author_is_bot", "labels", "assignees", "url", "forge_created_at",
         "forge_updated_at", "head_sha", "closes", "draft", "synced_at", "updated_at", "created_at")
       VALUES (${workspace}, ${source}, ${product}, ${repo}, ${number}, ${f.kind}, ${f.title}, 'body', ${f.state},
         ${f.author}, ${f.trusted}, false, ${json(f.labels)}::jsonb, ${json(f.assignees)}::jsonb,
-        ${`https://forge/${number}`}, now() - interval '1 day', ${f.updated}::timestamptz, ${f.head},
+        ${url}, now() - interval '1 day', ${f.updated}::timestamptz, ${f.head},
         ${json(f.closes)}::jsonb, false, now(), now(), now())
       RETURNING "id"`)
     return z.object({ id: z.coerce.number() }).parse(result.rows[0]).id

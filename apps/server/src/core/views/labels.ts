@@ -36,6 +36,10 @@ const LABELS: Labels = {
   'verify.changes': () => 'Verification asked for changes',
   'ship.merged': (e) => `The pull request was merged (${e.data.sha.slice(0, 7)})`,
   'ship.deployed': () => 'The change was deployed',
+  'ship.deploy-stalled': (e) =>
+    e.data.reason === 'failed'
+      ? `A deploy check failed: ${e.data.checks.join(', ')}`
+      : `No deploy result arrived in time for: ${e.data.checks.join(', ')}`,
   'result.accepted': () => 'The owner accepted the Result',
   'result.sent-back': (e) => `The owner sent the Result back: ${e.data.note}`,
   'production.approved': () => 'The owner approved production',

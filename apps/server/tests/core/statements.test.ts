@@ -1,10 +1,51 @@
 import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { decide } from '../../src/core/decide'
+import { DECISIONS, QUESTION_REASONS, REMEMBERED } from '../../src/core/decisions'
 import { advance } from '../../src/core/engine'
 import { readEvents } from '../../src/core/record/store'
 import { statementOf, statementsFor, STATEMENT_MAX } from '../../src/core/statements'
 import { openEngine, type Engine } from './harness'
+
+describe('which answers are remembered', () => {
+  const OPTIONS = Object.entries(DECISIONS).filter(([ask]) => ask.startsWith('question:'))
+
+  it('lists every question reason of the decision table, and nothing else', () => {
+    const reasons = OPTIONS.map(([ask]) => ask.slice('question:'.length))
+    expect([...QUESTION_REASONS].sort()).toEqual([...reasons, 'agent'].sort())
+    expect(Object.keys(REMEMBERED).sort()).toEqual([...QUESTION_REASONS].sort())
+  })
+
+  const bare = OPTIONS.flatMap(([ask, choices]) =>
+    Object.entries(choices).filter(([, entry]) => !entry.needsNote).map(([choice]) => [ask, choice] as const),
+  )
+
+  it.each(bare)(
+    '%s %s stores a statement only when the list says so',
+    (ask, choice) => {
+      const statement = statementOf({ asked: ask, choice, note: '', card: null })
+      const reason = ask.slice('question:'.length)
+      if (REMEMBERED[reason as keyof typeof REMEMBERED]) {
+        expect(statement).toEqual({ kind: 'answer', text: `${reason}: ${choice}` })
+      } else {
+        expect(statement).toBeNull()
+      }
+    },
+  )
+
+  it('stores the note of retry-with-guidance as guidance although the reason is not remembered', () => {
+    const given = { asked: 'question:failed-runs', choice: 'retry-with-guidance', note: 'try X', card: null }
+    expect(statementOf(given)).toEqual({ kind: 'guidance', text: 'try X' })
+  })
+
+  it('remembers the question an agent asked, with its text', () => {
+    const card = { card: 'question' as const, reason: 'agent', options: ['a', 'b'], text: 'Which?' }
+    expect(statementOf({ asked: 'question:agent', choice: 'a', note: '', card })).toEqual({
+      kind: 'answer',
+      text: 'Which?: a',
+    })
+  })
+})
 
 describe('statementOf', () => {
   const given = { asked: 'result', choice: 'accept', note: '', card: null }
@@ -23,9 +64,9 @@ describe('statementOf', () => {
       kind: 'answer',
       text: 'Which one?: a. soon',
     })
-    expect(statementOf({ asked: 'question:production', choice: 'hold', note: '', card: null })).toEqual({
+    expect(statementOf({ asked: 'question:disputed', choice: 'accept', note: '', card: null })).toEqual({
       kind: 'answer',
-      text: 'production: hold',
+      text: 'disputed: accept',
     })
   })
 
