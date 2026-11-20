@@ -15,7 +15,7 @@ const source = z.object({
   backlog: z.boolean(),
 })
 
-const criterion = z.object({
+export const criterionSchema = z.object({
   id: ident('c'),
   text: text(160),
   verify: z.object({ kind: z.enum(['test', 'command', 'screenshot', 'manual']), how: text(200) }),
@@ -23,7 +23,7 @@ const criterion = z.object({
   proof: z.array(z.string().trim().min(1)),
 })
 
-const risk = z.object({
+export const riskSchema = z.object({
   door: z.enum(['one-way', 'two-way']),
   areas: z.array(z.string().trim().min(1)).max(5),
   rollback: text(200),
@@ -79,9 +79,9 @@ const shape = z.object({
   goal: z.string().trim().max(300),
   type: z.enum(TYPES),
   source,
-  criteria: z.array(criterion).max(7),
+  criteria: z.array(criterionSchema).max(7),
   outOfScope: z.array(text(160)).max(5),
-  risk: risk.nullable(),
+  risk: riskSchema.nullable(),
   decisions: z.array(decision).max(12),
   plan: z.object({ steps: z.array(text(160)).max(7) }),
   findings: z.array(findingSchema).max(20),

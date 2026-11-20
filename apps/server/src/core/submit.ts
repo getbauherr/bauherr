@@ -2,8 +2,10 @@ import type { z } from 'zod'
 import { inLockedRecord, type Conn } from './conn'
 import { runEffects } from './effects'
 import { advance, type AdvanceDeps } from './engine'
+import { fold } from './fold'
 import { gate } from './gate'
 import { loadGateFacts } from './gate-facts'
+import { foldOptions } from './lifecycle'
 import type { Effect, LifecycleModule, Modules, Problem } from './module'
 import {
   CriteriaEditNotAllowed,
@@ -12,7 +14,7 @@ import {
   ProofRequired,
   StatusChangeNotAllowed,
 } from './record/errors'
-import { appendEvent, patchRecord, readRecord } from './record/store'
+import { appendEvent, patchRecord, readEvents, readRecord } from './record/store'
 import { verifyResultSchema } from './verify-result'
 import { ModuleMissing } from './run/errors'
 import { authorize, expire, release, type Expired } from './run/leases'
@@ -66,13 +68,15 @@ const write = async (
   deps: SubmitDeps,
 ): Promise<Written> => {
   const stored = await readRecord(tx, run.recordId)
+  const config = await deps.configFor(run.recordId)
   if (module.gated) {
-    const facts = await loadGateFacts(tx, stored, run, await deps.configFor(run.recordId))
+    const facts = await loadGateFacts(tx, stored, run, config)
     const outcome = gate({ result: verifyResultSchema.parse(data), record: stored.record, facts })
     if (!outcome.accepted) return { problems: outcome.refusals }
   }
   try {
-    const applied = module.apply(stored.record, data, run)
+    const state = fold(await readEvents(tx, run.recordId), foldOptions(config))
+    const applied = module.apply(stored.record, data, run, { config, state })
     const by = { stage: run.stage, runId: String(run.id) }
     const input = { expectedVersion: stored.version, writes: module.writes, patch: applied.patch, by }
     await patchRecord(tx, run.recordId, input)

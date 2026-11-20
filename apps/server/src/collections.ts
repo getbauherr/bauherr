@@ -467,6 +467,12 @@ export const collections: CollectionConfig[] = [
       admin: { description: 'Days after a question before the reporter counts as silent.' },
     },
     {
+      name: 'autoClose',
+      type: 'checkbox',
+      defaultValue: true,
+      admin: { description: 'Close an issue on the forge when intake finds a duplicate or declines it.' },
+    },
+    {
       name: 'backlogBriefLimit',
       type: 'number',
       defaultValue: 5,
