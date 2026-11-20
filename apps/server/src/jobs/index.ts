@@ -9,6 +9,7 @@ import { scheduled } from '../lib/schedule'
 import { live, purgeDueWorkspaces } from '../lib/workspace-delete'
 import { engineDeps } from './engine-deps'
 import { afterSync, intakeSweepTask } from './intake'
+import { runAgentTask } from './runner'
 
 export const STALE_JOB_MS = 60 * 60_000
 
@@ -101,4 +102,5 @@ export const TASKS = [
   expireRunsJob,
   mirrorSyncTask(scheduled('0 * * * * *'), afterSync),
   intakeSweepTask(scheduled('0 * * * * *')),
+  runAgentTask(),
 ]
