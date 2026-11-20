@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { answersProblem, storeAnswers, type Answers } from './answers'
 import { isBauherr } from '../lib/people'
 import { inLockedRecord } from './conn'
 import { AGENT_ASK, agentEntry, DECISIONS, type DecisionEntry } from './decisions'
@@ -6,6 +7,7 @@ import { advance, type AdvanceDeps } from './engine'
 import { resumeParked } from './intake/pacing'
 import { fold, type Card } from './fold'
 import { foldOptions, next, type State, type Step } from './lifecycle'
+import type { TicketRecord } from './record/schema'
 import { appendEvent, readEvents, readRecord } from './record/store'
 import { storeGiven } from './statements'
 
@@ -26,7 +28,7 @@ export type Person = { id: string; role: string; workspaceIds: number[] }
 export const mayDecide = (person: Person, workspace: number): boolean =>
   isBauherr({ role: person.role }) && person.workspaceIds.includes(workspace)
 
-export type Decision = { ask: string; choice: string; seq: number; note?: string }
+export type Decision = { ask: string; choice: string; seq: number; note?: string; answers?: Answers }
 
 const noteSchema = z.string().trim().min(1).max(NOTE_MAX)
 
@@ -57,6 +59,17 @@ const entryOf = (asked: string | null, seq: number | undefined, decision: Decisi
   return { entry, note: note.success ? note.data : '' }
 }
 
+const answersOf = (asked: string | null, decision: Decision, record: TicketRecord): Answers | null => {
+  if (asked !== 'brief' || decision.choice !== 'approve') {
+    if (decision.answers === undefined) return null
+    throw new InvalidDecision(`Only approving a Brief takes answers: leave answers out of ${decision.choice}.`)
+  }
+  const answers = decision.answers ?? {}
+  const problem = answersProblem(record, answers)
+  if (problem !== null) throw new InvalidDecision(problem)
+  return answers
+}
+
 export const decide = async (
   recordId: number,
   person: Person,
@@ -72,9 +85,11 @@ export const decide = async (
     const state = fold(await readEvents(tx, recordId), foldOptions(config))
     const asked = askedOf(next(stored.record, state, config), state)
     const { entry, note } = entryOf(asked, stored.card?.seq, decision, state.card)
+    const answers = answersOf(asked, decision, stored.record)
     const patch = state.patch
     const events = entry.events({ note, patchId: patch?.id ?? '', headSha: patch?.headSha ?? '' })
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
+    if (answers) await storeAnswers(tx, recordId, stored, answers, deps.now)
     await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card })
     return asked === 'brief' && stored.record.source.backlog
   })

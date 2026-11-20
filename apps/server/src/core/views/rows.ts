@@ -63,12 +63,12 @@ const ACCEPTED = ['result.accepted', 'production.approved']
 
 const CLOSED_AS: ClosedAs[] = ['not-a-bug', 'duplicate', 'not-planned', 'discarded', 'closed-on-forge']
 
-const closedAsOf = (type: string | null, reason: string | null): ClosedAs | null => {
+export const closedAsOf = (type: string | null, reason: string | null): ClosedAs | null => {
   if (type === 'brief.discarded') return 'discarded'
   return CLOSED_AS.find((known) => known === reason) ?? null
 }
 
-const endedOf = (type: string | null): 'accepted' | 'closed' | null =>
+export const endedOf = (type: string | null): 'accepted' | 'closed' | null =>
   type === null ? null : ACCEPTED.includes(type) ? 'accepted' : 'closed'
 
 const toRow = (raw: unknown): TicketRow => {

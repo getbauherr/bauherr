@@ -242,9 +242,8 @@ describe('the nine tools through the route', () => {
     expect((await m.e.view(record)).card).toMatchObject({ card: 'brief', reason: 'open-decision' })
     expect((await m.e.view(record)).waitingOn).toBe('owner')
     const seq = await m.e.seq(record)
-    expect(await ok(m.alpha.personalKey, 'decide', { record, ask: 'brief', choice: 'approve', seq })).toEqual({
-      status: 'decided',
-    })
+    const approval = { record, ask: 'brief', choice: 'approve', seq, answers: { d1: 'a' } }
+    expect(await ok(m.alpha.personalKey, 'decide', approval)).toEqual({ status: 'decided' })
     const build = z.object({ runId: z.number(), leaseToken: z.string() }).parse(await ok(key, 'next_work', { session }))
     const bu = { runId: build.runId, leaseToken: build.leaseToken }
     const proof = z

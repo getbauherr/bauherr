@@ -1,0 +1,62 @@
+import Link from 'next/link'
+import type { Criterion } from '../../../../core/record/schema'
+import type { ProofGroup } from '../../../../core/views/ticket-parts'
+import { CRITERION_WORDS, PROOF_WORDS, ticketHref, VERIFY_WORDS, type Tab } from '../../lib/ticket'
+import { WordBadge } from '../WordBadge'
+
+const TABLE = 'w-full border-collapse overflow-hidden rounded-md border border-border'
+const TH = 'label border-b border-border bg-secondary px-3 py-2 text-left font-medium text-muted-foreground'
+const TD = 'border-b border-border px-3 py-2 align-top last:border-b-0'
+
+export type ProofLinking = { recordId: number; tab: Tab; proofs: ProofGroup[]; selected: string | null }
+
+type Props = { criteria: Criterion[] } & ({ mode: 'brief' } | ({ mode: 'result' } & ProofLinking))
+
+function ProofLinks({ criterion, ...linking }: { criterion: Criterion } & ProofLinking) {
+  const { proofs, recordId, tab, selected } = linking
+  const kinds = proofs.find((group) => group.criterion === criterion.id)?.proofs.map((proof) => proof.kind) ?? []
+  if (kinds.length === 0) return <span className="text-muted-foreground">None</span>
+  const words = [...new Set(kinds)].map((kind) => PROOF_WORDS[kind] ?? kind).join(', ')
+  return (
+    <Link
+      href={ticketHref(recordId, tab, criterion.id)}
+      aria-current={selected === criterion.id ? 'true' : undefined}
+      className="text-primary hover:underline"
+    >
+      {words}
+      <span className="sr-only"> for criterion {criterion.id.slice(1)}</span>
+    </Link>
+  )
+}
+
+export function CriteriaTable(props: Props) {
+  const result = props.mode === 'result' ? props : null
+  return (
+    <div className="overflow-x-auto">
+      <table className={TABLE}>
+        <caption className="sr-only">Acceptance criteria</caption>
+        <thead>
+          <tr>
+            <th scope="col" className={`${TH} w-8`}><span className="sr-only">Number</span></th>
+            <th scope="col" className={TH}>Criterion</th>
+            {result ? <th scope="col" className={TH}>Status</th> : null}
+            <th scope="col" className={TH}>{result ? 'Proof' : 'Verified by'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.criteria.map((criterion, index) => (
+            <tr key={criterion.id}>
+              <td className={`${TD} mono text-muted-foreground`}>{index + 1}</td>
+              <td className={TD}>{criterion.text}</td>
+              {result ? <td className={TD}><WordBadge word={CRITERION_WORDS[criterion.status]} /></td> : null}
+              <td className={TD}>
+                {result ? <ProofLinks criterion={criterion} {...result} /> : VERIFY_WORDS[criterion.verify.kind]}
+                {!result && <span className="small block text-muted-foreground">{criterion.verify.how}</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}

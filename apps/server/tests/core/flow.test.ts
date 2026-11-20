@@ -81,7 +81,7 @@ describe('a ticket from intake to done', () => {
   it('stops at a Brief card for an open decision until the owner approves', async () => {
     const id = await toBrief(true)
     await expectView(id, 'brief', 'owner', { card: 'brief', reason: 'open-decision', options: [] })
-    await answer(id, { ask: 'brief', choice: 'approve' })
+    await answer(id, { ask: 'brief', choice: 'approve', answers: { d1: 'a' } })
     await expectView(id, 'build', 'agents')
   })
 
