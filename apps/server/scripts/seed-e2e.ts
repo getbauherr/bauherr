@@ -6,6 +6,7 @@ import { readRecord } from '../src/core/record/store'
 import { coreDbOn } from '../tests/core/db'
 import { engineOn } from '../tests/core/harness'
 import { begin, seedScenario, type ScenarioNames } from '../tests/core/scenario'
+import { seedConnect } from './seed-connect'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -86,6 +87,8 @@ if (!seeded.docs.length) {
     await scenario.item(record.source.number, { title })
   }
 }
+
+await seedConnect(payload)
 
 await ensure('human_touches', { kind: 'e2e:audit' }, { kind: 'e2e:audit', actor: 'e2e-audit-actor', at: '2026-10-30T09:00:00Z', workspace })
 

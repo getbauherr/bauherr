@@ -70,6 +70,21 @@ const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
   '/settings/workspace': '/settings/workspace',
 }
 
+const connectOf = (product: string, path = '/connect') => async (page: Page) => {
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'connect', url: base }])
+  await page.goto('/settings/products')
+  const href = await page.getByRole('link', { name: product, exact: true }).getAttribute('href')
+  return `${href}${path}`
+}
+
+const connectRoutes: Record<string, (page: Page) => Promise<string>> = {
+  '/settings/products/[id] (connect workspace)': connectOf('Connect Look', ''),
+  '/settings/products/[id]/connect': connectOf('Connect Look'),
+  '/settings/products/[id]/connect (importing)': connectOf('Connect Importing'),
+}
+Object.assign(routes, connectRoutes)
+
 test.describe('keyboard', () => {
   test('sign in with the keyboard only, then skip link, then a visible focus ring on every Tab stop', async ({ page }) => {
     test.setTimeout(90_000)
