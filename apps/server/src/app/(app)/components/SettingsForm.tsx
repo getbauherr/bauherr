@@ -110,6 +110,20 @@ function SubmitRow({
   )
 }
 
+type SettingsFormProps = {
+  after?: (state: FormState) => ReactNode
+  noticeHint?: string
+  confirm?: string
+  bar?: boolean
+  copy?: boolean
+  action: (p: FormState, fd: FormData) => Promise<FormState>
+  children?: ReactNode
+  submit?: string
+  reset?: boolean
+  primary?: boolean
+  inline?: boolean
+}
+
 export function SettingsForm({
   action,
   children,
@@ -121,18 +135,8 @@ export function SettingsForm({
   bar,
   copy,
   noticeHint,
-}: {
-  noticeHint?: string
-  confirm?: string
-  bar?: boolean
-  copy?: boolean
-  action: (p: FormState, fd: FormData) => Promise<FormState>
-  children?: ReactNode
-  submit?: string
-  reset?: boolean
-  primary?: boolean
-  inline?: boolean
-}) {
+  after,
+}: SettingsFormProps) {
   const [state, formAction, pending] = useActionState(action, {})
   const formId = useId()
   const { ref, dirty, setDirty, round } = useFormLifecycle(state, reset)
@@ -166,6 +170,7 @@ export function SettingsForm({
         )}
         <FormNotice state={state} noticeHint={noticeHint} copy={copy} />
       </form>
+      {after?.(state)}
     </FormStateContext>
   )
 }

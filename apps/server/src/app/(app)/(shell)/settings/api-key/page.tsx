@@ -1,16 +1,24 @@
 import { hasApiKey, listAgentKeys } from '../../../../../lib/api-key'
-import { Field, SettingsForm } from '../../../components/SettingsForm'
-import { Table } from '../../../components/ui/table'
+import { agentSessions } from '../../../../../core/views/sessions'
+import { publicUrl } from '../../../../../lib/oidc'
+import { AutoRefresh } from '../../../components/AutoRefresh'
+import { AgentKeyForm } from '../../../components/connect/AgentKeyForm'
+import { AgentKeyTable } from '../../../components/connect/AgentKeyTable'
+import { SessionsTable } from '../../../components/connect/SessionsTable'
+import { SettingsForm } from '../../../components/SettingsForm'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
-import { mintOwnAgentKey, revokeOwnAgentKey, revokeOwnKey, rotateOwnKey } from '../actions'
+import { mintOwnAgentKey, revokeOwnKey, rotateOwnKey } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ApiKey() {
   const { user, workspace } = await currentWorkspace()
   const payload = await payloadClient()
-  const mine = workspace ? listAgentKeys(payload, user, workspace.id) : []
-  const [has, keys] = await Promise.all([hasApiKey(payload, user.id), mine])
+  const [has, keys, sessions] = await Promise.all([
+    hasApiKey(payload, user.id),
+    workspace ? listAgentKeys(payload, user, workspace.id) : [],
+    workspace ? agentSessions(payload, { workspace: workspace.id, owner: Number(user.id), now: new Date() }) : [],
+  ])
   return (
     <>
       <h2 className="heading">API keys</h2>
@@ -18,39 +26,10 @@ export default async function ApiKey() {
         Connect a Claude Code session to the factory. It acts as you, inside your Workspaces only, but cannot approve
         gates: approve, accept, request changes, review cap. Those stay with you in the UI.
       </p>
-      <SettingsForm action={mintOwnAgentKey} submit="Create agent key" primary reset>
-        <Field name="label" label="Label" hint="Where it runs, e.g. laptop" />
-      </SettingsForm>
-      {keys.length > 0 && (
-        <Table>
-          <thead>
-            <tr className="label">
-              <th>Label</th>
-              <th>Key</th>
-              <th>Last used</th>
-              <th>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {keys.map((k) => (
-              <tr key={k.id}>
-                <td>{k.label}</td>
-                <td className="mono">{k.prefix}…</td>
-                <td>{k.revokedAt ? 'revoked' : (k.lastUsedAt?.slice(0, 16).replace('T', ' ') ?? 'never')}</td>
-                <td>
-                  {!k.revokedAt && (
-                    <SettingsForm action={revokeOwnAgentKey} submit="Revoke" confirm="Confirm revoke" inline>
-                      <input type="hidden" name="id" value={k.id} />
-                    </SettingsForm>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      )}
+      <AgentKeyForm action={mintOwnAgentKey} url={publicUrl()} />
+      {keys.length > 0 && <AgentKeyTable keys={keys} />}
+      <SessionsTable sessions={sessions} />
+      <AutoRefresh />
       <h2 className="heading">Personal key (human)</h2>
       <p className="small text-destructive">Never give this key to an agent; it can approve gates.</p>
       {has ? (

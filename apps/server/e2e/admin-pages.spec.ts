@@ -29,7 +29,7 @@ test('Admin: agent key shown once, Audit, health; no /admin link', async ({ page
   const label = `e2e ${Date.now()}`
   await page.getByLabel('Label').fill(label)
   await page.getByRole('button', { name: 'Create agent key' }).click()
-  const line = page.getByRole('status').filter({ hasText: 'bha_' })
+  const line = page.getByRole('status').filter({ hasText: 'bha_' }).first()
   const key = /(bha_\w+)/.exec((await line.textContent())!)![1]!
 
   await page.reload()

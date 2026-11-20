@@ -38,7 +38,8 @@ function Sentence({ hold }: { hold: Hold }) {
       return (
         <>
           No {hold.role} session is connected: {plural(hold.queued, 'run waits', 'runs wait')} (
-          {hold.byStage.map((row) => `${STAGE_NAMES[row.stage]} ${row.queued}`).join(', ')}).
+          {hold.byStage.map((row) => `${STAGE_NAMES[row.stage]} ${row.queued}`).join(', ')}).{' '}
+          <Link href="/settings/api-key" className={LINK}>Connect a session</Link>
         </>
       )
     case 'runner-idle':
