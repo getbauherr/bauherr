@@ -14,7 +14,7 @@ import {
   type StoredRecord,
   type WaitingOn,
 } from './record/store'
-import { enqueue } from './run/leases'
+import { enqueue, releaseLive } from './run/leases'
 
 export const MAX_ADVANCE_STEPS = 10
 
@@ -110,6 +110,14 @@ const waitStep = async (step: Extract<Step, { kind: 'wait' }>, ctx: Ctx): Promis
   return 'stop'
 }
 
+const releaseLiveRuns = async (ctx: Ctx): Promise<void> => {
+  const ended = await releaseLive(ctx.deps.payload, ctx.stored.id, ctx.deps.now)
+  for (const run of ended) {
+    if (ctx.state.run?.runId !== String(run.id)) continue
+    await append(ctx, { type: 'run.released', data: { stage: run.stage, runId: String(run.id) } })
+  }
+}
+
 const handle = async (step: Step, ctx: Ctx): Promise<Outcome> => {
   switch (step.kind) {
     case 'run':
@@ -125,6 +133,7 @@ const handle = async (step: Step, ctx: Ctx): Promise<Outcome> => {
     case 'wait':
       return waitStep(step, ctx)
     case 'done':
+      await releaseLiveRuns(ctx)
       await project(ctx, 'nobody', null)
       return 'stop'
   }

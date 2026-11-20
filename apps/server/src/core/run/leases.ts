@@ -15,6 +15,8 @@ export type ClaimInput = { workspace: number; role: Role; by: string; now: Date 
 export type Claimed = { run: Run; token: string }
 export type Expired = { runId: number; recordId: number; stage: Stage }
 
+const CLOSING_EVENTS = sql`('ticket.closed', 'intake.closed', 'brief.discarded')`
+
 const hashOf = (token: string): string => createHash('sha256').update(token).digest('hex')
 const leaseEnd = (now: Date): string => new Date(now.getTime() + LEASE_MS).toISOString()
 
@@ -54,6 +56,8 @@ export const claim = async (payload: Conn, input: ClaimInput): Promise<Claimed |
     WHERE "id" = (
       SELECT s."id" FROM "stage_runs" s JOIN "records" r ON r."id" = s."record_id"
       WHERE s."status" = 'queued' AND s."role" = ${input.role} AND s."workspace_id" = ${input.workspace}
+        AND r."stage" <> 'done' AND NOT EXISTS (
+          SELECT 1 FROM "events" e WHERE e."record_id" = r."id" AND e."type" IN ${CLOSING_EVENTS})
       ORDER BY r."rank", s."created_at", s."id" LIMIT 1 FOR UPDATE OF s SKIP LOCKED
     ) AND "status" = 'queued'
     RETURNING ${RUN_COLUMNS}`)
@@ -105,6 +109,14 @@ export const release = async (payload: Conn, runId: number, token: string, now: 
     RETURNING ${RUN_COLUMNS}`)
   const row = updated.rows[0]
   return row ? toRun(row) : refusal(payload, runId)
+}
+
+export const releaseLive = async (payload: Conn, recordId: number, now: Date): Promise<Run[]> => {
+  const updated = await payload.db.drizzle.execute(sql`
+    UPDATE "stage_runs" SET "status" = 'released', "finished_at" = ${now.toISOString()}, "updated_at" = now()
+    WHERE "record_id" = ${recordId} AND "status" IN ('queued', 'claimed')
+    RETURNING ${RUN_COLUMNS}`)
+  return updated.rows.map(toRun)
 }
 
 export const expire = async (payload: Conn, now: Date): Promise<Expired[]> => {

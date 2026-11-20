@@ -17,7 +17,7 @@ import {
 } from './record/errors'
 import { appendEvent, patchRecord, readEvents, readRecord } from './record/store'
 import { verifyResultSchema } from './verify-result'
-import { ModuleMissing } from './run/errors'
+import { ModuleMissing, RecordClosed } from './run/errors'
 import { authorize, expire, release, type Expired } from './run/leases'
 import type { Run } from './run/schema'
 import { finishRun, markRefused, readRun } from './run/store'
@@ -93,6 +93,10 @@ const write = async (
 
 const submitLocked = async (tx: Conn, run: Run, token: string, rawResult: unknown, deps: SubmitDeps) => {
   const current = await authorize(tx, run.id, token)
+  const state = fold(await readEvents(tx, current.recordId), foldOptions(await deps.configFor(current.recordId)))
+  if (state.closed !== null || state.stage === 'done') {
+    throw new RecordClosed(`Record ${current.recordId} is closed: stop working on run ${current.id}.`)
+  }
   const module = deps.modules[current.stage]
   if (!module) throw new ModuleMissing(`No module is registered for stage ${current.stage}: register one.`)
   const parsed = module.resultSchema.safeParse(rawResult)
