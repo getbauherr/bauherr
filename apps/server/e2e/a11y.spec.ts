@@ -5,8 +5,6 @@ import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice']
 
 const CONTRAST_REVIEWED: [target: RegExp, reason: string][] = [
@@ -14,16 +12,35 @@ const CONTRAST_REVIEWED: [target: RegExp, reason: string][] = [
   [/^#loop-(verify|ship)$/, 'Label on a dashed loop line: muted ink on the page ground, 5.8:1 light, 7.1:1 dark'],
 ]
 
+type AxeNode = { target: unknown[]; failureSummary?: string }
+
+const describeNode = (n: AxeNode) => `  ${n.target.join(' ')}\n    ${n.failureSummary?.replace(/\n/g, '\n    ')}`
+
 const scan = async (page: Page) => {
   const { violations, incomplete } = await new AxeBuilder({ page }).withTags(TAGS).exclude('nextjs-portal').analyze()
   const review = incomplete
     .filter((v) => v.id === 'color-contrast')
-    .map((v) => ({ ...v, nodes: v.nodes.filter((n) => !CONTRAST_REVIEWED.some(([re]) => re.test(n.target.join(' ')))) }))
+    .map((v) => ({
+      ...v,
+      nodes: v.nodes.filter((n) => !CONTRAST_REVIEWED.some(([re]) => re.test(n.target.join(' ')))),
+    }))
     .filter((v) => v.nodes.length)
-  return [...violations, ...review].map((v) => `${v.id} (${v.impact}): ${v.help}. ${v.helpUrl}\n${v.nodes.map((n) => `  ${n.target.join(' ')}\n    ${n.failureSummary?.replace(/\n/g, '\n    ')}`).join('\n')}`)
+  return [...violations, ...review].map(
+    (v) => `${v.id} (${v.impact}): ${v.help}. ${v.helpUrl}\n${v.nodes.map(describeNode).join('\n')}`,
+  )
 }
 
-const setTheme = (page: Page, id: 'light' | 'dark') => page.evaluate((t) => { localStorage.setItem('bauherr-theme', t); document.documentElement.dataset.theme = t; return Promise.all(document.getAnimations().filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime)).map((a) => a.finished.catch(() => {}))) }, id)
+const setTheme = (page: Page, id: 'light' | 'dark') =>
+  page.evaluate((t) => {
+    localStorage.setItem('bauherr-theme', t)
+    document.documentElement.dataset.theme = t
+    return Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime))
+        .map((a) => a.finished.catch(() => {})),
+    )
+  }, id)
 
 const signIn = async (page: Page) => {
   await page.goto('/login')
@@ -53,14 +70,19 @@ const inHooks = (url: string) => async (page: Page) => {
   return url
 }
 
-const inTickets = (title: string, query = '') => async (page: Page) => {
-  const base = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url: base }])
-  await page.goto('/inbox')
-  const href = await page.getByRole('link', { name: new RegExp(title) }).first().getAttribute('href')
-  expect(href, `a ticket titled ${title}`).toBeTruthy()
-  return `${href}${query}`
-}
+const inTickets =
+  (title: string, query = '') =>
+  async (page: Page) => {
+    const base = process.env.BASE_URL ?? 'http://localhost:3000'
+    await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url: base }])
+    await page.goto('/inbox')
+    const href = await page
+      .getByRole('link', { name: new RegExp(title) })
+      .first()
+      .getAttribute('href')
+    expect(href, `a ticket titled ${title}`).toBeTruthy()
+    return `${href}${query}`
+  }
 
 const runOf = (title: string) => async (page: Page) => {
   await page.goto(await inTickets(title)(page))
@@ -75,13 +97,15 @@ const signedOut: Record<string, string> = {
 
 const redirects: Record<string, RegExp> = { '/settings': /^\/settings\/profile$/ }
 
-const connectOf = (product: string, path = '/connect') => async (page: Page) => {
-  const base = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'connect', url: base }])
-  await page.goto('/settings/products')
-  const href = await page.getByRole('link', { name: product, exact: true }).getAttribute('href')
-  return `${href}${path}`
-}
+const connectOf =
+  (product: string, path = '/connect') =>
+  async (page: Page) => {
+    const base = process.env.BASE_URL ?? 'http://localhost:3000'
+    await page.context().addCookies([{ name: 'bauherr-ws', value: 'connect', url: base }])
+    await page.goto('/settings/products')
+    const href = await page.getByRole('link', { name: product, exact: true }).getAttribute('href')
+    return `${href}${path}`
+  }
 
 type Target = string | ((page: Page) => Promise<string>)
 
@@ -96,7 +120,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'Activity tab': inTickets('Result to read', '?tab=activity'),
     'question card': inTickets('Question to read'),
     'deploy that did not finish': inTickets('Deploy that did not finish'),
-    'Intake': inTickets('Intake waiting for the reporter'),
+    Intake: inTickets('Intake waiting for the reporter'),
     'adopted, waiting on the author': inTickets('Adopted pull request waiting on its author'),
     'adopted, Result card': inTickets('Adopted pull request with a result'),
   },
@@ -125,46 +149,68 @@ const routes: Record<string, Target | Record<string, Target>> = {
   '/settings/workspace': '/settings/workspace',
 }
 
+type TabStop = { ring: boolean; hidden: boolean; name: string }
+
+const signInWithKeyboard = async (page: Page) => {
+  await page.goto('/login')
+  await page.keyboard.press('Tab')
+  await expect(page.getByLabel('Email')).toBeFocused()
+  await page.keyboard.type(email)
+  await page.keyboard.press('Tab')
+  await expect(page.getByLabel('Password')).toBeFocused()
+  await page.keyboard.type(password())
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('banner')).toBeVisible()
+}
+
+const reachMainWithSkipLink = async (page: Page) => {
+  await page.goto('/')
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('link', { name: 'Skip to content' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('main#main')).toBeFocused()
+}
+
+const focusedStop = (): TabStop | 'seen' | null => {
+  const hasRing = (s: CSSStyleDeclaration) =>
+    (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0) || (s.boxShadow !== 'none' && s.boxShadow !== '')
+  const labelOf = (e: HTMLElement) => (e.getAttribute('aria-label') ?? e.textContent ?? '').trim().slice(0, 40)
+  const el = document.activeElement as HTMLElement | null
+  if (!el || el === document.body) return null
+  if (el.dataset.a11ySeen) return 'seen'
+  el.dataset.a11ySeen = '1'
+  const s = getComputedStyle(el)
+  const r = el.getBoundingClientRect()
+  return {
+    ring: hasRing(s),
+    hidden: r.width === 0 || r.height === 0,
+    name: `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''} ${labelOf(el)}`,
+  }
+}
+
+const tabLap = async (page: Page): Promise<string[]> => {
+  const stops: string[] = []
+  for (let i = 0; ; i++) {
+    expect(i, 'focus never wrapped: more than 200 Tab stops').toBeLessThan(200)
+    await page.keyboard.press('Tab')
+    const stop = await page.evaluate(focusedStop)
+    if (stop === null || stop === 'seen') break
+    if (!stop.hidden) expect(stop.ring, `focus indicator on ${stop.name}`).toBe(true)
+    stops.push(stop.name)
+  }
+  return stops
+}
+
 test.describe('keyboard', () => {
-  test('sign in with the keyboard only, then skip link, then a visible focus ring on every Tab stop', async ({ page }) => {
+  test('sign in with the keyboard only, then skip link, then a visible focus ring on every Tab stop', async ({
+    page,
+  }) => {
     test.setTimeout(90_000)
-    await page.goto('/login')
-    await page.keyboard.press('Tab')
-    await expect(page.getByLabel('Email')).toBeFocused()
-    await page.keyboard.type(email)
-    await page.keyboard.press('Tab')
-    await expect(page.getByLabel('Password')).toBeFocused()
-    await page.keyboard.type(password())
-    await page.keyboard.press('Enter')
-    await expect(page.getByRole('banner')).toBeVisible()
-
-    await page.goto('/')
-    await page.keyboard.press('Tab')
-    const skip = page.getByRole('link', { name: 'Skip to content' })
-    await expect(skip).toBeFocused()
-    await page.keyboard.press('Enter')
-    await expect(page.locator('main#main')).toBeFocused()
-
+    await signInWithKeyboard(page)
+    await reachMainWithSkipLink(page)
     await page.goto('/settings/profile')
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
-    const stops: string[] = []
-    for (let i = 0; ; i++) {
-      expect(i, 'focus never wrapped: more than 200 Tab stops').toBeLessThan(200)
-      await page.keyboard.press('Tab')
-      const stop = await page.evaluate(() => {
-        const el = document.activeElement as HTMLElement | null
-        if (!el || el === document.body) return null
-        if (el.dataset.a11ySeen) return 'seen'
-        el.dataset.a11ySeen = '1'
-        const s = getComputedStyle(el)
-        const r = el.getBoundingClientRect()
-        const ring = (s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) > 0) || (s.boxShadow !== 'none' && s.boxShadow !== '')
-        return { ring, hidden: r.width === 0 || r.height === 0, name: `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''} ${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 40)}` }
-      })
-      if (stop === null || stop === 'seen') break
-      if (!stop.hidden) expect(stop.ring, `focus indicator on ${stop.name}`).toBe(true)
-      stops.push(stop.name)
-    }
+    const stops = await tabLap(page)
     expect(stops.length, 'a lap has Tab stops').toBeGreaterThan(5)
   })
 })
@@ -208,7 +254,11 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
       const want = redirects[route]
       if (want) expect(landed, `${url} must redirect`).toMatch(want)
       else expect(landed, `${url} redirected: a scan must cover the page it names`).toBe(url.split('?')[0])
-      await page.locator('h1').first().waitFor({ timeout: 10_000 }).catch(() => {})
+      await page
+        .locator('h1')
+        .first()
+        .waitFor({ timeout: 10_000 })
+        .catch(() => {})
       for (const t of ['light', 'dark'] as const) {
         await setTheme(page, t)
         expect(await scan(page), `${url} (${t})`).toEqual([])

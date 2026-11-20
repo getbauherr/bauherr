@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import pg from 'pg'
+import { z } from 'zod'
 
 const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '../../../..')
 const DEFAULT_BASE = 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr'
@@ -22,7 +23,7 @@ const admin = async (base: string, sql: string, params: unknown[] = []) => {
   const client = new pg.Client({ connectionString: withDb(base, 'postgres') })
   await client.connect()
   try {
-    return (await client.query(sql, params)).rows
+    return (await client.query<Record<string, unknown>>(sql, params)).rows
   } finally {
     await client.end()
   }
@@ -37,10 +38,14 @@ export const buildTemplateDb = async (base = process.env.DATABASE_URL ?? DEFAULT
   await admin(base, `DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)
   await admin(base, `CREATE DATABASE ${name}`)
   const saved = { ...process.env }
-  Object.assign(process.env, { DATABASE_URL: withDb(base, name), PAYLOAD_SECRET: 'test-secret', ENCRYPTION_KEY: 'test-key' })
+  Object.assign(process.env, {
+    DATABASE_URL: withDb(base, name),
+    PAYLOAD_SECRET: 'test-secret',
+    ENCRYPTION_KEY: 'test-key',
+  })
   const { getPayload } = await import('payload')
   const payload = await getPayload({ config: (await import('../../src/payload.config')).default })
-  ;(payload.db as unknown as { pool?: pg.Pool }).pool?.on('error', () => {})
+  payload.db.pool.on('error', () => {})
   await payload.destroy()
   await admin(base, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${name}'`)
   process.env = saved
@@ -59,42 +64,91 @@ export const defaultIsAlive = (pid: number): boolean => {
   }
 }
 
-const databasesWithPrefix = async (base: string) => (await admin(base, `SELECT datname, oid::text AS oid FROM pg_database WHERE starts_with(datname, 'bauherr_test_')`)) as { datname: string; oid: string }[]
-const dropDatabase = (base: string, name: string) => admin(base, `DROP DATABASE IF EXISTS "${name.replace(/"/g, '""')}" WITH (FORCE)`)
+const databaseRow = z.object({ datname: z.string(), oid: z.string() })
 
-export const dropRunTestDbs = async (runTag: string, base = process.env.DATABASE_URL ?? DEFAULT_BASE): Promise<void> => {
-  for (const { datname } of await databasesWithPrefix(base)) if (datname.endsWith(`_${runTag}`)) await dropDatabase(base, datname)
+const databasesWithPrefix = async (base: string) =>
+  z
+    .array(databaseRow)
+    .parse(
+      await admin(
+        base,
+        `SELECT datname, oid::text AS oid FROM pg_database WHERE starts_with(datname, 'bauherr_test_')`,
+      ),
+    )
+const dropDatabase = (base: string, name: string) =>
+  admin(base, `DROP DATABASE IF EXISTS "${name.replace(/"/g, '""')}" WITH (FORCE)`)
+
+export const dropRunTestDbs = async (
+  runTag: string,
+  base = process.env.DATABASE_URL ?? DEFAULT_BASE,
+): Promise<void> => {
+  for (const { datname } of await databasesWithPrefix(base))
+    if (datname.endsWith(`_${runTag}`)) await dropDatabase(base, datname)
 }
 
-export const pruneStaleTestDbs = async (isAlive: (pid: number) => boolean = defaultIsAlive, base = process.env.DATABASE_URL ?? DEFAULT_BASE): Promise<string[]> => {
-  const ownTag = RUN_TAG.exec(process.env.BAUHERR_TEST_TEMPLATE_DB ?? '')?.slice(1).join('_')
-  const [{ may_stat }] = await admin(base, `SELECT has_function_privilege('pg_stat_file(text,boolean)', 'execute') AS may_stat`)
+const mayStatFiles = async (base: string): Promise<boolean> => {
+  const [row] = await admin(base, `SELECT has_function_privilege('pg_stat_file(text,boolean)', 'execute') AS may_stat`)
+  return z.object({ may_stat: z.boolean() }).parse(row).may_stat
+}
+
+const hasConnections = async (base: string, name: string): Promise<boolean> => {
+  const [row] = await admin(base, `SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = $1`, [name])
+  return z.object({ n: z.number() }).parse(row).n > 0
+}
+
+const isIdleUntagged = async (base: string, oid: string): Promise<boolean> =>
+  admin(
+    base,
+    `SELECT now() - (pg_stat_file('base/' || $1::text || '/PG_VERSION')).modification
+      > interval '${UNTAGGED_MAX_IDLE}' AS idle`,
+    [oid],
+  ).then(
+    (r) => z.object({ idle: z.boolean() }).parse(r[0]).idle,
+    () => false,
+  )
+
+const isStaleUntagged = async (base: string, name: string, oid: string, mayStat: boolean): Promise<boolean> =>
+  mayStat && !(await hasConnections(base, name)) && (await isIdleUntagged(base, oid))
+
+const isStaleTagged = (tag: RegExpExecArray, ownTag: string | undefined, isAlive: (pid: number) => boolean) =>
+  `${tag[1]}_${tag[2]}` !== ownTag && !isAlive(Number(tag[1]))
+
+export const pruneStaleTestDbs = async (
+  isAlive: (pid: number) => boolean = defaultIsAlive,
+  base = process.env.DATABASE_URL ?? DEFAULT_BASE,
+): Promise<string[]> => {
+  const ownTag = RUN_TAG.exec(process.env.BAUHERR_TEST_TEMPLATE_DB ?? '')
+    ?.slice(1)
+    .join('_')
+  const mayStat = await mayStatFiles(base)
   const dropped: string[] = []
   for (const { datname: name, oid } of await databasesWithPrefix(base)) {
     const tag = RUN_TAG.exec(name)
-    if (tag) {
-      if (`${tag[1]}_${tag[2]}` === ownTag || isAlive(Number(tag[1]))) continue
-    } else {
-      if (!may_stat || (await admin(base, `SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = $1`, [name]))[0].n > 0) continue
-      const idle = await admin(base, `SELECT now() - (pg_stat_file('base/' || $1::text || '/PG_VERSION')).modification > interval '${UNTAGGED_MAX_IDLE}' AS idle`, [oid]).then((r) => r[0].idle as boolean, () => false)
-      if (!idle) continue
-    }
+    const stale = tag ? isStaleTagged(tag, ownTag, isAlive) : await isStaleUntagged(base, name, oid, mayStat)
+    if (!stale) continue
     await dropDatabase(base, name)
     dropped.push(name)
   }
   return dropped
 }
 
-export const createTestDb = async (suite: string, base = process.env.DATABASE_URL ?? DEFAULT_BASE, { blank = false } = {}): Promise<TestDb> => {
+export const createTestDb = async (
+  suite: string,
+  base = process.env.DATABASE_URL ?? DEFAULT_BASE,
+  { blank = false } = {},
+): Promise<TestDb> => {
   const name = testDbName(suite)
   const template = runTemplateDbName()
-  const hasTemplate = !blank && (await admin(base, `SELECT 1 FROM pg_database WHERE datname = '${template}'`)).length > 0
+  const hasTemplate =
+    !blank && (await admin(base, `SELECT 1 FROM pg_database WHERE datname = '${template}'`)).length > 0
   await admin(base, `DROP DATABASE IF EXISTS ${name} WITH (FORCE)`)
   await admin(base, `CREATE DATABASE ${name}${hasTemplate ? ` TEMPLATE ${template}` : ''}`)
   if (hasTemplate) process.env.BAUHERR_TEST_SCHEMA_READY = '1'
   else delete process.env.BAUHERR_TEST_SCHEMA_READY
-  return { url: withDb(base, name), drop: async (payload) => {
-      (payload?.db as { pool?: pg.Pool } | undefined)?.pool?.on('error', () => {})
+  return {
+    url: withDb(base, name),
+    drop: async (payload) => {
+      ;(payload?.db as { pool?: pg.Pool } | undefined)?.pool?.on('error', () => {})
       await admin(base, `DROP DATABASE IF EXISTS ${name} WITH (FORCE)`).catch(() => {})
     },
   }

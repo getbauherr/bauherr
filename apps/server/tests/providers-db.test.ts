@@ -27,6 +27,10 @@ it('an llm-provider Connection needs its preset fields and mirrors the provider 
   await expect(payload.create({ collection: 'connections', data, ...o })).rejects.toMatchObject({ status: 400 })
   const c = await payload.create({ collection: 'connections', data: { ...data, awsRegion: 'us-east-1' }, ...o })
   expect(c.config).toMatchObject({ provider: 'bedrock', awsRegion: 'us-east-1' })
-  const viaConfig = await payload.create({ collection: 'connections', data: { name: 'g', kind: 'llm-provider', workspace, config: { provider: 'greenpt' } }, ...o })
+  const viaConfig = await payload.create({
+    collection: 'connections',
+    data: { name: 'g', kind: 'llm-provider', workspace, config: { provider: 'greenpt' } },
+    ...o,
+  })
   expect(viaConfig.provider).toBe('greenpt')
 })

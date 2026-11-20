@@ -5,10 +5,12 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
    ALTER TYPE "public"."enum_runs_status" ADD VALUE IF NOT EXISTS 'abandoned';
   ALTER TABLE "runs" ADD COLUMN "lease_hash" varchar;
   ALTER TABLE "runs" ADD COLUMN "previous_run_id" integer;
-  ALTER TABLE "runs" ADD CONSTRAINT "runs_previous_run_id_runs_id_fk" FOREIGN KEY ("previous_run_id") REFERENCES "public"."runs"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "runs" ADD CONSTRAINT "runs_previous_run_id_runs_id_fk" FOREIGN KEY ("previous_run_id") REFERENCES
+      "public"."runs"("id") ON DELETE set null ON UPDATE no action;
   CREATE INDEX "runs_previous_run_idx" ON "runs" USING btree ("previous_run_id");
   -- Session Runs claimed before leases have no token: make them claimable again.
-  UPDATE "runs" SET "status" = 'awaiting_session', "session_owner_id" = NULL, "heartbeat_at" = NULL, "updated_at" = now() WHERE "mode" = 'session' AND "status" = 'running' AND "lease_hash" IS NULL;`)
+  UPDATE "runs" SET "status" = 'awaiting_session', "session_owner_id" = NULL, "heartbeat_at" = NULL, "updated_at" =
+      now() WHERE "mode" = 'session' AND "status" = 'running' AND "lease_hash" IS NULL;`)
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {

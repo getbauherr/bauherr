@@ -30,9 +30,19 @@ afterAll(async () => {
 })
 
 const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString()
-const insert = async (slug: string, o: { processing?: boolean; updated?: number; completed?: number | null }) =>
-  (await payload.db.drizzle.execute(sql`INSERT INTO "payload_jobs" ("task_slug", "processing", "updated_at", "created_at", "completed_at") VALUES (${slug}, ${o.processing ?? false}, ${minutesAgo(o.updated ?? 0)}, ${minutesAgo(o.updated ?? 0)}, ${o.completed == null ? null : minutesAgo(o.completed)}) RETURNING "id"`)).rows[0].id as number
-const state = async (id: number) => (await payload.db.drizzle.execute(sql`SELECT "processing", "has_error" FROM "payload_jobs" WHERE "id" = ${id}`)).rows[0] as { processing: boolean; has_error: boolean }
+const insert = async (slug: string, o: { processing?: boolean; updated?: number; completed?: number | null }) => {
+  const updatedAt = minutesAgo(o.updated ?? 0)
+  const completedAt = o.completed == null ? null : minutesAgo(o.completed)
+  return (
+    await payload.db.drizzle.execute(
+      sql`INSERT INTO "payload_jobs" ("task_slug", "processing", "updated_at", "created_at", "completed_at") VALUES
+        (${slug}, ${o.processing ?? false}, ${updatedAt}, ${updatedAt}, ${completedAt}) RETURNING "id"`,
+    )
+  ).rows[0].id as number
+}
+const state = async (id: number) =>
+  (await payload.db.drizzle.execute(sql`SELECT "processing", "has_error" FROM "payload_jobs" WHERE "id" = ${id}`))
+    .rows[0] as { processing: boolean; has_error: boolean }
 
 const slugs = (): string[] => jobs.scheduledTasks().map((t) => t.slug)
 
@@ -81,25 +91,31 @@ const sameCron = (): string[] => {
   return tasks.filter((t) => t.cron === cron).map((t) => t.slug)
 }
 
-it('health: a task without a row is stale only when its schedule demonstrably ran; a row that never completed counts from its own age', async () => {
-  await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs"`)
-  const now = Date.now()
-  const [lonely, ...siblings] = sameCron()
-  const hourly = jobs.scheduledTasks().find((t) => /^\d+$/.test(t.cron.split(' ')[1]!) && t.cron.split(' ')[2] === '*')!.slug
-  for (const s of slugs().filter((s) => s !== hourly)) await insert(s, { updated: 1, completed: 1 })
-  expect(await health.staleTasks(payload, now)).toEqual([])
-  await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs"`)
-  for (const s of siblings) for (const m of [3, 1]) await insert(s, { updated: m, completed: m })
-  expect(await health.staleTasks(payload, now)).toEqual([lonely])
-  await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs" WHERE "completed_at" < ${minutesAgo(2)}`)
-  expect(await health.staleTasks(payload, now)).toEqual([])
-  await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs"`)
-  await insert(lonely, { updated: 10 })
-  expect(await health.staleTasks(payload, now)).toEqual([lonely])
-  await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs"`)
-  await insert(lonely, { updated: 2 })
-  expect(await health.staleTasks(payload, now)).toEqual([])
-})
+it(
+  'health: a task without a row is stale only when its schedule demonstrably ' +
+    'ran; a row that never completed counts from its own age',
+  async () => {
+    await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs"`)
+    const now = Date.now()
+    const [lonely, ...siblings] = sameCron()
+    const hourly = jobs
+      .scheduledTasks()
+      .find((t) => /^\d+$/.test(t.cron.split(' ')[1]) && t.cron.split(' ')[2] === '*')!.slug
+    for (const s of slugs().filter((s) => s !== hourly)) await insert(s, { updated: 1, completed: 1 })
+    expect(await health.staleTasks(payload, now)).toEqual([])
+    await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs"`)
+    for (const s of siblings) for (const m of [3, 1]) await insert(s, { updated: m, completed: m })
+    expect(await health.staleTasks(payload, now)).toEqual([lonely])
+    await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs" WHERE "completed_at" < ${minutesAgo(2)}`)
+    expect(await health.staleTasks(payload, now)).toEqual([])
+    await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs"`)
+    await insert(lonely, { updated: 10 })
+    expect(await health.staleTasks(payload, now)).toEqual([lonely])
+    await payload.db.drizzle.execute(sql`DELETE FROM "payload_jobs"`)
+    await insert(lonely, { updated: 2 })
+    expect(await health.staleTasks(payload, now)).toEqual([])
+  },
+)
 
 it('health: the allowed gap follows the schedule', () => {
   expect(health.staleAfterMs('0 * * * * *')).toBe(5 * 60_000)

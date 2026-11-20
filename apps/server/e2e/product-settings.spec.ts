@@ -2,8 +2,6 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
 
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-
 const signIn = async (page: Page) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
@@ -13,7 +11,9 @@ const signIn = async (page: Page) => {
 }
 
 const inConnect = (page: Page) =>
-  page.context().addCookies([{ name: 'bauherr-ws', value: 'connect', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
+  page
+    .context()
+    .addCookies([{ name: 'bauherr-ws', value: 'connect', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
 
 const saved = (page: Page) => expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 
@@ -32,11 +32,18 @@ const addProduct = async (page: Page, name: string) => {
 
 const confirmRemove = async (scope: Locator, label: string, done: (timeout: number) => Promise<void>) => {
   const confirm = scope.locator('button:visible', { hasText: 'Confirm remove' }).first()
-  const holds = (timeout: number) => done(timeout).then(() => true, () => false)
+  const holds = (timeout: number) =>
+    done(timeout).then(
+      () => true,
+      () => false,
+    )
   await expect(async () => {
     if (await holds(500)) return
-    await scope.locator('details[data-slot=advanced]').evaluateAll((all) => all.forEach((d) => ((d as HTMLDetailsElement).open = true)))
-    if (!(await confirm.isVisible())) await scope.locator('button', { hasText: label }).first().click({ timeout: 2_000 })
+    await scope
+      .locator('details[data-slot=advanced]')
+      .evaluateAll((all) => all.forEach((d) => ((d as HTMLDetailsElement).open = true)))
+    if (!(await confirm.isVisible()))
+      await scope.locator('button', { hasText: label }).first().click({ timeout: 2_000 })
     await confirm.click({ timeout: 2_000, noWaitAfter: true })
     await done(8_000)
   }).toPass({ timeout: 40_000 })
@@ -47,9 +54,13 @@ const deleteProduct = async (page: Page, path: string) => {
   const repository = page.locator('#repository')
   await expect(repository).toBeVisible()
   for (const label of ['Stop reading tickets', 'Remove repository']) {
-    await confirmRemove(repository, label, (t) => expect(repository.locator('button', { hasText: label })).toHaveCount(0, { timeout: t }))
+    await confirmRemove(repository, label, (t) =>
+      expect(repository.locator('button', { hasText: label })).toHaveCount(0, { timeout: t }),
+    )
   }
-  await confirmRemove(page.locator('#danger'), 'Delete Product', (t) => expect(page).toHaveURL(/\/settings\/products$/, { timeout: t }))
+  await confirmRemove(page.locator('#danger'), 'Delete Product', (t) =>
+    expect(page).toHaveURL(/\/settings\/products$/, { timeout: t }),
+  )
 }
 
 const ownProduct = async (page: Page, run: (path: string) => Promise<void>) => {
@@ -187,35 +198,37 @@ test('a Product with a repository cannot be deleted', async ({ page }) => {
   await expect(page.locator('#danger').getByRole('button', { name: 'Delete Product' })).toHaveCount(0)
 })
 
-test('add a Product: pick the repository from the forge, a taken short name is refused', async ({ page }) => {
-  test.skip(!process.env.E2E_FAKE_FORGE, 'the Repository select needs the fake forge (BAUHERR_E2E_FAKE_FORGE=1)')
-  const name = `E2E Picker ${Date.now()}`
-  await signIn(page)
-  await page.goto('/settings/products/new')
-  await page.getByLabel('Product name').fill(name)
-  const repo = page.getByLabel('Repository', { exact: true })
-  await expect(repo.getByRole('option', { name: 'acme/picker' })).toHaveCount(1)
-  await expect(repo.getByRole('option', { name: 'Other...' })).toHaveCount(1)
-  await repo.selectOption('acme/picker')
-  await page.locator('#new summary', { hasText: 'Advanced' }).click()
-  await expect(page.getByLabel('Short name')).toHaveValue(/^e2e-picker-\d+$/)
-  await page.getByRole('button', { name: 'Add Product' }).click()
-  await expect(page).toHaveURL(/\/settings\/products\/\d+\/connect$/)
-  const path = new URL(page.url()).pathname.replace(/\/connect$/, '')
-  await page.goto(path)
-  await expect(page.locator('#repository')).toContainText('acme/picker')
+test(
+  'add a Product: pick the repository from the forge, a taken short name is refused',
+  { tag: '@fake-forge' },
+  async ({ page }) => {
+    const name = `E2E Picker ${Date.now()}`
+    await signIn(page)
+    await page.goto('/settings/products/new')
+    await page.getByLabel('Product name').fill(name)
+    const repo = page.getByLabel('Repository', { exact: true })
+    await expect(repo.getByRole('option', { name: 'acme/picker' })).toHaveCount(1)
+    await expect(repo.getByRole('option', { name: 'Other...' })).toHaveCount(1)
+    await repo.selectOption('acme/picker')
+    await page.locator('#new summary', { hasText: 'Advanced' }).click()
+    await expect(page.getByLabel('Short name')).toHaveValue(/^e2e-picker-\d+$/)
+    await page.getByRole('button', { name: 'Add Product' }).click()
+    await expect(page).toHaveURL(/\/settings\/products\/\d+\/connect$/)
+    const path = new URL(page.url()).pathname.replace(/\/connect$/, '')
+    await page.goto(path)
+    await expect(page.locator('#repository')).toContainText('acme/picker')
 
-  await page.goto('/settings/products/new')
-  await page.getByLabel('Product name').fill(name)
-  await expect(page.getByLabel('Repository', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Add Product' }).click()
-  await expect(page.getByText('Another Product already uses this short name.')).toBeVisible()
+    await page.goto('/settings/products/new')
+    await page.getByLabel('Product name').fill(name)
+    await expect(page.getByLabel('Repository', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Add Product' }).click()
+    await expect(page.getByText('Another Product already uses this short name.')).toBeVisible()
 
-  await deleteProduct(page, path)
-})
+    await deleteProduct(page, path)
+  },
+)
 
-test('Members: an unknown GitHub login is refused, a known one is saved', async ({ page }) => {
-  test.skip(!process.env.E2E_FAKE_FORGE, 'needs the fake forge (knows the logins fake and e2e-admin)')
+test('Members: an unknown GitHub login is refused, a known one is saved', { tag: '@fake-forge' }, async ({ page }) => {
   const member = () => page.getByRole('row', { name: new RegExp('^members-edit@example\\.com') })
   await signIn(page)
   await page.goto('/settings/bauherren')

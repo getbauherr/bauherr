@@ -3,20 +3,32 @@ import { NextRequest } from 'next/server'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createTestDb, type TestDb } from './helpers/test-db'
 
-const claims = vi.hoisted(() => ({ current: {} as Record<string, unknown> }))
-vi.mock('../src/lib/oidc', async (orig) => ({ ...(await orig<typeof import('../src/lib/oidc')>()), finishLogin: async () => claims.current }))
+const claims = vi.hoisted(() => ({ current: {} }))
+vi.mock('../src/lib/oidc', async (orig) => ({
+  ...(await orig<typeof import('../src/lib/oidc')>()),
+  finishLogin: async () => claims.current,
+}))
 
 const o = { overrideAccess: true, depth: 0 } as const
 const iss = 'https://idp.test/realms/x'
 let payload: Payload
+const spyOnWarn = () => vi.spyOn(payload.logger, 'warn')
 let testDb: TestDb
 let GET: typeof import('../src/app/(app)/auth/oidc/callback/route').GET
-let warn: ReturnType<typeof vi.spyOn>
+let warn: ReturnType<typeof spyOnWarn>
 
-const setClaims = (sub: string, email: string, roles: string[]) => (claims.current = { iss, sub, email, email_verified: true, realm_access: { roles } })
+const setClaims = (sub: string, email: string, roles: string[]) =>
+  (claims.current = { iss, sub, email, email_verified: true, realm_access: { roles } })
 const call = () =>
-  GET(new NextRequest('http://bauherr.test/auth/oidc/callback?code=c&state=s', { headers: { cookie: `bauherr-oidc=${encodeURIComponent(JSON.stringify({ state: 's', nonce: 'n', verifier: 'v' }))}` } }))
-const byEmail = async (email: string) => (await payload.find({ collection: 'bauherren', where: { email: { equals: email } }, limit: 1, ...o })).docs[0]
+  GET(
+    new NextRequest('http://bauherr.test/auth/oidc/callback?code=c&state=s', {
+      headers: {
+        cookie: `bauherr-oidc=${encodeURIComponent(JSON.stringify({ state: 's', nonce: 'n', verifier: 'v' }))}`,
+      },
+    }),
+  )
+const byEmail = async (email: string) =>
+  (await payload.find({ collection: 'bauherren', where: { email: { equals: email } }, limit: 1, ...o })).docs[0]
 
 beforeAll(async () => {
   testDb = await createTestDb('oidc_callback_542')
@@ -40,7 +52,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   warn?.mockRestore()
-  warn = vi.spyOn(payload.logger, 'warn')
+  warn = spyOnWarn()
 })
 
 describe('oidc callback with OIDC_BAUHERR_ROLE set', () => {
@@ -55,12 +67,19 @@ describe('oidc callback with OIDC_BAUHERR_ROLE set', () => {
   })
 
   it('refuses an existing SSO account whose role is gone and invalidates its sessions', async () => {
-    const user = await payload.create({ collection: 'bauherren', data: { email: 'old@x.io', password: 'x'.repeat(32), oidcSubject: `${iss}|s-old` }, context: { oidc: true }, ...o })
+    const user = await payload.create({
+      collection: 'bauherren',
+      data: { email: 'old@x.io', password: 'x'.repeat(32), oidcSubject: `${iss}|s-old` },
+      context: { oidc: true },
+      ...o,
+    })
     setClaims('s-old', 'old@x.io', [])
     const res = await call()
     expect(res.headers.get('location')).toContain('/login?error=oidc-role')
     expect(res.cookies.get('bauherr-session')).toBeUndefined()
-    expect((await payload.findByID({ collection: 'bauherren', id: user.id, ...o })).sessionVersion).toBe((user.sessionVersion ?? 0) + 1)
+    expect((await payload.findByID({ collection: 'bauherren', id: user.id, ...o })).sessionVersion).toBe(
+      (user.sessionVersion ?? 0) + 1,
+    )
     expect(warn).toHaveBeenCalledWith('oidc_login_refused')
   })
 

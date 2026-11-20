@@ -3,7 +3,8 @@ import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
    CREATE TYPE "public"."enum_workspaces_budget_unit" AS ENUM('usd', 'tokens');
-  CREATE TYPE "public"."enum_connections_provider" AS ENUM('anthropic', 'greenpt', 'bedrock', 'vertex', 'foundry', 'anthropic-compatible', 'openai-compatible');
+  CREATE TYPE "public"."enum_connections_provider" AS ENUM('anthropic', 'greenpt', 'bedrock', 'vertex', 'foundry',
+      'anthropic-compatible', 'openai-compatible');
   ALTER TABLE "workspaces" ADD COLUMN "budget_unit" "enum_workspaces_budget_unit" DEFAULT 'usd';
   ALTER TABLE "workspaces" ADD COLUMN "budget_tokens30d" numeric DEFAULT 20000000;
   ALTER TABLE "connections" ADD COLUMN "provider" "enum_connections_provider" DEFAULT 'anthropic';

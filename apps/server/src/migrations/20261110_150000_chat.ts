@@ -34,10 +34,14 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
 
   ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "chat_threads_id" integer;
   ALTER TABLE "payload_locked_documents_rels" ADD COLUMN "chat_messages_id" integer;
-  ALTER TABLE "chat_threads" ADD CONSTRAINT "chat_threads_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "chat_threads" ADD CONSTRAINT "chat_threads_owner_id_bauherren_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."bauherren"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
-  ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_thread_id_chat_threads_id_fk" FOREIGN KEY ("thread_id") REFERENCES "public"."chat_threads"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "chat_threads" ADD CONSTRAINT "chat_threads_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id")
+      REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "chat_threads" ADD CONSTRAINT "chat_threads_owner_id_bauherren_id_fk" FOREIGN KEY ("owner_id") REFERENCES
+      "public"."bauherren"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id")
+      REFERENCES "public"."workspaces"("id") ON DELETE set null ON UPDATE no action;
+  ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_thread_id_chat_threads_id_fk" FOREIGN KEY ("thread_id")
+      REFERENCES "public"."chat_threads"("id") ON DELETE set null ON UPDATE no action;
   CREATE INDEX "chat_threads_workspace_idx" ON "chat_threads" USING btree ("workspace_id");
   CREATE INDEX "chat_threads_owner_idx" ON "chat_threads" USING btree ("owner_id");
   CREATE INDEX "chat_threads_last_message_at_idx" ON "chat_threads" USING btree ("last_message_at");
@@ -48,10 +52,14 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   CREATE INDEX "chat_messages_updated_at_idx" ON "chat_messages" USING btree ("updated_at");
   CREATE INDEX "chat_messages_created_at_idx" ON "chat_messages" USING btree ("created_at");
   CREATE UNIQUE INDEX "thread_messageId_idx" ON "chat_messages" USING btree ("thread_id","message_id");
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_chat_threads_fk" FOREIGN KEY ("chat_threads_id") REFERENCES "public"."chat_threads"("id") ON DELETE cascade ON UPDATE no action;
-  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_chat_messages_fk" FOREIGN KEY ("chat_messages_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;
-  CREATE INDEX "payload_locked_documents_rels_chat_threads_id_idx" ON "payload_locked_documents_rels" USING btree ("chat_threads_id");
-  CREATE INDEX "payload_locked_documents_rels_chat_messages_id_idx" ON "payload_locked_documents_rels" USING btree ("chat_messages_id");`)
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_chat_threads_fk" FOREIGN KEY
+      ("chat_threads_id") REFERENCES "public"."chat_threads"("id") ON DELETE cascade ON UPDATE no action;
+  ALTER TABLE "payload_locked_documents_rels" ADD CONSTRAINT "payload_locked_documents_rels_chat_messages_fk" FOREIGN
+      KEY ("chat_messages_id") REFERENCES "public"."chat_messages"("id") ON DELETE cascade ON UPDATE no action;
+  CREATE INDEX "payload_locked_documents_rels_chat_threads_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("chat_threads_id");
+  CREATE INDEX "payload_locked_documents_rels_chat_messages_id_idx" ON "payload_locked_documents_rels" USING btree
+      ("chat_messages_id");`)
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {

@@ -7,7 +7,8 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
    SELECT t."workspace_id", 'approve:inherited', t."id", '#' || p."number", t."created_at"
    FROM "tickets" t
    JOIN "tickets" p ON p."id" = t."inherited_approval_from_id"
-   WHERE NOT EXISTS (SELECT 1 FROM "human_touches" h WHERE h."ticket_id" = t."id" AND h."kind" IN ('approve:plan', 'approve:inherited'));`)
+   WHERE NOT EXISTS (SELECT 1 FROM "human_touches" h WHERE h."ticket_id" = t."id" AND h."kind" IN ('approve:plan',
+       'approve:inherited'));`)
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {

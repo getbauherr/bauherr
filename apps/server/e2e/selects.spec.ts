@@ -2,8 +2,6 @@ import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
 
-test.skip(!email || !process.env.E2E_PASSWORD_FILE, 'set E2E_EMAIL and E2E_PASSWORD_FILE')
-
 const signIn = async (page: Page) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)

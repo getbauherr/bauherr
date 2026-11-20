@@ -22,28 +22,37 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-const authAs = async (key: string) => (await payload.auth({ headers: new Headers({ authorization: `bauherren API-Key ${key}` }) })).user
+const authAs = async (key: string) =>
+  (await payload.auth({ headers: new Headers({ authorization: `bauherren API-Key ${key}` }) })).user
 
 it('rotating changes the stored key, touches only the own record, and revoking disables it', async () => {
-  const [a, b] = await Promise.all(['a', 'b'].map((n) => payload.create({ collection: 'bauherren', data: { email: `${n}@x.io`, password: 'pw-123456', role: 'bauherr' }, ...o })))
-  expect(await hasApiKey(payload, a!.id)).toBe(false)
+  const [a, b] = await Promise.all(
+    ['a', 'b'].map((n) =>
+      payload.create({
+        collection: 'bauherren',
+        data: { email: `${n}@x.io`, password: 'pw-123456', role: 'bauherr' },
+        ...o,
+      }),
+    ),
+  )
+  expect(await hasApiKey(payload, a.id)).toBe(false)
 
-  const first = await rotateApiKey(payload, a!)
-  expect(await hasApiKey(payload, a!.id)).toBe(true)
+  const first = await rotateApiKey(payload, a)
+  expect(await hasApiKey(payload, a.id)).toBe(true)
   expect((await authAs(first))?.email).toBe('a@x.io')
 
-  const second = await rotateApiKey(payload, a!)
+  const second = await rotateApiKey(payload, a)
   expect(second).not.toBe(first)
   expect(await authAs(first)).toBeNull()
   expect((await authAs(second))?.email).toBe('a@x.io')
-  expect(await hasApiKey(payload, b!.id)).toBe(false)
+  expect(await hasApiKey(payload, b.id)).toBe(false)
 
-  await revokeApiKey(payload, a!)
-  expect(await hasApiKey(payload, a!.id)).toBe(false)
+  await revokeApiKey(payload, a)
+  expect(await hasApiKey(payload, a.id)).toBe(false)
   expect(await authAs(second)).toBeNull()
 })
 
 it('refuses a missing Bauherr', async () => {
-  await expect(rotateApiKey(payload, {} as never)).rejects.toThrow('signed-in Bauherr')
+  await expect(rotateApiKey(payload, {} as Parameters<typeof rotateApiKey>[1])).rejects.toThrow('signed-in Bauherr')
   await expect(revokeApiKey(payload, { id: '' })).rejects.toThrow('signed-in Bauherr')
 })

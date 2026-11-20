@@ -4,7 +4,8 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
    ALTER TYPE "public"."enum_runs_stage" ADD VALUE IF NOT EXISTS 'review';
   CREATE TYPE "public"."enum_runs_verdict" AS ENUM('clean', 'changes');
-  CREATE TYPE "public"."enum_tickets_review_state" AS ENUM('waiting_checks', 'merged', 'ready_for_human', 'needs_human');
+  CREATE TYPE "public"."enum_tickets_review_state" AS ENUM('waiting_checks', 'merged', 'ready_for_human',
+      'needs_human');
   ALTER TABLE "runs" ADD COLUMN "verdict" "enum_runs_verdict";
   ALTER TABLE "runs" ADD COLUMN "findings" jsonb;
   ALTER TABLE "runs" ADD COLUMN "reviewed_sha" varchar;

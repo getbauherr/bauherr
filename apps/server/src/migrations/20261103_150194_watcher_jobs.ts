@@ -1,4 +1,4 @@
-import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
+import { MigrateUpArgs, sql } from '@payloadcms/db-postgres'
 
 export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
@@ -12,4 +12,4 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   ALTER TYPE "public"."enum_payload_jobs_task_slug" ADD VALUE IF NOT EXISTS 'reclaim-jobs';`)
 }
 
-export async function down(_: MigrateDownArgs): Promise<void> {}
+export async function down(): Promise<void> {}

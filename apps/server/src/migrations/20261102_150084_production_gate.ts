@@ -2,7 +2,8 @@ import { MigrateUpArgs, MigrateDownArgs, sql } from '@payloadcms/db-postgres'
 
 export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.execute(sql`
-   CREATE TYPE "public"."enum_tickets_production_state" AS ENUM('awaiting_approval', 'deploying', 'deployed', 'failed', 'timed_out');
+   CREATE TYPE "public"."enum_tickets_production_state" AS ENUM('awaiting_approval', 'deploying', 'deployed', 'failed',
+       'timed_out');
   ALTER TABLE "products" ADD COLUMN "production_webhook_url" varchar;
   ALTER TABLE "products" ADD COLUMN "production_checks" varchar;
   ALTER TABLE "tickets" ADD COLUMN "production_state" "enum_tickets_production_state";

@@ -3,7 +3,11 @@ import { expect, it } from 'vitest'
 import { backendFor } from '../src/lib/adapters'
 import { webOrigin, type ConnectionInput } from '../src/lib/connection'
 
-const conn = (kind: ConnectionInput['kind'], config: Record<string, unknown> = {}, secret: string | null = 's'): ConnectionInput => ({ id: 1, kind, config, secret, capabilities: {} })
+const conn = (
+  kind: ConnectionInput['kind'],
+  config: Record<string, unknown> = {},
+  secret: string | null = 's',
+): ConnectionInput => ({ id: 1, kind, config, secret, capabilities: {} })
 
 it('webOrigin: github.com, GitLab base URL (default gitlab.com, https only, relative URL root kept)', () => {
   expect(webOrigin(conn('github'))).toBe('https://github.com')
