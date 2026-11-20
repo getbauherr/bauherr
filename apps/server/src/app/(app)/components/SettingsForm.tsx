@@ -233,3 +233,5 @@ export function ConfirmButton({ label, confirm, primary }: { label: string; conf
     </>
   )
 }
+
+export const useFieldError = (name: string): string | undefined => useContext(Ctx).fields?.[name]

@@ -429,13 +429,8 @@ export const collections: CollectionConfig[] = [
     text('stagingUrl'),
     text('state', { required: true, defaultValue: 'observing' }),
     date('connectedAt'),
-    select('deployMode', ['observe-ci', 'webhook'], { defaultValue: 'observe-ci', required: true }),
-    text('deployWebhookUrl'),
     text('deployChecks', { admin: { description: 'Comma-separated check names that must be green; empty = all.' } }),
     { name: 'productionGate', type: 'checkbox', defaultValue: false, admin: { description: 'Accepting on staging waits for an explicit production approval instead of moving to done; the Product\'s own pipeline deploys.' } },
-    text('productionWebhookUrl', { admin: { description: 'Optional: POSTed once on production approval; a pipeline may instead react to the bauherr:approved:production label.' } }),
-    select('releaseMode', ['notes-only', 'factory', 'manual'], { defaultValue: 'notes-only', required: true, admin: { description: 'notes-only: the Product\'s own tooling makes the release, the factory adds the notes. factory: the factory tags, releases and opens a CHANGELOG.md MR. manual: no automatic release; a person ships it from the forge release flow.' } }),
-    text('productionChecks', { admin: { description: 'Comma-separated check names on the merge commit that report the production deploy; required for the production gate.' } }),
     {
       name: 'riskAreas',
       type: 'json',
