@@ -214,11 +214,14 @@ export const upsertChecks = async (
   }
 }
 
-export const pullsWithPendingChecks = async (payload: Payload, source: number): Promise<Set<number>> => {
+export const pullsAwaitingChecks = async (payload: Payload, source: number): Promise<Set<number>> => {
   const result = await payload.db.drizzle.execute(sql`
-    SELECT DISTINCT i."number" FROM "mirror_items" i
-    JOIN "mirror_checks" c ON c."item_id" = i."id" AND c."sha" = i."head_sha"
-    WHERE i."source_id" = ${source} AND i."kind" = 'pr' AND i."state" = 'open' AND c."status" <> 'completed'`)
+    SELECT i."number" FROM "mirror_items" i
+    WHERE i."source_id" = ${source} AND i."kind" = 'pr' AND i."state" = 'open' AND i."gone_at" IS NULL
+      AND coalesce(i."head_sha", '') <> '' AND (
+        NOT EXISTS (SELECT 1 FROM "mirror_checks" c WHERE c."item_id" = i."id" AND c."sha" = i."head_sha")
+        OR EXISTS (SELECT 1 FROM "mirror_checks" c
+          WHERE c."item_id" = i."id" AND c."sha" = i."head_sha" AND c."status" <> 'completed'))`)
   return new Set(result.rows.map((row) => numberRowSchema.parse(row).number))
 }
 

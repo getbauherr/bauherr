@@ -47,7 +47,6 @@ describe('an issue from the mirror to done with the real modules', () => {
 
     const first = await f.pullFor(s.repo, 'fix', 'a.txt')
     await f.work(s.id, 'builder', buildResult(first.number, first.headSha, 'p1'))
-    f.fake().setChecks(s.repo, first.headSha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
     await s.sync()
     f.green(s.repo, first.headSha)
     await s.sync()
@@ -59,7 +58,6 @@ describe('an issue from the mirror to done with the real modules', () => {
     const second = await f.pullFor(s.repo, 'fix', 'b.txt')
     await f.work(s.id, 'builder', buildResult(second.number, second.headSha, 'p2', ['f1']))
     expect((await f.view(s.id)).record.findings.map((x) => x.status)).toEqual(['fixing'])
-    f.fake().setChecks(s.repo, second.headSha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
     await s.sync()
     f.green(s.repo, second.headSha)
     await s.sync()

@@ -126,7 +126,6 @@ export const flowHarness = (suite: string) => {
     await work(s.id, 'builder', BRIEF)
     const pull = await pullFor(s.repo, 'fix', 'a.txt')
     await work(s.id, 'builder', buildResult(pull.number, pull.headSha, 'p1'), 'exec-builder')
-    fake().setChecks(s.repo, pull.headSha, [{ name: 'ci', status: 'in_progress', conclusion: null }])
     await s.sync()
     green(s.repo, pull.headSha, conclusion)
     await s.sync()
