@@ -35,7 +35,7 @@ describe('decide', () => {
   it('lets exactly one of two identical concurrent decisions through', async () => {
     const id = await toBrief(true)
     const seq = await e.seq(id)
-    const same = { ask: 'brief', choice: 'approve', seq }
+    const same = { ask: 'brief', choice: 'approve', seq, answers: { d1: 'a' } }
     const results = await Promise.allSettled([decide(id, e.owner, same, e.deps()), decide(id, e.owner, same, e.deps())])
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1)
     const refused = results.filter((r) => r.status === 'rejected')
@@ -52,7 +52,7 @@ describe('decide', () => {
     await toBrief(true, id)
     const later = await e.seq(id)
     expect(later).toBeGreaterThan(earlier)
-    const stale = { ask: 'brief', choice: 'approve', seq: earlier }
+    const stale = { ask: 'brief', choice: 'approve', seq: earlier, answers: { d1: 'a' } }
     await expect(decide(id, e.owner, stale, e.deps())).rejects.toThrow(StaleDecision)
     expect(await count(id, 'brief.approved')).toBe(0)
     await decide(id, e.owner, { ...stale, seq: later }, e.deps())

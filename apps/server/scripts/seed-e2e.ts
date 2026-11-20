@@ -6,6 +6,7 @@ import { readRecord } from '../src/core/record/store'
 import { coreDbOn } from '../tests/core/db'
 import { engineOn } from '../tests/core/harness'
 import { begin, seedScenario, type ScenarioNames } from '../tests/core/scenario'
+import { seedTickets } from '../tests/core/ticket-scenario'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -85,6 +86,16 @@ if (!seeded.docs.length) {
     const { record } = await readRecord(payload, await begin(engine))
     await scenario.item(record.source.number, { title })
   }
+}
+
+const ticketsWs = Number((await ensure('workspaces', { slug: 'tickets' }, { name: 'Tickets', slug: 'tickets' })).id)
+const ticketsApp = { name: 'Tickets App', slug: 'tickets-app', workspace: ticketsWs, state: 'active' }
+const ticketsProduct = Number((await ensure('products', { slug: 'tickets-app' }, ticketsApp)).id)
+const inTickets = { workspace: { equals: ticketsWs } }
+const ticketsSeeded = await payload.find({ collection: 'records', where: inTickets, limit: 1, depth: 0, ...o })
+if (!ticketsSeeded.docs.length) {
+  const ids = { workspace: ticketsWs, otherWorkspace: Number(workspace), product: ticketsProduct }
+  await seedTickets(engineOn(coreDbOn(payload, ids, async () => {}), undefined, new Date()))
 }
 
 await ensure('human_touches', { kind: 'e2e:audit' }, { kind: 'e2e:audit', actor: 'e2e-audit-actor', at: '2026-10-30T09:00:00Z', workspace })
