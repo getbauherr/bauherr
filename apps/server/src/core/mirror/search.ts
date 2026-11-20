@@ -1,7 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
-import { anyWord, queryWords, requiredShared, sharedWords } from './match'
+import { anyWord, queryWords, sharedWords, sharesEnough } from './match'
 
 export type ItemFilter = {
   workspace: number
@@ -98,7 +98,7 @@ export const similarItems = async (
     FROM "mirror_items" i
     WHERE i."gone_at" IS NULL AND i."workspace_id" = ${item.workspace_id} AND i."product_id" = ${item.product_id}
       AND i."id" <> ${itemId} ${kind === undefined ? sql`` : sql`AND i."kind" = ${kind}`}
-      AND ${vector} @@ ${anyWord(words)} AND ${shared} >= ${requiredShared(words)}
+      AND ${vector} @@ ${anyWord(words)} AND ${sharesEnough(vector, words)}
     ORDER BY ${shared} DESC, "rank" DESC, i."forge_updated_at" DESC NULLS LAST, i."id" DESC
     LIMIT ${limit}`)
   return result.rows.map(toHit)

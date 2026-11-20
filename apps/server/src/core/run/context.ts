@@ -3,7 +3,7 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { Stage } from '../events'
 import type { AgentsFile } from '../mirror/facts'
-import { anyWord, queryWords, requiredShared, sharedWords } from '../mirror/match'
+import { anyWord, queryWords, sharedWords, sharesEnough } from '../mirror/match'
 import { similarItems } from '../mirror/search'
 import type { StoredRecord } from '../record/store'
 import { STATEMENT_KINDS } from '../statements'
@@ -157,7 +157,7 @@ export const selectContext = async (
       ? await payload.db.drizzle.execute(sql`
           SELECT s."id" FROM "statements" s
           WHERE s."product_id" = ${issue.product_id} AND s."record_id" <> ${stored.id}
-            AND ${vector} @@ ${anyWord(words)} AND ${shared} >= ${requiredShared(words)}
+            AND ${vector} @@ ${anyWord(words)} AND ${sharesEnough(vector, words)}
           ORDER BY ${shared} DESC, ts_rank(${vector}, ${anyWord(words)}) DESC, s."created_at" DESC, s."id" DESC
           LIMIT ${STATEMENT_LIMIT}`)
       : { rows: [] }

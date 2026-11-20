@@ -180,6 +180,15 @@ describe('similarItems', () => {
     const similarTo = async (title: string) =>
       titles(await similarItems(payload, await store(row(title), apiSource()), 10))
 
+    it('ignores function words of English and German: with, that, nicht, eine, wird', async () => {
+      await store(row('Login fails with SSO'), apiSource())
+      expect(await similarTo('Printer fails with spooler files')).toEqual([])
+      await store(row('Das wird nicht eine gute Idee'), apiSource())
+      expect(await similarTo('Wird nicht eine Loesung')).toEqual([])
+      await store(row('Planung mit Kalender fuer Teams'), apiSource())
+      expect(await similarTo('Kalender fuer Teams planen')).toEqual(['Planung mit Kalender fuer Teams'])
+    })
+
     it('needs two shared words of at least four letters, ranks more shared words first', async () => {
       await store(row('Export notes'), apiSource())
       await store(row('Export timeout notes'), apiSource())
@@ -189,6 +198,11 @@ describe('similarItems', () => {
         'Export timeout large notes',
         'Export timeout notes',
       ])
+    })
+
+    it('matches nothing for a title of function words only', async () => {
+      await store(row('With that from this when'), apiSource())
+      expect(await similarTo('With that from this when')).toEqual([])
     })
 
     it('ignores short words: sharing only with, the or to does not match', async () => {
