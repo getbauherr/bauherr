@@ -114,6 +114,7 @@ describe('ticket', () => {
     expect(t.pullRequest).toMatchObject({ number: 1, headSha: 'h1', checks: [{ name: 'ci', conclusion: 'success' }] })
     expect(t.similarItems).toHaveLength(3)
     expect(t.similarItems.map((i) => i.title)).not.toContain(t.source?.title)
+    expect(t.similarItems.map((i) => i.kind)).toEqual(['issue', 'issue', 'issue'])
   })
 
   it('shows the open card with its sequence number', async () => {

@@ -151,6 +151,6 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     proofs: await loadProofs(payload, stored.id),
     ...pulls,
     statementsUsed: await statementsUsed(payload, stored.id, events),
-    similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT) : [],
+    similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT, 'issue') : [],
   }
 }
