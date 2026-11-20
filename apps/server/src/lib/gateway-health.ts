@@ -19,8 +19,10 @@ export const checkGateway = async (payload: Payload, now = Date.now()): Promise<
       await client.end()
     }
   } catch {}
-  const up = await fetch(`${process.env.GATEWAY_URL}/v1/models`, { signal: AbortSignal.timeout(3000) }).then(
-    () => true,
+  const ready = new URL('/healthz/ready', process.env.GATEWAY_URL)
+  ready.port = '15021'
+  const up = await fetch(ready, { signal: AbortSignal.timeout(3000) }).then(
+    (res) => res.ok,
     () => false,
   )
   const ahead = migration != null && migration > KNOWN_REQUEST_LOG_MIGRATION
