@@ -24,6 +24,16 @@ describe('the tickets the end-to-end specs read', () => {
     }
   })
 
+  it('shows the earlier answers its Brief run used on one Brief and on no other', async () => {
+    const used = (await view(names.briefAnswers)).statementsUsed
+    expect(used.brief.map((s) => s.text)).toEqual([
+      'Uploads and generated files go to object storage, not local disk.',
+      'No new export formats before the reporting rework.',
+    ])
+    expect(used.brief.every((s) => s.record === names.resultReadonly)).toBe(true)
+    expect((await view(names.briefTitle)).statementsUsed).toEqual({ brief: [], result: [] })
+  })
+
   it('stops every Result ticket at a Result with proofs, findings, a pull request and a factory decision', async () => {
     const results = [names.resultReadonly, ...names.resultSendBack, ...names.resultAccept, ...names.resultStale]
     for (const id of results) {

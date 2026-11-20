@@ -1,5 +1,6 @@
 import { FakeBackend } from '@bauherr/adapters'
 import { describe, expect, it } from 'vitest'
+import { AGENTS_FILE_MAX } from '../../src/core/mirror/facts'
 import type { ForgeReader, ReadForge } from '../../src/core/forge/reader'
 import { HOUR, mirrorHarness, readerOf, withTickets } from './mirror-harness'
 
@@ -57,6 +58,28 @@ describe('repository facts in the sync', () => {
       issue_form_count: '2',
     })
     expect(new Date(String((await source(id))?.facts_at))).toEqual(new Date('2026-11-19T10:00:00Z'))
+  })
+
+  it('stores the text of AGENTS.md, and cuts a long one at a line break with a flag', async () => {
+    const repo = fresh()
+    const fake = prepared(repo)
+    const id = await newSource(repo)
+    await sync({ [repo]: readerOf(fake) })
+    expect(await source(id)).toMatchObject({ agents_file: 'rules', agents_file_cut: false })
+    fake.commit(repo, 'main', 'AGENTS.md', `${'line\n'.repeat(3000)}tail`)
+    later(DAY + HOUR)
+    await sync({ [repo]: readerOf(fake) })
+    const stored = await source(id)
+    expect(stored?.agents_file_cut).toBe(true)
+    expect(String(stored?.agents_file)).toHaveLength(AGENTS_FILE_MAX - (AGENTS_FILE_MAX % 5) - 1)
+    expect(String(stored?.agents_file).endsWith('line')).toBe(true)
+  })
+
+  it('stores no text when the repository has no AGENTS.md', async () => {
+    const repo = fresh()
+    const id = await newSource(repo)
+    await sync({ [repo]: readerOf(new FakeBackend({ native: true, user: 'jo' })) })
+    expect(await source(id)).toMatchObject({ agents_file: null, agents_file_cut: false })
   })
 
   it('stores no, and unknown when the forge cannot say', async () => {

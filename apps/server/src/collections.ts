@@ -521,6 +521,8 @@ export const collections: CollectionConfig[] = [
     text('branchProtected'),
     json('requiredCheckNames'),
     { name: 'hasAgentsFile', type: 'checkbox' },
+    { name: 'agentsFile', type: 'textarea' },
+    { name: 'agentsFileCut', type: 'checkbox' },
     { name: 'issueFormCount', type: 'number' },
     date('factsAt'),
   ]),

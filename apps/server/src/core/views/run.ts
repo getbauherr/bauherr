@@ -3,7 +3,7 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import { stageSchema, type Stage } from '../events'
 import { RunNotFound } from '../run/errors'
-import { ROLES, type RunStep } from '../run/schema'
+import { contextSchema, ROLES, type RunStep, type StoredContext } from '../run/schema'
 import { readRecord } from '../record/store'
 import type { TicketRecord } from '../record/schema'
 import { loadItem } from './ticket-parts'
@@ -20,6 +20,7 @@ const row = z.object({
   steps: z.array(z.object({ at: z.string(), text: z.string() })),
   error: z.string().nullable(),
   cost_usd: z.coerce.number().nullable(),
+  context: contextSchema.nullable(),
   created_at: z.coerce.date(),
   started_at: z.coerce.date().nullable(),
   finished_at: z.coerce.date().nullable(),
@@ -52,11 +53,24 @@ const recordDetail = (record: Pick<TicketRecord, 'criteria' | 'decisions'>): str
   return `goal, ${criteria}, ${counted(record.decisions.length, 'decision', 'decisions')}`
 }
 
-const partsOf = (stage: Stage, record: Pick<TicketRecord, 'criteria' | 'decisions'>): RunPart[] => [
+const partsOf = (
+  stage: Stage,
+  record: Pick<TicketRecord, 'criteria' | 'decisions'>,
+  context: StoredContext | null,
+): RunPart[] => [
   { label: 'Stage skill', detail: stage },
   { label: 'Record', detail: recordDetail(record) },
   { label: 'Result schema', detail: stage },
   ...(stage === 'intake' ? [{ label: 'Intake facts', detail: 'the issue, its comments, similar issues' }] : []),
+  ...(context?.agentsFile.given
+    ? [{ label: 'Repository map', detail: context.agentsFile.cut ? 'AGENTS.md, cut' : 'AGENTS.md' }]
+    : []),
+  ...(context && context.statements.length > 0
+    ? [{ label: 'Your earlier answers', detail: String(context.statements.length) }]
+    : []),
+  ...(context && context.similar.length > 0
+    ? [{ label: 'Similar tickets', detail: String(context.similar.length) }]
+    : []),
 ]
 
 const handoffOf = (run: { stage: Stage; status: string }, record: Pick<TicketRecord, 'handoff'>): string | null => {
@@ -66,8 +80,8 @@ const handoffOf = (run: { stage: Stage; status: string }, record: Pick<TicketRec
 
 export const runPage = async (payload: Payload, filter: RunFilter): Promise<RunPage> => {
   const found = await payload.db.drizzle.execute(sql`
-    SELECT "id", "record_id", "stage", "role", "status", "leased_by", "steps", "error", "cost_usd", "created_at",
-      "started_at", "finished_at"
+    SELECT "id", "record_id", "stage", "role", "status", "leased_by", "steps", "error", "cost_usd", "context",
+      "created_at", "started_at", "finished_at"
     FROM "stage_runs" WHERE "id" = ${filter.runId} AND "workspace_id" = ${filter.workspace}`)
   const raw = found.rows[0]
   if (!raw) throw new RunNotFound(`Run ${filter.runId} does not exist: check the id.`)
@@ -87,7 +101,7 @@ export const runPage = async (payload: Payload, filter: RunFilter): Promise<RunP
     finishedAt: run.finished_at?.toISOString() ?? null,
     ticket: { recordId: stored.id, number, title: issue?.title ?? `#${number}` },
     handoff: handoffOf(run, stored.record),
-    parts: partsOf(run.stage, stored.record),
+    parts: partsOf(run.stage, stored.record, run.context),
     costUsd: filter.withCost ? run.cost_usd : null,
   }
 }

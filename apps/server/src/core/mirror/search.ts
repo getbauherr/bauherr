@@ -81,7 +81,12 @@ export const titleAlternatives = (title: string): string => {
   return [...new Set(words.filter((word) => word !== 'or'))].join(' or ')
 }
 
-export const similarItems = async (payload: Payload, itemId: number, limit: number): Promise<ItemHit[]> => {
+export const similarItems = async (
+  payload: Payload,
+  itemId: number,
+  limit: number,
+  kind?: ItemHit['kind'],
+): Promise<ItemHit[]> => {
   const own = await payload.db.drizzle.execute(
     sql`SELECT "title", "product_id", "workspace_id" FROM "mirror_items" WHERE "id" = ${itemId}`,
   )
@@ -91,6 +96,6 @@ export const similarItems = async (payload: Payload, itemId: number, limit: numb
   const query = titleAlternatives(item.title)
   if (query === '') return []
   const scope = sql`i."workspace_id" = ${item.workspace_id} AND i."product_id" = ${item.product_id}
-    AND i."id" <> ${itemId}`
+    AND i."id" <> ${itemId} ${kind === undefined ? sql`` : sql`AND i."kind" = ${kind}`}`
   return rankedBy(payload, scope, query, limit)
 }

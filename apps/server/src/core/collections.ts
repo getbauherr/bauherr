@@ -58,6 +58,7 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'result', type: 'json' },
       { name: 'error', type: 'text' },
       { name: 'costUsd', type: 'number' },
+      { name: 'context', type: 'json' },
       { name: 'startedAt', type: 'date' },
       { name: 'finishedAt', type: 'date' },
     ],

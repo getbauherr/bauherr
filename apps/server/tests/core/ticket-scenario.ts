@@ -6,11 +6,14 @@ import { questionsBody } from '../../src/core/intake/questions'
 import type { Criterion, Decision, Finding, TicketRecord } from '../../src/core/record/schema'
 import { patchRecord, readRecord, setRank } from '../../src/core/record/store'
 import { claim, heartbeat } from '../../src/core/run/leases'
+import { rememberContext } from '../../src/core/run/context'
+import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
 import { asked, begin, mirrorSource, patch, toBrief, workOn } from './scenario'
 
 export const TICKET_TITLES = {
   briefTitle: 'Brief with a decision for the tabs',
+  briefAnswers: 'Brief with earlier answers',
   resultReadonly: 'Result to read',
   questionRead: 'Question to read',
   intake: 'Intake waiting for the reporter',
@@ -178,6 +181,24 @@ const intakeTicket = async (e: Engine, item: (number: number, fields?: { title: 
   return id
 }
 
+const EARLIER_ANSWERS = [
+  'Uploads and generated files go to object storage, not local disk.',
+  'No new export formats before the reporting rework.',
+]
+
+const answered = async (e: Engine, id: number, from: number) => {
+  for (const text of EARLIER_ANSWERS) await storeStatement(e.db.payload, from, { kind: 'answer', text })
+  const found = await e.db.payload.db.drizzle.execute(
+    sql`SELECT "id" FROM "statements" WHERE "record_id" = ${from} ORDER BY "id"`,
+  )
+  const run = await e.db.payload.db.drizzle.execute(
+    sql`SELECT "id" FROM "stage_runs" WHERE "record_id" = ${id} AND "stage" = 'brief' ORDER BY "id" DESC LIMIT 1`,
+  )
+  const statements = found.rows.map((row) => proofRow.parse(row).id)
+  const agentsFile = { given: false, cut: false }
+  await rememberContext(e.db.payload, proofRow.parse(run.rows[0]).id, { statements, similar: [], agentsFile })
+}
+
 const pooled = async (make: (n: number) => Promise<number>): Promise<number[]> => {
   const ids: number[] = []
   for (let n = 1; n <= POOL_SIZE; n++) ids.push(await make(n))
@@ -207,6 +228,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   let pr = 10
   const names = {
     briefTitle: await open(TICKET_TITLES.briefTitle),
+    briefAnswers: await open(TICKET_TITLES.briefAnswers),
     briefApprove: await pooled((n) => open(`${POOL_TITLES.briefApprove} ${n}`)),
     resultReadonly: await result(TICKET_TITLES.resultReadonly, ++pr),
     resultSendBack: await pooled((n) => result(`${POOL_TITLES.resultSendBack} ${n}`, ++pr)),
@@ -217,6 +239,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     runSteps: await toBrief(e, false),
   }
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
+  await answered(e, names.briefAnswers, names.resultReadonly)
   await reportedSteps(e, names.runSteps)
   for (let n = 11; n <= pr; n++) await mirror.item(n, { kind: 'pr', head: `h${n}`, title: `Pull request ${n}` })
   for (const [id, title] of titled) {

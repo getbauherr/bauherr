@@ -6,6 +6,13 @@ export const RUN_STATUSES = ['queued', 'claimed', 'submitted', 'failed', 'releas
 export const ROLES = ['builder', 'reviewer', 'verifier'] as const satisfies Role[]
 export const MAX_STEPS = 50
 
+export const contextSchema = z.object({
+  statements: z.array(z.number().int()),
+  similar: z.array(z.number().int()),
+  agentsFile: z.object({ given: z.boolean(), cut: z.boolean() }),
+})
+
+export type StoredContext = z.infer<typeof contextSchema>
 export type RunStatus = (typeof RUN_STATUSES)[number]
 export type RunStep = { at: string; text: string }
 
@@ -23,6 +30,7 @@ export const runRowSchema = z.object({
   result: z.unknown(),
   error: z.string().nullable(),
   cost_usd: z.coerce.number().nullable(),
+  context: contextSchema.nullable(),
 })
 
 export type Run = {
@@ -39,6 +47,7 @@ export type Run = {
   result: unknown
   error: string | null
   costUsd: number | null
+  context: StoredContext | null
 }
 
 export const toRun = (row: unknown): Run => {
@@ -57,5 +66,6 @@ export const toRun = (row: unknown): Run => {
     result: parsed.result,
     error: parsed.error,
     costUsd: parsed.cost_usd,
+    context: parsed.context,
   }
 }

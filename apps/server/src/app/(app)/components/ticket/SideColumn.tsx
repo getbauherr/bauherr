@@ -1,5 +1,7 @@
+import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { TicketView } from '../../../../core/views/ticket'
+import { shortDate } from '../../lib/format'
 import { FINDING_WORDS, FORGE_NAMES, pullLabel } from '../../lib/ticket'
 import { WordBadge } from '../WordBadge'
 import { CARD } from './Section'
@@ -77,6 +79,24 @@ function Findings({ view }: { view: TicketView }) {
   )
 }
 
+function AnswersUsed({ view }: { view: TicketView }) {
+  const kind = view.card?.card
+  const used = kind === 'brief' ? view.statementsUsed.brief : kind === 'result' ? view.statementsUsed.result : []
+  if (used.length === 0) return null
+  return (
+    <Aside title="Your earlier answers used">
+      {used.map((statement) => (
+        <span key={statement.id} className="small">
+          &quot;{statement.text}&quot;{' '}
+          <Link href={`/tickets/${statement.record}`} className="text-muted-foreground underline">
+            #{statement.ticket}, {shortDate(statement.at)}
+          </Link>
+        </span>
+      ))}
+    </Aside>
+  )
+}
+
 function Similar({ view }: { view: TicketView }) {
   if (view.similarItems.length === 0) return null
   return (
@@ -95,6 +115,7 @@ export function SideColumn({ view }: { view: TicketView }) {
   return (
     <div className="grid content-start gap-4">
       <Source view={view} />
+      <AnswersUsed view={view} />
       <Verdict view={view} />
       <Findings view={view} />
       <Similar view={view} />
