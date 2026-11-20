@@ -79,9 +79,9 @@ const connectOf = (product: string, path = '/connect') => async (page: Page) => 
 }
 
 const connectRoutes: Record<string, (page: Page) => Promise<string>> = {
-  '/settings/products/[id] (connect workspace)': connectOf('Connect Look', ''),
-  '/settings/products/[id]/connect': connectOf('Connect Look'),
-  '/settings/products/[id]/connect (importing)': connectOf('Connect Importing'),
+  '/settings/products/[id] (connect workspace)': connectOf('Look App', ''),
+  '/settings/products/[id]/connect': connectOf('Look App'),
+  '/settings/products/[id]/connect (importing)': connectOf('Importing App'),
 }
 Object.assign(routes, connectRoutes)
 

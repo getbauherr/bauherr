@@ -5,6 +5,7 @@ import type { FirstLook } from '../../../../core/views/first-look'
 import type { ProductSettings } from '../../../../core/views/product-settings'
 import { type Phase, stepState } from '../../lib/connect-phase'
 import { formatCount } from '../product/MirrorState'
+import { CHECK_MARK } from './marks'
 
 type Props = { product: ProductSettings; look: FirstLook; phase: Phase }
 
@@ -68,8 +69,7 @@ export function ConnectSteps({ product, look, phase }: Props) {
             <h3 className="label text-muted-foreground">
               {n} {step.title}
             </h3>
-            <p className="small">
-              {state === 'done' && <span className="text-ok" aria-hidden="true">✓ </span>}
+            <p className={cn('small', state === 'done' && CHECK_MARK)}>
               {state === 'done' && <span className="sr-only">Done: </span>}
               {step.body}
             </p>

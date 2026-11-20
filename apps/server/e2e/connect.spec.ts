@@ -15,8 +15,8 @@ const signIn = async (page: Page) => {
 const openConnect = async (page: Page, product: string) => {
   await signIn(page)
   await page.goto('/settings/products')
-  await page.getByRole('link', { name: product, exact: true }).click()
-  await page.goto(`${new URL(page.url()).pathname}/connect`)
+  const href = await page.getByRole('link', { name: product, exact: true }).getAttribute('href')
+  await page.goto(`${href}/connect`)
   await expect(page.getByRole('heading', { name: `Connect ${product}` })).toBeVisible()
 }
 
@@ -24,7 +24,7 @@ const steps = (page: Page) => page.getByRole('list', { name: 'Steps' })
 const row = (page: Page, name: string) => page.getByRole('row', { name })
 
 test('a Product that is imported shows the four steps, the counts and what the repository offers', async ({ page }) => {
-  await openConnect(page, 'Connect Look')
+  await openConnect(page, 'Look App')
   await expect(steps(page).getByRole('listitem')).toHaveCount(4)
   await expect(steps(page).locator('[aria-current=step]')).toContainText('First look')
   await expect(steps(page)).toContainText('One repository attached')
@@ -49,18 +49,18 @@ test('a Product that is imported shows the four steps, the counts and what the r
 })
 
 test('while the import runs the page says so and counts what is mirrored so far', async ({ page }) => {
-  await openConnect(page, 'Connect Importing')
+  await openConnect(page, 'Importing App')
   await expect(steps(page).locator('[aria-current=step]')).toContainText('Import')
   await expect(steps(page)).toContainText('The import is running: 3 issues, 0 pull requests mirrored so far.')
   await expect(page.getByText('The import is still running, so these counts are not final yet.')).toBeVisible()
 })
 
 test('the forge checks can be copied into the required checks once', async ({ page }) => {
-  await openConnect(page, 'Connect Copy')
+  await openConnect(page, 'Copy App')
   const offers = page.getByRole('region', { name: 'What the repository offers' })
   await offers.getByRole('button', { name: 'Use these checks as required checks' }).click()
   await expect(offers.getByRole('button', { name: 'Use these checks as required checks' })).toHaveCount(0)
-  await page.getByRole('link', { name: 'Connect Copy', exact: true }).click()
+  await page.getByRole('link', { name: 'Copy App', exact: true }).click()
   const required = page.locator('#proof').getByRole('group', { name: 'Required checks' })
   await expect(required.getByRole('checkbox', { name: /lint/ })).toBeChecked()
   await expect(required.getByRole('checkbox', { name: /test/ })).toBeChecked()
@@ -68,9 +68,9 @@ test('the forge checks can be copied into the required checks once', async ({ pa
 })
 
 test('Switch on makes the Product active and leads to the Factory view', async ({ page }) => {
-  await openConnect(page, 'Connect Switch')
+  await openConnect(page, 'Switch App')
   await page.getByRole('button', { name: 'Switch on' }).click()
-  await expect(page.getByText('Connect Switch is active. Nothing is built without your approval.')).toBeVisible()
+  await expect(page.getByText('Switch App is active. Nothing is built without your approval.')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Open the Factory view' })).toHaveAttribute('href', /^\/\?product=\d+$/)
   await expect(steps(page)).toContainText('Active. Briefs are prepared automatically.')
   await page.getByRole('link', { name: 'Open the Factory view' }).click()
@@ -78,7 +78,7 @@ test('Switch on makes the Product active and leads to the Factory view', async (
   await expect(page.getByRole('heading', { name: 'Factory' })).toBeVisible()
 
   await page.goto('/settings/products')
-  await page.getByRole('link', { name: 'Connect Switch', exact: true }).click()
+  await page.getByRole('link', { name: 'Switch App', exact: true }).click()
   await page.locator('#state').getByRole('button', { name: 'Switch back to observing' }).click()
   await expect(page.locator('#state')).toContainText('Observing: nothing is written to the forge')
 })

@@ -5,6 +5,7 @@ import { saveExecutor } from '../../(shell)/settings/products/[id]/actions'
 import { EmptyState } from '../EmptyState'
 import { RepositoryFields } from '../ProductForms'
 import { SettingsForm } from '../SettingsForm'
+import { Button } from '../ui/button'
 import { RadioCards, SettingsSection } from '../SettingsParts'
 import { Editable } from './Editable'
 import { MirrorState } from './MirrorState'
@@ -15,8 +16,6 @@ const EXECUTORS = [
   { value: 'session', title: 'An agent session', text: 'Your own agent connects over MCP and takes the queued runs.' },
   { value: 'runner', title: 'The Runner', text: 'Bauherr starts the agents itself and needs no session.' },
 ]
-
-const LINK = 'small text-primary underline underline-offset-2'
 
 type Connections = { id: number; name: string }[]
 type Props = { product: ProductSettings; connections: Connections; admin: boolean }
@@ -68,10 +67,15 @@ function AddRepository({ product, connections }: { product: ProductSettings; con
     return <EmptyState text="Bauherr needs access to GitHub or GitLab first." action={action} />
   }
   return (
-    <SettingsForm action={addRepository} submit="Add repository" reset>
-      <input type="hidden" name="id" value={product.id} />
-      <RepositoryFields connections={connections} />
-    </SettingsForm>
+    <details open={product.repositories.length === 0}>
+      <summary className="small cursor-pointer text-primary">Add a repository</summary>
+      <div className="mt-3">
+        <SettingsForm action={addRepository} submit="Add repository" reset>
+          <input type="hidden" name="id" value={product.id} />
+          <RepositoryFields connections={connections} />
+        </SettingsForm>
+      </div>
+    </details>
   )
 }
 
@@ -80,12 +84,14 @@ function State({ product, admin }: { product: ProductSettings; admin: boolean })
   return (
     <div id="state" className="flex flex-col items-start gap-2 border-t border-border pt-4">
       <p className="small">{observing ? 'Observing: nothing is written to the forge' : 'Active'}</p>
-      {observing && product.sources.length > 0 && (
-        <Link href={`/settings/products/${product.id}/connect`} className={LINK}>
-          Connect and switch on
-        </Link>
-      )}
-      {admin && <ProductStateForm product={product.id} state={product.state} />}
+      <div className="flex flex-wrap items-center gap-3">
+        {observing && product.sources.length > 0 && (
+          <Button asChild variant="outline">
+            <Link href={`/settings/products/${product.id}/connect`}>Connect and switch on</Link>
+          </Button>
+        )}
+        {admin && <ProductStateForm product={product.id} state={product.state} />}
+      </div>
     </div>
   )
 }

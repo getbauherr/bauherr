@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react'
+import { cn } from '@/lib/utils'
 import type { FirstLook, RepositoryFacts } from '../../../../core/views/first-look'
 import { copyForgeChecks } from '../../(shell)/settings/products/[id]/actions'
 import { SettingsForm } from '../SettingsForm'
 import { Card } from '../ui/card'
+import { CHECK_MARK } from './marks'
 
 type Fact = { good: boolean; lead?: string; text: ReactNode }
 
@@ -39,13 +41,6 @@ const factsOf = (facts: RepositoryFacts): Fact[] => [
   formsFact(facts),
 ]
 
-const Good = () => (
-  <>
-    <span className="text-ok" aria-hidden="true">✓ </span>
-    <span className="sr-only">Found: </span>
-  </>
-)
-
 function Facts({ facts, many }: { facts: RepositoryFacts; many: boolean }) {
   return (
     <div className="flex flex-col gap-2">
@@ -54,8 +49,8 @@ function Facts({ facts, many }: { facts: RepositoryFacts; many: boolean }) {
         <p className="small text-muted-foreground">Not read yet. The first sync reads these.</p>
       ) : (
         factsOf(facts).map((fact, index) => (
-          <p key={index} className="small">
-            {fact.good ? <Good /> : <span className="text-warn">{fact.lead} </span>}
+          <p key={index} className={cn('small', fact.good && CHECK_MARK)}>
+            {fact.good ? <span className="sr-only">Found: </span> : <span className="text-warn">{fact.lead} </span>}
             {fact.text}
           </p>
         ))

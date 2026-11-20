@@ -36,9 +36,9 @@ function Group({ title, total, rows }: { title: string; total: number; rows: Row
         <tbody>
           {rows.map((row) => (
             <tr key={row.label} className="border-b border-border last:border-b-0 max-sm:flex max-sm:flex-wrap">
-              <th scope="row" className="p-3 text-left font-normal max-sm:w-full">{row.label}</th>
+              <th scope="row" className="p-3 text-left font-normal max-sm:flex-1">{row.label}</th>
               <td className="mono p-3 text-right">{formatCount(row.value)}</td>
-              <td className="small p-3 text-muted-foreground">{row.note}</td>
+              <td className="small p-3 text-muted-foreground max-sm:w-full max-sm:pt-0">{row.note}</td>
             </tr>
           ))}
         </tbody>

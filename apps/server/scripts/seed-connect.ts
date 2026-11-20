@@ -11,13 +11,13 @@ type Shape = { slug: string; name: string; imported: boolean; error?: string }
 type Item = Awaited<ReturnType<typeof mirrorSource>>['item']
 
 const SHAPES: Shape[] = [
-  { slug: 'connect-look', name: 'Connect Look', imported: true },
-  { slug: 'connect-switch', name: 'Connect Switch', imported: true },
-  { slug: 'connect-copy', name: 'Connect Copy', imported: true },
-  { slug: 'connect-importing', name: 'Connect Importing', imported: false },
+  { slug: 'connect-look', name: 'Look App', imported: true },
+  { slug: 'connect-switch', name: 'Switch App', imported: true },
+  { slug: 'connect-copy', name: 'Copy App', imported: true },
+  { slug: 'connect-importing', name: 'Importing App', imported: false },
   {
     slug: 'connect-broken',
-    name: 'Connect Broken',
+    name: 'Broken App',
     imported: false,
     error: 'GitHub answered 401: Bad credentials',
   },

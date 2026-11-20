@@ -171,7 +171,7 @@ test('the mirror state shows a sync error in plain words', async ({ page }) => {
   await signIn(page)
   await inConnect(page)
   await page.goto('/settings/products')
-  await page.getByRole('link', { name: 'Connect Broken' }).click()
+  await page.getByRole('link', { name: 'Broken App' }).click()
   await expect(page.locator('#repository')).toContainText('The last sync failed: GitHub answered 401: Bad credentials')
 })
 
