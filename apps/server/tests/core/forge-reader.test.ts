@@ -12,6 +12,7 @@ describe('the read-only forge view', () => {
       | 'requiredChecks'
       | 'isBranchProtected'
       | 'fileExists'
+      | 'getFile'
       | 'countIssueForms'
     >()
     expectTypeOf<ReadTickets>().not.toHaveProperty('comment')

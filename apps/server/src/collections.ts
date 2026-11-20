@@ -271,6 +271,9 @@ const workspaces = col(
 const presetField = (name: (typeof PRESET_FIELDS)[number]): Field =>
   text(name, { admin: { condition: (data: Record<string, any>) => PRESETS[(data.provider as Preset) ?? 'anthropic'].required.includes(name) } })
 
+const seal = (value: unknown): unknown =>
+  typeof value === 'string' && value && !isEncrypted(value) ? encrypt(value) : value
+
 const connections = col(
   'connections',
   [
@@ -300,6 +303,14 @@ const connections = col(
         beforeChange: [({ value }) => (typeof value === 'string' && value && !isEncrypted(value) ? encrypt(value) : value)],
       },
     },
+    {
+      name: 'webhookSecret',
+      type: 'text',
+      admin: { description: 'Write-only. Encrypted at rest; shown once.' },
+      access: { read: () => false },
+      hooks: { beforeChange: [({ value }) => seal(value)] },
+    },
+    date('webhookDeliveredAt'),
     json('capabilities'),
   ],
   {
@@ -516,6 +527,8 @@ export const collections: CollectionConfig[] = [
     text('branchProtected'),
     json('requiredCheckNames'),
     { name: 'hasAgentsFile', type: 'checkbox' },
+    { name: 'agentsFile', type: 'textarea' },
+    { name: 'agentsFileCut', type: 'checkbox' },
     { name: 'issueFormCount', type: 'number' },
     date('factsAt'),
   ]),

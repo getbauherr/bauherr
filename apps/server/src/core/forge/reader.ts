@@ -12,6 +12,7 @@ export type ReadForge = Pick<
   | 'requiredChecks'
   | 'isBranchProtected'
   | 'fileExists'
+  | 'getFile'
   | 'countIssueForms'
 >
 export type ForgeReader = { tickets: (repo: RepoRef) => ReadTickets; forge: ReadForge }

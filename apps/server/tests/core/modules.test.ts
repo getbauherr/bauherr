@@ -22,6 +22,7 @@ const run: Run = {
   result: null,
   error: null,
   costUsd: null,
+  context: null,
 }
 
 const context = (change: Partial<ApplyContext['config']> = {}, rounds = 0): ApplyContext => ({

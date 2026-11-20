@@ -84,6 +84,7 @@ describe('holds', () => {
 
 describe('ticket', () => {
   beforeAll(async () => {
+    await run(sql`UPDATE "mirror_items" SET "title" = 'Export report ' || "number" WHERE "title" LIKE 'Ticket %'`)
     const pr = await s.item(1, { kind: 'pr', state: 'merged', head: 'h1' })
     await run(sql`INSERT INTO "mirror_checks" ("workspace_id", "item_id", "sha", "name", "status", "conclusion",
       "updated_at", "created_at") VALUES (${s.e.db.workspace}, ${pr}, 'h1', 'ci', 'completed', 'success', now(), now()),

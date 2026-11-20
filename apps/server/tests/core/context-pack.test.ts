@@ -20,6 +20,9 @@ const pack = z.object({
     stage: z.string(),
     skill: z.string().nullable(),
     facts: z.object({ missing: z.array(z.string()) }).nullable(),
+    agentsFile: z.object({ text: z.string(), cut: z.boolean() }).nullable(),
+    statements: z.array(z.unknown()),
+    similar: z.array(z.unknown()),
   }),
 })
 
@@ -37,6 +40,12 @@ describe('the context pack', () => {
     expect(work.context.stage).toBe('intake')
     expect(work.context.skill).toBe('skill of intake')
     expect(work.context.facts?.missing).toEqual(['what happened', 'what was expected', 'steps to reproduce', 'where'])
+  })
+
+  it('returns the repository file, the statements and the similar tickets, empty when there are none', async () => {
+    await m.begin()
+    const work = await claimWith(() => Promise.resolve(null))
+    expect(work.context).toMatchObject({ agentsFile: null, statements: [], similar: [] })
   })
 
   it('has no skill when the loader finds none', async () => {

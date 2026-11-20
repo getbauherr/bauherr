@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { EditDrawer } from '../../../components/EditDrawer'
 import { EmptyState } from '../../../components/EmptyState'
+import { ConnectionWebhook } from '../../../components/ConnectionWebhook'
 import { ConnectionForm } from '../../../components/SettingsConnectionForm'
 import { SettingsForm } from '../../../components/SettingsForm'
 import { Badge } from '../../../components/ui/badge'
@@ -8,6 +9,7 @@ import { Card } from '../../../components/ui/card'
 import { Table } from '../../../components/ui/table'
 import { connectionPresets as presets, isAdmin, loadConnections } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
+import { webhookStates } from '../../../lib/webhook'
 import { verifyConnection } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -19,6 +21,8 @@ export default async function ConnectionSettings() {
   if (!isAdmin(user)) notFound()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const connections = await loadConnections(workspace.id)
+  const hooks = await webhookStates(workspace.id)
+  const unused = { hasSecret: false, deliveredAt: null }
   return (
     <>
       <h2 className="heading">Connections</h2>
@@ -47,6 +51,9 @@ export default async function ConnectionSettings() {
             </tbody>
         </Table>
       )}
+      {connections.filter((c) => c.kind !== 'llm-provider').map((c) => (
+        <ConnectionWebhook key={c.id} connection={c} webhook={hooks.get(c.id) ?? unused} />
+      ))}
       <Card asChild className="gap-4"><section>
         <h2 className="heading">Add Connection</h2>
         <ConnectionForm presets={presets} submit="Add Connection" reset primary />

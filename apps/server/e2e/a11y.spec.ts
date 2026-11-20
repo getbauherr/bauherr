@@ -47,6 +47,12 @@ const inFactory = (url: string) => async (page: Page) => {
   return url
 }
 
+const inHooks = (url: string) => async (page: Page) => {
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'hooks', url: base }])
+  return url
+}
+
 const inTickets = (title: string, query = '') => async (page: Page) => {
   const base = process.env.BASE_URL ?? 'http://localhost:3000'
   await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url: base }])
@@ -84,6 +90,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
   '/inbox': inFactory('/inbox'),
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
+    'Brief card with earlier answers': inTickets('Large export needs earlier answers'),
     'Result card': inTickets('Result to read'),
     'Result tab': inTickets('Result to read', '?tab=result'),
     'Activity tab': inTickets('Result to read', '?tab=activity'),
@@ -95,7 +102,10 @@ const routes: Record<string, Target | Record<string, Target>> = {
   '/settings/api-key': '/settings/api-key',
   '/settings/audit': '/settings/audit',
   '/settings/bauherren': '/settings/bauherren',
-  '/settings/connections': '/settings/connections',
+  '/settings/connections': {
+    'without a webhook secret': '/settings/connections',
+    'webhook with a delivery': inHooks('/settings/connections'),
+  },
   '/settings/health': '/settings/health',
   '/settings/models': '/settings/models',
   '/settings/products': '/settings/products',

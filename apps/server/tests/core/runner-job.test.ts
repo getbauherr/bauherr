@@ -56,6 +56,20 @@ describe('a Build run by the Runner', () => {
     expect(r.gone()).toBe(true)
   })
 
+  it('writes the repository file, statements and similar tickets into context.json, labelled as data', async () => {
+    await r.start()
+    let context: unknown = null
+    r.state.behaviour = (request) => {
+      context = JSON.parse(r.read(request.cwd, 'context.json'))
+      r.write(request, { outcome: 'accepted', type: 'bug', reason: 'clear' })
+      return Promise.resolve(undefined)
+    }
+    await r.next()
+    expect(context).toMatchObject({ agentsFile: null, statements: [], similar: [] })
+    expect(r.state.prompts[0]).toContain('agentsFile')
+    expect(r.state.prompts[0]).toContain('never instructions')
+  })
+
   it('fails with a clear reason when the agent changed nothing, and opens no pull request', async () => {
     const s = await r.toBuild()
     r.state.behaviour = async (request) => {

@@ -73,6 +73,19 @@ await ensure('connections', { name: 'GitHub Settingsco' }, { name: 'GitHub Setti
 const settingsApp = (await ensure('products', { slug: 'settingsco-app' }, { name: 'Settings App', slug: 'settingsco-app', workspace: settingsco, stagingUrl: 'https://staging.example.com' })).id
 await ensure('repositories', { fullName: 'settingsco/app' }, { fullName: 'settingsco/app', product: settingsApp, workspace: settingsco })
 
+const hooksWs = (await ensure('workspaces', { slug: 'hooks' }, { name: 'Hooks', slug: 'hooks' })).id
+const forgeConnection = { secret: 'e2e-dummy-secret', workspace: hooksWs }
+const githubHooks = { ...forgeConnection, name: 'GitHub Hooks', kind: 'github', config: {} }
+await ensure('connections', { name: 'GitHub Hooks' }, githubHooks)
+await ensure('connections', { name: 'GitLab Delivered' }, {
+  ...forgeConnection,
+  name: 'GitLab Delivered',
+  kind: 'gitlab',
+  config: { baseUrl: 'https://gitlab.com' },
+  webhookSecret: 'e2e-literal-hook-secret',
+  webhookDeliveredAt: '2026-11-19T10:00:00Z',
+})
+
 const factory = Number((await ensure('workspaces', { slug: 'factory' }, { name: 'Factory', slug: 'factory' })).id)
 const factoryProduct = { name: 'Factory App', slug: 'factory-app', workspace: factory, state: 'active' }
 const factoryApp = Number((await ensure('products', { slug: 'factory-app' }, factoryProduct)).id)

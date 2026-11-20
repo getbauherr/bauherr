@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
+import { anyWord, queryWords, sharedWords, sharesEnough } from './match'
 
 export type ItemFilter = {
   workspace: number
@@ -76,21 +77,29 @@ export const searchItems = async (payload: Payload, filter: ItemFilter): Promise
   return rankedBy(payload, scope, filter.query, filter.limit)
 }
 
-export const titleAlternatives = (title: string): string => {
-  const words = title.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? []
-  return [...new Set(words.filter((word) => word !== 'or'))].join(' or ')
-}
-
-export const similarItems = async (payload: Payload, itemId: number, limit: number): Promise<ItemHit[]> => {
+export const similarItems = async (
+  payload: Payload,
+  itemId: number,
+  limit: number,
+  kind?: ItemHit['kind'],
+): Promise<ItemHit[]> => {
   const own = await payload.db.drizzle.execute(
     sql`SELECT "title", "product_id", "workspace_id" FROM "mirror_items" WHERE "id" = ${itemId}`,
   )
   const row = own.rows[0]
   if (!row) return []
   const item = ownRowSchema.parse(row)
-  const query = titleAlternatives(item.title)
-  if (query === '') return []
-  const scope = sql`i."workspace_id" = ${item.workspace_id} AND i."product_id" = ${item.product_id}
-    AND i."id" <> ${itemId}`
-  return rankedBy(payload, scope, query, limit)
+  const words = queryWords(item.title)
+  if (words.length === 0) return []
+  const shared = sharedWords(vector, words)
+  const result = await payload.db.drizzle.execute(sql`
+    SELECT i."id", i."repo", i."number", i."kind", i."title", i."state", i."url",
+      ts_rank(${vector}, ${anyWord(words)}) AS "rank"
+    FROM "mirror_items" i
+    WHERE i."gone_at" IS NULL AND i."workspace_id" = ${item.workspace_id} AND i."product_id" = ${item.product_id}
+      AND i."id" <> ${itemId} ${kind === undefined ? sql`` : sql`AND i."kind" = ${kind}`}
+      AND ${vector} @@ ${anyWord(words)} AND ${sharesEnough(vector, words)}
+    ORDER BY ${shared} DESC, "rank" DESC, i."forge_updated_at" DESC NULLS LAST, i."id" DESC
+    LIMIT ${limit}`)
+  return result.rows.map(toHit)
 }
