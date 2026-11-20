@@ -1,3 +1,4 @@
+import type { ClosedAs } from '../../../core/views/rows'
 import type { TicketStatus } from '../../../core/views/status'
 
 export type Tone = 'neutral' | 'muted' | 'accent' | 'ok' | 'warn' | 'destructive'
@@ -8,6 +9,7 @@ export const STATUS_WORDS: Record<TicketStatus, StatusWord> = {
   'drafting-brief': { word: 'Drafting Brief', tone: 'accent' },
   building: { word: 'Building', tone: 'accent' },
   verifying: { word: 'Reviewing', tone: 'accent' },
+  queued: { word: 'Queued', tone: 'neutral', mark: 'clock' },
   'waiting-for-checks': { word: 'Waiting for CI', tone: 'neutral', mark: 'clock' },
   'waiting-for-deploy': { word: 'Waiting for deploy', tone: 'neutral', mark: 'clock' },
   'reporter-asked': { word: 'Reporter asked', tone: 'neutral' },
@@ -22,10 +24,12 @@ export const STATUS_WORDS: Record<TicketStatus, StatusWord> = {
   closed: { word: 'Closed', tone: 'neutral' },
 }
 
-export const STUCK_SENTENCES: Record<string, string> = {
-  'failed-runs': 'failed repeatedly and waits for your answer.',
-  'verify-rounds': 'was sent back from Verify repeatedly and waits for your answer.',
-  'reporter-silent': 'has a reporter who did not answer and waits for your decision.',
+export const CLOSED_WORDS: Record<ClosedAs, string> = {
+  'not-a-bug': 'Not a bug',
+  duplicate: 'Duplicate',
+  'not-planned': 'Not planned',
+  discarded: 'Discarded',
+  'closed-on-forge': 'Closed on the forge',
 }
 
 export const HELD_SENTENCES: Record<string, string> = {

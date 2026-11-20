@@ -42,7 +42,7 @@ function Bar({ stat }: { stat: StageStat }) {
 function Workers({ workers }: { workers: Worker[] }) {
   return workers.map((worker) => (
     <span key={worker.key} title={worker.title} className={AVATAR}>
-      <span aria-hidden>S</span>
+      <span aria-hidden>{worker.mark}</span>
       <span className="sr-only">{worker.title}</span>
     </span>
   ))

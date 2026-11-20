@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
+import type { ClosedAs } from '../../../core/views/rows'
 import type { TicketStatus } from '../../../core/views/status'
-import { STATUS_WORDS } from '../lib/status-words'
+import { CLOSED_WORDS, STATUS_WORDS } from '../lib/status-words'
 import { Clock } from './icons'
 import { Badge } from './ui/badge'
 
@@ -10,8 +11,9 @@ const SPINNER = cn(
   'border-[1.5px] border-border border-t-primary motion-reduce:animate-none',
 )
 
-export function StatusChip({ status }: { status: TicketStatus }) {
-  const { word, tone, mark } = STATUS_WORDS[status]
+export function StatusChip({ status, closedAs }: { status: TicketStatus; closedAs?: ClosedAs | null }) {
+  const { tone, mark, ...base } = STATUS_WORDS[status]
+  const word = closedAs ? CLOSED_WORDS[closedAs] : base.word
   return (
     <Badge variant={tone} className="max-w-full whitespace-normal">
       {tone === 'accent' && <span className={SPINNER} />}

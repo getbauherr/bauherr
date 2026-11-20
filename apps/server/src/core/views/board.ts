@@ -3,7 +3,7 @@ import type { Stage } from '../events'
 import type { HeldItem } from '../intake/held'
 import type { WaitingOn } from '../record/store'
 import { classifiedIn } from './classified'
-import { loadRows, type RowFilter, type TicketRow } from './rows'
+import { loadRows, type ClosedAs, type RowFilter, type TicketRow } from './rows'
 import { DAY_MS } from './sql'
 import { isStuck, stateOf, statusOf, type TicketState, type TicketStatus } from './status'
 
@@ -23,6 +23,8 @@ export type BoardCard = {
   rank: number
   cardReason: string | null
   parkedReason: string | null
+  closedAs: ClosedAs | null
+  criteria: { met: number; total: number } | null
 }
 
 export type Board = { stages: Record<Stage, BoardCard[]>; held: HeldItem[]; parked: BoardCard[] }
@@ -49,13 +51,15 @@ export const toCard = (row: TicketRow): BoardCard => {
     stage,
     waitingOn,
     state: row.parked === null ? stateOf({ waitingOn, stuck, hasRun }) : 'none',
-    status: statusOf({ stage, waitingOn, card, parked, hasRun, ended }),
+    status: statusOf({ stage, waitingOn, card, parked, hasRun, claimed: row.run?.leasedBy != null, ended }),
     detail: detailOf(row),
     enteredAt: row.enteredAt.toISOString(),
     run: row.run === null ? null : { role: row.run.role, leasedBy: row.run.leasedBy },
     rank: row.rank,
     cardReason: row.card?.reason ?? null,
     parkedReason: parked,
+    closedAs: row.closedAs,
+    criteria: row.criteria.total > 0 ? row.criteria : null,
   }
 }
 

@@ -36,7 +36,7 @@ export function InboxRow({ row }: { row: Row }) {
       <span className="mono">#{card.number}</span>
       <span className="font-medium">{card.title}</span>
       <span className="small text-muted-foreground">{card.product.name}</span>
-      <span><StatusChip status={card.status} /></span>
+      <span><StatusChip status={card.status} closedAs={card.closedAs} /></span>
       <span className="small text-muted-foreground">{captionOf(card)}</span>
       <Time iso={card.enteredAt} className="mono whitespace-nowrap text-muted-foreground md:text-right" />
     </Link>

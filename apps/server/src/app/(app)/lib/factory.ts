@@ -79,7 +79,12 @@ export const loadFactory = async (payload: Payload, input: { workspace: number; 
   return { lanes, stats, held, products: await productsIn(payload, input.workspace) }
 }
 
-export type Worker = { key: string; title: string }
+export type Worker = { key: string; mark: 'R' | 'S'; title: string }
+
+export const workerOf = (leasedBy: string): { mark: 'R' | 'S'; name: string } =>
+  leasedBy.startsWith('runner-')
+    ? { mark: 'R', name: 'Runner' }
+    : { mark: 'S', name: `Session ${leasedBy.slice(0, 8)}` }
 
 export const countShows = (lanes: Board): Record<Show, number> => {
   const open = [...Object.values(lanes.stages).flat(), ...lanes.parked]
@@ -93,10 +98,12 @@ export const countShows = (lanes: Board): Record<Show, number> => {
   return tally
 }
 
-const workerTitle = (run: StageStat['runs'][number], numbers: Map<number, number>): string =>
-  `Session ${run.leasedBy?.slice(0, 8) ?? ''} on #${numbers.get(run.recordId) ?? run.recordId}`
+const workerOn = (run: StageStat['runs'][number], leasedBy: string, numbers: Map<number, number>): Worker => {
+  const { mark, name } = workerOf(leasedBy)
+  return { key: `${run.recordId}-${leasedBy}`, mark, title: `${name} on #${numbers.get(run.recordId) ?? run.recordId}` }
+}
 
 export const workersOf = (stat: StageStat, numbers: Map<number, number>): Worker[] =>
   stat.runs.flatMap((run) =>
-    run.leasedBy === null ? [] : [{ key: `${run.recordId}-${run.leasedBy}`, title: workerTitle(run, numbers) }],
+    run.leasedBy === null ? [] : [workerOn(run, run.leasedBy, numbers)],
   )

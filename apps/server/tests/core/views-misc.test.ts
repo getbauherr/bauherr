@@ -36,37 +36,45 @@ describe('holds', () => {
     expect((await find()).filter((h) => h.kind === 'product-observing')).toEqual([])
   })
 
-  it('names stuck tickets', async () => {
-    const stuck = (await find()).filter((h) => h.kind === 'ticket-stuck')
-    expect(stuck.map((h) => h.kind === 'ticket-stuck' && h.reason).sort()).toEqual([
-      'failed-runs', 'reporter-silent', 'verify-rounds',
-    ])
-    expect(stuck.map((h) => h.kind === 'ticket-stuck' && h.recordId).sort()).toEqual(
-      [s.names.failedRuns, s.names.reporterSilent, s.names.verifyRounds].sort(),
-    )
+  it('names the stuck tickets in one hold', async () => {
+    const stuck = (await find()).filter((h) => h.kind === 'tickets-stuck')
+    expect(stuck).toHaveLength(1)
+    const ids = stuck.flatMap((h) => (h.kind === 'tickets-stuck' ? h.tickets.map((t) => t.recordId) : []))
+    expect(ids.sort()).toEqual([s.names.failedRuns, s.names.reporterSilent, s.names.verifyRounds].sort())
   })
 
-  it('names stages with queued runs and no agent session seen in ten minutes', async () => {
+  it('names one line per role with the queued runs by stage when no session was seen in ten minutes', async () => {
     const queued = (now: Date) => find(now).then((all) => all.filter((h) => h.kind === 'no-agent-connected'))
-    const all = (await queued(new Date())).map((h) => h.kind === 'no-agent-connected' && [h.stage, h.role, h.queued])
-    expect(all).toEqual([
-      ['brief', 'builder', 1],
-      ['build', 'builder', 1],
-      ['intake', 'builder', 1],
-      ['verify', 'verifier', 1],
+    expect(await queued(new Date())).toEqual([
+      {
+        kind: 'no-agent-connected', role: 'builder', queued: 3,
+        byStage: [{ stage: 'brief', queued: 1 }, { stage: 'build', queued: 1 }, { stage: 'intake', queued: 1 }],
+      },
+      { kind: 'no-agent-connected', role: 'verifier', queued: 1, byStage: [{ stage: 'verify', queued: 1 }] },
     ])
     await session('builder', new Date(Date.now() - 11 * MIN))
     await session('verifier', new Date(), true)
-    expect(await queued(new Date())).toHaveLength(4)
+    expect(await queued(new Date())).toHaveLength(2)
     await session('builder', new Date(Date.now() - 5 * MIN))
     expect((await queued(new Date())).map((h) => h.kind === 'no-agent-connected' && h.role)).toEqual(['verifier'])
+  })
+
+  it('asks for a session only for session Products; a Runner Product holds when its run waits', async () => {
+    await run(sql`UPDATE "products" SET "executor" = 'runner'`)
+    const kinds = async () => (await find()).map((h) => h.kind)
+    expect(await kinds()).not.toContain('no-agent-connected')
+    expect(await kinds()).not.toContain('runner-idle')
+    await run(sql`UPDATE "stage_runs" SET "created_at" = now() - interval '11 minutes' WHERE "status" = 'queued'`)
+    expect((await find()).filter((h) => h.kind === 'runner-idle')).toEqual([{ kind: 'runner-idle', queued: 4 }])
+    await run(sql`UPDATE "products" SET "executor" = 'session'`)
+    expect(await kinds()).not.toContain('runner-idle')
   })
 
   it('names a source whose last sync failed, only in its own Workspace', async () => {
     await run(sql`UPDATE "ticket_sources" SET "last_error" = 'boom', "last_polled_at" = now()`)
     expect((await find()).filter((h) => h.kind === 'sync-failed')).toMatchObject([{ repo: 'acme/app', error: 'boom' }])
     expect(await find(new Date(), s.e.db.otherWorkspace)).toEqual([
-      { kind: 'no-agent-connected', stage: 'intake', role: 'builder', queued: 1 },
+      { kind: 'no-agent-connected', role: 'builder', queued: 1, byStage: [{ stage: 'intake', queued: 1 }] },
     ])
   })
 })

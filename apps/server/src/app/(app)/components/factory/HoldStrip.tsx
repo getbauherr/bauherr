@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import type { Hold } from '../../../../core/views/holds'
 import { STAGE_NAMES } from '../../lib/factory'
-import { STUCK_SENTENCES } from '../../lib/status-words'
 import { Time } from '../Time'
 
 const LINK = 'text-primary underline underline-offset-2'
@@ -9,13 +8,22 @@ const STRIP = 'flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-md border b
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 
+function StuckLinks({ tickets }: { tickets: { recordId: number; number: number }[] }) {
+  return tickets.map((ticket, index) => (
+    <span key={ticket.recordId}>
+      {index > 0 && ', '}
+      <Link href={`/tickets/${ticket.recordId}`} className={LINK}>#{ticket.number}</Link>
+    </span>
+  ))
+}
+
 function Sentence({ hold }: { hold: Hold }) {
   switch (hold.kind) {
-    case 'ticket-stuck':
+    case 'tickets-stuck':
       return (
         <>
-          <Link href={`/tickets/${hold.recordId}`} className={LINK}>#{hold.number}</Link>{' '}
-          {STUCK_SENTENCES[hold.reason] ?? 'is stuck and waits for you.'}
+          {plural(hold.tickets.length, 'ticket is', 'tickets are')} stuck and wait for your answer:{' '}
+          <StuckLinks tickets={hold.tickets} />
         </>
       )
     case 'product-observing':
@@ -29,10 +37,12 @@ function Sentence({ hold }: { hold: Hold }) {
     case 'no-agent-connected':
       return (
         <>
-          No {hold.role} session is connected: {plural(hold.queued, 'run waits', 'runs wait')} in{' '}
-          {STAGE_NAMES[hold.stage]}.
+          No {hold.role} session is connected: {plural(hold.queued, 'run waits', 'runs wait')} (
+          {hold.byStage.map((row) => `${STAGE_NAMES[row.stage]} ${row.queued}`).join(', ')}).
         </>
       )
+    case 'runner-idle':
+      return <>The Runner has not picked up a run for 10 minutes: {plural(hold.queued, 'run waits', 'runs wait')}.</>
     case 'sync-failed':
       return (
         <>
