@@ -10,19 +10,25 @@ import type { Engine } from './harness'
 import { asked, begin, mirrorSource, patch, toBrief, workOn } from './scenario'
 
 export const TICKET_TITLES = {
-  briefApprove: 'Brief with a decision to approve',
   briefTitle: 'Brief with a decision for the tabs',
   resultReadonly: 'Result to read',
-  resultSendBack: 'Result to send back',
-  resultAccept: 'Result to accept',
-  resultStale: 'Result decided twice',
-  question: 'Question from the agent',
   questionRead: 'Question to read',
   intake: 'Intake waiting for the reporter',
   runSteps: 'Build with reported steps',
 } as const
 
-export type TicketNames = Record<keyof typeof TICKET_TITLES, number>
+export const POOL_SIZE = 3
+
+export const POOL_TITLES = {
+  briefApprove: 'Brief with a decision to approve',
+  resultSendBack: 'Result to send back',
+  resultAccept: 'Result to accept',
+  resultStale: 'Result decided twice',
+  question: 'Question from the agent',
+} as const
+
+export type TicketNames = Record<keyof typeof TICKET_TITLES, number> &
+  Record<keyof typeof POOL_TITLES, number[]>
 
 const criterion = (n: number, text: string, kind: Criterion['verify']['kind'], how: string): Criterion => ({
   id: `c${n}`,
@@ -172,28 +178,50 @@ const intakeTicket = async (e: Engine, item: (number: number, fields?: { title: 
   return id
 }
 
+const pooled = async (make: (n: number) => Promise<number>): Promise<number[]> => {
+  const ids: number[] = []
+  for (let n = 1; n <= POOL_SIZE; n++) ids.push(await make(n))
+  return ids
+}
+
 export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   const mirror = await mirrorSource(e)
+  const titled: [number, string][] = []
+  const open = async (title: string) => {
+    const id = await toBrief(e, true)
+    await edit(e, id, 'brief', briefFields([STORAGE]))
+    titled.push([id, title])
+    return id
+  }
+  const result = async (title: string, pr: number) => {
+    const id = await resultTicket(e, pr)
+    titled.push([id, title])
+    return id
+  }
+  const asking = async (title: string) => {
+    const id = await toBrief(e, false)
+    await questionTicket(e, id)
+    titled.push([id, title])
+    return id
+  }
+  let pr = 10
   const names = {
-    briefApprove: await toBrief(e, true),
-    briefTitle: await toBrief(e, true),
-    resultReadonly: await resultTicket(e, 11),
-    resultSendBack: await resultTicket(e, 12),
-    resultAccept: await resultTicket(e, 13),
-    resultStale: await resultTicket(e, 14),
-    question: await toBrief(e, false),
-    questionRead: await toBrief(e, false),
+    briefTitle: await open(TICKET_TITLES.briefTitle),
+    briefApprove: await pooled((n) => open(`${POOL_TITLES.briefApprove} ${n}`)),
+    resultReadonly: await result(TICKET_TITLES.resultReadonly, ++pr),
+    resultSendBack: await pooled((n) => result(`${POOL_TITLES.resultSendBack} ${n}`, ++pr)),
+    resultAccept: await pooled((n) => result(`${POOL_TITLES.resultAccept} ${n}`, ++pr)),
+    resultStale: await pooled((n) => result(`${POOL_TITLES.resultStale} ${n}`, ++pr)),
+    question: await pooled((n) => asking(`${POOL_TITLES.question} ${n}`)),
+    questionRead: await asking(TICKET_TITLES.questionRead),
     runSteps: await toBrief(e, false),
   }
-  await edit(e, names.briefApprove, 'brief', briefFields([STORAGE]))
-  await edit(e, names.briefTitle, 'brief', briefFields([STORAGE]))
-  await questionTicket(e, names.question)
-  await questionTicket(e, names.questionRead)
+  titled.push([names.runSteps, TICKET_TITLES.runSteps])
   await reportedSteps(e, names.runSteps)
-  for (const pr of [11, 12, 13, 14]) await mirror.item(pr, { kind: 'pr', head: `h${pr}`, title: `Pull request ${pr}` })
-  for (const [name, id] of Object.entries(names)) {
+  for (let n = 11; n <= pr; n++) await mirror.item(n, { kind: 'pr', head: `h${n}`, title: `Pull request ${n}` })
+  for (const [id, title] of titled) {
     const { source } = (await readRecord(e.db.payload, id)).record
-    await mirror.item(source.number, { title: TICKET_TITLES[name as keyof typeof names] })
+    await mirror.item(source.number, { title })
   }
   return { ...names, intake: await intakeTicket(e, mirror.item) }
 }

@@ -28,8 +28,17 @@ const enter = async (page: Page, title: string) => {
   return open(page, title)
 }
 
+const enterOpen = async (page: Page, base: string) => {
+  await signIn(page)
+  await page.goto('/inbox')
+  const waiting = page.getByRole('region', { name: 'Waiting on you' })
+  await waiting.getByRole('link', { name: new RegExp(`${base} \\d`) }).first().click()
+  await expect(page.getByRole('heading', { level: 1, name: new RegExp(`^${base} \\d$`) })).toBeVisible()
+  return new URL(page.url()).pathname
+}
+
 test('approving a Brief stores the chosen option and the ticket moves on to Build', async ({ page }) => {
-  await enter(page, 'Brief with a decision to approve')
+  await enterOpen(page, 'Brief with a decision to approve')
   await expect(page.getByText('This Brief has an open decision.')).toBeVisible()
   await page.getByRole('radio', { name: /Disk/ }).check()
   await page.getByRole('button', { name: 'Approve Brief' }).click()
@@ -42,7 +51,7 @@ test('approving a Brief stores the chosen option and the ticket moves on to Buil
 })
 
 test('sending a Result back asks for a note in a dialog and records it', async ({ page }) => {
-  const path = await enter(page, 'Result to send back')
+  const path = await enterOpen(page, 'Result to send back')
   await page.getByRole('button', { name: 'Send back with note' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog.getByRole('button', { name: 'Send back with note' })).toBeDisabled()
@@ -54,14 +63,14 @@ test('sending a Result back asks for a note in a dialog and records it', async (
 })
 
 test('accepting a Result ends the ticket', async ({ page }) => {
-  await enter(page, 'Result to accept')
+  await enterOpen(page, 'Result to accept')
   await page.getByRole('button', { name: 'Accept', exact: true }).click()
   await expect(page.getByRole('status').filter({ hasText: 'The Result was accepted' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Accept', exact: true })).toHaveCount(0)
 })
 
 test('answering a question from the agent records the chosen option', async ({ page }) => {
-  const path = await enter(page, 'Question from the agent')
+  const path = await enterOpen(page, 'Question from the agent')
   await expect(page.getByText('Which storage should the export use?')).toBeVisible()
   await page.getByRole('button', { name: 'Answer' }).click()
   await expect(page.getByRole('main').getByRole('alert')).toHaveText('Choose an answer first.')
@@ -73,7 +82,7 @@ test('answering a question from the agent records the chosen option', async ({ p
 })
 
 test('a decision on a card that moved on shows the stale sentence', async ({ page, browser }) => {
-  const path = await enter(page, 'Result decided twice')
+  const path = await enterOpen(page, 'Result decided twice')
   await page.route('**/api/changes', (route) => route.abort())
   const other = await browser.newPage()
   await signIn(other)

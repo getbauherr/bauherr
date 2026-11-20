@@ -17,15 +17,16 @@ const view = (recordId: number) => ticket(e.db.payload, { workspace: e.db.worksp
 
 describe('the tickets the end-to-end specs read', () => {
   it('stops two Briefs at an open decision with two options', async () => {
-    for (const id of [names.briefApprove, names.briefTitle]) {
+    for (const id of [...names.briefApprove, names.briefTitle]) {
       const t = await view(id)
       expect(t.card).toMatchObject({ card: 'brief', reason: 'open-decision' })
       expect(t.record.decisions.map((d) => [d.id, d.options.length, d.answer])).toEqual([['d1', 2, undefined]])
     }
   })
 
-  it('stops four tickets at a Result with proofs, findings, a pull request and a factory decision', async () => {
-    for (const id of [names.resultReadonly, names.resultSendBack, names.resultAccept, names.resultStale]) {
+  it('stops every Result ticket at a Result with proofs, findings, a pull request and a factory decision', async () => {
+    const results = [names.resultReadonly, ...names.resultSendBack, ...names.resultAccept, ...names.resultStale]
+    for (const id of results) {
       const t = await view(id)
       expect(t.card).toMatchObject({ card: 'result' })
       expect(t.proofs.map((g) => g.criterion)).toEqual(['c1', 'c2', 'c3'])
@@ -37,7 +38,7 @@ describe('the tickets the end-to-end specs read', () => {
   })
 
   it('asks a question, waits for a reporter, and keeps a run with reported steps', async () => {
-    for (const id of [names.question, names.questionRead]) {
+    for (const id of [...names.question, names.questionRead]) {
       expect((await view(id)).card).toMatchObject({ card: 'question', reason: 'agent' })
     }
     const intake = await view(names.intake)
