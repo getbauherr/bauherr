@@ -14,6 +14,9 @@ afterAll(async () => {
 })
 
 const ids = (cards: { recordId: number }[]) => cards.map((c) => c.recordId)
+const crowd = async () => {
+  for (let i = 0; i < 200; i++) await s.e.db.fresh()
+}
 const view = async () => board(s.e.db.payload, { workspace: s.e.db.workspace, now: now() })
 
 describe('board', () => {
@@ -92,13 +95,6 @@ describe('board', () => {
     const later = await board(s.e.db.payload, { workspace: s.e.db.workspace, now: week })
     expect(later.stages.done).toEqual([])
   })
-
-  it('makes a constant number of queries', async () => {
-    const execute = vi.spyOn(s.e.db.payload.db.drizzle, 'execute')
-    await view()
-    expect(execute.mock.calls.length).toBeLessThanOrEqual(3)
-    execute.mockRestore()
-  })
 })
 
 describe('stageStats counts', () => {
@@ -121,11 +117,25 @@ describe('stageStats counts', () => {
     expect(stages.map((st) => st.counts.agents)).toEqual([1, 0, 0, 0, 0, 0])
     expect(stages.flatMap((st) => st.runs)).toHaveLength(1)
   })
+})
 
-  it('makes a constant number of queries', async () => {
+describe('query counts with 200 more open tickets', () => {
+  beforeAll(crowd, 120_000)
+
+  const count = async (work: () => Promise<unknown>): Promise<number> => {
     const execute = vi.spyOn(s.e.db.payload.db.drizzle, 'execute')
-    await stageStats(s.e.db.payload, { workspace: s.e.db.workspace, now: now() })
-    expect(execute.mock.calls.length).toBeLessThanOrEqual(4)
+    await work()
+    const calls = execute.mock.calls.length
     execute.mockRestore()
+    return calls
+  }
+
+  it('makes three queries for the board', async () => {
+    expect(await count(view)).toBeLessThanOrEqual(3)
+  })
+
+  it('makes four queries for the stage statistics', async () => {
+    const stats = () => stageStats(s.e.db.payload, { workspace: s.e.db.workspace, now: now() })
+    expect(await count(stats)).toBeLessThanOrEqual(4)
   })
 })
