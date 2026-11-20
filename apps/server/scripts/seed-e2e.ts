@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { getPayload } from 'payload'
 import config from '../src/payload.config'
+import { LIVE_RUN_INDEX } from '../src/migrations/20261119_140000_stage_runs'
 import { readRecord } from '../src/core/record/store'
 import { coreDbOn } from '../tests/core/db'
 import { engineOn } from '../tests/core/harness'
@@ -76,6 +77,7 @@ const factoryApp = Number((await ensure('products', { slug: 'factory-app' }, fac
 const inFactory = { workspace: { equals: factory } }
 const seeded = await payload.find({ collection: 'records', where: inFactory, limit: 1, depth: 0, ...o })
 if (!seeded.docs.length) {
+  await payload.db.drizzle.execute(LIVE_RUN_INDEX)
   const ids = { workspace: factory, otherWorkspace: Number(workspace), product: factoryApp }
   const engine = engineOn(coreDbOn(payload, ids, async () => {}), undefined, new Date())
   const scenario = await seedScenario(engine, (name) => FACTORY_TITLES[name])

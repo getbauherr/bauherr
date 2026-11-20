@@ -11,6 +11,7 @@ const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-prac
 
 const CONTRAST_REVIEWED: [target: RegExp, reason: string][] = [
   [/^(output|text)$/, 'Symbol-only output and SVG text: no text characters to measure'],
+  [/^#loop-(verify|ship)$/, 'Label on a dashed loop line: muted ink on the page ground, 5.8:1 light, 7.1:1 dark'],
 ]
 
 const scan = async (page: Page) => {
