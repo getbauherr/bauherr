@@ -1,4 +1,4 @@
-import type { Ticket, TicketSummary } from '@bauherr/adapters'
+import type { Ticket } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { connectionInput } from '../../lib/connection'
 import { readerFor, type ForgeReader, type ReadTickets } from '../forge/reader'
@@ -29,11 +29,11 @@ export type SyncDeps = {
 
 export type SyncResult = { synced: number; failed: number }
 
-const storeIssue = async (payload: Payload, context: PullContext, tickets: ReadTickets, change: TicketSummary) => {
-  const ticket: Ticket = await tickets.get(change.id)
+export const storeIssue = async (payload: Payload, context: PullContext, tickets: ReadTickets, id: string) => {
+  const ticket: Ticket = await tickets.get(id)
   const item = await upsertItem(payload, context, itemFromTicket(ticket), context.now)
   const since = await latestCommentAt(payload, item)
-  const comments = await tickets.listComments(change.id, since ?? undefined)
+  const comments = await tickets.listComments(id, since ?? undefined)
   await upsertComments(payload, context.workspace, item, comments.map(commentRow))
 }
 
@@ -47,7 +47,7 @@ const pollIssues = async (
   const known = await knownItems(payload, context.source, changes.map((change) => change.number))
   const fresh = changes.filter((change) => !isCurrent(known.get(change.number), change.updatedAt))
   const { batch, truncated } = takeBatch(fresh, BATCH)
-  for (const change of batch) await storeIssue(payload, context, tickets, change)
+  for (const change of batch) await storeIssue(payload, context, tickets, change.id)
   const reached = truncated ? batch.at(-1) : changes.at(-1)
   return { cursor: reached?.updatedAt ?? null, truncated, stored: batch.length }
 }

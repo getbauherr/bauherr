@@ -24,7 +24,7 @@ export const isCurrent = (known: KnownItem | undefined, updatedAt: string): bool
 
 export type PullContext = ItemContext & { now: Date }
 
-const storePull = async (payload: Payload, context: PullContext, forge: ReadForge, pull: PullRequest) => {
+export const storePull = async (payload: Payload, context: PullContext, forge: ReadForge, pull: PullRequest) => {
   const item = await upsertItem(payload, context, itemFromPull(pull), context.now)
   if (pull.headSha === '') return
   const checks = await forge.listChecks(context.repo, pull.headSha)
