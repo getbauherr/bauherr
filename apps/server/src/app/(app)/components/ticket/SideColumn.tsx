@@ -9,7 +9,7 @@ import { RunLink } from './RunLink'
 function Aside({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className={`${CARD} grid gap-2 p-4`}>
-      <h3 className="label m-0 text-muted-foreground">{title}</h3>
+      <h2 className="label m-0 text-muted-foreground">{title}</h2>
       {children}
     </section>
   )

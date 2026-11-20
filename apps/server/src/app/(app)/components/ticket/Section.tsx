@@ -5,7 +5,7 @@ export const CARD = 'rounded-md border border-border bg-card'
 export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="grid gap-2">
-      <h3 className="label text-muted-foreground">{title}</h3>
+      <h2 className="label text-muted-foreground">{title}</h2>
       {children}
     </section>
   )

@@ -4,6 +4,8 @@ import type { TicketView } from '../../../../core/views/ticket'
 import { STAGE_NAMES } from '../../lib/factory'
 import { StatusChip } from '../StatusChip'
 
+const STEP = ['text-ok', 'font-medium text-foreground', undefined]
+
 const PATH: Stage[] = STAGES.filter((stage) => stage !== 'done')
 
 function StagePath({ stage }: { stage: Stage }) {
@@ -14,9 +16,8 @@ function StagePath({ stage }: { stage: Stage }) {
         {PATH.map((entry, index) => (
           <li key={entry} aria-current={index === at ? 'step' : undefined} className="flex items-center gap-2">
             {index > 0 && <span aria-hidden>›</span>}
-            {index < at && <span aria-hidden className="text-ok">✓</span>}
-            <span className={index === at ? 'font-medium text-foreground' : undefined}>
-              {STAGE_NAMES[entry]}
+            <span className={STEP[Math.sign(index - at) + 1]}>
+              {index < at ? `✓ ${STAGE_NAMES[entry]}` : STAGE_NAMES[entry]}
               {index < at && <span className="sr-only"> (done)</span>}
             </span>
           </li>

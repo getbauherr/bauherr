@@ -47,6 +47,22 @@ const inFactory = (url: string) => async (page: Page) => {
   return url
 }
 
+const inTickets = (title: string, query = '') => async (page: Page) => {
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url: base }])
+  await page.goto('/inbox')
+  const href = await page.getByRole('link', { name: new RegExp(title) }).first().getAttribute('href')
+  expect(href, `a ticket titled ${title}`).toBeTruthy()
+  return `${href}${query}`
+}
+
+const runOf = (title: string) => async (page: Page) => {
+  await page.goto(await inTickets(title)(page))
+  const href = await page.locator('main a[href^="/runs/"]').first().getAttribute('href')
+  expect(href, 'a run link on the ticket').toBeTruthy()
+  return href!
+}
+
 const signedOut: Record<string, string> = {
   '/login': '/login',
 }
@@ -56,6 +72,13 @@ const redirects: Record<string, RegExp> = { '/settings': /^\/settings\/profile$/
 const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
   '/': inFactory('/'),
   '/inbox': inFactory('/inbox'),
+  '/tickets/[id] (Brief card)': inTickets('Brief with a decision for the tabs'),
+  '/tickets/[id] (Result card)': inTickets('Result to read'),
+  '/tickets/[id] (Result tab)': inTickets('Result to read', '?tab=result'),
+  '/tickets/[id] (Activity tab)': inTickets('Result to read', '?tab=activity'),
+  '/tickets/[id] (question)': inTickets('Question from the agent'),
+  '/tickets/[id] (Intake)': inTickets('Intake waiting for the reporter'),
+  '/runs/[id]': runOf('Build with reported steps'),
   '/settings': '/settings',
   '/settings/api-key': '/settings/api-key',
   '/settings/audit': '/settings/audit',
