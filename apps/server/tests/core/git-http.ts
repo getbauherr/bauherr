@@ -13,6 +13,8 @@ export type GitHttp = {
 const credentialOf = (header: string | undefined): string | null =>
   header?.startsWith('Basic ') ? Buffer.from(header.slice(6), 'base64').toString() : null
 
+const backendStoppedReading = (): void => undefined
+
 const cgi = (root: string, request: { method: string; url: string; type: string; encoding: string }, body: Buffer) =>
   new Promise<Buffer>((resolve, reject) => {
     const [path = '', query = ''] = request.url.split('?')
@@ -35,6 +37,7 @@ const cgi = (root: string, request: { method: string; url: string; type: string;
     child.stdout.on('data', (chunk: Buffer) => out.push(chunk))
     child.on('error', reject)
     child.on('close', () => resolve(Buffer.concat(out)))
+    child.stdin.on('error', backendStoppedReading)
     child.stdin.end(body)
   })
 
