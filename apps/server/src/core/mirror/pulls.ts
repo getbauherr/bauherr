@@ -7,7 +7,7 @@ import {
   goneNumbers,
   knownItems,
   openItems,
-  pullsWithPendingChecks,
+  pullsAwaitingChecks,
   setGone,
   upsertChecks,
   upsertItem,
@@ -36,9 +36,10 @@ export const syncPulls = async (
   context: PullContext,
   forge: ReadForge,
   imported: boolean,
-): Promise<number> => {
-  const pending = await pullsWithPendingChecks(payload, context.source)
+): Promise<{ stored: number; fresh: number }> => {
+  const pending = await pullsAwaitingChecks(payload, context.source)
   let stored = 0
+  let fresh = 0
   for (let page = 1; ; page++) {
     const pulls = await forge.listOpenPullRequests(context.repo, page, PAGE)
     const known = await knownItems(payload, context.source, pulls.map((pull) => pull.number))
@@ -48,8 +49,9 @@ export const syncPulls = async (
     for (const pull of changed.slice(0, BATCH - stored)) {
       await storePull(payload, context, forge, pull)
       stored++
+      if (!isCurrent(known.get(pull.number), pull.updatedAt)) fresh++
     }
-    if (stored >= BATCH || pulls.length < PAGE || (imported && changed.length === 0)) return stored
+    if (stored >= BATCH || pulls.length < PAGE || (imported && changed.length === 0)) return { stored, fresh }
   }
 }
 

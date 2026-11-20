@@ -3,6 +3,8 @@ import { z } from 'zod'
 import type { AdvanceDeps } from '../../engine'
 import { fold } from '../../fold'
 import { foldOptions } from '../../lifecycle'
+import { loadIntakeFacts } from '../../intake/facts-store'
+import type { IntakeFacts } from '../../intake/facts'
 import type { TicketRecord } from '../../record/schema'
 import { readEvents, readRecord } from '../../record/store'
 import { releaseRun } from '../../submit'
@@ -18,6 +20,8 @@ export type ContextPack = {
   record: TicketRecord
   resultSchema: unknown
   note: string | null
+  skill: string | null
+  facts: IntakeFacts | null
 }
 
 const roleOf = async ({ deps, workspace, keyId }: AgentContext, session: string) => {
@@ -64,6 +68,8 @@ export const next = defineTool({
       record: stored.record,
       resultSchema: z.toJSONSchema(module.resultSchema, { io: 'input' }),
       note: await pendingNote(deps, run),
+      skill: (await deps.skills?.(run.stage)) ?? null,
+      facts: run.stage === 'intake' ? await loadIntakeFacts(deps.payload, stored) : null,
     }
     return { status: 'work' as const, runId: run.id, leaseToken: token, context: pack }
   },

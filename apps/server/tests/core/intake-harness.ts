@@ -30,6 +30,8 @@ export const intakeHarness = (suite: string) => {
 
   beforeEach(async () => {
     await h.rows(sql`DELETE FROM "events"`)
+    await h.rows(sql`DELETE FROM "proofs"`)
+    await h.rows(sql`DELETE FROM "statements"`)
     await h.rows(sql`DELETE FROM "stage_runs"`)
     await h.rows(sql`DELETE FROM "records"`)
     clock.now = START

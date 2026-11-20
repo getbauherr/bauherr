@@ -88,7 +88,7 @@ const syncOne = async (payload: Payload, source: SourceRow, reader: ForgeReader,
   if (moved) await saveCursor(payload, source.id, cursor)
   const imported = source.importedAt !== null
   const pulls = await syncPulls(payload, context, reader.forge, imported)
-  const idle = !polled.truncated && polled.stored === 0 && pulls === 0
+  const idle = !polled.truncated && polled.stored === 0 && pulls.fresh === 0
   const due = await periodic(payload, context, source, reader, cursor)
   const patch: SourcePatch = { error: null, polledAt: now, ...due }
   if (moved) patch.cursor = cursor

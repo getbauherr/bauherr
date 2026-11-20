@@ -1,6 +1,7 @@
 import { FakeBackend } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import { describe, expect, it } from 'vitest'
+import { appendEvent, createRecord } from '../../src/core/record/store'
 import { HOUR, mirrorHarness, readerOf } from './mirror-harness'
 
 const h = mirrorHarness('core_mirror_changes')
@@ -99,7 +100,7 @@ describe('changes on the forge', () => {
 })
 
 describe('pull requests', () => {
-  it('mirrors an open pull request with its checks and refreshes pending checks', async () => {
+  it('mirrors an open pull request with its checks and refreshes pending checks of a ticket', async () => {
     const repo = fresh()
     const fake = new FakeBackend({ native: true, user: 'jo' })
     await fake.forge.createBranch(repo, 'fix')
@@ -129,6 +130,15 @@ describe('pull requests', () => {
     expect(await checks()).toEqual([{ name: 'ci', status: 'in_progress', conclusion: null }])
 
     fake.setChecks(repo, sha, [{ name: 'ci', status: 'completed', conclusion: 'success' }])
+    await sync(readers)
+    expect(await checks()).toEqual([{ name: 'ci', status: 'in_progress', conclusion: null }])
+
+    const number = Number(issue.number)
+    const source = { forge: 'github' as const, repo, number, reporter: 'jo', external: false, backlog: false }
+    const { workspace, product } = h.ids
+    const record = await createRecord(h.payload(), { workspace, product, source, type: 'bug' })
+    const data = { runId: '1', patchId: 'p1', headSha: sha, pr: pull.number }
+    await appendEvent(h.payload(), record.id, { type: 'build.submitted', data, actor: 'agent' })
     await sync(readers)
     expect(await checks()).toEqual([{ name: 'ci', status: 'completed', conclusion: 'success' }])
   })

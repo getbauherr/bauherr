@@ -1,0 +1,56 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { z } from 'zod'
+import { MODULES, skillFor } from '../../src/lean'
+import { openMcp, type Mcp } from './mcp-harness'
+
+let m: Mcp
+beforeAll(async () => {
+  m = await openMcp('core_context_pack', MODULES)
+}, 120_000)
+afterAll(async () => {
+  await m?.e.drop()
+})
+beforeEach(async () => {
+  await m.e.drain()
+})
+
+const pack = z.object({
+  status: z.literal('work'),
+  context: z.object({
+    stage: z.string(),
+    skill: z.string().nullable(),
+    facts: z.object({ missing: z.array(z.string()) }).nullable(),
+  }),
+})
+
+const claimWith = async (skills: (stage: string) => Promise<string | null>) => {
+  const { agent } = m.agent(m.alpha)
+  const contexts = { agent: { ...agent, deps: { ...agent.deps, skills: (stage: string) => skills(stage) } } }
+  const { session } = z.object({ session: z.string() }).parse(await m.call('connect', { role: 'builder' }, contexts))
+  return pack.parse(await m.call('next_work', { session }, contexts))
+}
+
+describe('the context pack', () => {
+  it('delivers the skill text of the stage and the intake facts to an intake run', async () => {
+    await m.begin()
+    const work = await claimWith((stage) => Promise.resolve(`skill of ${stage}`))
+    expect(work.context.stage).toBe('intake')
+    expect(work.context.skill).toBe('skill of intake')
+    expect(work.context.facts?.missing).toEqual(['what happened', 'what was expected', 'steps to reproduce', 'where'])
+  })
+
+  it('has no skill when the loader finds none', async () => {
+    await m.begin()
+    const work = await claimWith(() => Promise.resolve(null))
+    expect(work.context.skill).toBeNull()
+  })
+})
+
+describe('the skill loader', () => {
+  it('reads the skill of every stage that has a module and none for the others', async () => {
+    for (const stage of ['intake', 'brief', 'build', 'verify'] as const) {
+      expect(await skillFor(stage)).toMatch(/^# \w+/)
+    }
+    expect(await skillFor('ship')).toBeNull()
+  })
+})

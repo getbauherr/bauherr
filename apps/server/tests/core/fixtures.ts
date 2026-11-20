@@ -93,6 +93,7 @@ export const CONFIG: Config = {
   productionGate: false,
   deployChecks: false,
   requiredChecks: true,
+  autoClose: true,
 }
 
 export const start = (stage: Stage, runId = 'r1') => ev('run.started', { stage, runId })
