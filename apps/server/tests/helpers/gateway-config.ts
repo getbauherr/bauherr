@@ -3,10 +3,23 @@ import { join } from 'node:path'
 import { parse, stringify } from 'yaml'
 import { PRESETS, type Preset } from '../../src/lib/providers'
 
-const FULL = { baseUrl: 'https://up.example/v1', awsRegion: 'us-east-1', vertexProject: 'p', vertexRegion: 'europe-west1', azureResource: 'res', azureTenant: 'tn', azureClient: 'cl' }
+const FULL = {
+  baseUrl: 'https://up.example/v1',
+  awsRegion: 'us-east-1',
+  vertexProject: 'p',
+  vertexRegion: 'europe-west1',
+  azureResource: 'res',
+  azureTenant: 'tn',
+  azureClient: 'cl',
+}
 const SA_JSON = JSON.stringify({
-  type: 'service_account', project_id: 'p', private_key_id: 'x', client_id: '1', client_email: 'a@p.iam.gserviceaccount.com',
-  private_key: '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n', token_uri: 'https://oauth2.googleapis.com/token',
+  type: 'service_account',
+  project_id: 'p',
+  private_key_id: 'x',
+  client_id: '1',
+  client_email: 'a@p.iam.gserviceaccount.com',
+  private_key: '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n',
+  token_uri: 'https://oauth2.googleapis.com/token',
 })
 const IAM = JSON.stringify({ accessKeyId: 'AKIAXXXXXXXXXXXXXXXX', secretAccessKey: 'dummy' })
 const root = join(__dirname, '../../../..')
@@ -27,8 +40,27 @@ export function buildConfig(dir: string): Record<string, any> {
     cfg.llm.models.push(PRESETS.anthropic.render(`multi/${c}`, FULL, `/cfg/multi-${c}.key`))
   }
   cfg.llm.policies.apiKey.keys = [
-    { key: 'sk-usd', metadata: { name: 'usd' }, allowedModels: ['ws-anthropic/*'], budgets: [{ name: 'monthly', limit: { unit: 'USD', amount: 50 }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' }] },
-    { key: 'sk-tok', metadata: { name: 'tok' }, allowedModels: ['ws-greenpt/*'], budgets: [{ name: 'monthly', limit: { unit: 'Tokens', amount: 20_000_000 }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' }] },
+    {
+      key: 'sk-usd',
+      metadata: { name: 'usd' },
+      allowedModels: ['ws-anthropic/*'],
+      budgets: [
+        { name: 'monthly', limit: { unit: 'USD', amount: 50 }, window: { rolling: '30d' }, onBudgetExceeded: 'Block' },
+      ],
+    },
+    {
+      key: 'sk-tok',
+      metadata: { name: 'tok' },
+      allowedModels: ['ws-greenpt/*'],
+      budgets: [
+        {
+          name: 'monthly',
+          limit: { unit: 'Tokens', amount: 20_000_000 },
+          window: { rolling: '30d' },
+          onBudgetExceeded: 'Block',
+        },
+      ],
+    },
   ]
   chmodSync(dir, 0o755)
   writeFileSync(join(dir, 'config.yaml'), stringify(cfg), { mode: 0o644 })

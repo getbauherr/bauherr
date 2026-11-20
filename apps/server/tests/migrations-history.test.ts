@@ -19,7 +19,9 @@ beforeAll(async () => {
   process.env.GATEWAY_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'bauherr-gw-'))
   const { getPayload } = await import('payload')
   const config = await (await import('../src/payload.config')).default
-  payload = await getPayload({ config: { ...config, db: postgresAdapter({ pool: { connectionString: testDb.url }, push: false }) as never } })
+  payload = await getPayload({
+    config: { ...config, db: postgresAdapter({ pool: { connectionString: testDb.url }, push: false }) as never },
+  })
 }, 120_000)
 
 afterAll(async () => {
@@ -34,9 +36,16 @@ it('an install seeded at the oldest schema with a Connection survives every late
   const [oldest, ...later] = migrations
   await payload.db.migrate({ migrations: [oldest] as never })
   await run(sql`INSERT INTO workspaces (name, slug) VALUES ('Old', 'old')`)
-  await run(sql`INSERT INTO connections (workspace_id, name, kind, config) SELECT id, 'LLM', 'llm-provider', '{"provider":"anthropic"}' FROM workspaces`)
+  await run(
+    sql`INSERT INTO connections (workspace_id, name, kind, config) SELECT id, 'LLM', 'llm-provider',
+      '{"provider":"anthropic"}' FROM workspaces`,
+  )
   await expect(payload.db.migrate({ migrations: later as never })).resolves.not.toThrow()
   expect((await run(sql`SELECT count(*)::int AS n FROM payload_migrations`)).rows[0].n).toBe(migrations.length)
-  const cols = (await run(sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'connections' AND column_name = 'slug'`)).rows
+  const cols = (
+    await run(
+      sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'connections' AND column_name = 'slug'`,
+    )
+  ).rows
   expect(cols).toHaveLength(1)
 }, 180_000)

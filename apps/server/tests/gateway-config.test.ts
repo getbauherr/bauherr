@@ -17,7 +17,11 @@ it('the template with one entry per preset and both budget units is a structural
   expect(new Set(names).size).toBe(names.length)
   expect(names.filter((n) => n.startsWith('ws-'))).toHaveLength(Object.keys(PRESETS).length + 2)
   for (const k of cfg.llm.policies.apiKey.keys) {
-    for (const pat of k.allowedModels as string[]) expect(names.some((n) => n.startsWith(pat.replace(/\*$/, ''))), pat).toBe(true)
+    for (const pat of k.allowedModels as string[])
+      expect(
+        names.some((n) => n.startsWith(pat.replace(/\*$/, ''))),
+        pat,
+      ).toBe(true)
     for (const b of k.budgets) {
       expect(['USD', 'Tokens']).toContain(b.limit.unit)
       expect(b.limit.amount).toBeGreaterThan(0)
@@ -27,21 +31,43 @@ it('the template with one entry per preset and both budget units is a structural
   for (const f of text.match(/\/cfg\/[\w.-]+/g) ?? []) expect(existsSync(join(dir, f.slice(5))), f).toBe(true)
 })
 
-it.each(Object.keys(PRESETS) as Preset[])('%s: the secret lands in config.yaml only for inline auth, never in the rendered entry otherwise', (p) => {
-  const def = PRESETS[p]
-  const secret = p === 'bedrock-iam' ? JSON.stringify({ accessKeyId: 'AKIA-SECRET-MARK', secretAccessKey: 'SECRET-MARK' }) : 'SECRET-MARK'
-  const entry = JSON.stringify(def.render(p, { baseUrl: 'https://up.example/v1', awsRegion: 'us-east-1', vertexProject: 'p', vertexRegion: 'r', azureResource: 'res', azureTenant: 'tn', azureClient: 'cl' }, `/cfg/${p}.${def.secret.ext}`, def.auth === 'inline' ? secret : undefined))
-  if (def.auth === 'inline') expect(entry).toContain('SECRET-MARK')
-  else expect(entry).not.toContain('SECRET-MARK')
-  if (def.auth === 'file') expect(entry).toContain(`/cfg/${p}.${def.secret.ext}`)
-  if (def.auth === 'ambient') expect(entry).not.toContain('/cfg/')
-})
+it.each(Object.keys(PRESETS) as Preset[])(
+  '%s: the secret lands in config.yaml only for inline auth, never in the rendered entry otherwise',
+  (p) => {
+    const def = PRESETS[p]
+    const secret =
+      p === 'bedrock-iam'
+        ? JSON.stringify({ accessKeyId: 'AKIA-SECRET-MARK', secretAccessKey: 'SECRET-MARK' })
+        : 'SECRET-MARK'
+    const entry = JSON.stringify(
+      def.render(
+        p,
+        {
+          baseUrl: 'https://up.example/v1',
+          awsRegion: 'us-east-1',
+          vertexProject: 'p',
+          vertexRegion: 'r',
+          azureResource: 'res',
+          azureTenant: 'tn',
+          azureClient: 'cl',
+        },
+        `/cfg/${p}.${def.secret.ext}`,
+        def.auth === 'inline' ? secret : undefined,
+      ),
+    )
+    if (def.auth === 'inline') expect(entry).toContain('SECRET-MARK')
+    else expect(entry).not.toContain('SECRET-MARK')
+    if (def.auth === 'file') expect(entry).toContain(`/cfg/${p}.${def.secret.ext}`)
+    if (def.auth === 'ambient') expect(entry).not.toContain('/cfg/')
+  },
+)
 
 it('inline secrets are written into config.yaml, never into a provider file', () => {
   const dir = mkdtempSync(join(tmpdir(), 'agw-'))
   buildConfig(dir)
   expect(readFileSync(join(dir, 'config.yaml'), 'utf8')).toContain('AKIAXXXXXXXXXXXXXXXX')
-  for (const f of readdirSync(dir).filter((x) => x !== 'config.yaml')) expect(readFileSync(join(dir, f), 'utf8'), f).not.toContain('AKIAXXXXXXXXXXXXXXXX')
+  for (const f of readdirSync(dir).filter((x) => x !== 'config.yaml'))
+    expect(readFileSync(join(dir, f), 'utf8'), f).not.toContain('AKIAXXXXXXXXXXXXXXXX')
 })
 
 it('a gateway admin call that never answers fails within the timeout', async () => {
@@ -61,33 +87,60 @@ it('a gateway admin call that never answers fails within the timeout', async () 
   }
 }, 20_000)
 
-it('the rendered config logs the session fields and serves the owner login under claude-* and sub/*, with every key header stripped', () => {
-  const cfg = buildConfig(mkdtempSync(join(tmpdir(), 'agw-')))
-  expect(cfg.frontendPolicies.accessLog.database.add).toEqual({
-    run: 'request.headers["x-bauherr-run"]',
-    stage: 'request.headers["x-bauherr-stage"]',
-    product: 'request.headers["x-bauherr-product"]',
-    ticket: 'request.headers["x-bauherr-ticket"]',
-    session: 'request.headers["x-bauherr-session"]',
-    role: 'request.headers["x-bauherr-role"]',
-    client: 'coalesce(request.headers["x-bauherr-client"], request.headers["user-agent"])',
-  })
-  expect(cfg.frontendPolicies.accessLog.database.llm).toBe('metadata')
-  const models = cfg.llm.models as { name: string; authorization?: unknown; requestHeaders: { remove: string[] } }[]
-  expect(models.map((m) => m.name).filter((n) => !n.startsWith('ws-'))).toEqual(['sub/*', 'claude-*'])
-  for (const m of models) expect(m.requestHeaders.remove, m.name).toEqual(expect.arrayContaining(['x-agw-key', 'x-api-key', 'x-goog-api-key']))
-  for (const n of ['sub/*', 'claude-*']) expect(models.find((m) => m.name === n)!.authorization).toEqual({ rules: [{ allow: 'apiKey.kind == "owner-session"' }] })
-  expect(cfg.llm.policies.apiKey.location.expression).toContain('x-goog-api-key')
-})
+it(
+  'the rendered config logs the session fields and serves the owner login ' +
+    'under claude-* and sub/*, with every key header stripped',
+  () => {
+    const cfg = buildConfig(mkdtempSync(join(tmpdir(), 'agw-')))
+    expect(cfg.frontendPolicies.accessLog.database.add).toEqual({
+      run: 'request.headers["x-bauherr-run"]',
+      stage: 'request.headers["x-bauherr-stage"]',
+      product: 'request.headers["x-bauherr-product"]',
+      ticket: 'request.headers["x-bauherr-ticket"]',
+      session: 'request.headers["x-bauherr-session"]',
+      role: 'request.headers["x-bauherr-role"]',
+      client: 'coalesce(request.headers["x-bauherr-client"], request.headers["user-agent"])',
+    })
+    expect(cfg.frontendPolicies.accessLog.database.llm).toBe('metadata')
+    const models = cfg.llm.models as { name: string; authorization?: unknown; requestHeaders: { remove: string[] } }[]
+    expect(models.map((m) => m.name).filter((n) => !n.startsWith('ws-'))).toEqual(['sub/*', 'claude-*'])
+    for (const m of models)
+      expect(m.requestHeaders.remove, m.name).toEqual(
+        expect.arrayContaining(['x-agw-key', 'x-api-key', 'x-goog-api-key']),
+      )
+    for (const n of ['sub/*', 'claude-*'])
+      expect(models.find((m) => m.name === n)!.authorization).toEqual({
+        rules: [{ allow: 'apiKey.kind == "owner-session"' }],
+      })
+    expect(cfg.llm.policies.apiKey.location.expression).toContain('x-goog-api-key')
+  },
+)
 
 it('ensureManaged brings an older config up to date, adds claude-* once and lists every catalog file', async () => {
   const { ensureManaged, KEY_LOCATION } = await import('../src/lib/gateway')
   const cfg = {
     config: { modelCatalog: [{ file: '/gateway/catalogs/anthropic.json' }] },
-    frontendPolicies: { accessLog: { database: { llm: 'metadata', add: { run: 'request.headers["x-bauherr-run"]' } } } },
+    frontendPolicies: {
+      accessLog: { database: { llm: 'metadata', add: { run: 'request.headers["x-bauherr-run"]' } } },
+    },
     llm: {
-      policies: { apiKey: { location: { expression: 'coalesce(request.headers["x-agw-key"], request.headers["authorization"].stripPrefix("Bearer "))' } } },
-      models: [{ name: 'sub/*', provider: 'anthropic', transformation: { model: 'x' }, requestHeaders: { remove: ['x-agw-key'] } }, { name: 'ws-a/anthropic/*', provider: 'anthropic' }],
+      policies: {
+        apiKey: {
+          location: {
+            expression:
+              'coalesce(request.headers["x-agw-key"], request.headers["authorization"].stripPrefix("Bearer "))',
+          },
+        },
+      },
+      models: [
+        {
+          name: 'sub/*',
+          provider: 'anthropic',
+          transformation: { model: 'x' },
+          requestHeaders: { remove: ['x-agw-key'] },
+        },
+        { name: 'ws-a/anthropic/*', provider: 'anthropic' },
+      ],
     },
   } as Record<string, any>
   expect(ensureManaged(cfg, ['anthropic.json', 'base-costs.json'])).toBe(true)
@@ -96,6 +149,9 @@ it('ensureManaged brings an older config up to date, adds claude-* once and list
   expect(cfg.llm.models.map((m: { name: string }) => m.name)).toEqual(['sub/*', 'claude-*', 'ws-a/anthropic/*'])
   expect(cfg.llm.models[1].transformation).toBeUndefined()
   expect(cfg.llm.models[1].requestHeaders.remove).toEqual(['x-agw-key', 'x-api-key', 'x-goog-api-key'])
-  expect(cfg.config.modelCatalog.map((c: { file: string }) => c.file.split('/').pop())).toEqual(['anthropic.json', 'base-costs.json'])
+  expect(cfg.config.modelCatalog.map((c: { file: string }) => c.file.split('/').pop())).toEqual([
+    'anthropic.json',
+    'base-costs.json',
+  ])
   expect(ensureManaged(cfg, ['anthropic.json', 'base-costs.json'])).toBe(false)
 })

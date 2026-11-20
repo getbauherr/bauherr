@@ -24,7 +24,9 @@ describe.each(['BAUHERR_E2E_FAKE_FORGE'] as const)('assertFakeAllowed(%s)', (nam
     return (await import('../src/lib/fake-guard')).assertFakeAllowed(name)
   }
   it('throws in production without the marker', async () => {
-    await expect(assertWith('', { NODE_ENV: 'production', [name]: '1' })).rejects.toThrow('must not be set in production')
+    await expect(assertWith('', { NODE_ENV: 'production', [name]: '1' })).rejects.toThrow(
+      'must not be set in production',
+    )
   })
   it('passes with the marker, without the flag, or outside production', async () => {
     await expect(assertWith('1', { NODE_ENV: 'production', [name]: '1' })).resolves.toBeUndefined()

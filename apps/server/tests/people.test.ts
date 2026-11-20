@@ -8,14 +8,20 @@ const owner = (assignments: unknown[]) => ({ role: 'product-owner', assignments 
 
 describe('rank and roles', () => {
   it('only an Admin or Bauherr is a Bauherr, only a product-owner a Product owner', () => {
-    expect([{ role: 'admin' }, { role: 'bauherr' }, { role: 'product-owner' }, { role: 'x' }, null].map(isBauherr)).toEqual([true, true, false, false, false])
+    expect(
+      [{ role: 'admin' }, { role: 'bauherr' }, { role: 'product-owner' }, { role: 'x' }, null].map(isBauherr),
+    ).toEqual([true, true, false, false, false])
     expect([isProductOwner({ role: 'product-owner' }), isProductOwner({ role: 'bauherr' })]).toEqual([true, false])
   })
 })
 
 describe('assignments', () => {
   it('reads scope and products per Workspace; an empty list under products grants nothing', () => {
-    const u = owner([{ workspace: 1, scope: 'workspace', products: [] }, { workspace: { id: 2 }, scope: 'products', products: [{ id: 7 }, 8] }, { workspace: 3, scope: 'products', products: [] }])
+    const u = owner([
+      { workspace: 1, scope: 'workspace', products: [] },
+      { workspace: { id: 2 }, scope: 'products', products: [{ id: 7 }, 8] },
+      { workspace: 3, scope: 'products', products: [] },
+    ])
     expect(assignmentOf(u, 1)).toEqual({ scope: 'workspace' })
     expect(assignmentOf(u, 2)).toEqual({ scope: 'products', products: [7, 8] })
     expect(assignmentOf(u, 3)).toEqual({ scope: 'products', products: [] })
@@ -25,7 +31,9 @@ describe('assignments', () => {
 
   it('words for the People table', () => {
     expect(assignmentWords([{ workspace: 'Acme', scope: 'workspace', products: [] }])).toBe('All Products of Acme')
-    expect(assignmentWords([{ workspace: 'Acme', scope: 'products', products: ['Acme Shop', 'Acme Web'] }])).toBe('Acme Shop, Acme Web')
+    expect(assignmentWords([{ workspace: 'Acme', scope: 'products', products: ['Acme Shop', 'Acme Web'] }])).toBe(
+      'Acme Shop, Acme Web',
+    )
     expect(assignmentWords([{ workspace: 'Acme', scope: 'products', products: [] }])).toBe('No Products in Acme')
     expect(assignmentWords([])).toBe('Nothing assigned')
   })
@@ -36,7 +44,14 @@ describe('OIDC roles', () => {
   it('maps the Product owner claim only when configured, the admin claim wins', () => {
     expect(roleFrom(claims, 'realm_access.roles', 'bauherr-admin', 'po-role')).toBe('product-owner')
     expect(roleFrom(claims, 'realm_access.roles', 'bauherr-admin', undefined)).toBe('bauherr')
-    expect(roleFrom({ realm_access: { roles: ['po-role', 'bauherr-admin'] } }, 'realm_access.roles', 'bauherr-admin', 'po-role')).toBe('admin')
+    expect(
+      roleFrom(
+        { realm_access: { roles: ['po-role', 'bauherr-admin'] } },
+        'realm_access.roles',
+        'bauherr-admin',
+        'po-role',
+      ),
+    ).toBe('admin')
     expect(syncFrom({ other: 1 })).toEqual({})
   })
   it('a re-sync never raises a Product owner to bauherr, but follows an admin or Product owner claim', () => {
@@ -57,8 +72,10 @@ describe('account hooks', () => {
   let a1: number
   let a2: number
   let b1: number
-  const mk = (email: string, data: Record<string, unknown>) => payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', ...data } as never, ...o })
-  const get = (id: number | string) => payload.findByID({ collection: 'bauherren', id, ...o }) as Promise<Record<string, any>>
+  const mk = (email: string, data: Record<string, unknown>) =>
+    payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456', ...data }, ...o })
+  const get = (id: number | string) =>
+    payload.findByID({ collection: 'bauherren', id, ...o }) as Promise<Record<string, any>>
 
   beforeAll(async () => {
     testDb = await createTestDb('people')
@@ -68,8 +85,22 @@ describe('account hooks', () => {
     delete process.env.GATEWAY_ADMIN_URL
     const { getPayload } = await import('payload')
     payload = await getPayload({ config: (await import('../src/payload.config')).default })
-    ;[a, b] = await Promise.all(['a', 'b'].map(async (slug) => (await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id as number))
-    ;[a1, a2, b1] = await Promise.all([['a1', a], ['a2', a], ['b1', b]].map(async ([slug, workspace]) => (await payload.create({ collection: 'products', data: { name: slug, slug, workspace }, ...o })).id as number))
+    ;[a, b] = await Promise.all(
+      ['a', 'b'].map(
+        async (slug) =>
+          (await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id as number,
+      ),
+    )
+    ;[a1, a2, b1] = await Promise.all(
+      [
+        ['a1', a],
+        ['a2', a],
+        ['b1', b],
+      ].map(
+        async ([slug, workspace]) =>
+          (await payload.create({ collection: 'products', data: { name: slug, slug, workspace }, ...o })).id as number,
+      ),
+    )
     await mk('admin@x.io', { role: 'admin' })
   })
   afterAll(async () => {
@@ -79,34 +110,76 @@ describe('account hooks', () => {
 
   it('the first account becomes Admin even when asked to be a Product owner', async () => {
     expect(await payload.count({ collection: 'bauherren', ...o })).toMatchObject({ totalDocs: 1 })
-    const first = await get((await payload.find({ collection: 'bauherren', limit: 1, ...o })).docs[0]!.id)
+    const first = await get((await payload.find({ collection: 'bauherren', limit: 1, ...o })).docs[0].id)
     expect(first.role).toBe('admin')
   })
 
   it('keeps tenants equal to the Workspaces of the assignments, whatever the caller sends', async () => {
-    const u = await mk('po1@x.io', { role: 'product-owner', tenants: [{ tenant: b }], assignments: [{ workspace: a, scope: 'products', products: [a1] }] })
+    const u = await mk('po1@x.io', {
+      role: 'product-owner',
+      tenants: [{ tenant: b }],
+      assignments: [{ workspace: a, scope: 'products', products: [a1] }],
+    })
     expect((await get(u.id)).tenants.map((t: { tenant: number }) => t.tenant)).toEqual([a])
-    await payload.update({ collection: 'bauherren', id: u.id, data: { assignments: [{ workspace: a, scope: 'workspace' }, { workspace: b, scope: 'products', products: [b1] }] } as never, ...o })
+    await payload.update({
+      collection: 'bauherren',
+      id: u.id,
+      data: {
+        assignments: [
+          { workspace: a, scope: 'workspace' },
+          { workspace: b, scope: 'products', products: [b1] },
+        ],
+      },
+      ...o,
+    })
     const after = await get(u.id)
     expect(after.tenants.map((t: { tenant: number }) => t.tenant)).toEqual([a, b])
-    expect(after.assignments.map((r: { scope: string; products: number[] }) => [r.scope, r.products])).toEqual([['workspace', []], ['products', [b1]]])
-    await payload.update({ collection: 'bauherren', id: u.id, data: { tenants: [{ tenant: a }, { tenant: b }, { tenant: a }] }, ...o })
+    expect(after.assignments.map((r: { scope: string; products: number[] }) => [r.scope, r.products])).toEqual([
+      ['workspace', []],
+      ['products', [b1]],
+    ])
+    await payload.update({
+      collection: 'bauherren',
+      id: u.id,
+      data: { tenants: [{ tenant: a }, { tenant: b }, { tenant: a }] },
+      ...o,
+    })
     expect((await get(u.id)).tenants.map((t: { tenant: number }) => t.tenant)).toEqual([a, b])
   })
 
   it('a new SSO product owner has no assignment and so no Workspace', async () => {
-    const u = await payload.create({ collection: 'bauherren', data: { email: 'sso@x.io', password: 'pw-123456', role: 'product-owner', tenants: [{ tenant: a }] } as never, context: { oidc: true }, ...o })
+    const u = await payload.create({
+      collection: 'bauherren',
+      data: { email: 'sso@x.io', password: 'pw-123456', role: 'product-owner', tenants: [{ tenant: a }] },
+      context: { oidc: true },
+      ...o,
+    })
     expect((await get(u.id)).tenants).toEqual([])
   })
 
   it('refuses a Product of another Workspace and two assignments for one Workspace', async () => {
-    await expect(mk('bad1@x.io', { role: 'product-owner', assignments: [{ workspace: a, scope: 'products', products: [b1] }] })).rejects.toThrow()
-    await expect(mk('bad2@x.io', { role: 'product-owner', assignments: [{ workspace: a, scope: 'workspace' }, { workspace: a, scope: 'products', products: [a1] }] })).rejects.toThrow()
-    await expect(mk('bad3@x.io', { role: 'bauherr', assignments: [{ workspace: a, scope: 'workspace' }] })).rejects.toThrow()
+    await expect(
+      mk('bad1@x.io', { role: 'product-owner', assignments: [{ workspace: a, scope: 'products', products: [b1] }] }),
+    ).rejects.toThrow()
+    await expect(
+      mk('bad2@x.io', {
+        role: 'product-owner',
+        assignments: [
+          { workspace: a, scope: 'workspace' },
+          { workspace: a, scope: 'products', products: [a1] },
+        ],
+      }),
+    ).rejects.toThrow()
+    await expect(
+      mk('bad3@x.io', { role: 'bauherr', assignments: [{ workspace: a, scope: 'workspace' }] }),
+    ).rejects.toThrow()
   })
 
   it('deleting a Product removes it from the assignments; an emptied list grants nothing', async () => {
-    const u = await mk('po2@x.io', { role: 'product-owner', assignments: [{ workspace: a, scope: 'products', products: [a1, a2] }] })
+    const u = await mk('po2@x.io', {
+      role: 'product-owner',
+      assignments: [{ workspace: a, scope: 'products', products: [a1, a2] }],
+    })
     await payload.delete({ collection: 'products', id: a1, ...o })
     expect((await get(u.id)).assignments[0]).toMatchObject({ scope: 'products', products: [a2] })
     await payload.delete({ collection: 'products', id: a2, ...o })
@@ -115,30 +188,72 @@ describe('account hooks', () => {
     expect(assignmentOf(after, a)).toEqual({ scope: 'products', products: [] })
   })
 
-  it('changing the role away from Product owner clears the assignments; to Product owner gives no API key', async () => {
-    const [w] = [(await payload.create({ collection: 'products', data: { name: 'x', slug: 'x', workspace: a }, ...o })).id as number]
-    const u = await mk('po3@x.io', { role: 'product-owner', assignments: [{ workspace: a, scope: 'products', products: [w] }] })
-    await payload.update({ collection: 'bauherren', id: u.id, data: { role: 'bauherr' }, ...o })
-    expect(await get(u.id)).toMatchObject({ role: 'bauherr', assignments: [] })
-    const keyed = await mk('keyed@x.io', { role: 'bauherr', enableAPIKey: true, apiKey: 'k'.repeat(32) })
-    await payload.update({ collection: 'bauherren', id: keyed.id, data: { role: 'product-owner' }, ...o })
-    expect(await get(keyed.id)).toMatchObject({ role: 'product-owner', enableAPIKey: false, tenants: [] })
-  })
-  it('concurrent writers never put an account back: one of two racing writes is refused and the stored account is exactly the winner, never a mix', async () => {
-    const w = (await payload.create({ collection: 'products', data: { name: 'r', slug: 'r', workspace: a }, ...o })).id as number
-    const race = (id: number | string, first: Record<string, unknown>, second: Record<string, unknown>) =>
-      Promise.all([first, second].map((data) => payload.update({ collection: 'bauherren', id, data: data as never, ...o }).then(() => null, (e: Error) => e)))
-    for (let i = 0; i < 20; i++) {
-      const u = await mk(`race-down-${i}@x.io`, { role: 'product-owner', assignments: [{ workspace: a, scope: 'products', products: [w] }] })
-      const [assign, role] = await race(u.id, { assignments: [{ workspace: a, scope: 'workspace' }] }, { role: 'bauherr' })
-      expect([assign === null, role === null].sort(), `iteration ${i}: exactly one write is refused`).toEqual([false, true])
-      expect(await get(u.id), `iteration ${i}`).toMatchObject(role === null ? { role: 'bauherr', assignments: [] } : { role: 'product-owner', assignments: [{ scope: 'workspace' }] })
-    }
-    for (let i = 0; i < 20; i++) {
-      const u = await mk(`race-up-${i}@x.io`, { role: 'bauherr', tenants: [{ tenant: a }] })
-      const [role, login] = await race(u.id, { role: 'product-owner' }, { githubLogin: 'stale' })
-      expect([role === null, login === null].sort(), `iteration ${i}: exactly one write is refused`).toEqual([false, true])
-      expect(await get(u.id), `iteration ${i}`).toMatchObject(role === null ? { role: 'product-owner', tenants: [], githubLogin: null } : { role: 'bauherr', githubLogin: 'stale' })
-    }
-  })
+  it(
+    'changing the role away from Product owner clears the ' + 'assignments; to Product owner gives no API key',
+    async () => {
+      const [w] = [
+        (await payload.create({ collection: 'products', data: { name: 'x', slug: 'x', workspace: a }, ...o }))
+          .id as number,
+      ]
+      const u = await mk('po3@x.io', {
+        role: 'product-owner',
+        assignments: [{ workspace: a, scope: 'products', products: [w] }],
+      })
+      await payload.update({ collection: 'bauherren', id: u.id, data: { role: 'bauherr' }, ...o })
+      expect(await get(u.id)).toMatchObject({ role: 'bauherr', assignments: [] })
+      const keyed = await mk('keyed@x.io', { role: 'bauherr', enableAPIKey: true, apiKey: 'k'.repeat(32) })
+      await payload.update({ collection: 'bauherren', id: keyed.id, data: { role: 'product-owner' }, ...o })
+      expect(await get(keyed.id)).toMatchObject({ role: 'product-owner', enableAPIKey: false, tenants: [] })
+    },
+  )
+  it(
+    'concurrent writers never put an account back: one of two racing writes is ' +
+      'refused and the stored account is exactly the winner, never a mix',
+    async () => {
+      const w = (await payload.create({ collection: 'products', data: { name: 'r', slug: 'r', workspace: a }, ...o }))
+        .id as number
+      const race = (id: number | string, first: Record<string, unknown>, second: Record<string, unknown>) =>
+        Promise.all(
+          [first, second].map((data) =>
+            payload.update({ collection: 'bauherren', id, data, ...o }).then(
+              () => null,
+              (e: Error) => e,
+            ),
+          ),
+        )
+      for (let i = 0; i < 20; i++) {
+        const u = await mk(`race-down-${i}@x.io`, {
+          role: 'product-owner',
+          assignments: [{ workspace: a, scope: 'products', products: [w] }],
+        })
+        const [assign, role] = await race(
+          u.id,
+          { assignments: [{ workspace: a, scope: 'workspace' }] },
+          { role: 'bauherr' },
+        )
+        expect([assign === null, role === null].sort(), `iteration ${i}: exactly one write is refused`).toEqual([
+          false,
+          true,
+        ])
+        expect(await get(u.id), `iteration ${i}`).toMatchObject(
+          role === null
+            ? { role: 'bauherr', assignments: [] }
+            : { role: 'product-owner', assignments: [{ scope: 'workspace' }] },
+        )
+      }
+      for (let i = 0; i < 20; i++) {
+        const u = await mk(`race-up-${i}@x.io`, { role: 'bauherr', tenants: [{ tenant: a }] })
+        const [role, login] = await race(u.id, { role: 'product-owner' }, { githubLogin: 'stale' })
+        expect([role === null, login === null].sort(), `iteration ${i}: exactly one write is refused`).toEqual([
+          false,
+          true,
+        ])
+        expect(await get(u.id), `iteration ${i}`).toMatchObject(
+          role === null
+            ? { role: 'product-owner', tenants: [], githubLogin: null }
+            : { role: 'bauherr', githubLogin: 'stale' },
+        )
+      }
+    },
+  )
 })

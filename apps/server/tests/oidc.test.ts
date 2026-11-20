@@ -1,9 +1,25 @@
 import { createHmac } from 'node:crypto'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { claimAt, emailOk, mergeClaims, resolveAccount, roleFrom, roleRequired, syncFrom, workspaceSlugsFrom } from '../src/lib/oidc'
+import {
+  claimAt,
+  emailOk,
+  mergeClaims,
+  resolveAccount,
+  roleFrom,
+  roleRequired,
+  syncFrom,
+  workspaceSlugsFrom,
+} from '../src/lib/oidc'
 import { createTestDb, type TestDb } from './helpers/test-db'
-import { isLocked, oidcStrategy, SESSION_COOKIE, signSession, SESSION_TTL_S, verifySession } from '../src/lib/oidc-session'
+import {
+  isLocked,
+  oidcStrategy,
+  SESSION_COOKIE,
+  signSession,
+  SESSION_TTL_S,
+  verifySession,
+} from '../src/lib/oidc-session'
 
 const claims = { realm_access: { roles: ['offline_access', 'bauherr-admin'] }, groups: ['/acme', 'beta', 7] }
 
@@ -56,8 +72,10 @@ describe('OIDC_BAUHERR_ROLE', () => {
 
 describe('account resolution', () => {
   const base = { subject: 'https://i|1', email: 'a@x.io' }
-  it('logs in on subject match', () => expect(resolveAccount({ ...base, existingBySubject: {}, existingByEmail: {} })).toEqual({ action: 'login' }))
-  it('refuses an email collision without subject match', () => expect(resolveAccount({ ...base, existingByEmail: {} })).toEqual({ action: 'refuse', reason: 'link-required' }))
+  it('logs in on subject match', () =>
+    expect(resolveAccount({ ...base, existingBySubject: {}, existingByEmail: {} })).toEqual({ action: 'login' }))
+  it('refuses an email collision without subject match', () =>
+    expect(resolveAccount({ ...base, existingByEmail: {} })).toEqual({ action: 'refuse', reason: 'link-required' }))
   it('creates when nothing matches', () => expect(resolveAccount(base)).toEqual({ action: 'create' }))
 })
 
@@ -67,7 +85,8 @@ describe('claims', () => {
     for (const v of [false, undefined, 'true', 1]) expect(emailOk({ email: 'a@x.io', email_verified: v })).toBe(false)
     expect(emailOk({ email_verified: true })).toBe(false)
   })
-  it('ID-token claims win over userinfo', () => expect(mergeClaims({ email: 'info', a: 1 }, { email: 'id' })).toEqual({ email: 'id', a: 1 }))
+  it('ID-token claims win over userinfo', () =>
+    expect(mergeClaims({ email: 'info', a: 1 }, { email: 'id' })).toEqual({ email: 'id', a: 1 }))
   it('syncs only present claims', () => {
     expect(syncFrom({})).toEqual({})
     expect(syncFrom({ realm_access: { roles: [] } })).toEqual({ role: 'bauherr' })
@@ -84,8 +103,10 @@ describe('session token', () => {
     return `${body}.${createHmac('sha256', key).update(body).digest().toString('base64url')}`
   }
   const exp = now / 1000 + 100
-  it('round-trips id and version', () => expect(verifySession(signSession(5, 2, 'k', now), 'k', now + 1000)).toEqual({ id: 5, v: 2 }))
-  it('expires', () => expect(verifySession(signSession(5, 0, 'k', now), 'k', now + (SESSION_TTL_S + 1) * 1000)).toBeNull())
+  it('round-trips id and version', () =>
+    expect(verifySession(signSession(5, 2, 'k', now), 'k', now + 1000)).toEqual({ id: 5, v: 2 }))
+  it('expires', () =>
+    expect(verifySession(signSession(5, 0, 'k', now), 'k', now + (SESSION_TTL_S + 1) * 1000)).toBeNull())
   it('lasts 14 days', () => {
     expect(SESSION_TTL_S).toBe(14 * 86400)
     expect(verifySession(signSession(5, 0, 'k', now), 'k', now + 13 * 86400_000)).toEqual({ id: 5, v: 0 })
@@ -102,7 +123,9 @@ describe('session token', () => {
     const t = signSession(5, 0, 'k', now)
     expect(verifySession(t, 'other', now)).toBeNull()
     const [h, , s] = t.split('.')
-    expect(verifySession(`${h}.${Buffer.from('{"id":1,"exp":9999999999}').toString('base64url')}.${s}`, 'k', now)).toBeNull()
+    expect(
+      verifySession(`${h}.${Buffer.from('{"id":1,"exp":9999999999}').toString('base64url')}.${s}`, 'k', now),
+    ).toBeNull()
     expect(verifySession('garbage', 'k', now)).toBeNull()
   })
 })
@@ -116,9 +139,13 @@ describe('oidc strategy', () => {
     const payload = { findByID: async () => (doc ? doc : Promise.reject(new Error('nf'))) }
     return oidcStrategy.authenticate({ payload, headers } as never)
   }
-  it('accepts a valid session', async () => expect((await run({ id: 7, sessionVersion: 0 })).user).toMatchObject({ id: 7, _strategy: 'oidc' }))
+  it('accepts a valid session', async () =>
+    expect((await run({ id: 7, sessionVersion: 0 })).user).toMatchObject({ id: 7, _strategy: 'oidc' }))
   it('rejects a stale version', async () => expect((await run({ id: 7, sessionVersion: 1 })).user).toBeNull())
-  it('rejects a locked user', async () => expect((await run({ id: 7, sessionVersion: 0, lockUntil: new Date(Date.now() + 60_000).toISOString() })).user).toBeNull())
+  it('rejects a locked user', async () =>
+    expect(
+      (await run({ id: 7, sessionVersion: 0, lockUntil: new Date(Date.now() + 60_000).toISOString() })).user,
+    ).toBeNull())
   it('rejects a missing user', async () => expect((await run(null)).user).toBeNull())
 })
 
@@ -139,18 +166,36 @@ describe('oidc strategy against the database', () => {
   })
   const day = 86400_000
   const authFor = async (email: string, lockUntil?: Date) => {
-    const b = await payload.create({ collection: 'bauherren', data: { email, password: 'pw-123456-x', role: 'bauherr' } as never, overrideAccess: true })
-    if (lockUntil) await payload.update({ collection: 'bauherren', id: b.id, data: { lockUntil: lockUntil.toISOString(), loginAttempts: 5 } as never, overrideAccess: true })
+    const b = await payload.create({
+      collection: 'bauherren',
+      data: { email, password: 'pw-123456-x', role: 'bauherr' },
+      overrideAccess: true,
+    })
+    if (lockUntil)
+      await payload.update({
+        collection: 'bauherren',
+        id: b.id,
+        data: { lockUntil: lockUntil.toISOString(), loginAttempts: 5 },
+        overrideAccess: true,
+      })
     const headers = new Headers({ cookie: `${SESSION_COOKIE}=${signSession(b.id, b.sessionVersion ?? 0)}` })
     return { b, user: (await payload.auth({ headers })).user as Record<string, unknown> | null }
   }
   it('rejects a locked Bauherr', async () => {
     const { b, user } = await authFor('locked@example.com', new Date(Date.now() + day))
-    const stored = await payload.findByID({ collection: 'bauherren', id: b.id, overrideAccess: true, showHiddenFields: true })
+    const stored = await payload.findByID({
+      collection: 'bauherren',
+      id: b.id,
+      overrideAccess: true,
+      showHiddenFields: true,
+    })
     expect(user).toBeNull()
     expect(isLocked(stored.lockUntil)).toBe(true)
   })
-  it('accepts an expired lock', async () => expect((await authFor('expired@example.com', new Date(Date.now() - day))).user).toMatchObject({ _strategy: 'oidc' }))
+  it('accepts an expired lock', async () =>
+    expect((await authFor('expired@example.com', new Date(Date.now() - day))).user).toMatchObject({
+      _strategy: 'oidc',
+    }))
   it('accepts an unlocked Bauherr without hidden auth fields', async () => {
     const { user } = await authFor('open@example.com')
     expect(user).toMatchObject({ _strategy: 'oidc' })

@@ -26,7 +26,12 @@ type Target = { route: string; from: string; click: (page: Page) => Promise<void
 const h2 = (text: string): Content => ({ sel: 'h2.heading', text: `^${text}$` })
 
 const targets: Target[] = [
-  { route: '/settings/profile', from: '/', click: (p) => p.getByRole('link', { name: 'Settings', exact: true }).click(), content: h2('Profile') },
+  {
+    route: '/settings/profile',
+    from: '/',
+    click: (p) => p.getByRole('link', { name: 'Settings', exact: true }).click(),
+    content: h2('Profile'),
+  },
   ...(
     [
       ['General', '/settings/workspace'],
@@ -38,7 +43,12 @@ const targets: Target[] = [
       ['API keys', '/settings/api-key'],
       ['Audit', '/settings/audit'],
     ] as const
-  ).map(([link, route]): Target => ({ route, from: '/settings/profile', click: (p) => settings(p).getByRole('link', { name: link, exact: true }).click(), content: h2(link) })),
+  ).map(([link, route]): Target => ({
+    route,
+    from: '/settings/profile',
+    click: (p) => settings(p).getByRole('link', { name: link, exact: true }).click(),
+    content: h2(link),
+  })),
   {
     route: '/',
     from: '/settings/profile',
@@ -56,11 +66,23 @@ const observe = (c: Content) => {
   const check = () => {
     if (perf.t0 === null) return
     const now = performance.now() - perf.t0
-    const arrived = location.pathname + location.search !== path && [...document.querySelectorAll(c.sel)].some((e) => !re || re.test(e.textContent ?? ''))
+    const arrived =
+      location.pathname + location.search !== path &&
+      [...document.querySelectorAll(c.sel)].some((e) => !re || re.test(e.textContent ?? ''))
     if (arrived && perf.content === null) perf.content = now
-    if (perf.pending === null && (arrived || document.querySelector('[aria-busy="true"], [data-testid=nav-progress][data-active=true]'))) perf.pending = now
+    if (
+      perf.pending === null &&
+      (arrived || document.querySelector('[aria-busy="true"], [data-testid=nav-progress][data-active=true]'))
+    )
+      perf.pending = now
   }
-  new MutationObserver(check).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-busy', 'data-active'], characterData: true })
+  new MutationObserver(check).observe(document, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ['aria-busy', 'data-active'],
+    characterData: true,
+  })
 }
 
 for (const t of targets) {
@@ -70,8 +92,14 @@ for (const t of targets) {
     await page.waitForLoadState('networkidle')
     await page.evaluate(observe, t.content)
     await t.click(page)
-    await page.waitForFunction(() => (window as unknown as { __perf: { content: number | null } }).__perf.content !== null, undefined, { timeout: 15_000 })
-    const { pending, content } = await page.evaluate(() => (window as unknown as { __perf: { pending: number; content: number } }).__perf)
+    await page.waitForFunction(
+      () => (window as unknown as { __perf: { content: number | null } }).__perf.content !== null,
+      undefined,
+      { timeout: 15_000 },
+    )
+    const { pending, content } = await page.evaluate(
+      () => (window as unknown as { __perf: { pending: number; content: number } }).__perf,
+    )
     console.log(`PERF ${t.route} pending=${Math.round(pending)} content=${Math.round(content)}`)
     expect(pending, 'pending feedback').toBeLessThan(PENDING_MS)
     expect(content, 'content').toBeLessThan(CONTENT_MS)

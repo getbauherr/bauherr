@@ -48,23 +48,29 @@ test('shell: sidebar nav, Factory view, footer, user menu with theme, sign out',
   await expect(page).toHaveURL(/\/login$/)
 })
 
-test('sidebar collapses to a rail and stays collapsed after a reload; the Settings link and breadcrumb follow the page', async ({ page }) => {
-  await signIn(page, 'member@example.com')
-  const sidebar = page.locator('[data-slot=sidebar][data-state]')
-  await expect(sidebar).toHaveAttribute('data-state', 'expanded')
-  await page.getByRole('button', { name: 'Toggle sidebar' }).click()
-  await expect(sidebar).toHaveAttribute('data-state', 'collapsed')
-  await page.reload()
-  await expect(sidebar).toHaveAttribute('data-state', 'collapsed')
-  await page.getByRole('link', { name: 'Settings', exact: true }).click()
-  await expect(page).toHaveURL(/\/settings\/profile$/)
-  await expect(page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('SettingsProfile')
-  await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'API keys' }).click()
-  await expect(page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('SettingsAPI keys')
-  await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveAttribute('aria-current', 'page')
-  await page.getByRole('button', { name: 'Toggle sidebar' }).click()
-  await expect(sidebar).toHaveAttribute('data-state', 'expanded')
-})
+test(
+  'sidebar collapses to a rail and stays collapsed after a reload; ' +
+    'the Settings link and breadcrumb follow the page',
+  async ({ page }) => {
+    await signIn(page, 'member@example.com')
+    const sidebar = page.locator('[data-slot=sidebar][data-state]')
+    await expect(sidebar).toHaveAttribute('data-state', 'expanded')
+    await page.getByRole('button', { name: 'Toggle sidebar' }).click()
+    await expect(sidebar).toHaveAttribute('data-state', 'collapsed')
+    await page.reload()
+    await expect(sidebar).toHaveAttribute('data-state', 'collapsed')
+    await page.getByRole('link', { name: 'Settings', exact: true }).click()
+    await expect(page).toHaveURL(/\/settings\/profile$/)
+    await expect(page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('SettingsProfile')
+    await page.getByRole('navigation', { name: 'Settings' }).getByRole('link', { name: 'API keys' }).click()
+    await expect(page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' })).toHaveText(
+      'SettingsAPI keys',
+    )
+    await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveAttribute('aria-current', 'page')
+    await page.getByRole('button', { name: 'Toggle sidebar' }).click()
+    await expect(sidebar).toHaveAttribute('data-state', 'expanded')
+  },
+)
 
 test('command palette: opens with Ctrl+K, finds a Settings page, navigates, and gives focus back', async ({ page }) => {
   await signIn(page, 'member@example.com')

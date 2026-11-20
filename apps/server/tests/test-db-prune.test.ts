@@ -3,7 +3,10 @@ import pg from 'pg'
 import { afterAll, expect, it } from 'vitest'
 import { pruneStaleTestDbs } from './helpers/test-db'
 
-const base = (process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr').replace(/\/[^/]+$/, '/postgres')
+const base = (process.env.DATABASE_URL ?? 'postgres://bauherr:bauherr@127.0.0.1:54330/bauherr').replace(
+  /\/[^/]+$/,
+  '/postgres',
+)
 const admin = async (sql: string, params: unknown[] = []) => {
   const client = new pg.Client({ connectionString: base })
   await client.connect()
@@ -30,16 +33,19 @@ afterAll(async () => {
   for (const name of created) await dropIfExists(name)
 })
 
-it('prunes runs whose pid is gone and idle untagged databases; keeps live runs, recent databases and other names', async () => {
-  for (const name of created) {
-    await dropIfExists(name)
-    await admin(`CREATE DATABASE "${name}"`)
-  }
-  const isAlive = (pid: number) => pid !== deadPid && pid !== ownPid
-  await pruneStaleTestDbs(isAlive)
-  expect(await exists(dead)).toBe(false)
-  expect(await exists(live)).toBe(true)
-  expect(await exists(untagged)).toBe(true)
-  expect(await exists(other)).toBe(true)
-  if (own) expect(await exists(own)).toBe(true)
-})
+it(
+  'prunes runs whose pid is gone and idle untagged databases; keeps ' + 'live runs, recent databases and other names',
+  async () => {
+    for (const name of created) {
+      await dropIfExists(name)
+      await admin(`CREATE DATABASE "${name}"`)
+    }
+    const isAlive = (pid: number) => pid !== deadPid && pid !== ownPid
+    await pruneStaleTestDbs(isAlive)
+    expect(await exists(dead)).toBe(false)
+    expect(await exists(live)).toBe(true)
+    expect(await exists(untagged)).toBe(true)
+    expect(await exists(other)).toBe(true)
+    if (own) expect(await exists(own)).toBe(true)
+  },
+)

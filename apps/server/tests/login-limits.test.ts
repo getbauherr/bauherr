@@ -5,10 +5,19 @@ const xff = (v: string) => new Headers({ 'x-forwarded-for': v })
 
 it('defaults: 10 failed sign-ins per IP, 1 trusted proxy hop', () => {
   expect(loginLimits({})).toEqual({ maxIpFailures: 10, trustedProxyHops: 1 })
-  expect(loginLimits({ LOGIN_IP_MAX_ATTEMPTS: '25', TRUSTED_PROXY_HOPS: '0' })).toEqual({ maxIpFailures: 25, trustedProxyHops: 0 })
+  expect(loginLimits({ LOGIN_IP_MAX_ATTEMPTS: '25', TRUSTED_PROXY_HOPS: '0' })).toEqual({
+    maxIpFailures: 25,
+    trustedProxyHops: 0,
+  })
 })
 
-it.each([['LOGIN_IP_MAX_ATTEMPTS', 'ten'], ['LOGIN_IP_MAX_ATTEMPTS', '0'], ['TRUSTED_PROXY_HOPS', 'one'], ['TRUSTED_PROXY_HOPS', '-1'], ['TRUSTED_PROXY_HOPS', '1.5']])('%s=%s throws at boot', (name, v) => {
+it.each([
+  ['LOGIN_IP_MAX_ATTEMPTS', 'ten'],
+  ['LOGIN_IP_MAX_ATTEMPTS', '0'],
+  ['TRUSTED_PROXY_HOPS', 'one'],
+  ['TRUSTED_PROXY_HOPS', '-1'],
+  ['TRUSTED_PROXY_HOPS', '1.5'],
+])('%s=%s throws at boot', (name, v) => {
   expect(() => loginLimits({ [name]: v })).toThrow(`${name} must be`)
 })
 
@@ -35,7 +44,9 @@ it('fewer x-forwarded-for entries than hops (or none) share the unverified key, 
     expect(clientIp(xff('6.6.6.6'), 2)).toBe(UNVERIFIED_IP)
     expect(clientIp(new Headers(), 1)).toBe(UNVERIFIED_IP)
     expect(warn).toHaveBeenCalledTimes(1)
-    expect(warn.mock.calls[0]![0]).toBe('login IP key: request had 1 x-forwarded-for entries, TRUSTED_PROXY_HOPS=2; check the proxy chain')
+    expect(warn.mock.calls[0][0]).toBe(
+      'login IP key: request had 1 x-forwarded-for entries, TRUSTED_PROXY_HOPS=2; check the proxy chain',
+    )
     vi.advanceTimersByTime(10 * 60_000)
     clientIp(new Headers(), 1)
     expect(warn).toHaveBeenCalledTimes(2)

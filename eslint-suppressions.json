@@ -1,59 +1,35 @@
 {
   "apps/server/e2e/a11y.spec.ts": {
-    "complexity": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 6
-    },
     "no-restricted-syntax": {
       "count": 1
     }
   },
   "apps/server/e2e/admin-pages.spec.ts": {
-    "max-len": {
-      "count": 6
-    },
     "no-restricted-syntax": {
       "count": 4
     }
   },
   "apps/server/e2e/gateway.spec.ts": {
-    "max-len": {
-      "count": 2
-    },
     "no-restricted-syntax": {
       "count": 1
     }
   },
   "apps/server/e2e/oidc.spec.ts": {
-    "max-len": {
-      "count": 1
-    },
     "no-restricted-syntax": {
       "count": 1
     }
   },
   "apps/server/e2e/people.spec.ts": {
-    "max-len": {
-      "count": 6
-    },
     "no-restricted-syntax": {
       "count": 1
     }
   },
   "apps/server/e2e/perf.spec.ts": {
-    "max-len": {
-      "count": 7
-    },
     "no-restricted-syntax": {
       "count": 5
     }
   },
   "apps/server/e2e/product-settings.spec.ts": {
-    "max-len": {
-      "count": 5
-    },
     "no-restricted-syntax": {
       "count": 3
     }
@@ -64,93 +40,18 @@
     }
   },
   "apps/server/e2e/settings.spec.ts": {
-    "max-len": {
-      "count": 5
-    },
     "no-restricted-syntax": {
       "count": 1
     }
   },
   "apps/server/e2e/shell.spec.ts": {
-    "max-len": {
-      "count": 1
-    },
     "no-restricted-syntax": {
       "count": 1
     }
   },
   "apps/server/e2e/workspace-delete.spec.ts": {
-    "max-len": {
-      "count": 1
-    },
     "no-restricted-syntax": {
       "count": 1
-    }
-  },
-  "apps/server/scripts/a11y-coverage.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 4
-    }
-  },
-  "apps/server/scripts/design-md.ts": {
-    "@typescript-eslint/no-base-to-string": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 9
-    },
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    },
-    "@typescript-eslint/restrict-template-expressions": {
-      "count": 2
-    },
-    "complexity": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 13
-    }
-  },
-  "apps/server/scripts/gen-migrations.ts": {
-    "max-len": {
-      "count": 2
-    }
-  },
-  "apps/server/scripts/seed-e2e.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "max-len": {
-      "count": 13
-    },
-    "no-restricted-syntax": {
-      "count": 2
-    }
-  },
-  "apps/server/scripts/seed-workspace0.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "max-len": {
-      "count": 7
-    },
-    "no-restricted-syntax": {
-      "count": 2
-    }
-  },
-  "apps/server/scripts/tokens.ts": {
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 6
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 7
-    },
-    "max-len": {
-      "count": 2
     }
   },
   "apps/server/src/app/(app)/(shell)/settings/actions.ts": {
@@ -923,70 +824,12 @@
     }
   },
   "apps/server/tests/account-lock.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 5
-    },
-    "max-len": {
-      "count": 8
-    },
     "no-restricted-syntax": {
-      "count": 9
+      "count": 4
     }
   },
   "apps/server/tests/api-key.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 7
-    },
-    "max-len": {
-      "count": 2
-    },
     "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "apps/server/tests/db-pool.test.ts": {
-    "max-len": {
-      "count": 4
-    }
-  },
-  "apps/server/tests/design-md.test.ts": {
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 7
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 6
-    }
-  },
-  "apps/server/tests/docs-bare-tags.test.ts": {
-    "max-len": {
-      "count": 5
-    }
-  },
-  "apps/server/tests/docs-style.test.ts": {
-    "max-len": {
-      "count": 7
-    }
-  },
-  "apps/server/tests/e2e-conventions.test.ts": {
-    "max-len": {
-      "count": 4
-    }
-  },
-  "apps/server/tests/e2e-flakes.test.ts": {
-    "max-len": {
-      "count": 4
-    }
-  },
-  "apps/server/tests/fake-guard.test.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/tests/forge-urls.test.ts": {
-    "max-len": {
       "count": 1
     }
   },
@@ -1006,29 +849,13 @@
     "@typescript-eslint/no-unsafe-member-access": {
       "count": 17
     },
-    "max-len": {
-      "count": 12
-    },
     "no-restricted-syntax": {
       "count": 1
     }
   },
   "apps/server/tests/gateway-select.test.ts": {
-    "max-len": {
-      "count": 1
-    },
     "no-restricted-syntax": {
       "count": 1
-    }
-  },
-  "apps/server/tests/gateway-validate.integration.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
-  "apps/server/tests/helpers/comments.ts": {
-    "max-len": {
-      "count": 4
     }
   },
   "apps/server/tests/helpers/gateway-config.ts": {
@@ -1047,9 +874,6 @@
     "@typescript-eslint/no-unsafe-return": {
       "count": 1
     },
-    "max-len": {
-      "count": 5
-    },
     "no-restricted-syntax": {
       "count": 1
     }
@@ -1067,77 +891,36 @@
     "complexity": {
       "count": 1
     },
-    "max-len": {
-      "count": 11
-    },
     "no-restricted-syntax": {
       "count": 1
     }
   },
   "apps/server/tests/isolation.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "max-len": {
-      "count": 3
-    },
     "no-restricted-syntax": {
-      "count": 3
+      "count": 1
     }
   },
   "apps/server/tests/knowledge.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 14
-    },
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 1
     },
-    "max-len": {
-      "count": 22
-    },
     "no-restricted-syntax": {
-      "count": 14
-    }
-  },
-  "apps/server/tests/login-limits.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 3
+      "count": 2
     }
   },
   "apps/server/tests/login-rest.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 2
     },
     "@typescript-eslint/no-unsafe-member-access": {
       "count": 4
-    },
-    "max-len": {
-      "count": 8
-    },
-    "no-restricted-syntax": {
-      "count": 1
     }
   },
   "apps/server/tests/login-sessions.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 1
     },
     "@typescript-eslint/no-unsafe-return": {
-      "count": 1
-    },
-    "max-len": {
-      "count": 9
-    },
-    "no-restricted-syntax": {
       "count": 1
     }
   },
@@ -1157,9 +940,6 @@
     "@typescript-eslint/no-unsafe-return": {
       "count": 1
     },
-    "max-len": {
-      "count": 3
-    },
     "no-restricted-syntax": {
       "count": 3
     }
@@ -1168,9 +948,6 @@
     "@typescript-eslint/no-explicit-any": {
       "count": 2
     },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 1
     },
@@ -1183,147 +960,62 @@
     "@typescript-eslint/no-unsafe-return": {
       "count": 1
     },
-    "max-len": {
-      "count": 10
-    },
     "no-restricted-syntax": {
-      "count": 5
-    }
-  },
-  "apps/server/tests/migrations-registry.test.ts": {
-    "max-len": {
-      "count": 3
-    }
-  },
-  "apps/server/tests/no-hardcoded-test-db.test.ts": {
-    "max-len": {
-      "count": 1
+      "count": 4
     }
   },
   "apps/server/tests/oidc-callback.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-call": {
       "count": 1
     },
     "@typescript-eslint/no-unsafe-member-access": {
       "count": 1
-    },
-    "max-len": {
-      "count": 6
     }
   },
   "apps/server/tests/oidc.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
     "@typescript-eslint/no-unsafe-argument": {
       "count": 2
     },
-    "max-len": {
-      "count": 14
-    },
     "no-restricted-syntax": {
-      "count": 3
+      "count": 1
     }
   },
   "apps/server/tests/people.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
     },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 5
-    },
     "@typescript-eslint/no-unsafe-call": {
       "count": 4
     },
     "@typescript-eslint/no-unsafe-member-access": {
       "count": 6
     },
-    "max-len": {
-      "count": 29
-    },
     "no-restricted-syntax": {
-      "count": 5
+      "count": 1
     }
   },
   "apps/server/tests/prices.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    },
     "@typescript-eslint/no-unsafe-member-access": {
       "count": 1
     },
-    "max-len": {
-      "count": 19
-    },
     "no-restricted-syntax": {
       "count": 3
-    }
-  },
-  "apps/server/tests/product-owner-guard.test.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 3
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 16
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 7
-    },
-    "@typescript-eslint/no-unsafe-return": {
-      "count": 3
-    },
-    "max-len": {
-      "count": 44
-    },
-    "no-restricted-syntax": {
-      "count": 13
-    }
-  },
-  "apps/server/tests/product-settings.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    },
-    "max-len": {
-      "count": 9
     }
   },
   "apps/server/tests/providers-auth.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "max-len": {
-      "count": 6
-    },
     "no-restricted-syntax": {
-      "count": 3
-    }
-  },
-  "apps/server/tests/providers-db.test.ts": {
-    "max-len": {
       "count": 1
     }
   },
   "apps/server/tests/providers-multi.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
     "@typescript-eslint/no-unsafe-return": {
       "count": 1
     },
-    "max-len": {
-      "count": 18
-    },
     "no-restricted-syntax": {
-      "count": 10
+      "count": 9
     }
   },
   "apps/server/tests/providers-security.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
-    },
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 1
     },
@@ -1333,61 +1025,18 @@
     "@typescript-eslint/no-unsafe-return": {
       "count": 1
     },
-    "max-len": {
-      "count": 15
-    },
     "no-restricted-syntax": {
-      "count": 6
-    }
-  },
-  "apps/server/tests/providers.test.ts": {
-    "max-len": {
-      "count": 8
-    }
-  },
-  "apps/server/tests/render-no-forge.test.ts": {
-    "max-len": {
-      "count": 5
-    }
-  },
-  "apps/server/tests/seed-test-data.test.ts": {
-    "max-len": {
-      "count": 1
+      "count": 2
     }
   },
   "apps/server/tests/settings.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 15
-    },
-    "max-len": {
-      "count": 22
-    },
     "no-restricted-syntax": {
-      "count": 10
-    }
-  },
-  "apps/server/tests/stale-jobs.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "max-len": {
       "count": 4
-    }
-  },
-  "apps/server/tests/state-guards.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "max-len": {
-      "count": 1
     }
   },
   "apps/server/tests/task-slug-migration.test.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 2
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
     },
     "@typescript-eslint/no-unsafe-argument": {
       "count": 1
@@ -1404,19 +1053,13 @@
     "@typescript-eslint/no-unsafe-return": {
       "count": 3
     },
-    "max-len": {
-      "count": 3
-    },
     "no-restricted-syntax": {
-      "count": 3
+      "count": 2
     }
   },
   "apps/server/tests/test-db-prune.test.ts": {
     "@typescript-eslint/no-unsafe-return": {
       "count": 1
-    },
-    "max-len": {
-      "count": 2
     }
   },
   "apps/server/tests/workspace-delete-purge.test.ts": {
@@ -1444,9 +1087,6 @@
     "complexity": {
       "count": 2
     },
-    "max-len": {
-      "count": 26
-    },
     "no-restricted-syntax": {
       "count": 1
     }
@@ -1458,16 +1098,8 @@
     "@typescript-eslint/no-unsafe-argument": {
       "count": 2
     },
-    "max-len": {
-      "count": 10
-    },
     "no-restricted-syntax": {
       "count": 4
-    }
-  },
-  "apps/server/vitest.config.ts": {
-    "max-len": {
-      "count": 2
     }
   },
   "packages/adapters/src/contracts.ts": {

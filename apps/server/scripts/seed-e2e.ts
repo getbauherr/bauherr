@@ -17,8 +17,14 @@ const env = (k: string): string => {
 const payload = await getPayload({ config })
 const o = { overrideAccess: true } as const
 const ensure = async (collection: string, where: Record<string, unknown>, data: Record<string, unknown>) => {
-  const found = await payload.find({ collection, where: Object.fromEntries(Object.entries(where).map(([k, v]) => [k, { equals: v }])) as never, limit: 1, depth: 0, ...o })
-  return found.docs[0] ?? (await payload.create({ collection, data: data as never, ...o }))
+  const found = await payload.find({
+    collection,
+    where: Object.fromEntries(Object.entries(where).map(([k, v]) => [k, { equals: v }])),
+    limit: 1,
+    depth: 0,
+    ...o,
+  })
+  return found.docs[0] ?? (await payload.create({ collection, data, ...o }))
 }
 
 const FACTORY_TITLES: Record<keyof ScenarioNames, string> = {
@@ -41,7 +47,8 @@ const FACTORY_TITLES: Record<keyof ScenarioNames, string> = {
 
 const email = env('E2E_EMAIL')
 const password = readFileSync(env('E2E_PASSWORD_FILE'), 'utf8').trim()
-const user = (address: string, role: string, extra: Record<string, unknown> = {}) => ensure('bauherren', { email: address }, { email: address, password, role, ...extra })
+const user = (address: string, role: string, extra: Record<string, unknown> = {}) =>
+  ensure('bauherren', { email: address }, { email: address, password, role, ...extra })
 
 await user(email, 'admin')
 for (const w of [1, 2]) await user(email.replace('@', `-w${w}@`), 'admin')
@@ -57,34 +64,80 @@ await user('members-edit@example.com', 'bauherr', { tenants: [{ tenant: workspac
 await user('solo@example.com', 'bauherr', { tenants: [{ tenant: zeta }] })
 await user('duo@example.com', 'bauherr', { tenants: [{ tenant: workspace }, { tenant: zeta }] })
 
-const github = (await ensure('connections', { name: 'GitHub Acme' }, { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace })).id
-const product = (await ensure('products', { slug: 'acme-web' }, { name: 'Acme Web', slug: 'acme-web', workspace, stagingUrl: 'https://staging.example.com' })).id
+const github = (
+  await ensure(
+    'connections',
+    { name: 'GitHub Acme' },
+    { name: 'GitHub Acme', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace },
+  )
+).id
+const product = (
+  await ensure(
+    'products',
+    { slug: 'acme-web' },
+    { name: 'Acme Web', slug: 'acme-web', workspace, stagingUrl: 'https://staging.example.com' },
+  )
+).id
 await ensure('products', { slug: 'acme-shop' }, { name: 'Acme Shop', slug: 'acme-shop', workspace })
 await ensure('products', { slug: 'zeta-app' }, { name: 'Zeta App', slug: 'zeta-app', workspace: zeta })
 await ensure('repositories', { fullName: 'acme/web' }, { fullName: 'acme/web', product, workspace })
-await ensure('ticket_sources', { repo: 'acme/web' }, { repo: 'acme/web', product, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
-const checksProduct = (await ensure('products', { slug: 'acme-checks' }, { name: 'Acme Checks', slug: 'acme-checks', workspace })).id
-await ensure('repositories', { fullName: 'acme/checks' }, { fullName: 'acme/checks', product: checksProduct, workspace })
-await ensure('ticket_sources', { repo: 'acme/checks' }, { repo: 'acme/checks', product: checksProduct, connection: github, cursor: '2026-10-30T09:00:00Z', workspace })
-await user('owner@example.com', 'product-owner', { assignments: [{ workspace, scope: 'products', products: [product] }] })
+await ensure(
+  'ticket_sources',
+  { repo: 'acme/web' },
+  { repo: 'acme/web', product, connection: github, cursor: '2026-10-30T09:00:00Z', workspace },
+)
+const checksProduct = (
+  await ensure('products', { slug: 'acme-checks' }, { name: 'Acme Checks', slug: 'acme-checks', workspace })
+).id
+await ensure(
+  'repositories',
+  { fullName: 'acme/checks' },
+  { fullName: 'acme/checks', product: checksProduct, workspace },
+)
+await ensure(
+  'ticket_sources',
+  { repo: 'acme/checks' },
+  { repo: 'acme/checks', product: checksProduct, connection: github, cursor: '2026-10-30T09:00:00Z', workspace },
+)
+await user('owner@example.com', 'product-owner', {
+  assignments: [{ workspace, scope: 'products', products: [product] }],
+})
 await ensure('products', { slug: 'acme-bare' }, { name: 'Acme Bare', slug: 'acme-bare', workspace })
 
-await ensure('connections', { name: 'GitHub Settingsco' }, { name: 'GitHub Settingsco', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: settingsco })
-const settingsApp = (await ensure('products', { slug: 'settingsco-app' }, { name: 'Settings App', slug: 'settingsco-app', workspace: settingsco, stagingUrl: 'https://staging.example.com' })).id
-await ensure('repositories', { fullName: 'settingsco/app' }, { fullName: 'settingsco/app', product: settingsApp, workspace: settingsco })
+await ensure(
+  'connections',
+  { name: 'GitHub Settingsco' },
+  { name: 'GitHub Settingsco', kind: 'github', config: {}, secret: 'e2e-dummy-secret', workspace: settingsco },
+)
+const settingsApp = (
+  await ensure(
+    'products',
+    { slug: 'settingsco-app' },
+    { name: 'Settings App', slug: 'settingsco-app', workspace: settingsco, stagingUrl: 'https://staging.example.com' },
+  )
+).id
+await ensure(
+  'repositories',
+  { fullName: 'settingsco/app' },
+  { fullName: 'settingsco/app', product: settingsApp, workspace: settingsco },
+)
 
 const hooksWs = (await ensure('workspaces', { slug: 'hooks' }, { name: 'Hooks', slug: 'hooks' })).id
 const forgeConnection = { secret: 'e2e-dummy-secret', workspace: hooksWs }
 const githubHooks = { ...forgeConnection, name: 'GitHub Hooks', kind: 'github', config: {} }
 await ensure('connections', { name: 'GitHub Hooks' }, githubHooks)
-await ensure('connections', { name: 'GitLab Delivered' }, {
-  ...forgeConnection,
-  name: 'GitLab Delivered',
-  kind: 'gitlab',
-  config: { baseUrl: 'https://gitlab.com' },
-  webhookSecret: 'e2e-literal-hook-secret',
-  webhookDeliveredAt: '2026-11-19T10:00:00Z',
-})
+await ensure(
+  'connections',
+  { name: 'GitLab Delivered' },
+  {
+    ...forgeConnection,
+    name: 'GitLab Delivered',
+    kind: 'gitlab',
+    config: { baseUrl: 'https://gitlab.com' },
+    webhookSecret: 'e2e-literal-hook-secret',
+    webhookDeliveredAt: '2026-11-19T10:00:00Z',
+  },
+)
 
 const factory = Number((await ensure('workspaces', { slug: 'factory' }, { name: 'Factory', slug: 'factory' })).id)
 const factoryProduct = { name: 'Factory App', slug: 'factory-app', workspace: factory, state: 'active' }
@@ -94,7 +147,11 @@ const seeded = await payload.find({ collection: 'records', where: inFactory, lim
 if (!seeded.docs.length) {
   await payload.db.drizzle.execute(LIVE_RUN_INDEX)
   const ids = { workspace: factory, otherWorkspace: Number(workspace), product: factoryApp }
-  const engine = engineOn(coreDbOn(payload, ids, async () => {}), undefined, new Date())
+  const engine = engineOn(
+    coreDbOn(payload, ids, async () => {}),
+    undefined,
+    new Date(),
+  )
   const scenario = await seedScenario(engine, (name) => FACTORY_TITLES[name])
   for (const title of ['Reorder first', 'Reorder second']) {
     const { record } = await readRecord(payload, await begin(engine))
@@ -109,11 +166,21 @@ const inTickets = { workspace: { equals: ticketsWs } }
 const ticketsSeeded = await payload.find({ collection: 'records', where: inTickets, limit: 1, depth: 0, ...o })
 if (!ticketsSeeded.docs.length) {
   const ids = { workspace: ticketsWs, otherWorkspace: Number(workspace), product: ticketsProduct }
-  await seedTickets(engineOn(coreDbOn(payload, ids, async () => {}), undefined, new Date()))
+  await seedTickets(
+    engineOn(
+      coreDbOn(payload, ids, async () => {}),
+      undefined,
+      new Date(),
+    ),
+  )
 }
 await seedConnect(payload)
 
-await ensure('human_touches', { kind: 'e2e:audit' }, { kind: 'e2e:audit', actor: 'e2e-audit-actor', at: '2026-10-30T09:00:00Z', workspace })
+await ensure(
+  'human_touches',
+  { kind: 'e2e:audit' },
+  { kind: 'e2e:audit', actor: 'e2e-audit-actor', at: '2026-10-30T09:00:00Z', workspace },
+)
 
 console.log('seeded')
 process.exit(0)

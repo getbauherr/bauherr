@@ -11,9 +11,10 @@ const o = { overrideAccess: true } as const
 const dir = mkdtempSync(join(tmpdir(), 'gw-sec-'))
 const RAW = 'AKIARAWKEYPASTEDHERE+s3cr3t/value'
 const iam = (extra = {}) => JSON.stringify({ accessKeyId: 'AKIAOK', secretAccessKey: 'sec-ok', ...extra })
-const ws = async (slug: string) => (await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id
+const ws = async (slug: string) =>
+  (await payload.create({ collection: 'workspaces', data: { name: slug, slug }, ...o })).id
 const conn = (workspace: number | string, data: Record<string, unknown>, extra: Record<string, unknown> = o) =>
-  payload.create({ collection: 'connections', data: { name: 'c', kind: 'llm-provider', workspace, ...data } as never, ...extra } as never)
+  payload.create({ collection: 'connections', data: { name: 'c', kind: 'llm-provider', workspace, ...data }, ...extra })
 
 let testDb: TestDb
 beforeAll(async () => {
@@ -34,22 +35,40 @@ afterAll(async () => {
   await testDb?.drop(payload)
 })
 
-it('bedrock-iam secret: raw key, non-object and missing fields are rejected with a fixed message that never echoes the input', async () => {
-  const workspace = await ws('v1')
-  for (const secret of [RAW, '"str"', 'null', '[]', JSON.stringify({ accessKeyId: 'a' }), JSON.stringify({ accessKeyId: '', secretAccessKey: 'b' }), iam({ sessionToken: 5 })]) {
-    const err = await conn(workspace, { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret }).catch((e) => e)
-    expect(err).toBeInstanceOf(Error)
-    expect(JSON.stringify([err.message, err.data])).not.toContain('AKIARAWKEY')
-    expect(JSON.stringify([err.message, err.data])).not.toContain('s3cr3t')
-  }
-  await expect(conn(workspace, { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret: iam({ sessionToken: 'tok' }) })).resolves.toMatchObject({ provider: 'bedrock-iam' })
-})
+it(
+  'bedrock-iam secret: raw key, non-object and missing fields are ' +
+    'rejected with a fixed message that never echoes the input',
+  async () => {
+    const workspace = await ws('v1')
+    for (const secret of [
+      RAW,
+      '"str"',
+      'null',
+      '[]',
+      JSON.stringify({ accessKeyId: 'a' }),
+      JSON.stringify({ accessKeyId: '', secretAccessKey: 'b' }),
+      iam({ sessionToken: 5 }),
+    ]) {
+      const err = await conn(workspace, { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret }).catch((e) => e)
+      expect(err).toBeInstanceOf(Error)
+      expect(JSON.stringify([err.message, err.data])).not.toContain('AKIARAWKEY')
+      expect(JSON.stringify([err.message, err.data])).not.toContain('s3cr3t')
+    }
+    await expect(
+      conn(workspace, { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret: iam({ sessionToken: 'tok' }) }),
+    ).resolves.toMatchObject({ provider: 'bedrock-iam' })
+  },
+)
 
 it('renderModels skips a Connection with a corrupt stored secret and still renders the others', async () => {
   const { encrypt } = await import('../src/lib/secrets')
   const { renderModels } = await import('../src/lib/gateway')
   const bad = await conn(await ws('bad'), { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret: iam() })
-  await conn(await ws('good'), { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret: iam({ accessKeyId: 'AKIAGOOD' }) })
+  await conn(await ws('good'), {
+    provider: 'bedrock-iam',
+    awsRegion: 'us-east-1',
+    secret: iam({ accessKeyId: 'AKIAGOOD' }),
+  })
   await payload.update({ collection: 'connections', id: bad.id, data: { secret: encrypt(RAW) }, ...o })
   await renderModels({ payload } as unknown as PayloadRequest)
   const out = readFileSync(join(dir, 'config.yaml'), 'utf8')
@@ -60,24 +79,53 @@ it('renderModels skips a Connection with a corrupt stored secret and still rende
 
 it('azure fields are validated before they reach the gateway baseUrl', async () => {
   const workspace = await ws('az')
-  const entra = { provider: 'foundry-entra', secret: 'client-secret', azureResource: 'res-1', azureTenant: 'contoso.onmicrosoft.com', azureClient: '11111111-2222-3333-4444-555555555555' }
-  for (const bad of [{ azureResource: 'evil.com/x?' }, { azureResource: 'a'.repeat(64) }, { azureTenant: 'x/../y' }, { azureClient: 'not-a-guid' }]) {
+  const entra = {
+    provider: 'foundry-entra',
+    secret: 'client-secret',
+    azureResource: 'res-1',
+    azureTenant: 'contoso.onmicrosoft.com',
+    azureClient: '11111111-2222-3333-4444-555555555555',
+  }
+  for (const bad of [
+    { azureResource: 'evil.com/x?' },
+    { azureResource: 'a'.repeat(64) },
+    { azureTenant: 'x/../y' },
+    { azureClient: 'not-a-guid' },
+  ]) {
     await expect(conn(workspace, { ...entra, ...bad })).rejects.toThrow(/invalid/)
   }
-  await expect(conn(workspace, { ...entra, azureTenant: '11111111-2222-3333-4444-555555555555' })).resolves.toMatchObject({ provider: 'foundry-entra' })
+  await expect(
+    conn(workspace, { ...entra, azureTenant: '11111111-2222-3333-4444-555555555555' }),
+  ).resolves.toMatchObject({ provider: 'foundry-entra' })
 })
 
 it('inline and ambient presets can be set by Admins only; file presets stay open', async () => {
   const workspace = await ws('adm')
-  const admin = await payload.create({ collection: 'bauherren', data: { email: 'a@example.com', password: 'pw-admin-12345' }, ...o } as never)
-  const user = await payload.create({ collection: 'bauherren', data: { email: 'u@example.com', password: 'pw-user-12345', tenants: [{ tenant: workspace }] }, ...o } as never)
+  const admin = await payload.create({
+    collection: 'bauherren',
+    data: { email: 'a@example.com', password: 'pw-admin-12345' },
+    ...o,
+  })
+  const user = await payload.create({
+    collection: 'bauherren',
+    data: { email: 'u@example.com', password: 'pw-user-12345', tenants: [{ tenant: workspace }] },
+    ...o,
+  })
   expect(admin.role).toBe('admin')
   expect(user.role).toBe('bauherr')
   const as = (u: object) => ({ user: { ...u, collection: 'bauherren' }, overrideAccess: false })
-  await expect(conn(workspace, { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret: iam() }, as(user))).rejects.toThrow(/invalid: provider/)
-  await expect(conn(workspace, { provider: 'bedrock-ambient', awsRegion: 'us-east-1' }, as(user))).rejects.toThrow(/invalid: provider/)
-  await expect(conn(workspace, { provider: 'bedrock', awsRegion: 'us-east-1' }, as(user))).resolves.toMatchObject({ provider: 'bedrock' })
-  await expect(conn(workspace, { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret: iam() }, as(admin))).resolves.toMatchObject({ provider: 'bedrock-iam' })
+  await expect(
+    conn(workspace, { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret: iam() }, as(user)),
+  ).rejects.toThrow(/invalid: provider/)
+  await expect(conn(workspace, { provider: 'bedrock-ambient', awsRegion: 'us-east-1' }, as(user))).rejects.toThrow(
+    /invalid: provider/,
+  )
+  await expect(conn(workspace, { provider: 'bedrock', awsRegion: 'us-east-1' }, as(user))).resolves.toMatchObject({
+    provider: 'bedrock',
+  })
+  await expect(
+    conn(workspace, { provider: 'bedrock-iam', awsRegion: 'us-east-1', secret: iam() }, as(admin)),
+  ).resolves.toMatchObject({ provider: 'bedrock-iam' })
 })
 
 it('concurrent ambient Connection create and Workspace create: exactly one succeeds', async () => {

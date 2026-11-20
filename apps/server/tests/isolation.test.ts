@@ -26,18 +26,26 @@ it('a bauherr of workspace A cannot read workspace B products', async () => {
     const product = await payload.create({ collection: 'products', data: { name: slug, slug, workspace }, ...o })
     return { workspace, product }
   }
-  await payload.create({ collection: 'bauherren', data: { email: 'admin@example.com', password: 'pw-admin-12345' }, ...o } as never)
+  await payload.create({
+    collection: 'bauherren',
+    data: { email: 'admin@example.com', password: 'pw-admin-12345' },
+    ...o,
+  })
   const a = await seed('a')
   const b = await seed('b')
   const doc = await payload.create({
     collection: 'bauherren',
     data: { email: 'a@example.com', password: 'pw-a-12345', role: 'bauherr', tenants: [{ tenant: a.workspace }] },
     ...o,
-  } as never)
+  })
   const user = { ...doc, collection: 'bauherren' } as never
 
   const list = await payload.find({ collection: 'products', user, overrideAccess: false })
   expect(list.docs.map((p) => p.id)).toEqual([a.product.id])
-  await expect(payload.findByID({ collection: 'products', id: b.product.id, user, overrideAccess: false })).rejects.toThrow()
-  expect((await payload.findByID({ collection: 'products', id: a.product.id, user, overrideAccess: false })).name).toBe('a')
+  await expect(
+    payload.findByID({ collection: 'products', id: b.product.id, user, overrideAccess: false }),
+  ).rejects.toThrow()
+  expect((await payload.findByID({ collection: 'products', id: a.product.id, user, overrideAccess: false })).name).toBe(
+    'a',
+  )
 })

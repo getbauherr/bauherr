@@ -39,7 +39,11 @@ test('Admin: agent key shown once, Audit, health; no /admin link', async ({ page
   await expect(row).toContainText(key.slice(0, 8))
   await expect(page.getByText(key)).toHaveCount(0)
   await expect(page.getByText('Never give this key to an agent; it can approve gates.')).toBeVisible()
-  await confirmClick(row.getByRole('button', { name: 'Revoke' }), row.getByRole('button', { name: 'Confirm revoke' }), (t) => expect(row).toContainText('revoked', { timeout: t }))
+  await confirmClick(
+    row.getByRole('button', { name: 'Revoke' }),
+    row.getByRole('button', { name: 'Confirm revoke' }),
+    (t) => expect(row).toContainText('revoked', { timeout: t }),
+  )
   await expect(row).toContainText('revoked')
 
   await page.goto('/settings/audit')
@@ -58,11 +62,20 @@ test('Admin: agent key shown once, Audit, health; no /admin link', async ({ page
   await expect(page.getByText('Gateway budget')).toBeVisible()
 })
 
-test('a Bauherr gets 404 on the Admin pages, sees only their own groups and no technical settings', async ({ page }) => {
+test('a Bauherr gets 404 on the Admin pages, sees only their own groups and no technical settings', async ({
+  page,
+}) => {
   await signIn(page, 'member@example.com')
-  for (const path of ['audit', 'connections', 'health', 'models']) expect((await page.goto(`/settings/${path}`))?.status()).toBe(404)
+  for (const path of ['audit', 'connections', 'health', 'models'])
+    expect((await page.goto(`/settings/${path}`))?.status()).toBe(404)
   await page.goto('/settings/profile')
-  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText(['Profile', 'API keys', 'General', 'Products', 'People'])
+  await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('link')).toHaveText([
+    'Profile',
+    'API keys',
+    'General',
+    'Products',
+    'People',
+  ])
   await expect(page.getByRole('navigation', { name: 'Settings' }).getByRole('group')).toHaveCount(2)
   await page.goto('/settings/workspace')
   await expect(page.getByText('Gateway key')).toHaveCount(0)
@@ -80,7 +93,11 @@ test('by default /admin redirects to /settings, also for an Admin, and /api stay
   const res = await page.request.get('/admin', { maxRedirects: 0 })
   expect(res.status()).toBe(307)
   expect(new URL(res.headers().location!, 'http://x.test').pathname).toBe('/settings')
-  const fn = await page.request.post('/admin', { headers: { 'next-action': '0'.repeat(40), 'content-type': 'text/plain;charset=UTF-8' }, data: '[]', maxRedirects: 0 })
+  const fn = await page.request.post('/admin', {
+    headers: { 'next-action': '0'.repeat(40), 'content-type': 'text/plain;charset=UTF-8' },
+    data: '[]',
+    maxRedirects: 0,
+  })
   expect(fn.status()).toBe(307)
   const anonymousApiProbe = page.request
   expect((await anonymousApiProbe.get('/api/bauherren/me')).status()).toBe(200)
@@ -112,7 +129,9 @@ test('every Settings nav link opens a page whose heading matches, none is an anc
   await signIn(page, email)
   await page.goto('/settings/profile')
   const nav = page.getByRole('navigation', { name: 'Settings' })
-  const links = await nav.getByRole('link').evaluateAll((as) => as.map((a) => [a.textContent!, a.getAttribute('href')!]))
+  const links = await nav
+    .getByRole('link')
+    .evaluateAll((as) => as.map((a) => [a.textContent!, a.getAttribute('href')!]))
   expect(links.length).toBeGreaterThan(5)
   for (const [label, href] of links) {
     expect(href).not.toContain('#')

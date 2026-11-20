@@ -13,7 +13,9 @@ const signIn = async (page: Page) => {
 }
 
 const inConnect = (page: Page) =>
-  page.context().addCookies([{ name: 'bauherr-ws', value: 'connect', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
+  page
+    .context()
+    .addCookies([{ name: 'bauherr-ws', value: 'connect', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
 
 const saved = (page: Page) => expect(page.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible()
 
@@ -32,11 +34,18 @@ const addProduct = async (page: Page, name: string) => {
 
 const confirmRemove = async (scope: Locator, label: string, done: (timeout: number) => Promise<void>) => {
   const confirm = scope.locator('button:visible', { hasText: 'Confirm remove' }).first()
-  const holds = (timeout: number) => done(timeout).then(() => true, () => false)
+  const holds = (timeout: number) =>
+    done(timeout).then(
+      () => true,
+      () => false,
+    )
   await expect(async () => {
     if (await holds(500)) return
-    await scope.locator('details[data-slot=advanced]').evaluateAll((all) => all.forEach((d) => ((d as HTMLDetailsElement).open = true)))
-    if (!(await confirm.isVisible())) await scope.locator('button', { hasText: label }).first().click({ timeout: 2_000 })
+    await scope
+      .locator('details[data-slot=advanced]')
+      .evaluateAll((all) => all.forEach((d) => ((d as HTMLDetailsElement).open = true)))
+    if (!(await confirm.isVisible()))
+      await scope.locator('button', { hasText: label }).first().click({ timeout: 2_000 })
     await confirm.click({ timeout: 2_000, noWaitAfter: true })
     await done(8_000)
   }).toPass({ timeout: 40_000 })
@@ -47,9 +56,13 @@ const deleteProduct = async (page: Page, path: string) => {
   const repository = page.locator('#repository')
   await expect(repository).toBeVisible()
   for (const label of ['Stop reading tickets', 'Remove repository']) {
-    await confirmRemove(repository, label, (t) => expect(repository.locator('button', { hasText: label })).toHaveCount(0, { timeout: t }))
+    await confirmRemove(repository, label, (t) =>
+      expect(repository.locator('button', { hasText: label })).toHaveCount(0, { timeout: t }),
+    )
   }
-  await confirmRemove(page.locator('#danger'), 'Delete Product', (t) => expect(page).toHaveURL(/\/settings\/products$/, { timeout: t }))
+  await confirmRemove(page.locator('#danger'), 'Delete Product', (t) =>
+    expect(page).toHaveURL(/\/settings\/products$/, { timeout: t }),
+  )
 }
 
 const ownProduct = async (page: Page, run: (path: string) => Promise<void>) => {
