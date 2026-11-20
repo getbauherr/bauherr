@@ -19,10 +19,10 @@ function realish(p: string): string {
 export function writeScopeGuard(cwd: string, filePath: string | undefined, owned: string[] = []): Decision {
   const target = realish(resolve(cwd, filePath ?? ''));
   const rel = relative(realpathSync(cwd), target);
-  if (rel.startsWith('..') || isAbsolute(rel)) return { allow: false, reason: 'path outside the Run\'s cwd' };
+  if (rel.startsWith('..') || isAbsolute(rel)) return { allow: false, reason: "path outside the Run's cwd" };
   if (rel === '.git' || rel.startsWith('.git/')) return { allow: false, reason: 'writes to .git are not allowed' };
   if (owned.length > 0 && !owned.some((p) => rel === p || rel.startsWith(p.replace(/\*+$/, '')))) {
-    return { allow: false, reason: 'path outside this lane\'s owned paths' };
+    return { allow: false, reason: "path outside this lane's owned paths" };
   }
   return { allow: true };
 }
