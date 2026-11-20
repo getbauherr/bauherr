@@ -7,22 +7,20 @@ import { toggleTheme } from './ThemeToggle'
 import { Button } from './ui/button'
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from './ui/command'
 
-function PaletteTrigger() {
-  return (
-    <Button
-      variant="outline"
-      aria-label="Search ⌘K, command palette"
-      aria-keyshortcuts="Control+K Meta+K"
-      className="gap-2 text-muted-foreground max-sm:size-9 max-sm:px-0"
-    >
-      <Search />
-      <span className="max-sm:hidden">Search</span>
-      <kbd aria-hidden className="mono rounded-sm border border-border px-1 max-sm:hidden">
-        ⌘K
-      </kbd>
-    </Button>
-  )
-}
+const paletteTrigger = (
+  <Button
+    variant="outline"
+    aria-label="Search ⌘K, command palette"
+    aria-keyshortcuts="Control+K Meta+K"
+    className="gap-2 text-muted-foreground max-sm:size-9 max-sm:px-0"
+  >
+    <Search />
+    <span className="max-sm:hidden">Search</span>
+    <kbd aria-hidden className="mono rounded-sm border border-border px-1 max-sm:hidden">
+      ⌘K
+    </kbd>
+  </Button>
+)
 
 type Page = { href: string; label: string }
 type Action = { label: string; Icon: (props: { className?: string }) => ReactNode; run: () => void }
@@ -95,7 +93,7 @@ export function CommandMenu({
         setOpen(o)
         if (!o) setQ('')
       }}
-      trigger={<PaletteTrigger />}
+      trigger={paletteTrigger}
     >
       <CommandInput value={q} onValueChange={setQ} placeholder="Go to a page or run an action" />
       <CommandList>
