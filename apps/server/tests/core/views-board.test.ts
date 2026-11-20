@@ -52,7 +52,7 @@ describe('board', () => {
       expect.arrayContaining([[n.accepted, 'accepted', 'none'], [n.closed, 'closed', 'none']]),
     )
     expect(ids(parked)).toEqual([n.parked])
-    expect(parked[0]).toMatchObject({ status: 'parked', state: 'none', stage: 'brief' })
+    expect(parked[0]).toMatchObject({ status: 'parked', state: 'none', stage: 'brief', parkedReason: 'limit reached' })
   })
 
   it('names the title from the mirror, the claimed run and the verify round', async () => {

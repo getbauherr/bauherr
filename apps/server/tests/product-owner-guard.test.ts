@@ -4,7 +4,7 @@ import { createTestDb, type TestDb } from './helpers/test-db'
 
 const PO_PAGES: Record<string, string> = {
   login: 'public sign-in; a signed-in account is sent to its home',
-  '': 'a static empty state; it reads no data',
+  '': 'the Factory view for a Bauherr; a Product owner gets a static empty state that reads no data',
   settings: 'redirects to the profile',
   'settings/profile': 'the profile',
 }

@@ -153,11 +153,6 @@
       "count": 2
     }
   },
-  "apps/server/src/app/(app)/(shell)/page.tsx": {
-    "max-len": {
-      "count": 1
-    }
-  },
   "apps/server/src/app/(app)/(shell)/settings/actions.ts": {
     "@typescript-eslint/no-base-to-string": {
       "count": 1

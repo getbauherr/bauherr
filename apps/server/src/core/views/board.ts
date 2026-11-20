@@ -22,6 +22,7 @@ export type BoardCard = {
   run: { role: 'builder' | 'reviewer' | 'verifier'; leasedBy: string | null } | null
   rank: number
   cardReason: string | null
+  parkedReason: string | null
 }
 
 export type Board = { stages: Record<Stage, BoardCard[]>; held: HeldItem[]; parked: BoardCard[] }
@@ -54,6 +55,7 @@ export const toCard = (row: TicketRow): BoardCard => {
     run: row.run === null ? null : { role: row.run.role, leasedBy: row.run.leasedBy },
     rank: row.rank,
     cardReason: row.card?.reason ?? null,
+    parkedReason: parked,
   }
 }
 
