@@ -7,6 +7,7 @@ import { resumeParked } from './intake/pacing'
 import { fold, type Card } from './fold'
 import { foldOptions, next, type State, type Step } from './lifecycle'
 import { appendEvent, readEvents, readRecord } from './record/store'
+import { storeGiven } from './statements'
 
 export const NOTE_MAX = 1000
 
@@ -74,6 +75,7 @@ export const decide = async (
     const patch = state.patch
     const events = entry.events({ note, patchId: patch?.id ?? '', headSha: patch?.headSha ?? '' })
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
+    await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card })
     return asked === 'brief' && stored.record.source.backlog
   })
   await advance(recordId, deps)

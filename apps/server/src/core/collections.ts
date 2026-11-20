@@ -75,5 +75,16 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'url', type: 'text' },
     ],
   },
+  {
+    slug: 'statements',
+    admin: { useAsTitle: 'kind' },
+    access: { read: readable, create: closed, update: closed, delete: closed },
+    fields: [
+      { name: 'product', type: 'relationship', relationTo: 'products', required: true, index: true },
+      { name: 'record', type: 'relationship', relationTo: 'records', required: true, index: true },
+      { name: 'kind', type: 'text', required: true },
+      { name: 'text', type: 'textarea', required: true },
+    ],
+  },
   ...mirrorCollections,
 ]
