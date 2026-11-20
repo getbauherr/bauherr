@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 
 const Ctx = createContext<FormState>({})
 
-export function SettingsForm({ action, children, submit = 'Save', reset, primary, inline, confirm, bar, copy }: { confirm?: string; bar?: boolean; copy?: boolean; action: (p: FormState, fd: FormData) => Promise<FormState>; children?: ReactNode; submit?: string; reset?: boolean; primary?: boolean; inline?: boolean }) {
+export function SettingsForm({ action, children, submit = 'Save', reset, primary, inline, confirm, bar, copy, noticeHint }: { noticeHint?: string; confirm?: string; bar?: boolean; copy?: boolean; action: (p: FormState, fd: FormData) => Promise<FormState>; children?: ReactNode; submit?: string; reset?: boolean; primary?: boolean; inline?: boolean }) {
   const [state, formAction, pending] = useActionState(action, {})
   const ref = useRef<HTMLFormElement>(null)
   const formId = useId()
@@ -63,6 +63,7 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
             {status}
           </div>
         )}
+        {state.notice && noticeHint && <span className="small text-muted-foreground">{noticeHint}</span>}
         {state.notice && (copy ? <CopyField text={state.notice} block={state.notice.includes('\n')} /> : <Alert role="status" className="mono">{state.notice}</Alert>)}
       </form>
     </Ctx>

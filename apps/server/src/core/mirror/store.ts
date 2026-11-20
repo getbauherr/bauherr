@@ -63,28 +63,41 @@ const idRowSchema = z.object({ id: count })
 const numberRowSchema = z.object({ number: count })
 const latestRowSchema = z.object({ latest: instant })
 
+const toSource = (row: unknown): SourceRow => {
+  const parsed = sourceRowSchema.parse(row)
+  return {
+    id: parsed.id,
+    workspace: parsed.workspace_id,
+    repo: parsed.repo,
+    product: parsed.product_id,
+    connection: parsed.connection_id,
+    cursor: parsed.cursor,
+    lookbackAt: iso(parsed.lookback_at),
+    reconciledAt: iso(parsed.reconciled_at),
+    importedAt: iso(parsed.imported_at),
+    factsAt: iso(parsed.facts_at),
+  }
+}
+
+const SOURCE_COLUMNS = sql`s."id", s."workspace_id", s."repo", s."product_id", s."connection_id", s."cursor",
+  s."lookback_at", s."reconciled_at", s."imported_at", s."facts_at"`
+
 export const liveSources = async (payload: Payload): Promise<SourceRow[]> => {
   const result = await payload.db.drizzle.execute(sql`
-    SELECT s."id", s."workspace_id", s."repo", s."product_id", s."connection_id", s."cursor",
-      s."lookback_at", s."reconciled_at", s."imported_at", s."facts_at"
+    SELECT ${SOURCE_COLUMNS}
     FROM "ticket_sources" s
     JOIN "workspaces" w ON w."id" = s."workspace_id" AND w."archived_at" IS NULL
     ORDER BY s."id"`)
-  return result.rows.map((row) => {
-    const parsed = sourceRowSchema.parse(row)
-    return {
-      id: parsed.id,
-      workspace: parsed.workspace_id,
-      repo: parsed.repo,
-      product: parsed.product_id,
-      connection: parsed.connection_id,
-      cursor: parsed.cursor,
-      lookbackAt: iso(parsed.lookback_at),
-      reconciledAt: iso(parsed.reconciled_at),
-      importedAt: iso(parsed.imported_at),
-      factsAt: iso(parsed.facts_at),
-    }
-  })
+  return result.rows.map(toSource)
+}
+
+export const liveSource = async (payload: Payload, id: number): Promise<SourceRow | null> => {
+  const result = await payload.db.drizzle.execute(sql`
+    SELECT ${SOURCE_COLUMNS}
+    FROM "ticket_sources" s
+    JOIN "workspaces" w ON w."id" = s."workspace_id" AND w."archived_at" IS NULL
+    WHERE s."id" = ${id}`)
+  return result.rows[0] ? toSource(result.rows[0]) : null
 }
 
 export const saveCursor = async (payload: Payload, id: number, cursor: string): Promise<void> => {
