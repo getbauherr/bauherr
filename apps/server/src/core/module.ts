@@ -17,6 +17,7 @@ export type ModuleDefinition<Result> = {
   role: Role
   writes: RecordField[]
   resultSchema: z.ZodType<Result>
+  gated?: boolean
   apply: (record: TicketRecord, result: Result, run: Run) => Applied
 }
 
@@ -25,6 +26,7 @@ export type LifecycleModule = {
   role: Role
   writes: RecordField[]
   resultSchema: z.ZodType
+  gated?: boolean
   apply: (record: TicketRecord, result: unknown, run: Run) => Applied
 }
 

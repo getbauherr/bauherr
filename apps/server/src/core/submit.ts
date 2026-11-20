@@ -2,6 +2,8 @@ import type { z } from 'zod'
 import { inLockedRecord, type Conn } from './conn'
 import { runEffects } from './effects'
 import { advance, type AdvanceDeps } from './engine'
+import { gate } from './gate'
+import { loadGateFacts } from './gate-facts'
 import type { Effect, LifecycleModule, Modules, Problem } from './module'
 import {
   CriteriaEditNotAllowed,
@@ -11,6 +13,7 @@ import {
   StatusChangeNotAllowed,
 } from './record/errors'
 import { appendEvent, patchRecord, readRecord } from './record/store'
+import { verifyResultSchema } from './verify-result'
 import { ModuleMissing } from './run/errors'
 import { authorize, expire, release, type Expired } from './run/leases'
 import type { Run } from './run/schema'
@@ -55,8 +58,19 @@ const refuse = async (tx: Conn, run: Run, problems: Problem[], now: Date): Promi
 
 type Written = { problems: Problem[] } | { effects: Effect[] }
 
-const write = async (tx: Conn, run: Run, module: LifecycleModule, data: unknown): Promise<Written> => {
+const write = async (
+  tx: Conn,
+  run: Run,
+  module: LifecycleModule,
+  data: unknown,
+  deps: SubmitDeps,
+): Promise<Written> => {
   const stored = await readRecord(tx, run.recordId)
+  if (module.gated) {
+    const facts = await loadGateFacts(tx, stored, run, await deps.configFor(run.recordId))
+    const outcome = gate({ result: verifyResultSchema.parse(data), record: stored.record, facts })
+    if (!outcome.accepted) return { problems: outcome.refusals }
+  }
   try {
     const applied = module.apply(stored.record, data, run)
     const by = { stage: run.stage, runId: String(run.id) }
@@ -77,7 +91,7 @@ const submitLocked = async (tx: Conn, run: Run, token: string, rawResult: unknow
   if (!module) throw new ModuleMissing(`No module is registered for stage ${current.stage}: register one.`)
   const parsed = module.resultSchema.safeParse(rawResult)
   if (!parsed.success) return refuse(tx, current, problemsOf(parsed.error), deps.now)
-  const written = await write(tx, current, module, parsed.data)
+  const written = await write(tx, current, module, parsed.data, deps)
   if ('problems' in written) return refuse(tx, current, written.problems, deps.now)
   await finishRun(tx, current.id, { status: 'submitted', result: parsed.data, now: deps.now })
   return { status: 'accepted', effects: written.effects } satisfies Accepted

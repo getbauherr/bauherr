@@ -34,12 +34,18 @@ export const reporterReplied: Reaction = ({ record, state, askedAt, comments }) 
   return replied ? [{ type: 'reporter.replied', data: {} }] : []
 }
 
+export const checksState = (checks: ReactCheck[]): 'pending' | 'passed' | 'failed' => {
+  if (checks.length === 0 || checks.some((check) => check.status !== 'completed')) return 'pending'
+  const passed = checks.every((check) => check.conclusion !== null && PASSING.includes(check.conclusion))
+  return passed ? 'passed' : 'failed'
+}
+
 export const checksFinished: Reaction = ({ state, pull, checks }) => {
   const patch = state.patch
   if (state.checks !== 'pending' || patch === null || pull === null || pull.headSha !== patch.headSha) return []
-  if (checks.length === 0 || checks.some((check) => check.status !== 'completed')) return []
-  const passed = checks.every((check) => check.conclusion !== null && PASSING.includes(check.conclusion))
-  return [{ type: 'checks.finished', data: { patchId: patch.id, passed } }]
+  const outcome = checksState(checks)
+  if (outcome === 'pending') return []
+  return [{ type: 'checks.finished', data: { patchId: patch.id, passed: outcome === 'passed' } }]
 }
 
 export const pullMerged: Reaction = ({ state, pull }) => {

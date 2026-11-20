@@ -55,7 +55,7 @@ const decision = z
     }
   })
 
-const finding = z.object({
+export const findingSchema = z.object({
   id: ident('f'),
   axis: z.enum(['spec', 'standards', 'security']),
   text: text(300),
@@ -63,7 +63,7 @@ const finding = z.object({
   status: z.enum(['open', 'fixing', 'fixed', 'invalid']),
 })
 
-const result = z.object({
+export const resultSchema = z.object({
   changes: z.array(z.object({ text: text(160), tag: z.enum(['visible', 'behaviour', 'internal']) })).max(5),
   walkthrough: z.array(text(160)).max(5),
   notVerified: z.array(text(160)).max(5),
@@ -84,9 +84,9 @@ const shape = z.object({
   risk: risk.nullable(),
   decisions: z.array(decision).max(12),
   plan: z.object({ steps: z.array(text(160)).max(7) }),
-  findings: z.array(finding).max(20),
+  findings: z.array(findingSchema).max(20),
   handoff: z.string().trim().max(1200),
-  result: result.nullable(),
+  result: resultSchema.nullable(),
 })
 
 const uniqueIds = (items: { id: string }[], field: string, ctx: z.RefinementCtx) => {
