@@ -18,50 +18,66 @@ const gh = (method: string, path: string, body?: unknown) =>
   });
 const login: string = ((await (await gh('GET', '/user')).json()) as { login: string }).login;
 
-describe('github: read-only against getbauherr/bauherr', () => {
+void describe('github: read-only against getbauherr/bauherr', () => {
   const ts = backend.tickets(READ_ONLY);
-  it('frontier of #1 is a list of open, unblocked sub-tickets', async () => {
+  void it('frontier of #1 is a list of open, unblocked sub-tickets', async () => {
     const f = await ts.frontier('1');
     assert.ok(Array.isArray(f));
     assert.ok(f.every((s) => s.state === 'open'));
     console.log(`frontier(#1): ${f.map((s) => s.number).join(',') || 'empty'}`);
   });
-  it('polls since yesterday, no PRs', async () => {
+  void it('polls since yesterday, no PRs', async () => {
     const since = new Date(Date.now() - 86_400_000).toISOString();
     const { changes, next } = await ts.poll(since);
     assert.ok(changes.every((c) => c.url.includes('/issues/') && c.updatedAt >= since.replace(/\.\d{3}Z$/, 'Z')));
     assert.ok(changes.length === 0 || next === changes.at(-1)!.updatedAt);
   });
-  it('null cursor returns every issue incl. closed', async () => {
+  void it('null cursor returns every issue incl. closed', async () => {
     const { changes } = await ts.poll(null);
     assert.ok(changes.length > 0);
   });
-  it('lists pull requests', async () => {
+  void it('lists pull requests', async () => {
     const prs = await backend.forge.listPullRequests(READ_ONLY, 'all');
     assert.ok(Array.isArray(prs));
     assert.ok(prs.every((p) => ['open', 'closed', 'merged'].includes(p.state)));
   });
-  it('tagSha resolves an existing tag and returns null for a missing one', async () => {
+  void it('tagSha resolves an existing tag and returns null for a missing one', async () => {
     assert.match((await backend.forge.tagSha(READ_ONLY, 'v0.4.0'))!, /^[0-9a-f]{40}$/);
     assert.equal(await backend.forge.tagSha(READ_ONLY, 'v999.0.0'), null);
   });
-  it('get() on a sub-ticket reports its parent', async () => {
+  void it('get() on a sub-ticket reports its parent', async () => {
     const [child] = await ts.listSubTickets('1');
     if (child) assert.equal((await ts.get(child.id)).parent, '1');
   });
 });
 
 contractSuite('github sandbox', {
-  backend, repo: SANDBOX, user: login,
+  backend,
+  repo: SANDBOX,
+  user: login,
   async commitFile(branch, path, content) {
-    const res = await gh('PUT', `/repos/${SANDBOX}/contents/${path}`, { message: 'contract: add file', content: Buffer.from(content).toString('base64'), branch });
+    const res = await gh('PUT', `/repos/${SANDBOX}/contents/${path}`, {
+      message: 'contract: add file',
+      content: Buffer.from(content).toString('base64'),
+      branch,
+    });
     assert.equal(res.status, 201);
   },
   async cleanup({ tickets, branches, prs, labels }) {
     for (const n of prs) await gh('PATCH', `/repos/${SANDBOX}/pulls/${n}`, { state: 'closed' });
-    for (const n of tickets) await gh('PATCH', `/repos/${SANDBOX}/issues/${n}`, { state: 'closed', state_reason: 'not_planned' });
+    for (const n of tickets)
+      await gh('PATCH', `/repos/${SANDBOX}/issues/${n}`, { state: 'closed', state_reason: 'not_planned' });
     for (const b of branches) await gh('DELETE', `/repos/${SANDBOX}/git/refs/heads/${b}`);
-    for (const l of [...labels, 'bauherr:test', 'bauherr:a', 'bauherr:b', 'keep', 'bauherr:approved:plan', 'bauherr:stage:plan', 'bauherr:stage:build']) {
+    for (const l of [
+      ...labels,
+      'bauherr:test',
+      'bauherr:a',
+      'bauherr:b',
+      'keep',
+      'bauherr:approved:plan',
+      'bauherr:stage:plan',
+      'bauherr:stage:build',
+    ]) {
       await gh('DELETE', `/repos/${SANDBOX}/labels/${encodeURIComponent(l)}`);
     }
   },

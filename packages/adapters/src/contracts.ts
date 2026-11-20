@@ -179,9 +179,16 @@ export interface Webhooks {
   verify(rawBody: string | Uint8Array, signature: string | undefined, secret: string): boolean;
 }
 
-/** Label of the link button to a PR of the forge `kind` ("github" or "gitlab"), in plain words; "Open merge request" for an unknown kind. Pure: needs no Connection secret. */
+/**
+ * Label of the link button to a PR of the forge `kind` ("github" or "gitlab"), in plain words; "Open merge request" for
+ * an unknown kind. Pure: needs no Connection secret.
+ */
 export const linkLabel = (kind: string | null | undefined, number: number): string =>
-  kind === 'github' ? `Open pull request #${number} on GitHub` : kind === 'gitlab' ? `Open merge request !${number} on GitLab` : 'Open merge request';
+  kind === 'github'
+    ? `Open pull request #${number} on GitHub`
+    : kind === 'gitlab'
+      ? `Open merge request !${number} on GitLab`
+      : 'Open merge request';
 
 export interface Forge {
   linkLabel(pr: { number: number }): string;
@@ -197,7 +204,11 @@ export interface Forge {
   listMergedPullRequests(repo: RepoRef, limit: number): Promise<PullRequest[]>;
   closePullRequest(repo: RepoRef, number: number): Promise<void>;
   commentOnPullRequest(repo: RepoRef, number: number, body: string): Promise<Comment>;
-  reviewPullRequest(repo: RepoRef, number: number, review: { body: string; comments: InlineComment[] }): Promise<Comment>;
+  reviewPullRequest(
+    repo: RepoRef,
+    number: number,
+    review: { body: string; comments: InlineComment[] },
+  ): Promise<Comment>;
   listReviewThreads(repo: RepoRef, number: number): Promise<ReviewThread[]>;
   resolveReviewThread(repo: RepoRef, number: number, threadId: string): Promise<void>;
   listPullRequestComments(repo: RepoRef, number: number): Promise<Comment[]>;
@@ -207,13 +218,21 @@ export interface Forge {
   rerunFailed(repo: RepoRef, checks: Check[]): Promise<boolean>;
   getCommitDate(repo: RepoRef, sha: string): Promise<string>;
   retargetPullRequest(repo: RepoRef, number: number, base: string): Promise<void>;
-  mergePullRequest(repo: RepoRef, number: number, o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string }): Promise<{ mergeSha: string; branchDeleteError?: string }>;
+  mergePullRequest(
+    repo: RepoRef,
+    number: number,
+    o: { method: 'squash'; deleteBranch?: boolean; expectSha?: string },
+  ): Promise<{ mergeSha: string; branchDeleteError?: string }>;
   queueSupport(repo: RepoRef): Promise<boolean>;
   requiredChecks(repo: RepoRef, branch: string): Promise<string[]>;
   isBranchProtected(repo: RepoRef, branch: string): Promise<boolean | null>;
   fileExists(repo: RepoRef, path: string, ref: string): Promise<boolean>;
   countIssueForms(repo: RepoRef, ref: string): Promise<number>;
-  enqueuePullRequest(repo: RepoRef, number: number, o: { expectSha: string }): Promise<{ state: 'queued' | 'merged'; mergeSha?: string }>;
+  enqueuePullRequest(
+    repo: RepoRef,
+    number: number,
+    o: { expectSha: string },
+  ): Promise<{ state: 'queued' | 'merged'; mergeSha?: string }>;
   dequeuePullRequest(repo: RepoRef, number: number): Promise<void>;
   isQueued(repo: RepoRef, number: number): Promise<boolean>;
   resetBranch(repo: RepoRef, branch: string, sha: string): Promise<void>;
@@ -221,9 +240,15 @@ export interface Forge {
   mergeIntoBranch(repo: RepoRef, branch: string, headSha: string): Promise<{ sha: string } | { conflict: true }>;
   listFiles(repo: RepoRef, ref?: string): Promise<{ commit: string; paths: string[]; truncated?: boolean }>;
   getFile(repo: RepoRef, path: string, ref?: string): Promise<{ content: string; sha: string }>;
-  putFile(repo: RepoRef, o: { branch: string; path: string; content: string; message: string; expectSha?: string }): Promise<{ sha: string }>;
+  putFile(
+    repo: RepoRef,
+    o: { branch: string; path: string; content: string; message: string; expectSha?: string },
+  ): Promise<{ sha: string }>;
   findRelease(repo: RepoRef, o: { sha: string }): Promise<Release | null>;
-  createRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean }): Promise<Release>;
+  createRelease(
+    repo: RepoRef,
+    o: { tag: string; sha: string; name: string; body: string; prerelease?: boolean },
+  ): Promise<Release>;
   listReleases(repo: RepoRef): Promise<Release[]>;
   releaseByTag(repo: RepoRef, tag: string): Promise<Release | null>;
   isAncestor(repo: RepoRef, base: string, head: string): Promise<boolean>;

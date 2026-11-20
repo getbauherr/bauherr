@@ -52,7 +52,11 @@ void describe('gitlab repository facts', () => {
     assert.equal(await forge.fileExists('g/p', 'CLAUDE.md', 'main'), false);
   });
   void it('counts description templates as issue forms', async () => {
-    const entries = [{ type: 'blob', name: 'bug.md' }, { type: 'blob', name: 'x.yml' }, { type: 'tree', name: 's.md' }];
+    const entries = [
+      { type: 'blob', name: 'bug.md' },
+      { type: 'blob', name: 'x.yml' },
+      { type: 'tree', name: 's.md' },
+    ];
     const forge = gitlab((path) => (path.includes('path=.gitlab/issue_templates') ? json(entries) : missing()));
     assert.equal(await forge.countIssueForms('g/p', 'main'), 1);
     assert.equal(await gitlab(missing).countIssueForms('g/p', 'main'), 0);

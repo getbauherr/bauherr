@@ -61,7 +61,7 @@ await test('agent env carries no gateway key and no process env', () => {
 
 const PRESET_KEYS = [
   ...readFileSync(join(import.meta.dirname, '../../../../apps/server/src/lib/providers.ts'), 'utf8')
-    .match(/^export type Preset = (.+)$/m)![1]
+    .match(/^export type Preset =((?:\s*\|?\s*'[\w-]+')+)/m)![1]
     .matchAll(/'([\w-]+)'/g),
 ].map((m) => m[1]);
 const CLOUD_ENV = /^(AWS_|GOOGLE_|AZURE_|ARM_|ANTHROPIC_(BEDROCK|VERTEX|FOUNDRY)_|CLAUDE_CODE_USE_|CLAUDE_CODE_SKIP_)/;
