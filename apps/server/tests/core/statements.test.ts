@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { decide } from '../../src/core/decide'
 import { advance } from '../../src/core/engine'
+import { readEvents } from '../../src/core/record/store'
 import { statementOf, statementsFor, STATEMENT_MAX } from '../../src/core/statements'
 import { openEngine, type Engine } from './harness'
 
@@ -77,5 +78,29 @@ describe('decide with statements', () => {
     const bad = { ask: 'brief', choice: 'request-changes', note: 'x', seq: 0 }
     await expect(decide(id, e.owner, bad, e.deps())).rejects.toThrow()
     expect(await statementsFor(e.db.payload, e.db.product, 5)).toEqual([])
+  })
+})
+
+describe('a decision and its statement', () => {
+  it('are written together or not at all', async () => {
+    const id = await e.db.fresh()
+    await advance(id, e.deps())
+    await e.work(id, 'builder', { verdict: 'accept' })
+    await e.work(id, 'builder', { goal: 'Fix it', open: true })
+    const run = (query: ReturnType<typeof sql>) => e.db.payload.db.drizzle.execute(query)
+    await run(sql`CREATE FUNCTION refuse_statement() RETURNS trigger AS $$
+      BEGIN RAISE EXCEPTION 'statement refused'; END; $$ LANGUAGE plpgsql`)
+    await run(sql`CREATE TRIGGER refuse_statement BEFORE INSERT ON "statements"
+      FOR EACH ROW EXECUTE FUNCTION refuse_statement()`)
+    try {
+      const before = (await readEvents(e.db.payload, id)).length
+      const change = { ask: 'brief', choice: 'request-changes', note: 'cut it down', seq: await e.seq(id) }
+      await expect(decide(id, e.owner, change, e.deps())).rejects.toThrow()
+      expect((await readEvents(e.db.payload, id)).length).toBe(before)
+      expect(await statementsFor(e.db.payload, e.db.product, 5)).toEqual([])
+    } finally {
+      await run(sql`DROP TRIGGER refuse_statement ON "statements"`)
+      await run(sql`DROP FUNCTION refuse_statement()`)
+    }
   })
 })
