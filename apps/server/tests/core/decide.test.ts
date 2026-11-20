@@ -10,7 +10,8 @@ import {
 } from '../../src/core/decide'
 import { DECISIONS } from '../../src/core/decisions'
 import { advance } from '../../src/core/engine'
-import { readEvents } from '../../src/core/record/store'
+import { readEvents, readRecord } from '../../src/core/record/store'
+import { statementsFor } from '../../src/core/statements'
 import { openEngine, type Engine } from './harness'
 
 type Row = [ask: string, choice: string, types: string[]]
@@ -131,6 +132,49 @@ describe('decide', () => {
     const id = await atResultCard()
     await answer(id, { ask: 'result', choice: 'accept' })
     await expect(answer(id, { ask: 'result', choice: 'accept' })).rejects.toThrow(StaleDecision)
+  })
+})
+
+describe('answers to open decisions', () => {
+  const atOpenBrief = async () => {
+    const id = await e.db.fresh()
+    await advance(id, e.deps())
+    await e.work(id, 'builder', { verdict: 'accept' })
+    await e.work(id, 'builder', { goal: 'Fix it', open: true })
+    return id
+  }
+  const approve = (id: number, answers?: Record<string, string>) =>
+    answer(id, { ask: 'brief', choice: 'approve', ...(answers === undefined ? {} : { answers }) })
+
+  it('refuses an approval that leaves an open decision unanswered or picks a foreign option', async () => {
+    const id = await atOpenBrief()
+    const before = await eventCount(id)
+    await expect(approve(id)).rejects.toThrow(InvalidDecision)
+    await expect(approve(id, {})).rejects.toThrow(InvalidDecision)
+    await expect(approve(id, { d1: 'zzz' })).rejects.toThrow(InvalidDecision)
+    await expect(approve(id, { d1: 'a', d9: 'a' })).rejects.toThrow(InvalidDecision)
+    expect(await eventCount(id)).toBe(before)
+    expect((await readRecord(e.db.payload, id)).record.decisions[0]?.answer).toBeUndefined()
+  })
+
+  it('writes the answers to the record and stores them as owner statements with the approval', async () => {
+    const id = await atOpenBrief()
+    await approve(id, { d1: 'b' })
+    const stored = await readRecord(e.db.payload, id)
+    expect(stored.record.decisions[0]).toMatchObject({ answer: 'b', by: 'owner' })
+    expect(stored.record.decisions[0]?.at).toBe(e.clock.now.toISOString())
+    const statements = await statementsFor(e.db.payload, e.db.product, 5)
+    expect(statements.filter((s) => s.record === id).map((s) => [s.kind, s.text])).toEqual([
+      ['answer', 'question 1: B'],
+    ])
+    expect(await e.view(id)).toMatchObject({ stage: 'build', waitingOn: 'agents' })
+  })
+
+  it('refuses answers on any other decision', async () => {
+    const id = await atResultCard()
+    await expect(answer(id, { ask: 'result', choice: 'accept', answers: { d1: 'a' } })).rejects.toThrow(
+      InvalidDecision,
+    )
   })
 })
 
