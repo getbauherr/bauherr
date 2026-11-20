@@ -32,3 +32,10 @@ export const markRefused = async (payload: Conn, id: number): Promise<void> => {
   )
   if (!updated.rows[0]) throw new RunNotClaimed(`Run ${id} is no longer claimed: it was released or finished.`)
 }
+
+export const addCost = async (payload: Conn, id: number, usd: number): Promise<void> => {
+  await payload.db.drizzle.execute(
+    sql`UPDATE "stage_runs" SET "cost_usd" = coalesce("cost_usd", 0) + ${usd}, "updated_at" = now()
+      WHERE "id" = ${id} AND "status" = 'claimed'`,
+  )
+}

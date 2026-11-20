@@ -6,7 +6,7 @@ import { patchRecord, readRecord } from '../../src/core/record/store'
 import { RunNotClaimed, WrongLeaseToken } from '../../src/core/run/errors'
 import { claim } from '../../src/core/run/leases'
 import { readRun } from '../../src/core/run/store'
-import { expireRuns, releaseRun, submit } from '../../src/core/submit'
+import { expireRuns, failRun, releaseRun, submit } from '../../src/core/submit'
 import { openEngine, TEST_MODULES, type Engine } from './harness'
 
 let e: Engine
@@ -204,6 +204,19 @@ describe('submit', () => {
     })
     await e.work(id, 'builder', { patchId: 'p1', headSha: 'h1', pr: 1 })
     expect((await readRecord(e.db.payload, id)).record.handoff).toBe('built p1')
+  })
+})
+
+describe('failRun', () => {
+  it('fails the run with the reason, appends run.failed and queues a new run', async () => {
+    const id = await started()
+    const { run, token } = await claimed(id)
+    await expect(failRun(run.id, 'wrong', 'boom', e.deps())).rejects.toThrow(WrongLeaseToken)
+    await failRun(run.id, token, 'the agent crashed', e.deps())
+    expect(await readRun(e.db.payload, run.id)).toMatchObject({ status: 'failed', error: 'the agent crashed' })
+    const view = await e.view(id)
+    expect(view.types.slice(-2)).toEqual(['run.failed', 'run.started'])
+    await expect(failRun(run.id, token, 'again', e.deps())).rejects.toThrow(RunNotClaimed)
   })
 })
 
