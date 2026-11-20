@@ -69,15 +69,19 @@ const signedOut: Record<string, string> = {
 
 const redirects: Record<string, RegExp> = { '/settings': /^\/settings\/profile$/ }
 
-const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
+type Target = string | ((page: Page) => Promise<string>)
+
+const routes: Record<string, Target | Record<string, Target>> = {
   '/': inFactory('/'),
   '/inbox': inFactory('/inbox'),
-  '/tickets/[id] (Brief card)': inTickets('Brief with a decision for the tabs'),
-  '/tickets/[id] (Result card)': inTickets('Result to read'),
-  '/tickets/[id] (Result tab)': inTickets('Result to read', '?tab=result'),
-  '/tickets/[id] (Activity tab)': inTickets('Result to read', '?tab=activity'),
-  '/tickets/[id] (question)': inTickets('Question to read'),
-  '/tickets/[id] (Intake)': inTickets('Intake waiting for the reporter'),
+  '/tickets/[id]': {
+    'Brief card': inTickets('Brief with a decision for the tabs'),
+    'Result card': inTickets('Result to read'),
+    'Result tab': inTickets('Result to read', '?tab=result'),
+    'Activity tab': inTickets('Result to read', '?tab=activity'),
+    'question card': inTickets('Question to read'),
+    'Intake': inTickets('Intake waiting for the reporter'),
+  },
   '/runs/[id]': runOf('Build with reported steps'),
   '/settings': '/settings',
   '/settings/api-key': '/settings/api-key',
@@ -158,8 +162,15 @@ test.describe('axe: WCAG 2.2 AA on every page, light and dark', () => {
     })
   }
 
-  for (const [route, target] of Object.entries(routes)) {
-    test(route, async ({ browser }) => {
+  type Scan = [route: string, title: string, target: Target]
+  const variantsOf = (route: string, target: Record<string, Target>): Scan[] =>
+    Object.entries(target).map(([name, variant]) => [route, `${route}: ${name}`, variant])
+  const scans = Object.entries(routes).flatMap(([route, target]): Scan[] =>
+    typeof target === 'string' || typeof target === 'function' ? [[route, route, target]] : variantsOf(route, target),
+  )
+
+  for (const [route, title, target] of scans) {
+    test(title, async ({ browser }) => {
       test.setTimeout(120_000)
       const page = await (await browser.newContext({ storageState: session })).newPage()
       const url = typeof target === 'string' ? target : await target(page)
