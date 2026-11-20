@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { BranchProtection } from '../mirror/facts'
+import { loadAdoptions } from '../intake/adopt'
 import { classifiedIn } from './classified'
 import { ago } from './sql'
 
@@ -47,10 +48,9 @@ const mirrorRow = z.object({
   stale: count,
   pulls: count,
   open_pulls: count,
-  closing: count,
 })
 
-const recordRow = z.object({ ready: count, needing: count, duplicates: count })
+const recordRow = z.object({ ready: count, needing: count, duplicates: count, adopted: count })
 
 const sourceRow = z.object({ required: z.string().nullable(), sources: count, imported: count })
 
@@ -92,8 +92,7 @@ const mirrorCounts = async (payload: Payload, f: FirstLookFilter) => {
       count(*) FILTER (WHERE "kind" = 'issue' AND "state" = 'open'
         AND "forge_updated_at" < ${ago(f.now, 365)}::timestamptz) AS stale,
       count(*) FILTER (WHERE "kind" = 'pr') AS pulls,
-      count(*) FILTER (WHERE "kind" = 'pr' AND "state" = 'open') AS open_pulls,
-      count(*) FILTER (WHERE "kind" = 'pr' AND "state" = 'open' AND jsonb_array_length("closes") > 0) AS closing
+      count(*) FILTER (WHERE "kind" = 'pr' AND "state" = 'open') AS open_pulls
     FROM "mirror_items"
     WHERE "workspace_id" = ${f.workspace} AND "product_id" = ${f.product} AND "gone_at" IS NULL`)
   return mirrorRow.parse(result.rows[0])
@@ -105,7 +104,11 @@ const recordCounts = async (payload: Payload, f: FirstLookFilter) => {
         AND NOT (r."data"->'source'->>'external')::boolean)) AS ready,
       count(*) FILTER (WHERE r."waiting_on" = 'reporter') AS needing,
       count(*) FILTER (WHERE EXISTS (SELECT 1 FROM "events" e WHERE e."record_id" = r."id"
-        AND e."type" = 'intake.closed' AND e."data"->>'reason' = 'duplicate')) AS duplicates
+        AND e."type" = 'intake.closed' AND e."data"->>'reason' = 'duplicate')) AS duplicates,
+      count(*) FILTER (WHERE r."data"->'source'->'adopted' IS NOT NULL AND EXISTS (
+        SELECT 1 FROM "mirror_items" i WHERE i."workspace_id" = r."workspace_id" AND i."repo" = r."source_repo"
+          AND i."kind" = 'pr' AND i."state" = 'open' AND i."gone_at" IS NULL
+          AND i."number" = (r."data"->'source'->'adopted'->>'pr')::integer)) AS adopted
     FROM "records" r WHERE r."workspace_id" = ${f.workspace} AND r."product_id" = ${f.product}`)
   return recordRow.parse(result.rows[0])
 }
@@ -124,6 +127,8 @@ export const firstLook = async (payload: Payload, filter: FirstLookFilter): Prom
   const sources = await sourceFacts(payload, filter)
   const classified = await classifiedIn(payload, filter)
   const repositories = await repositoryFacts(payload, filter)
+  const adoptable = (await loadAdoptions(payload, filter.product)).filter((a) => a.workspace === filter.workspace)
+  const closing = records.adopted + adoptable.length
   const requiredChecks = (sources.required ?? '').split(',').map((name) => name.trim()).filter((name) => name !== '')
   const picked = (action: string) => classified.filter(({ selection }) => selection.action === action).length
   return {
@@ -138,8 +143,8 @@ export const firstLook = async (payload: Payload, filter: FirstLookFilter): Prom
     },
     pullRequests: {
       open: mirror.open_pulls,
-      closingAnIssue: mirror.closing,
-      notClosingAnIssue: mirror.open_pulls - mirror.closing,
+      closingAnIssue: closing,
+      notClosingAnIssue: Math.max(0, mirror.open_pulls - closing),
     },
     repository: {
       requiredChecks,

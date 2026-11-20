@@ -5,9 +5,12 @@ import type { TicketRecord } from './record/schema'
 
 export { fold, type State }
 
-export const foldOptions = (config: Pick<Config, 'productionGate' | 'requiredChecks'>): FoldOptions => ({
+export const foldOptions = (
+  config: Pick<Config, 'productionGate' | 'requiredChecks' | 'deployChecks'>,
+): FoldOptions => ({
   productionGate: config.productionGate,
   requiredChecks: config.requiredChecks,
+  deployChecks: config.deployChecks,
 })
 
 export type Config = {
@@ -20,13 +23,14 @@ export type Config = {
 }
 
 export type Role = 'builder' | 'reviewer' | 'verifier'
+export type WaitOn = 'reporter' | 'run' | 'checks' | 'deploy' | 'owner' | 'author'
 export type BriefReason = 'open-decision' | 'one-way-door' | 'risk-area' | 'backlog' | 'external-request'
 export type Step =
   | { kind: 'run'; stage: Stage; role: Role }
   | { kind: 'card'; card: 'brief' | 'result' | 'question'; reason: string; options: string[] }
   | { kind: 'emit'; event: AppEvent }
   | { kind: 'effect'; effect: 'merge' }
-  | { kind: 'wait'; on: 'reporter' | 'run' | 'checks' | 'deploy' | 'owner' }
+  | { kind: 'wait'; on: WaitOn }
   | { kind: 'done' }
 
 type Rule = (record: TicketRecord, state: State, config: Config) => Step | null
@@ -48,7 +52,7 @@ const GATES: { reason: BriefReason; applies: (record: TicketRecord, riskAreas: s
   { reason: 'open-decision', applies: (r) => r.decisions.some((d) => d.answer === undefined) },
   { reason: 'one-way-door', applies: (r) => r.risk?.door === 'one-way' },
   { reason: 'risk-area', applies: (r, areas) => (r.risk?.areas ?? []).some((a) => areas.includes(a)) },
-  { reason: 'backlog', applies: (r) => r.source.backlog },
+  { reason: 'backlog', applies: (r) => r.source.backlog && r.source.adopted === undefined },
   {
     reason: 'external-request',
     applies: (r) => r.source.external && (r.type === 'feature' || r.type === 'change'),
@@ -59,7 +63,7 @@ export const briefGate = (record: TicketRecord, config: Pick<Config, 'riskAreas'
   GATES.find((gate) => gate.applies(record, config.riskAreas))?.reason ?? null
 
 const run = (stage: Stage, role: Role): Step => ({ kind: 'run', stage, role })
-const wait = (on: 'reporter' | 'run' | 'checks' | 'deploy' | 'owner'): Step => ({ kind: 'wait', on })
+const wait = (on: WaitOn): Step => ({ kind: 'wait', on })
 const question = (reason: string, options: string[]): Step => ({ kind: 'card', card: 'question', reason, options })
 
 const closed: Rule = (_r, state) => (state.closed !== null || state.stage === 'done' ? { kind: 'done' } : null)
@@ -98,23 +102,37 @@ const build: Rule = (_r, state, config) => {
   return run('build', 'builder')
 }
 
+const author: Rule = (_r, state, config) => {
+  if (state.stage !== 'verify' || !state.waitingAuthor) return null
+  if (state.verifyRounds >= config.caps.verifyRounds + state.extraRounds) {
+    return question('verify-rounds', ['one-more-round', 'accept-as-is', 'discard'])
+  }
+  return wait('author')
+}
+
 const verify: Rule = (_r, state) => {
   if (state.stage !== 'verify') return null
   return state.checks === 'pending' ? wait('checks') : run('verify', 'verifier')
 }
 
-const ship: Rule = (_r, state, config) => {
-  if (state.stage !== 'ship') return null
-  if (!state.merged) return { kind: 'effect', effect: 'merge' }
+const resultCard: Step = { kind: 'card', card: 'result', reason: 'result', options: [] }
+
+const afterMerge = (state: State, config: Config): Step => {
   if (config.deployChecks && !state.deployed) return wait('deploy')
-  if (!state.accepted) return { kind: 'card', card: 'result', reason: 'result', options: [] }
+  if (!state.accepted) return resultCard
   if (config.productionGate && !state.productionApproved) {
     return state.productionHeld ? wait('owner') : question('production', ['approve', 'hold'])
   }
   return { kind: 'done' }
 }
 
-const RULES: Rule[] = [closed, cardOpen, runLive, failedRuns, intake, brief, build, verify, ship]
+const ship: Rule = (_r, state, config) => {
+  if (state.stage !== 'ship') return null
+  if (state.adopted && !state.accepted) return resultCard
+  return state.merged ? afterMerge(state, config) : { kind: 'effect', effect: 'merge' }
+}
+
+const RULES: Rule[] = [closed, cardOpen, runLive, failedRuns, intake, brief, build, author, verify, ship]
 
 export const next = (record: TicketRecord, state: State, config: Config): Step => {
   for (const rule of RULES) {

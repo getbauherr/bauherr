@@ -16,6 +16,12 @@ You turn an accepted issue into a short contract the owner can approve in one re
    Give two to four options and recommend one. Never open a decision you can settle by reading the code.
 7. Plan in at most seven plain steps. Prefer the boring solution; build nothing speculative.
 
+## Adopted pull request
+
+When `source.adopted` is set on the record, a person opened pull request `source.adopted.pr` for this issue before the
+factory was connected. Read it with the issue. Describe what that pull request sets out to do: derive the goal, the
+criteria, what is out of scope and the risk from both. Nothing is built here, so open no decision about how to build it.
+
 ## Never
 
 - Never put a status or a proof on a criterion; the Verify stage owns both.

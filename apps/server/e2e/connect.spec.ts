@@ -32,7 +32,7 @@ test('a Product that is imported shows the four steps, the counts and what the r
   await expect(page.getByRole('heading', { name: 'Open issues, 4' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Open pull requests, 3' })).toBeVisible()
   await expect(row(page, /Linked to an issue/)).toContainText('1')
-  await expect(row(page, /Not linked/)).toContainText('2')
+  await expect(row(page, /Other pull requests/)).toContainText('2')
   await expect(row(page, /Assigned to a person/)).toContainText('1')
   await expect(row(page, /No activity for a year/)).toContainText('1')
   const offers = page.getByRole('region', { name: 'What the repository offers' })

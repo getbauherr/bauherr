@@ -41,6 +41,7 @@ const WAITING: Record<Extract<Step, { kind: 'wait' }>['on'], WaitingOn> = {
   checks: 'agents',
   deploy: 'agents',
   owner: 'owner',
+  author: 'author',
 }
 
 const HELD: Raised = { card: 'question', reason: 'production-held', options: ['approve-production'] }

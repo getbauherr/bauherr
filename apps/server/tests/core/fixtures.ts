@@ -65,6 +65,7 @@ export const SAMPLES: Record<EventType, unknown> = {
   'brief.changes-requested': { note: 'shorter' },
   'brief.discarded': {},
   'build.submitted': { runId: 'r1', patchId: 'p1', headSha: 'h1', pr: 12 },
+  'pull.adopted': { pr: 12, headSha: 'h1', patchId: 'adopted:h1' },
   'checks.finished': { patchId: 'p1', passed: true },
   'verify.passed': { runId: 'r2', patchId: 'p1', headSha: 'h1' },
   'verify.changes': { runId: 'r2', patchId: 'p1' },
@@ -99,6 +100,10 @@ export const CONFIG: Config = {
 
 export const start = (stage: Stage, runId = 'r1') => ev('run.started', { stage, runId })
 export const fail = (stage: Stage, runId = 'r1') => ev('run.failed', { stage, runId })
+
+export const adoptedSource: RecordSource = { ...source, adopted: { pr: 12 } }
+
+export const adoptEvent = (sha = 'h1') => ev('pull.adopted', { headSha: sha, patchId: `adopted:${sha}` })
 
 export const inBrief = [ev('intake.accepted')]
 export const briefWritten = [...inBrief, start('brief'), ev('brief.submitted')]

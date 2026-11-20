@@ -60,4 +60,7 @@ export const FORGE_NAMES: Record<TicketRecord['source']['forge'], string> = { gi
 export const pullLabel = (forge: TicketRecord['source']['forge'], number: number): string =>
   forge === 'github' ? `pull request #${number} on GitHub` : `merge request !${number} on GitLab`
 
+export const adoptedLine = (adopted: { author: string }): string =>
+  adopted.author === '' ? 'Adopted pull request' : `Adopted pull request by ${adopted.author}`
+
 export const clock = (iso: string): string => iso.slice(11, 16)

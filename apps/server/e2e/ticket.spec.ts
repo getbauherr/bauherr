@@ -122,6 +122,26 @@ test('an Intake ticket shows the check and the question sent to the reporter', a
   await expect(page.getByText('Waiting for the reporter. Nothing to do.')).toBeVisible()
 })
 
+test('an adopted pull request waiting on its author says so and lists the other pull requests', async ({ page }) => {
+  await enter(page, 'Adopted pull request waiting on its author')
+  await expect(page.getByText('Adopted pull request by dev-sam')).toBeVisible()
+  await expect(page.getByText('Waiting on author', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Waiting on the author of the pull request.')).toBeVisible()
+  const path = page.getByRole('navigation', { name: 'Stage path' })
+  await expect(path).not.toContainText('Build')
+  await expect(path.locator('[aria-current="step"]')).toContainText('Verify')
+  const others = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Other pull requests' }) })
+  await expect(others).toContainText('Another take on the fix')
+  await expect(others).toContainText('dev-lee')
+})
+
+test('the Result card of an adopted pull request says that accepting merges it', async ({ page }) => {
+  await enter(page, 'Adopted pull request with a result')
+  await expect(page.getByText('Adopted pull request by dev-sam')).toBeVisible()
+  await expect(page.getByText('Accept the Result to merge the pull request and finish the ticket.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Accept', exact: true })).toBeVisible()
+})
+
 test('the run page lists the reported steps oldest first', async ({ page }) => {
   await enter(page, 'Build with reported steps')
   await page.getByRole('link', { name: /^Run \d+$/ }).click()

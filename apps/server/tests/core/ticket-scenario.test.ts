@@ -64,4 +64,18 @@ describe('the tickets the end-to-end specs read', () => {
     expect(steps.status).toBe('building')
     expect(steps.runs.at(-1)?.steps).toHaveLength(4)
   })
+
+  it('has an adopted ticket waiting on its author and one with a Result, each with its pull request', async () => {
+    const waiting = await view(names.adoptedWaiting)
+    expect(waiting).toMatchObject({
+      status: 'waiting-on-author',
+      waitingOn: 'author',
+      adopted: { pr: 70, author: 'dev-sam' },
+    })
+    expect(waiting.otherPulls.map((pull) => [pull.number, pull.author, pull.state])).toEqual([[72, 'dev-lee', 'open']])
+    const result = await view(names.adoptedResult)
+    expect(result).toMatchObject({ stage: 'ship', card: { card: 'result' }, adopted: { pr: 71, author: 'dev-sam' } })
+    expect(result.pullRequest?.state).toBe('open')
+    expect(result.events.some((event) => event.type === 'ship.merged')).toBe(false)
+  })
 })

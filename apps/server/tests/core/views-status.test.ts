@@ -75,3 +75,12 @@ describe('event labels', () => {
     )
   })
 })
+
+describe('waiting on the author', () => {
+  it('is its own status and counts as waiting on others', () => {
+    expect(stateOf({ waitingOn: 'author', stuck: false, hasRun: false })).toBe('others')
+    expect(statusOf({ ...base, stage: 'verify', waitingOn: 'author', hasRun: false, claimed: false })).toBe(
+      'waiting-on-author',
+    )
+  })
+})

@@ -122,6 +122,14 @@ const openPullRequest = async (ctx: Ctx, target: Target, input: NewPullRequest):
   })
 }
 
+const reviewPullRequest = async (ctx: Ctx, target: Target, body: string): Promise<void> => {
+  const session = await open(ctx, target, 'pr')
+  await perform(ctx, target, 'review', session, {
+    call: ({ forge, row }) => forge.reviewPullRequest(row.repo, row.number, { body: disclosed(body), comments: [] }),
+    mirror: (current, comment) => mirrorComment(ctx, current, target, comment),
+  })
+}
+
 const closeIssue = async (ctx: Ctx, target: Target, reason: CloseReason): Promise<void> => {
   const session = await open(ctx, target, 'issue')
   await perform(ctx, target, 'close', session, {
@@ -138,6 +146,7 @@ export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(pa
     postQuestion: (target: Target, body: string) => postQuestion(ctx, target, body),
     mergePullRequest: (target: Target, expectedHeadSha: string) => mergePullRequest(ctx, target, expectedHeadSha),
     openPullRequest: (target: Target, input: NewPullRequest) => openPullRequest(ctx, target, input),
+    reviewPullRequest: (target: Target, body: string) => reviewPullRequest(ctx, target, body),
     closeIssue: (target: Target, reason: CloseReason) => closeIssue(ctx, target, reason),
   }
 }

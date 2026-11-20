@@ -79,6 +79,26 @@ function Findings({ view }: { view: TicketView }) {
   )
 }
 
+function OtherPulls({ view }: { view: TicketView }) {
+  if (view.otherPulls.length === 0) return null
+  return (
+    <Aside title="Other pull requests">
+      {view.otherPulls.map((pull) => (
+        <a
+          key={pull.number}
+          href={pull.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="small hover:underline"
+        >
+          <span className="mono">#{pull.number}</span> {pull.title} · {pull.author} · {pull.state}
+          <span className="sr-only"> (opens in new tab)</span>
+        </a>
+      ))}
+    </Aside>
+  )
+}
+
 function AnswersUsed({ view }: { view: TicketView }) {
   const kind = view.card?.card
   const used = kind === 'brief' ? view.statementsUsed.brief : kind === 'result' ? view.statementsUsed.result : []
@@ -118,6 +138,7 @@ export function SideColumn({ view }: { view: TicketView }) {
       <AnswersUsed view={view} />
       <Verdict view={view} />
       <Findings view={view} />
+      <OtherPulls view={view} />
       <Similar view={view} />
     </div>
   )

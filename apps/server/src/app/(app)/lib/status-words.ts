@@ -14,6 +14,7 @@ export const STATUS_WORDS: Record<TicketStatus, StatusWord> = {
   'waiting-for-deploy': { word: 'Waiting for deploy', tone: 'neutral', mark: 'clock' },
   'reporter-asked': { word: 'Reporter asked', tone: 'neutral' },
   'question-drafted': { word: 'Question drafted', tone: 'neutral' },
+  'waiting-on-author': { word: 'Waiting on author', tone: 'neutral' },
   'brief-needs-approval': { word: 'Brief needs approval', tone: 'warn' },
   'result-ready': { word: 'Result ready', tone: 'warn' },
   question: { word: 'Question', tone: 'warn' },

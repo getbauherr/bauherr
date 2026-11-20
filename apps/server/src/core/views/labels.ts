@@ -9,6 +9,7 @@ const WRITES: Record<EventOf<'forge.write.done'>['data']['kind'], string> = {
   merge: 'the merge',
   close: 'closing the issue',
   'pull-request': 'opening the pull request',
+  review: 'a review comment',
 }
 
 const article = (word: string): string => (/^[aeiou]/.test(word) ? 'An' : 'A')
@@ -29,6 +30,7 @@ const LABELS: Labels = {
   'brief.changes-requested': (e) => `The owner asked for changes to the Brief: ${e.data.note}`,
   'brief.discarded': () => 'The Brief was discarded and the ticket closed',
   'build.submitted': (e) => `A patch was submitted as pull request #${e.data.pr}`,
+  'pull.adopted': (e) => `Pull request #${e.data.pr} was adopted at ${e.data.headSha.slice(0, 7)}`,
   'checks.finished': (e) => (e.data.passed ? 'The checks passed' : 'The checks failed'),
   'verify.passed': () => 'Verification passed',
   'verify.changes': () => 'Verification asked for changes',

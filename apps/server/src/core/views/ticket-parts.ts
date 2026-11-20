@@ -89,16 +89,25 @@ const itemRow = z.object({
   url: z.string().nullable(),
   state: z.enum(['open', 'closed', 'merged']),
   head_sha: z.string().nullable(),
+  author: z.string().nullable(),
 })
 
-export type MirrorItem = { id: number; title: string; body: string; url: string; state: string; headSha: string }
+export type MirrorItem = {
+  id: number
+  title: string
+  body: string
+  url: string
+  state: string
+  headSha: string
+  author: string
+}
 
 export const loadItem = async (
   payload: Payload,
   where: { workspace: number; repo: string; number: number },
 ): Promise<MirrorItem | null> => {
   const result = await payload.db.drizzle.execute(sql`
-    SELECT "id", "title", "body", "url", "state", "head_sha" FROM "mirror_items"
+    SELECT "id", "title", "body", "url", "state", "head_sha", "author" FROM "mirror_items"
     WHERE "workspace_id" = ${where.workspace} AND "repo" = ${where.repo} AND "number" = ${where.number}`)
   const raw = result.rows[0]
   if (!raw) return null
@@ -110,6 +119,7 @@ export const loadItem = async (
     url: row.url ?? '',
     state: row.state,
     headSha: row.head_sha ?? '',
+    author: row.author ?? '',
   }
 }
 
@@ -129,5 +139,32 @@ export const loadChecks = async (payload: Payload, item: MirrorItem): Promise<Ch
   return result.rows.map((row) => {
     const c = checkRow.parse(row)
     return { name: c.name, status: c.status ?? '', conclusion: c.conclusion, url: c.url ?? '' }
+  })
+}
+
+const otherPullRow = z.object({
+  number: count,
+  title: z.string(),
+  url: z.string().nullable(),
+  author: z.string().nullable(),
+  draft: z.boolean(),
+})
+
+export type OtherPull = { number: number; title: string; url: string; author: string; state: 'open' | 'draft' }
+
+export const loadOtherPulls = async (
+  payload: Payload,
+  where: { workspace: number; repo: string; issue: number; except: number | undefined },
+): Promise<OtherPull[]> => {
+  const result = await payload.db.drizzle.execute(sql`
+    SELECT "number", "title", "url", "author", "draft" FROM "mirror_items"
+    WHERE "workspace_id" = ${where.workspace} AND "repo" = ${where.repo} AND "kind" = 'pr' AND "state" = 'open'
+      AND "gone_at" IS NULL AND "closes" @> ${JSON.stringify([where.issue])}::jsonb
+      AND "number" <> ${where.except ?? 0}
+    ORDER BY "number"`)
+  return result.rows.map((row) => {
+    const r = otherPullRow.parse(row)
+    const state = r.draft ? 'draft' : 'open'
+    return { number: r.number, title: r.title, url: r.url ?? '', author: r.author ?? '', state }
   })
 }

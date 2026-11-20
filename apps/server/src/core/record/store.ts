@@ -13,7 +13,7 @@ import {
   type TicketRecord,
 } from './schema'
 
-export const WAITING_ON = ['owner', 'agents', 'reporter', 'nobody'] as const
+export const WAITING_ON = ['owner', 'agents', 'reporter', 'author', 'nobody'] as const
 export type WaitingOn = (typeof WAITING_ON)[number]
 
 export const cardSchema = z.object({
@@ -205,7 +205,7 @@ export const appendEvent = async (payload: Conn, recordId: number, event: NewEve
     RETURNING "id", "record_id", "type", "actor", "actor_id", "data", "created_at"`)
   const row = inserted.rows[0]
   if (!row) throw new RecordNotFound(`Record ${recordId} does not exist: check the id.`)
-  if (valid.type === 'build.submitted') {
+  if (valid.type === 'build.submitted' || valid.type === 'pull.adopted') {
     await payload.db.drizzle.execute(
       sql`UPDATE "records" SET "pr" = ${valid.data.pr}, "updated_at" = now() WHERE "id" = ${recordId}`,
     )

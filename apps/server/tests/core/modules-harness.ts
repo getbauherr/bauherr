@@ -82,6 +82,29 @@ export const flowHarness = (suite: string) => {
     return { repo, id, sync: () => h.sync(readers, ih.reacting) }
   }
 
+  const startAdopted = async (state: 'active' | 'observing') => {
+    const repo = h.fresh()
+    current = new FakeBackend({ native: true, user: 'jo', trusted: ['jo'] })
+    const connectedAt = ih.clock.now.toISOString()
+    await product(sql`"state" = ${state}, "required_checks" = 'ci', "connected_at" = ${connectedAt}::timestamptz`)
+    current.actingAs = 'jo'
+    await current.tickets(repo).create({ title: 'list is empty', body: FORM })
+    await current.forge.createBranch(repo, 'fix')
+    const headSha = current.commit(repo, 'fix', 'a.txt', 'author-1')
+    const pull = await current.forge.openPullRequest(repo, {
+      title: 'fix the list',
+      head: 'fix',
+      base: 'main',
+      body: 'Closes #1',
+    })
+    current.actingAs = 'factory'
+    const readers = { [repo]: readerOf(current) }
+    await h.settle(readers)
+    const [id] = await enterIssues(subDeps())
+    if (id === undefined) throw new Error('no record was adopted')
+    return { repo, id, pr: pull.number, headSha, sync: () => h.sync(readers, ih.reacting) }
+  }
+
   const claimRun = async (recordId: number, role: 'builder' | 'verifier', by = `exec-${role}`) => {
     const claimed = await claim(h.payload(), { workspace: h.ids.workspace, role, by, now: ih.clock.now })
     if (!claimed || claimed.run.recordId !== recordId) throw new Error(`no ${role} run for record ${recordId}`)
@@ -137,7 +160,20 @@ export const flowHarness = (suite: string) => {
       WHERE "record_id" = ${recordId}
         AND ("type" = 'intake.asked' OR ("type" = 'forge.write.done' AND "data"->>'kind' = 'question'))`)
 
-  const steps = { start, work, claimRun, submitTo, proof, types, view, comments, pullFor, green, toVerify }
+  const steps = {
+    start,
+    startAdopted,
+    work,
+    claimRun,
+    submitTo,
+    proof,
+    types,
+    view,
+    comments,
+    pullFor,
+    green,
+    toVerify,
+  }
   return { ...ih, ...steps, fake, subDeps, backdateAsked }
 }
 

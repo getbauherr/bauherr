@@ -11,6 +11,7 @@ export type Effect =
   | { kind: 'question'; body: string }
   | { kind: 'close'; reason: CloseReason }
   | { kind: 'status' }
+  | { kind: 'review'; pr: number; body: string }
 export type ApplyContext = { config: Config; state: State }
 export type Applied = { patch: Partial<TicketRecord>; events: AppEvent[]; effects?: Effect[] }
 

@@ -33,6 +33,8 @@ const rowSchema = z.object({
   terminal_reason: z.string().nullable(),
   criteria_total: count,
   criteria_met: count,
+  adopted_pr: count.nullable(),
+  adopted_by: z.string().nullable(),
 })
 
 export type ClosedAs = 'not-a-bug' | 'duplicate' | 'not-planned' | 'discarded' | 'closed-on-forge'
@@ -55,6 +57,7 @@ export type TicketRow = {
   ended: 'accepted' | 'closed' | null
   closedAs: ClosedAs | null
   criteria: { met: number; total: number }
+  adopted: { pr: number; author: string } | null
   endedAt: Date | null
   run: { role: 'builder' | 'reviewer' | 'verifier'; leasedBy: string | null; step: string | null } | null
 }
@@ -70,6 +73,9 @@ export const closedAsOf = (type: string | null, reason: string | null): ClosedAs
 
 export const endedOf = (type: string | null): 'accepted' | 'closed' | null =>
   type === null ? null : ACCEPTED.includes(type) ? 'accepted' : 'closed'
+
+const adoptedOf = (r: z.infer<typeof rowSchema>): TicketRow['adopted'] =>
+  r.adopted_pr === null ? null : { pr: r.adopted_pr, author: r.adopted_by ?? '' }
 
 const toRow = (raw: unknown): TicketRow => {
   const r = rowSchema.parse(raw)
@@ -93,6 +99,7 @@ const toRow = (raw: unknown): TicketRow => {
     endedAt: r.terminal_at,
     closedAs: ended === 'closed' ? closedAsOf(r.terminal_type, r.terminal_reason) : null,
     criteria: { met: r.criteria_met, total: r.criteria_total },
+    adopted: adoptedOf(r),
     run: r.role === null ? null : { role: r.role, leasedBy: r.leased_by, step: r.step },
   }
 }
@@ -105,7 +112,11 @@ export const loadRows = async (payload: Payload, filter: RowFilter): Promise<Tic
       s."steps" -> -1 ->> 'text' AS step, ev."terminal_reason",
       jsonb_array_length(coalesce(r."data" -> 'criteria', '[]'::jsonb)) AS criteria_total,
       (SELECT count(*) FROM jsonb_array_elements(coalesce(r."data" -> 'criteria', '[]'::jsonb)) c
-        WHERE c ->> 'status' = 'met') AS criteria_met
+        WHERE c ->> 'status' = 'met') AS criteria_met,
+      (r."data"->'source'->'adopted'->>'pr')::integer AS adopted_pr,
+      (SELECT a."author" FROM "mirror_items" a WHERE a."workspace_id" = r."workspace_id"
+        AND a."repo" = r."source_repo" AND a."kind" = 'pr'
+        AND a."number" = (r."data"->'source'->'adopted'->>'pr')::integer) AS adopted_by
     FROM "records" r
     JOIN "products" p ON p."id" = r."product_id"
     LEFT JOIN "mirror_items" i ON i."workspace_id" = r."workspace_id" AND i."repo" = r."source_repo"

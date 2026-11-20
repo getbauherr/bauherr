@@ -1,12 +1,24 @@
-import { inLockedRecord } from '../conn'
+import { inLockedRecord, type Conn } from '../conn'
 import { advance, type AdvanceDeps } from '../engine'
 import type { AppEvent } from '../events'
-import { fold, foldOptions, type Config } from '../lifecycle'
+import { fold, foldOptions, type Config, type State } from '../lifecycle'
 import { appendEvent, readEvents, readRecord } from '../record/store'
+import { releaseLive } from '../run/leases'
 import { react } from './react'
 import { loadReactInput, openRecords, recordsOfItems } from './react-store'
 
 const actorOf = (event: AppEvent) => (event.type === 'reporter.replied' ? 'reporter' : 'factory')
+
+const releaseStaleVerify = async (tx: Conn, recordId: number, state: State, now: Date): Promise<void> => {
+  for (const run of await releaseLive(tx, recordId, now, 'verify')) {
+    if (state.run?.runId !== String(run.id)) continue
+    await appendEvent(tx, recordId, {
+      type: 'run.released',
+      data: { stage: run.stage, runId: String(run.id) },
+      actor: 'factory',
+    })
+  }
+}
 
 const reactLocked = async (deps: AdvanceDeps, recordId: number, config: Config): Promise<number> =>
   inLockedRecord(deps.payload, recordId, async (tx) => {
@@ -17,6 +29,7 @@ const reactLocked = async (deps: AdvanceDeps, recordId: number, config: Config):
     const input = await loadReactInput(tx, stored, state, events)
     const derived = input ? react(input) : []
     for (const event of derived) await appendEvent(tx, recordId, { ...event, actor: actorOf(event) })
+    if (derived.some((event) => event.type === 'pull.adopted')) await releaseStaleVerify(tx, recordId, state, deps.now)
     return derived.length
   })
 

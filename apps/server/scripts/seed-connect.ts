@@ -37,7 +37,7 @@ const fillMirror = async (item: Item, full: boolean) => {
   if (!full) return
   await item(4, { title: 'Please add a dark theme', author: 'stranger', trusted: false })
   await item(5, { title: 'Closed long ago', state: 'closed' })
-  await item(101, { kind: 'pr', title: 'Fix the export', closes: [1] })
+  await item(101, { kind: 'pr', title: 'Fix the export', closes: [1], head: 'abc1010' })
   await item(102, { kind: 'pr', title: 'Bump a dependency' })
   await item(103, { kind: 'pr', title: 'Refactor the importer' })
 }
@@ -59,6 +59,7 @@ const seedProduct = async (payload: Payload, workspace: number, shape: Shape) =>
   const { slug, name } = shape
   const product = { name, slug, workspace, pathSets: PATH_SETS, riskAreas: ['security'], backlogBriefLimit: 4 }
   const made = await payload.create({ collection: 'products', data: product, ...o })
+  await payload.db.drizzle.execute(sql`UPDATE "products" SET "connected_at" = now() WHERE "id" = ${Number(made.id)}`)
   const ids = { workspace, otherWorkspace: workspace, product: Number(made.id) }
   const repo = `connect/${slug}`
   const { source, item } = await mirrorSource({ db: coreDbOn(payload, ids, async () => {}) }, repo)

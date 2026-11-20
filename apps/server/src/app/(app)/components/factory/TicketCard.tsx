@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import type { BoardCard } from '../../../../core/views/board'
 import { workerOf } from '../../lib/factory'
+import { adoptedLine } from '../../lib/ticket'
 import { StatusChip } from '../StatusChip'
 import { Time } from '../Time'
 
@@ -25,7 +26,10 @@ const criteriaOf = (card: BoardCard): string | null =>
     : null
 
 export const captionOf = (card: BoardCard): string | null => {
-  const parts = [card.parkedReason, card.detail, criteriaOf(card), sessionOf(card.run)].filter((part) => part !== null)
+  const adopted = card.adopted ? adoptedLine(card.adopted) : null
+  const parts = [adopted, card.parkedReason, card.detail, criteriaOf(card), sessionOf(card.run)].filter(
+    (part) => part !== null,
+  )
   return parts.length ? parts.join(' · ') : null
 }
 

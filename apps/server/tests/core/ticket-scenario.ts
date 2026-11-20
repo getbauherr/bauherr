@@ -4,11 +4,13 @@ import { askOwner } from '../../src/core/ask'
 import { DISCLOSURE } from '../../src/core/forge/disclosure'
 import { questionsBody } from '../../src/core/intake/questions'
 import type { Criterion, Decision, Finding, TicketRecord } from '../../src/core/record/schema'
-import { patchRecord, readRecord, setRank } from '../../src/core/record/store'
+import { advance } from '../../src/core/engine'
+import { appendEvent, createRecord, patchRecord, readRecord, setRank } from '../../src/core/record/store'
 import { claim, heartbeat } from '../../src/core/run/leases'
 import { rememberContext } from '../../src/core/run/context'
 import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
+import { source } from './fixtures'
 import { asked, begin, mirrorSource, patch, toBrief, workOn } from './scenario'
 
 export const TICKET_TITLES = {
@@ -18,6 +20,8 @@ export const TICKET_TITLES = {
   questionRead: 'Question to read',
   intake: 'Intake waiting for the reporter',
   runSteps: 'Build with reported steps',
+  adoptedWaiting: 'Adopted pull request waiting on its author',
+  adoptedResult: 'Adopted pull request with a result',
 } as const
 
 export const POOL_SIZE = 3
@@ -140,6 +144,28 @@ const resultTicket = async (e: Engine, pr: number): Promise<number> => {
   return id
 }
 
+const ADOPTED_AUTHOR = 'dev-sam'
+const ADOPTED_FIRST = 70
+
+const adoptedTicket = async (e: Engine, pr: number, passed: boolean): Promise<number> => {
+  const input = {
+    workspace: e.db.workspace,
+    product: e.db.product,
+    source: { ...source, number: 3000 + pr, adopted: { pr } },
+    type: 'change' as const,
+  }
+  const { id } = await createRecord(e.db.payload, input)
+  const data = { pr, headSha: `h${pr}`, patchId: `adopted:h${pr}` }
+  await appendEvent(e.db.payload, id, { type: 'pull.adopted', data, actor: 'factory' })
+  await advance(id, e.deps())
+  await workOn(e, id, 'builder', { goal: 'Fix it', open: false })
+  await edit(e, id, 'brief', briefFields([SETTLED]))
+  await e.checks(id)
+  await workOn(e, id, 'verifier', { passed, patchId: data.patchId, headSha: data.headSha })
+  if (passed) await resultOf(e, id)
+  return id
+}
+
 const claimed = async (e: Engine, id: number) => {
   await setRank(e.db.payload, id, -1000)
   const input = { workspace: e.db.workspace, role: 'builder', by: 'runner-seed', now: e.clock.now } as const
@@ -242,6 +268,9 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     runSteps: await toBrief(e, false),
   }
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
+  const adoptedWaiting = await adoptedTicket(e, ADOPTED_FIRST, false)
+  const adoptedResult = await adoptedTicket(e, ADOPTED_FIRST + 1, true)
+  titled.push([adoptedWaiting, TICKET_TITLES.adoptedWaiting], [adoptedResult, TICKET_TITLES.adoptedResult])
   await answered(e, names.briefAnswers, ['brief'], names.resultReadonly, EARLIER_ANSWERS)
   await answered(e, names.resultReadonly, ['build', 'verify'], names.briefTitle, RESULT_ANSWERS)
   await reportedSteps(e, names.runSteps)
@@ -250,5 +279,13 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     const { source } = (await readRecord(e.db.payload, id)).record
     await mirror.item(source.number, { title })
   }
-  return { ...names, intake: await intakeTicket(e, mirror.item) }
+  for (const [id, number] of [[adoptedWaiting, ADOPTED_FIRST], [adoptedResult, ADOPTED_FIRST + 1]] as const) {
+    const closes = [(await readRecord(e.db.payload, id)).record.source.number]
+    const title = `Pull request ${number}`
+    await mirror.item(number, { kind: 'pr', head: `h${number}`, title, author: ADOPTED_AUTHOR, closes })
+  }
+  const closes = [3000 + ADOPTED_FIRST]
+  const other = { kind: 'pr', head: 'h72', title: 'Another take on the fix', author: 'dev-lee', closes } as const
+  await mirror.item(ADOPTED_FIRST + 2, { ...other, closes })
+  return { ...names, adoptedWaiting, adoptedResult, intake: await intakeTicket(e, mirror.item) }
 }

@@ -1,4 +1,4 @@
-import type { AppEvent } from '../events'
+import type { AppEvent, Stage } from '../events'
 import type { State } from '../fold'
 import { DISCLOSURE } from '../forge/disclosure'
 import type { TicketRecord } from '../record/schema'
@@ -48,21 +48,37 @@ export const checksFinished: Reaction = ({ state, pull, checks }) => {
   return [{ type: 'checks.finished', data: { patchId: patch.id, passed: outcome === 'passed' } }]
 }
 
+const mergeStages = (state: State): Stage[] => (state.adopted ? ['verify', 'ship'] : ['ship'])
+
 export const pullMerged: Reaction = ({ state, pull }) => {
-  if (state.stage !== 'ship' || state.merged || pull?.state !== 'merged' || pull.mergeSha === null) return []
+  if (!mergeStages(state).includes(state.stage) || state.merged) return []
+  if (pull?.state !== 'merged' || pull.mergeSha === null) return []
   return [{ type: 'ship.merged', data: { sha: pull.mergeSha } }]
 }
 
-export const issueClosed: Reaction = ({ state, issue }) => {
-  const settled = state.closed !== null || state.merged || state.stage === 'ship' || state.stage === 'done'
+export const issueClosed: Reaction = ({ state, issue, pull }) => {
+  const mergedPull = state.adopted && pull?.state === 'merged'
+  const settled =
+    state.closed !== null || state.merged || mergedPull || state.stage === 'ship' || state.stage === 'done'
   if (settled || issue.state !== 'closed') return []
   return [{ type: 'ticket.closed', data: { reason: 'closed-on-forge' } }]
 }
 
-const REACTIONS: Reaction[] = [reporterReplied, checksFinished, pullMerged]
+export const pullClosed: Reaction = ({ state, pull }) =>
+  state.adopted && pull?.state === 'closed' ? [{ type: 'ticket.closed', data: { reason: 'closed-on-forge' } }] : []
+
+export const headMoved: Reaction = ({ state, pull }) => {
+  const patch = state.patch
+  if (!state.adopted || patch === null || pull?.state !== 'open') return []
+  if (pull.headSha === null || pull.headSha === patch.headSha) return []
+  const data = { pr: patch.pr, headSha: pull.headSha, patchId: `adopted:${pull.headSha}` }
+  return [{ type: 'pull.adopted', data }]
+}
+
+const REACTIONS: Reaction[] = [reporterReplied, checksFinished, pullMerged, headMoved]
 
 export const react = (input: ReactInput): AppEvent[] => {
-  const closed = issueClosed(input)
-  if (closed.length > 0) return closed
+  const closed = [...pullClosed(input), ...issueClosed(input)]
+  if (closed.length > 0) return closed.slice(0, 1)
   return REACTIONS.flatMap((reaction) => reaction(input))
 }
