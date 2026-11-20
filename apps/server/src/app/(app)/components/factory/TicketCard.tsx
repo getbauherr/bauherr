@@ -31,7 +31,9 @@ export function TicketCard({ card }: { card: BoardCard }) {
         <span className="mono" title={card.product.name}>#{card.number}</span>
         <Time iso={card.enteredAt} className="mono text-muted-foreground" />
       </div>
-      <Link href={`/tickets/${card.recordId}`} className={LINK}>{card.title}</Link>
+      <Link href={`/tickets/${card.recordId}`} draggable={false} className={LINK}>
+        {card.title}
+      </Link>
       <StatusChip status={card.status} />
       {caption && <span className="small text-muted-foreground">{caption}</span>}
     </div>

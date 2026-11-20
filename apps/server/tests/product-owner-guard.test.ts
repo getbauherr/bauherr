@@ -20,7 +20,11 @@ const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#logout': 'sign-out',
   '(shell)/settings/profile/actions.ts#saveOwnLogin': 'the profile: links or removes their own forge login; Payload refuses a login another account holds',
 }
-const BAUHERR_ACTIONS = ['lib/actions.ts#selectWorkspace', '(shell)/settings/state-action.ts#setProductState'].concat(
+const BAUHERR_ACTIONS = [
+  'lib/actions.ts#selectWorkspace',
+  '(shell)/actions.ts#moveCard',
+  '(shell)/settings/state-action.ts#setProductState',
+].concat(
   ['saveGeneral', 'saveModels', 'savePathSets', 'rotateWorkspaceKey', 'updatePricesNow', 'saveDeploy', 'addRepository', 'repositoriesOf', 'createProductWithRepo', 'removeDoc', 'saveConnection', 'verifyConnection', 'createBauherr', 'createProductOwner', 'saveAssignment', 'changeRole', 'saveBauherr', 'unlockBauherr', 'createWorkspace', 'deleteWorkspace', 'restoreWorkspaceAction', 'mintOwnAgentKey', 'revokeOwnAgentKey', 'rotateOwnKey', 'revokeOwnKey'].map((n) => `(shell)/settings/actions.ts#${n}`),
 )
 const PO_COLLECTIONS: Record<string, Record<string, string>> = {
@@ -206,7 +210,7 @@ describe('server actions', () => {
 
   it('every action not listed is refused with a 404 for a Product owner', async () => {
     session.cookie = productOwnerCookie
-    expect(files.length).toBe(4)
+    expect(files.length).toBe(5)
     let checked = 0
     for (const f of files) {
       const rel = f.slice((APP + '(app)/').length)
