@@ -37,7 +37,9 @@ describe('the tickets the end-to-end specs read', () => {
   })
 
   it('asks a question, waits for a reporter, and keeps a run with reported steps', async () => {
-    expect((await view(names.question)).card).toMatchObject({ card: 'question', reason: 'agent' })
+    for (const id of [names.question, names.questionRead]) {
+      expect((await view(id)).card).toMatchObject({ card: 'question', reason: 'agent' })
+    }
     const intake = await view(names.intake)
     expect(intake).toMatchObject({ stage: 'intake', status: 'reporter-asked' })
     expect(intake.facts?.rounds.map((r) => r.round)).toEqual([1])

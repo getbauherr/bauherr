@@ -17,6 +17,7 @@ export const TICKET_TITLES = {
   resultAccept: 'Result to accept',
   resultStale: 'Result decided twice',
   question: 'Question from the agent',
+  questionRead: 'Question to read',
   intake: 'Intake waiting for the reporter',
   runSteps: 'Build with reported steps',
 } as const
@@ -181,11 +182,13 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     resultAccept: await resultTicket(e, 13),
     resultStale: await resultTicket(e, 14),
     question: await toBrief(e, false),
+    questionRead: await toBrief(e, false),
     runSteps: await toBrief(e, false),
   }
   await edit(e, names.briefApprove, 'brief', briefFields([STORAGE]))
   await edit(e, names.briefTitle, 'brief', briefFields([STORAGE]))
   await questionTicket(e, names.question)
+  await questionTicket(e, names.questionRead)
   await reportedSteps(e, names.runSteps)
   for (const pr of [11, 12, 13, 14]) await mirror.item(pr, { kind: 'pr', head: `h${pr}`, title: `Pull request ${pr}` })
   for (const [name, id] of Object.entries(names)) {

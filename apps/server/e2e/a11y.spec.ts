@@ -76,7 +76,7 @@ const routes: Record<string, string | ((page: Page) => Promise<string>)> = {
   '/tickets/[id] (Result card)': inTickets('Result to read'),
   '/tickets/[id] (Result tab)': inTickets('Result to read', '?tab=result'),
   '/tickets/[id] (Activity tab)': inTickets('Result to read', '?tab=activity'),
-  '/tickets/[id] (question)': inTickets('Question from the agent'),
+  '/tickets/[id] (question)': inTickets('Question to read'),
   '/tickets/[id] (Intake)': inTickets('Intake waiting for the reporter'),
   '/runs/[id]': runOf('Build with reported steps'),
   '/settings': '/settings',
