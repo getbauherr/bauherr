@@ -7,7 +7,17 @@ export function Switch({ className, ...props }: Omit<ComponentProps<'input'>, 't
       type="checkbox"
       role="switch"
       data-slot="switch"
-      className={cn("relative m-0 h-5 w-9 shrink-0 cursor-pointer appearance-none rounded-sm border border-border bg-secondary outline-none transition-colors duration-(--duration-state) ease-(--ease-out) after:absolute after:top-0.5 after:left-0.5 after:size-3.5 after:rounded-[1px] after:bg-muted-foreground after:content-[''] checked:border-primary checked:bg-primary checked:after:left-[18px] checked:after:bg-primary-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60", className)}
+      className={cn(
+        'relative m-0 h-5 w-9 shrink-0 cursor-pointer appearance-none rounded-sm border ' +
+          'border-border bg-secondary outline-none transition-colors ' +
+          'duration-(--duration-state) ease-(--ease-out) after:absolute after:top-0.5 ' +
+          'after:left-0.5 after:size-3.5 after:rounded-[1px] after:bg-muted-foreground ' +
+          "after:content-[''] checked:border-primary checked:bg-primary " +
+          'checked:after:left-[18px] checked:after:bg-primary-foreground ' +
+          'focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed ' +
+          'disabled:opacity-60',
+        className,
+      )}
       {...props}
     />
   )

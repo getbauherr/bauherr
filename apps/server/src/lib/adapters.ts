@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto'
 import {
-  GithubBackend, GitlabBackend, appAuth, gitlabPat, patAuth, type Backend, type GithubAuth,
+  GithubBackend,
+  GitlabBackend,
+  appAuth,
+  gitlabPat,
+  patAuth,
+  type Backend,
+  type GithubAuth,
 } from '@bauherr/adapters'
 import { assertFakeAllowed } from './fake-guard'
 import { isGithubApp, webOrigin, type ConnectionInput } from './connection'
@@ -38,9 +44,14 @@ type Limits = { maxRetries?: number; timeoutMs?: number; fetch?: typeof fetch }
 export const backendFor = (connection: ConnectionInput, limits: Limits = {}): Backend => {
   if (fakeForge) return fakeForge()
   if (!connection.secret) throw new Error(`connection ${connection.id} has no secret`)
-  if (connection.kind === 'gitlab') return new GitlabBackend({ auth: gitlabPat(connection.secret), baseUrl: webOrigin(connection), ...limits })
+  if (connection.kind === 'gitlab')
+    return new GitlabBackend({ auth: gitlabPat(connection.secret), baseUrl: webOrigin(connection), ...limits })
   const baseUrl = connection.config.apiUrl
-  return new GithubBackend({ auth: githubAuth(connection, connection.secret, limits), ...(typeof baseUrl === 'string' ? { baseUrl } : {}), ...limits })
+  return new GithubBackend({
+    auth: githubAuth(connection, connection.secret, limits),
+    ...(typeof baseUrl === 'string' ? { baseUrl } : {}),
+    ...limits,
+  })
 }
 
 export const gitToken = async (connection: ConnectionInput, limits: Limits = {}): Promise<string> => {
