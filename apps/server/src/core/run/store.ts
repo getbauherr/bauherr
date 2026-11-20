@@ -5,7 +5,7 @@ import { toRun, type Run } from './schema'
 
 export const RUN_COLUMNS = sql.raw(
   '"id", "record_id", "stage", "role", "status", "fingerprint", "attempt", "leased_by", ' +
-    '"lease_expires_at", "steps", "result", "error", "cost_usd"',
+    '"lease_expires_at", "steps", "result", "error", "cost_usd", "context"',
 )
 
 export const readRun = async (payload: Conn, id: number): Promise<Run> => {

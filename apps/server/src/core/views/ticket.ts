@@ -15,6 +15,7 @@ import { loadIntakeFacts } from '../intake/facts-store'
 import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
 import { labelOf } from './labels'
+import { statementsUsed, type StatementsUsed } from './statements-used'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
 import { TERMINAL_EVENTS } from './sql'
 import { statusOf, type TicketStatus } from './status'
@@ -61,6 +62,7 @@ export type TicketView = {
   proofs: ProofGroup[]
   pullRequest: PullView | null
   similarItems: ItemHit[]
+  statementsUsed: StatementsUsed
 }
 
 export type TicketFilter = { workspace: number; recordId: number }
@@ -132,6 +134,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     runs,
     proofs: await loadProofs(payload, stored.id),
     pullRequest: await pullOf(payload, stored.workspace, repo, pr),
+    statementsUsed: await statementsUsed(payload, stored.id, events),
     similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT) : [],
   }
 }

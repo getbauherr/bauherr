@@ -3,7 +3,7 @@ import type { Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import type { ItemRow } from '../../src/core/mirror/map'
-import { searchItems, similarItems, titleAlternatives } from '../../src/core/mirror/search'
+import { searchItems, similarItems } from '../../src/core/mirror/search'
 import { upsertItem } from '../../src/core/mirror/store'
 import { createTestDb, type TestDb } from '../helpers/test-db'
 
@@ -155,7 +155,7 @@ describe('similarItems', () => {
   it('ranks other items of the same Product by their match on the title', async () => {
     const [first] = await searchItems(payload, { workspace, product: web, query: 'safari', limit: 1 })
     const hits = await similarItems(payload, first?.id ?? 0, 10)
-    expect(titles(hits)).toEqual(['Crash when saving a draft', 'Crash crash crash'])
+    expect(titles(hits)).toEqual(['Crash when saving a draft'])
   })
 
   it('leaves out the item itself, other Products, other Workspaces and gone items', async () => {
@@ -175,8 +175,45 @@ describe('similarItems', () => {
     expect(await similarItems(payload, bare, 5)).toEqual([])
   })
 
-  it('turns a title into alternatives without duplicates or the word or', () => {
-    expect(titleAlternatives('Crash on save, or crash on load')).toBe('crash or on or save or load')
-    expect(titleAlternatives('!')).toBe('')
+  describe('the shared-word rule', () => {
+    const apiSource = () => ({ workspace, product: api, source: webSource })
+    const similarTo = async (title: string) =>
+      titles(await similarItems(payload, await store(row(title), apiSource()), 10))
+
+    it('ignores function words of English and German: with, that, nicht, eine, wird', async () => {
+      await store(row('Login fails with SSO'), apiSource())
+      expect(await similarTo('Printer fails with spooler files')).toEqual([])
+      await store(row('Das wird nicht eine gute Idee'), apiSource())
+      expect(await similarTo('Wird nicht eine Loesung')).toEqual([])
+      await store(row('Planung mit Kalender fuer Teams'), apiSource())
+      expect(await similarTo('Kalender fuer Teams planen')).toEqual(['Planung mit Kalender fuer Teams'])
+    })
+
+    it('needs two shared words of at least four letters, ranks more shared words first', async () => {
+      await store(row('Export notes'), apiSource())
+      await store(row('Export timeout notes'), apiSource())
+      await store(row('Large exports and notes'), apiSource())
+      await store(row('Export timeout large notes'), apiSource())
+      expect(await similarTo('Export timeout large reports')).toEqual([
+        'Export timeout large notes',
+        'Export timeout notes',
+      ])
+    })
+
+    it('matches nothing for a title of function words only', async () => {
+      await store(row('With that from this when'), apiSource())
+      expect(await similarTo('With that from this when')).toEqual([])
+    })
+
+    it('ignores short words: sharing only with, the or to does not match', async () => {
+      await store(row('Billing with the invoices to pay'), apiSource())
+      expect(await similarTo('Backup with the snapshots to restore')).toEqual([])
+    })
+
+    it('matches on the one word when the title has only one of four letters or more', async () => {
+      await store(row('Telemetry overview'), apiSource())
+      await store(row('Dashboards overview'), apiSource())
+      expect(await similarTo('Telemetry is on')).toEqual(['Telemetry overview'])
+    })
   })
 })
