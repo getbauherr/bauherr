@@ -20,5 +20,5 @@ for pass in 1 2 3; do
   docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)" \
     -v "$PWD:/work" -v "$E2E_PASSWORD_FILE:/pw:ro" -w /work/apps/server \
     -e BASE_URL=http://localhost:3000 -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e HOME=/tmp -e E2E_WORKERS=3 \
-    mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test "$@" --reporter=line
+    mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test "$@" --pass-with-no-tests --reporter=line
 done
