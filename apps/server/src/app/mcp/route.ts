@@ -4,6 +4,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import config from '@payload-config'
 import { getPayload, type Payload } from 'payload'
 import { z } from 'zod'
+import { AGENT_INSTRUCTIONS } from '../../core/run/mcp/instructions'
 import { callTool, TOOLS } from '../../core/run/mcp/registry'
 import type { Contexts } from '../../core/run/mcp/tool'
 import { engineDeps } from '../../jobs/engine-deps'
@@ -52,7 +53,10 @@ const handle = async (req: Request): Promise<Response> => {
   if (!token) return refuse(401, 'unauthorized')
   const contexts = await authenticate(await getPayload({ config }), token)
   if (contexts instanceof Response) return contexts
-  const server = new Server({ name: 'bauherr', version: '0.1.0' }, { capabilities: { tools: {} } })
+  const server = new Server(
+    { name: 'bauherr', version: '0.1.0' },
+    { capabilities: { tools: {} }, ...(contexts.agent ? { instructions: AGENT_INSTRUCTIONS } : {}) },
+  )
   server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: TOOLS.filter((tool) => contexts[tool.access]).map((tool) => ({
       name: tool.name,
