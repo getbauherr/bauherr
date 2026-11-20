@@ -5,9 +5,7 @@ import { STAGES } from '../../../core/events'
 export const GROUPS = ['you', 'working', 'others', 'done'] as const
 export type GroupId = (typeof GROUPS)[number]
 
-export type InboxRow =
-  | { kind: 'ticket'; card: BoardCard }
-  | { kind: 'held'; item: HeldItem; repo: string }
+export type InboxRow = { kind: 'ticket'; card: BoardCard } | { kind: 'held'; item: HeldItem; repo: string }
 
 export const GROUP_TITLES: Record<GroupId, string> = {
   you: 'Waiting on you',

@@ -25,10 +25,14 @@ async function DangerZone({ product }: { product: number }) {
       {tickets > 0 ? (
         <p className="small text-muted-foreground">{ticketsMessage(tickets)}</p>
       ) : blocked ? (
-        <p className="small text-muted-foreground">Cannot delete yet: still referenced by {blocked}. Remove those first.</p>
+        <p className="small text-muted-foreground">
+          Cannot delete yet: still referenced by {blocked}. Remove those first.
+        </p>
       ) : (
         <>
-          <p className="small text-muted-foreground">Permanently deletes this Product. It must have nothing attached: no repositories or ticket sources.</p>
+          <p className="small text-muted-foreground">
+            Permanently deletes this Product. It must have nothing attached: no repositories or ticket sources.
+          </p>
           <RemoveDoc collection="products" id={product} label="Delete Product" />
         </>
       )}
@@ -50,13 +54,19 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
     <div data-wide className="flex max-w-5xl flex-col gap-4">
       <PageTitle>{product.name}</PageTitle>
       <div className="flex min-w-0 flex-col gap-1">
-        <p className="small text-muted-foreground"><Link href="/settings/products">Products</Link> / {product.name}</p>
+        <p className="small text-muted-foreground">
+          <Link href="/settings/products">Products</Link> / {product.name}
+        </p>
         <h2 className="title">{product.name}</h2>
       </div>
       {!admin && <p className="small text-muted-foreground">Only an Admin can change Product settings.</p>}
       <div className="grid grid-cols-2 items-start gap-4 max-lg:grid-cols-1">
         <div className="flex min-w-0 flex-col gap-4">
-          <RepositorySection product={product} connections={await gitConnections(payload, workspace.id)} admin={admin} />
+          <RepositorySection
+            product={product}
+            connections={await gitConnections(payload, workspace.id)}
+            admin={admin}
+          />
           <IntakeSection product={product} admin={admin} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">

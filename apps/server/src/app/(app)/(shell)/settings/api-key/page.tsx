@@ -14,13 +14,25 @@ export default async function ApiKey() {
   return (
     <>
       <h2 className="heading">API keys</h2>
-      <p className="small text-muted-foreground">Connect a Claude Code session to the factory. It acts as you, inside your Workspaces only, but cannot approve gates: approve, accept, request changes, review cap. Those stay with you in the UI.</p>
+      <p className="small text-muted-foreground">
+        Connect a Claude Code session to the factory. It acts as you, inside your Workspaces only, but cannot approve
+        gates: approve, accept, request changes, review cap. Those stay with you in the UI.
+      </p>
       <SettingsForm action={mintOwnAgentKey} submit="Create agent key" primary reset>
         <Field name="label" label="Label" hint="Where it runs, e.g. laptop" />
       </SettingsForm>
       {keys.length > 0 && (
         <Table>
-          <thead><tr className="label"><th>Label</th><th>Key</th><th>Last used</th><th><span className="sr-only">Actions</span></th></tr></thead>
+          <thead>
+            <tr className="label">
+              <th>Label</th>
+              <th>Key</th>
+              <th>Last used</th>
+              <th>
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
           <tbody>
             {keys.map((k) => (
               <tr key={k.id}>

@@ -16,7 +16,9 @@ export const staleAfterMs = (cron: string): number => {
 export const staleTasks = async (payload: Payload, now = Date.now()): Promise<string[]> => {
   const rows = (
     await payload.db.drizzle.execute(
-      sql`SELECT "task_slug"::text AS slug, max("completed_at") AS last, min("created_at") AS first, count("completed_at")::int AS done FROM "payload_jobs" WHERE "created_at" > now() - interval '2 days' GROUP BY "task_slug"`,
+      sql`SELECT "task_slug"::text AS slug, max("completed_at") AS last, min("created_at") AS first,
+        count("completed_at")::int AS done FROM "payload_jobs"
+        WHERE "created_at" > now() - interval '2 days' GROUP BY "task_slug"`,
     )
   ).rows as { slug: string; last: Date | null; first: Date | null; done: number }[]
   const by = new Map(rows.map((r) => [r.slug, r]))

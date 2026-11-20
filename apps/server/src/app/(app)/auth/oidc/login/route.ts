@@ -12,7 +12,13 @@ export const GET = async () => {
   try {
     const { url, tx } = await beginLogin()
     const res = NextResponse.redirect(url)
-    res.cookies.set(OIDC_COOKIE, JSON.stringify(tx), { httpOnly: true, sameSite: 'lax', secure: publicUrl().startsWith('https:'), path: '/auth/oidc', maxAge: 600 })
+    res.cookies.set(OIDC_COOKIE, JSON.stringify(tx), {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: publicUrl().startsWith('https:'),
+      path: '/auth/oidc',
+      maxAge: 600,
+    })
     return res
   } catch (e) {
     payload.logger.error(`oidc_login_failed ${(e as Error).name}: ${(e as Error).message}`)

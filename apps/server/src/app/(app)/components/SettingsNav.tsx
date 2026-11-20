@@ -11,13 +11,21 @@ export function SettingsNav({ admin }: { admin: boolean }) {
   return (
     <nav aria-label="Settings" className="flex flex-col gap-4 max-sm:flex-row max-sm:overflow-x-auto">
       {settingsGroups(admin).map((g) => (
-        <div key={g.heading} role="group" aria-label={g.heading} className="flex flex-col gap-1 max-sm:shrink-0 max-sm:flex-row max-sm:items-center">
+        <div
+          key={g.heading}
+          role="group"
+          aria-label={g.heading}
+          className="flex flex-col gap-1 max-sm:shrink-0 max-sm:flex-row max-sm:items-center"
+        >
           <span className="label px-2 text-muted-foreground max-sm:hidden">{g.heading}</span>
           <SidebarMenu className="max-sm:flex-row">
             {g.entries.map(([label, href]) => (
               <SidebarMenuItem key={href} className="max-sm:shrink-0">
                 <SidebarMenuSubButton asChild isActive={current(href)} className="h-9 max-sm:whitespace-nowrap">
-                  <Link href={href}>{label}<LinkPending /></Link>
+                  <Link href={href}>
+                    {label}
+                    <LinkPending />
+                  </Link>
                 </SidebarMenuSubButton>
               </SidebarMenuItem>
             ))}

@@ -5,13 +5,25 @@ import './tokens.css'
 import './tailwind.css'
 import './app.css'
 
-const archivo = localFont({ src: './fonts/Archivo-latin-wght.woff2', weight: '100 900', display: 'swap', variable: '--font-archivo' })
-const plexMono = localFont({ src: './fonts/IBMPlexMono-Regular-latin.woff2', weight: '400', display: 'swap', variable: '--font-plex-mono' })
+const archivo = localFont({
+  src: './fonts/Archivo-latin-wght.woff2',
+  weight: '100 900',
+  display: 'swap',
+  variable: '--font-archivo',
+})
+const plexMono = localFont({
+  src: './fonts/IBMPlexMono-Regular-latin.woff2',
+  weight: '400',
+  display: 'swap',
+  variable: '--font-plex-mono',
+})
 
 export const metadata: Metadata = { title: 'Bauherr' }
 export const dynamic = 'force-dynamic'
 
-const theme = `try{var t=localStorage.getItem('bauherr-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}`
+const theme =
+  "try{var t=localStorage.getItem('bauherr-theme');" +
+  "if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}"
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (

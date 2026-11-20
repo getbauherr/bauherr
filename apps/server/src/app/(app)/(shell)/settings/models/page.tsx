@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { EmptyState } from '../../../components/EmptyState'
-import { Field, PickField, SettingsForm } from '../../../components/SettingsForm'
+import { BudgetSection, TiersSection } from '../../../components/models/ModelSections'
+import { SettingsForm } from '../../../components/SettingsForm'
 import { isAdmin, loadWorkspaceSettings } from '../../../lib/settings'
 import { currentWorkspace } from '../../../lib/session'
 import { saveModels } from '../actions'
@@ -10,10 +11,6 @@ import { loadGatewayStatus, loadPrices } from '../../../lib/gateway-setup'
 import { payloadClient } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
-
-const SECTION = 'flex flex-col gap-4'
-const PAIR = 'grid grid-cols-2 gap-4 max-sm:grid-cols-1'
-const TRIPLE = 'grid grid-cols-3 gap-4 max-sm:grid-cols-1'
 
 export default async function Models() {
   const { user, workspace } = await currentWorkspace()
@@ -27,22 +24,8 @@ export default async function Models() {
     <>
       <h2 className="heading">Models &amp; budget</h2>
       <SettingsForm action={saveModels} submit="Save" primary bar>
-        <section id="budget" className={SECTION}>
-          <h3 className="heading">Budget</h3>
-          <div className={PAIR}>
-            <Field name="budgetUnit" label="Budget unit" options={[['usd', 'USD'], ['tokens', 'Tokens']]} defaultValue={usd ? 'usd' : w.budgetUnit} />
-            <Field name="budgetAmount" label="Budget per 30 days" type="number" min={0} step="any" defaultValue={usd ? w.budgetUsd30d ?? '' : w.budgetTokens30d ?? ''} />
-          </div>
-          <p className="small text-muted-foreground">{w.gatewayOn ? (w.spend ? `Spent in the last 30 days: $${w.spend.spentUsd.toFixed(2)}` : 'Spend unavailable.') : 'Gateway off: spend is not tracked.'}</p>
-        </section>
-        <section id="tiers" className={SECTION}>
-          <h3 className="heading">Model tiers{w.tiersRequired ? '' : ' (empty = preset default)'}</h3>
-          <div className={TRIPLE}>
-            {(['cheap', 'standard', 'strong'] as const).map((t) => (
-              <PickField key={t} name={`tier_${t}`} label={t[0].toUpperCase() + t.slice(1)} options={w.modelChoices} empty={`Preset default (${w.placeholders[t]})`} defaultValue={w.modelByTier[t] ?? ''} placeholder={w.placeholders[t]} required={w.tiersRequired} />
-            ))}
-          </div>
-        </section>
+        <BudgetSection w={w} usd={usd} />
+        <TiersSection w={w} />
       </SettingsForm>
       <PricesStatus prices={prices} admin />
       <section id="gateway" aria-label="Gateway" className="flex flex-col gap-2">
