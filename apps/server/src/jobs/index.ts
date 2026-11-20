@@ -13,19 +13,32 @@ import { runAgentTask } from './runner'
 
 export const STALE_JOB_MS = 60 * 60_000
 
-export const scheduledTasks = (): { slug: string; cron: string }[] => TASKS.flatMap((t) => (t.schedule?.[0] ? [{ slug: t.slug, cron: t.schedule[0].cron }] : []))
+export const scheduledTasks = (): { slug: string; cron: string }[] =>
+  TASKS.flatMap((t) => (t.schedule?.[0] ? [{ slug: t.slug, cron: t.schedule[0].cron }] : []))
 
 export const syncJobEnums = async (payload: Payload, slugs = TASKS.map((t) => t.slug)): Promise<void> => {
   for (const type of ['enum_payload_jobs_task_slug', 'enum_payload_jobs_log_task_slug']) {
     if (!(await payload.db.drizzle.execute(sql`SELECT to_regtype(${`public.${type}`}) AS t`)).rows[0]?.t) continue
-    for (const slug of slugs) await payload.db.drizzle.execute(sql.raw(`ALTER TYPE "public"."${type}" ADD VALUE IF NOT EXISTS '${slug.replace(/'/g, "''")}'`))
+    for (const slug of slugs)
+      await payload.db.drizzle.execute(
+        sql.raw(`ALTER TYPE "public"."${type}" ADD VALUE IF NOT EXISTS '${slug.replace(/'/g, "''")}'`),
+      )
   }
 }
 
-export const reclaimStaleJobs = async (payload: Payload, now = Date.now(), maxAgeMs = STALE_JOB_MS): Promise<number> => {
+export const reclaimStaleJobs = async (
+  payload: Payload,
+  now = Date.now(),
+  maxAgeMs = STALE_JOB_MS,
+): Promise<number> => {
   const rows = (
     await payload.db.drizzle.execute(
-      sql`UPDATE "payload_jobs" SET "processing" = false, "has_error" = true, "error" = ${JSON.stringify({ message: 'reclaimed: no progress' })}::jsonb, "updated_at" = now() WHERE "processing" AND "completed_at" IS NULL AND "task_slug"::text IN (${sql.join(TASKS.filter((t) => t.schedule?.length).map((t) => sql`${t.slug}`), sql`, `)}) AND "updated_at" < ${new Date(now - maxAgeMs).toISOString()} RETURNING "id", "task_slug"`,
+      sql`UPDATE "payload_jobs" SET "processing" = false, "has_error" = true,
+        "error" = ${JSON.stringify({ message: 'reclaimed: no progress' })}::jsonb, "updated_at" = now()
+        WHERE "processing" AND "completed_at" IS NULL AND "task_slug"::text IN (${sql.join(
+          TASKS.filter((t) => t.schedule?.length).map((t) => sql`${t.slug}`),
+          sql`, `,
+        )}) AND "updated_at" < ${new Date(now - maxAgeMs).toISOString()} RETURNING "id", "task_slug"`,
     )
   ).rows
   for (const r of rows) payload.logger.warn({ job: r.id, task: r.task_slug }, 'reclaimed stale scheduled job')
@@ -49,7 +62,17 @@ export const resyncKnowledge: TaskConfig<{ input: Record<string, never>; output:
   handler: async ({ req }) => {
     const { payload } = req
     let indexed = 0
-    for (const w of (await payload.find({ collection: 'workspaces', where: live, limit: 1000, pagination: false, depth: 0, select: { id: true }, overrideAccess: true })).docs) {
+    for (const w of (
+      await payload.find({
+        collection: 'workspaces',
+        where: live,
+        limit: 1000,
+        pagination: false,
+        depth: 0,
+        select: { id: true },
+        overrideAccess: true,
+      })
+    ).docs) {
       try {
         if (await resync(payload, w.id)) indexed++
       } catch (e) {

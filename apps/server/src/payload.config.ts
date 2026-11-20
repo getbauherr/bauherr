@@ -16,7 +16,8 @@ const tenantCollections = Object.fromEntries(
 
 if (!loginLimits().trustedProxyHops)
   console.warn(
-    'TRUSTED_PROXY_HOPS=0: x-forwarded-for is ignored, so the per-IP sign-in limit is off (the per-account cap still applies)',
+    'TRUSTED_PROXY_HOPS=0: x-forwarded-for is ignored, ' +
+      'so the per-IP sign-in limit is off (the per-account cap still applies)',
   )
 
 const closeBuiltIns = (config: SanitizedConfig): SanitizedConfig => {
@@ -52,7 +53,7 @@ export default buildConfig({
     multiTenantPlugin({
       tenantsSlug: 'workspaces',
       tenantField: { name: 'workspace' },
-      collections: tenantCollections as never,
+      collections: tenantCollections,
       userHasAccessToAllTenants: (user) => (user as { role?: string }).role === 'admin',
     }),
   ],

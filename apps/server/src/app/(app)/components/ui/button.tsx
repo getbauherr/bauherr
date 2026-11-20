@@ -4,7 +4,12 @@ import type { ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
 const variants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md border text-[15px] font-medium whitespace-nowrap transition-colors duration-(--duration-state) ease-(--ease-out) outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:border-border disabled:bg-secondary disabled:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  'inline-flex shrink-0 items-center justify-center gap-2 rounded-md border ' +
+    'text-[15px] font-medium whitespace-nowrap transition-colors ' +
+    'duration-(--duration-state) ease-(--ease-out) outline-none focus-visible:ring-2 ' +
+    'focus-visible:ring-ring disabled:cursor-not-allowed disabled:border-border ' +
+    'disabled:bg-secondary disabled:text-muted-foreground ' +
+    '[&_svg]:pointer-events-none [&_svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -19,7 +24,20 @@ const variants = cva(
   },
 )
 
-export function Button({ className, variant, size, asChild, ...props }: ComponentProps<'button'> & VariantProps<typeof variants> & { asChild?: boolean }) {
+export function Button({
+  className,
+  variant,
+  size,
+  asChild,
+  ...props
+}: ComponentProps<'button'> & VariantProps<typeof variants> & { asChild?: boolean }) {
   const Comp = asChild ? Slot : 'button'
-  return <Comp data-slot="button" data-variant={variant ?? 'default'} className={cn(variants({ variant, size }), className)} {...props} />
+  return (
+    <Comp
+      data-slot="button"
+      data-variant={variant ?? 'default'}
+      className={cn(variants({ variant, size }), className)}
+      {...props}
+    />
+  )
 }

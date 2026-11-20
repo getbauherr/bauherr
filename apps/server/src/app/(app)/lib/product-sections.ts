@@ -19,7 +19,12 @@ export class SectionError extends Error {
 }
 
 export const namesIn = (text: string): string[] => [
-  ...new Set(text.split(',').map((name) => name.trim()).filter((name) => name !== '')),
+  ...new Set(
+    text
+      .split(',')
+      .map((name) => name.trim())
+      .filter((name) => name !== ''),
+  ),
 ]
 
 const whole = (min: number, max: number) => {

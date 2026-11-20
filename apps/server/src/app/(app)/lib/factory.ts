@@ -104,6 +104,4 @@ const workerOn = (run: StageStat['runs'][number], leasedBy: string, numbers: Map
 }
 
 export const workersOf = (stat: StageStat, numbers: Map<number, number>): Worker[] =>
-  stat.runs.flatMap((run) =>
-    run.leasedBy === null ? [] : [workerOn(run, run.leasedBy, numbers)],
-  )
+  stat.runs.flatMap((run) => (run.leasedBy === null ? [] : [workerOn(run, run.leasedBy, numbers)]))

@@ -1,29 +1,42 @@
 'use client'
-import { createContext, startTransition, useActionState, useContext, useId, useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
+import {
+  startTransition,
+  useActionState,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react'
 import type { FormState } from '../lib/settings'
 import { NextStepBar } from './NextStepBar'
-import { Button } from './ui/button'
-import { Checkbox } from './ui/checkbox'
-import { Textarea } from './ui/textarea'
+import { FormStateContext } from './SettingsFormState'
 import { Alert } from './ui/alert'
-import { Input } from './ui/input'
-import { Label } from './ui/label'
-import { NativeSelect } from './ui/native-select'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select'
+import { Button } from './ui/button'
 
-const Ctx = createContext<FormState>({})
+export { Field } from './SettingsField'
+export { MultiPick, type PickOption } from './SettingsMultiPick'
+export { Checks, PickField } from './SettingsPickers'
+export { useFieldError } from './SettingsFormState'
 
-export function SettingsForm({ action, children, submit = 'Save', reset, primary, inline, confirm, bar, copy, noticeHint }: { noticeHint?: string; confirm?: string; bar?: boolean; copy?: boolean; action: (p: FormState, fd: FormData) => Promise<FormState>; children?: ReactNode; submit?: string; reset?: boolean; primary?: boolean; inline?: boolean }) {
-  const [state, formAction, pending] = useActionState(action, {})
+const submitWith = (formAction: (fd: FormData) => void) => (e: FormEvent<HTMLFormElement>) => {
+  e.preventDefault()
+  const fd = new FormData(e.currentTarget)
+  startTransition(() => formAction(fd))
+}
+
+function useFormLifecycle(state: FormState, reset?: boolean) {
   const ref = useRef<HTMLFormElement>(null)
-  const formId = useId()
   const [dirty, setDirty] = useState(false)
   const [round, setRound] = useState(0)
   useEffect(() => {
     setRound((n) => n + 1)
     if (state.saved) {
       setDirty(false)
-      ref.current?.querySelectorAll<HTMLInputElement>('input[type=password]').forEach((i) => { i.value = '' })
+      ref.current?.querySelectorAll<HTMLInputElement>('input[type=password]').forEach((i) => {
+        i.value = ''
+      })
     }
     if (reset && state.saved) ref.current?.reset()
   }, [reset, state])
@@ -32,119 +45,144 @@ export function SettingsForm({ action, children, submit = 'Save', reset, primary
     invalid?.closest('details')?.setAttribute('open', '')
     invalid?.focus()
   }, [state])
-  const status = (
+  return { ref, dirty, setDirty, round }
+}
+
+function FormStatus({ state }: { state: FormState }) {
+  return (
     <>
-      {state.saved && <span role="status" className="small text-ok">Saved</span>}
-      {state.error && <span role="alert" className="small text-destructive">{state.error}</span>}
+      {state.saved && (
+        <span role="status" className="small text-ok">
+          Saved
+        </span>
+      )}
+      {state.error && (
+        <span role="alert" className="small text-destructive">
+          {state.error}
+        </span>
+      )}
     </>
   )
+}
+
+function FormNotice({ state, noticeHint, copy }: { state: FormState; noticeHint?: string; copy?: boolean }) {
   return (
-    <Ctx value={state}>
+    <>
+      {state.notice && noticeHint && <span className="small text-muted-foreground">{noticeHint}</span>}
+      {state.notice &&
+        (copy ? (
+          <CopyField text={state.notice} block={state.notice.includes('\n')} />
+        ) : (
+          <Alert role="status" className="mono">
+            {state.notice}
+          </Alert>
+        ))}
+    </>
+  )
+}
+
+function SubmitRow({
+  state,
+  round,
+  pending,
+  submit,
+  confirm,
+  primary,
+}: {
+  state: FormState
+  round: number
+  pending: boolean
+  submit: string
+  confirm?: string
+  primary?: boolean
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      {confirm ? (
+        <ConfirmButton key={round} label={submit} confirm={confirm} primary={primary} />
+      ) : (
+        <Button variant={primary ? 'default' : 'outline'} disabled={pending}>
+          {submit}
+        </Button>
+      )}
+      <FormStatus state={state} />
+    </div>
+  )
+}
+
+export function SettingsForm({
+  action,
+  children,
+  submit = 'Save',
+  reset,
+  primary,
+  inline,
+  confirm,
+  bar,
+  copy,
+  noticeHint,
+}: {
+  noticeHint?: string
+  confirm?: string
+  bar?: boolean
+  copy?: boolean
+  action: (p: FormState, fd: FormData) => Promise<FormState>
+  children?: ReactNode
+  submit?: string
+  reset?: boolean
+  primary?: boolean
+  inline?: boolean
+}) {
+  const [state, formAction, pending] = useActionState(action, {})
+  const formId = useId()
+  const { ref, dirty, setDirty, round } = useFormLifecycle(state, reset)
+  return (
+    <FormStateContext value={state}>
       <form
         ref={ref}
         id={formId}
         className={inline ? 'flex flex-row items-center gap-4' : 'flex flex-col gap-4'}
         onChange={bar ? () => setDirty(true) : undefined}
-        onSubmit={(e) => {
-          e.preventDefault()
-          const fd = new FormData(e.currentTarget)
-          startTransition(() => formAction(fd))
-        }}
+        onSubmit={submitWith(formAction)}
       >
         {bar && (
-          <NextStepBar sentence={dirty ? 'Unsaved changes' : 'Change the settings below, then save'} primary={{ label: submit, disabled: pending, form: formId }}>
-            {status}
+          <NextStepBar
+            sentence={dirty ? 'Unsaved changes' : 'Change the settings below, then save'}
+            primary={{ label: submit, disabled: pending, form: formId }}
+          >
+            <FormStatus state={state} />
           </NextStepBar>
         )}
         {children}
         {!bar && (
-          <div className="flex flex-wrap items-center gap-3">
-            {confirm ? <ConfirmButton key={round} label={submit} confirm={confirm} primary={primary} /> : <Button variant={primary ? 'default' : 'outline'} disabled={pending}>{submit}</Button>}
-            {status}
-          </div>
+          <SubmitRow
+            state={state}
+            round={round}
+            pending={pending}
+            submit={submit}
+            confirm={confirm}
+            primary={primary}
+          />
         )}
-        {state.notice && noticeHint && <span className="small text-muted-foreground">{noticeHint}</span>}
-        {state.notice && (copy ? <CopyField text={state.notice} block={state.notice.includes('\n')} /> : <Alert role="status" className="mono">{state.notice}</Alert>)}
+        <FormNotice state={state} noticeHint={noticeHint} copy={copy} />
       </form>
-    </Ctx>
+    </FormStateContext>
   )
-}
-
-type Opt = string | [value: string, label: string]
-
-export function Field({ name, label, hint, example, explain, options, empty, rows, ...rest }: { name: string; label: string; hint?: string; example?: string; explain?: string; options?: Opt[]; empty?: string; rows?: number } & Omit<ComponentProps<'input'>, 'name'>) {
-  const error = useContext(Ctx).fields?.[name]
-  const uid = useId()
-  const described = [hint && `${uid}-h`, example && `${uid}-x`, error && `${uid}-e`].filter(Boolean).join(' ') || undefined
-  const props = { name, id: uid, 'aria-invalid': !!error || undefined, 'aria-describedby': described }
-  return (
-    <div className="flex flex-col gap-1">
-      <Label htmlFor={uid} className="small">{label}</Label>
-      {hint && <span id={`${uid}-h`} className="small text-muted-foreground">{hint}</span>}
-      {options ? (
-        <NativeSelect {...props} defaultValue={rest.defaultValue as string} onChange={rest.onChange as never} disabled={rest.disabled}>
-          {empty !== undefined && <option value="">{empty}</option>}
-          {options.map((o) => (Array.isArray(o) ? <option key={o[0]} value={o[0]}>{o[1]}</option> : <option key={o}>{o}</option>))}
-        </NativeSelect>
-      ) : rows ? (
-        <Textarea {...props} rows={rows} defaultValue={rest.defaultValue as string} disabled={rest.disabled} required={rest.required} className="min-h-18" />
-      ) : (
-        <Input {...props} {...rest} />
-      )}
-      {example && <span id={`${uid}-x`} className="small text-muted-foreground">e.g. <span className="mono">{example}</span></span>}
-      {explain && <details className="small text-muted-foreground"><summary className="cursor-pointer">What is this?</summary>{explain}</details>}
-      {error && <span id={`${uid}-e`} role="alert" className="small text-destructive">{error}</span>}
-    </div>
-  )
-}
-
-const OTHER = '__other'
-const NONE = '__none'
-
-function Picker({ name, label, options, defaultValue, empty, hint, example, required }: { name: string; label: string; options: Opt[]; defaultValue: string; empty?: string; hint?: string; example?: string; required?: boolean }) {
-  const error = useContext(Ctx).fields?.[name]
-  const uid = useId()
-  const values = options.map((o) => (Array.isArray(o) ? o[0] : o))
-  const known = values.includes(defaultValue) || (!defaultValue && empty !== undefined)
-  const start = known ? defaultValue : defaultValue ? OTHER : (values[0] ?? '')
-  const [choice, setChoice] = useState(start)
-  const [typed, setTyped] = useState(known ? '' : defaultValue)
-  const hidden = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    const form = hidden.current?.form
-    const back = () => (setChoice(start), setTyped(known ? '' : defaultValue))
-    form?.addEventListener('reset', back)
-    return () => form?.removeEventListener('reset', back)
-  }, [start, known, defaultValue])
-  const described = [hint && `${uid}-h`, error && `${uid}-e`].filter(Boolean).join(' ') || undefined
-  return (
-    <div className="flex flex-col gap-1">
-      <Label htmlFor={uid} className="small">{label}</Label>
-      {hint && <span id={`${uid}-h`} className="small text-muted-foreground">{hint}</span>}
-      <input ref={hidden} type="hidden" name={name} value={choice === OTHER ? typed : choice} />
-      <Select value={choice === '' ? NONE : choice} onValueChange={(v) => setChoice(v === NONE ? '' : v)}>
-        <SelectTrigger id={uid} aria-invalid={!!error || undefined} aria-describedby={described}><SelectValue /></SelectTrigger>
-        <SelectContent>
-          {empty !== undefined && <SelectItem value={NONE}>{empty}</SelectItem>}
-          {options.map((o) => { const [v, l] = Array.isArray(o) ? o : [o, o]; return <SelectItem key={v} value={v}>{l}</SelectItem> })}
-          <SelectItem value={OTHER}>Other...</SelectItem>
-        </SelectContent>
-      </Select>
-      {choice === OTHER && <Input aria-label={`${label}, other`} placeholder={example} value={typed} required={required} aria-invalid={!!error || undefined} onChange={(e) => setTyped(e.target.value)} />}
-      {error && <span id={`${uid}-e`} role="alert" className="small text-destructive">{error}</span>}
-    </div>
-  )
-}
-
-export function PickField({ options, empty, defaultValue = '', ...rest }: { name: string; label: string; options: Opt[] | null; defaultValue?: string; empty?: string; hint?: string; example?: string; placeholder?: string; required?: boolean }) {
-  return options?.length ? <Picker {...rest} options={options} empty={empty} defaultValue={defaultValue} /> : <Field {...rest} defaultValue={defaultValue} />
 }
 
 export function CopyField({ text, block }: { text: string; block?: boolean }) {
   const [copied, setCopied] = useState(false)
   return (
     <div className="flex flex-col gap-4">
-      {block ? <Alert role="status" className="mono overflow-x-auto"><pre className="m-0">{text}</pre></Alert> : <Alert role="status" className="mono">{text}</Alert>}
+      {block ? (
+        <Alert role="status" className="mono overflow-x-auto">
+          <pre className="m-0">{text}</pre>
+        </Alert>
+      ) : (
+        <Alert role="status" className="mono">
+          {text}
+        </Alert>
+      )}
       <Button
         type="button"
         variant="outline"
@@ -161,78 +199,23 @@ export function CopyField({ text, block }: { text: string; block?: boolean }) {
   )
 }
 
-export type PickOption = { value: string; label?: string; meta?: string }
-
-export function MultiPick({ name, legend, hint, options, value, addLabel, example, missingMeta, emptyNote, notice, login, mono = true, disabled }: { name: string; legend: string; hint?: string; options: PickOption[]; value: string[]; addLabel: string; example?: string; missingMeta: string; emptyNote?: string; notice?: string; login?: boolean; mono?: boolean; disabled?: boolean }) {
-  const error = useContext(Ctx).fields?.[name]
-  const uid = useId()
-  const [items, setItems] = useState<PickOption[]>(() => [...options, ...value.filter((v) => !options.some((o) => o.value === v)).map((v) => ({ value: v, meta: missingMeta }))])
-  const [checked, setChecked] = useState(() => new Set(value))
-  const [draft, setDraft] = useState('')
-  const add = () => {
-    const v = draft.replace(/,/g, '').trim().replace(login ? /^@/ : /^$/, '')
-    if (!v) return
-    if (!items.some((i) => i.value === v)) setItems((all) => [...all, { value: v, meta: 'added by hand' }])
-    setChecked((c) => new Set(c).add(v))
-    setDraft('')
-  }
-  return (
-    <fieldset className="m-0 flex flex-col gap-2 border-0 p-0" disabled={disabled} aria-describedby={error ? `${uid}-e` : undefined}>
-      <legend className="small p-0 font-medium text-foreground">{legend}</legend>
-      {hint && <span className="small text-muted-foreground">{hint}</span>}
-      <input type="hidden" name={name} value={items.filter((i) => checked.has(i.value)).map((i) => i.value).join(',')} />
-      {items.map((i) => (
-        <label key={i.value} className="flex items-center gap-2">
-          <Checkbox checked={checked.has(i.value)} onChange={(e) => setChecked((c) => { const n = new Set(c); if (e.target.checked) n.add(i.value); else n.delete(i.value); return n })} />
-          <span className="flex min-w-0 flex-col gap-1">
-            <span className={mono ? 'mono wrap-anywhere' : 'wrap-anywhere'}>{i.label ?? i.value}</span>
-            {i.meta && <span className="small text-muted-foreground">{i.meta}</span>}
-          </span>
-        </label>
-      ))}
-      {notice && <span className="small text-muted-foreground">{notice}</span>}
-      {!checked.size && emptyNote && <span className="small text-muted-foreground">{emptyNote}</span>}
-      <div className="flex gap-2">
-        <Input
-          aria-label={addLabel}
-          placeholder={example}
-          value={draft}
-          aria-invalid={!!error || undefined}
-          className="min-w-0 flex-1"
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              add()
-            }
-          }}
-        />
-        <Button type="button" variant="outline" onClick={add}>Add</Button>
-      </div>
-      {error && <span id={`${uid}-e`} role="alert" className="small text-destructive">{error}</span>}
-    </fieldset>
-  )
-}
-
-export function Checks({ name, items, checked }: { name: string; items: { id: number; label: string }[]; checked: number[] }) {
-  return (
-    <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-      <legend className="small p-0 text-muted-foreground">Workspaces</legend>
-      {items.map((i) => (
-        <label key={i.id} className="flex items-center gap-2"><Checkbox name={name} value={i.id} defaultChecked={checked.includes(i.id)} />{i.label}</label>
-      ))}
-    </fieldset>
-  )
-}
-
 export function ConfirmButton({ label, confirm, primary }: { label: string; confirm: string; primary?: boolean }) {
   const [armed, setArmed] = useState(false)
   return (
     <>
-      <Button type={armed ? 'submit' : 'button'} variant={primary ? 'default' : 'outline'} className={primary ? undefined : 'text-destructive'} onClick={() => setArmed(true)}>{armed ? confirm : label}</Button>
-      {armed && <Button type="button" variant="outline" onClick={() => setArmed(false)}>Cancel</Button>}
+      <Button
+        type={armed ? 'submit' : 'button'}
+        variant={primary ? 'default' : 'outline'}
+        className={primary ? undefined : 'text-destructive'}
+        onClick={() => setArmed(true)}
+      >
+        {armed ? confirm : label}
+      </Button>
+      {armed && (
+        <Button type="button" variant="outline" onClick={() => setArmed(false)}>
+          Cancel
+        </Button>
+      )}
     </>
   )
 }
-
-export const useFieldError = (name: string): string | undefined => useContext(Ctx).fields?.[name]

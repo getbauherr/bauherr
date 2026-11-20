@@ -4,11 +4,29 @@ import { usePathname } from 'next/navigation'
 import { useEffect } from 'react'
 import { LinkPending } from './LinkPending'
 import { mainItems, settingsItem, type NavItem } from './nav-items'
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from './ui/sidebar'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from './ui/sidebar'
 import { UserMenu } from './UserMenu'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 
-type Props = { email: string; admin: boolean; waitingOnYou: number; workspaces: { slug: string; name: string }[]; current?: string; logout: () => Promise<void>; selectWorkspace: (slug: string) => Promise<void> }
+type Props = {
+  email: string
+  admin: boolean
+  waitingOnYou: number
+  workspaces: { slug: string; name: string }[]
+  current?: string
+  logout: () => Promise<void>
+  selectWorkspace: (slug: string) => Promise<void>
+}
 
 export function AppSidebar({ email, admin, waitingOnYou, workspaces, current, logout, selectWorkspace }: Props) {
   const path = usePathname()
@@ -34,7 +52,14 @@ export function AppSidebar({ email, admin, waitingOnYou, workspaces, current, lo
   return (
     <Sidebar>
       <SidebarHeader>
-        <Link href="/" aria-label="Bauherr" className="flex h-9 items-center gap-2 rounded-md px-2 outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+        <Link
+          href="/"
+          aria-label="Bauherr"
+          className={
+            'flex h-9 items-center gap-2 rounded-md px-2 outline-none focus-visible:ring-2 ' +
+            'focus-visible:ring-sidebar-ring'
+          }
+        >
           <svg width="24" height="24" viewBox="0 0 32 32" fill="none" aria-hidden className="shrink-0">
             <rect x="3" y="3" width="26" height="26" stroke="currentColor" strokeWidth="2" />
             <rect x="3" y="18" width="11" height="11" fill="var(--accent)" />
