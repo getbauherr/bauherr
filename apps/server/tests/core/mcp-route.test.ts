@@ -284,3 +284,22 @@ describe('the nine tools through the route', () => {
     expect(out.text).toMatch(/Unrecognized key/)
   })
 })
+
+describe('the instructions of the server', () => {
+  const instructionsFor = async (key: string): Promise<string | undefined> => {
+    const params = { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } }
+    const body = z
+      .object({ result: z.object({ instructions: z.string().optional() }) })
+      .parse(await (await route.POST(rpc('initialize', params, key))).json())
+    return body.result.instructions
+  }
+
+  it('tells an agent key how to work the queue and gives a personal key nothing', async () => {
+    const text = await instructionsFor(m.alpha.agentToken)
+    expect(text?.length).toBeLessThan(900)
+    for (const word of ['connect', 'next_work', 'heartbeat', 'attach_proof', 'ask', 'submit', 'release', 'idle']) {
+      expect(text).toContain(word)
+    }
+    expect(await instructionsFor(m.alpha.personalKey)).toBeUndefined()
+  })
+})
