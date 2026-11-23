@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { Conn } from '../conn'
 
 export type Shot = { id: number; kind: 'before' | 'after'; screen: string; width: number; sha: string }
-export type Pair = { screen: string; before: Shot | null; after: Shot | null }
+export type Pair = { screen: string; width: number | null; before: Shot | null; after: Shot | null }
 
 export const screenOf = (caption: string): string => (caption.split(' (')[0] ?? caption).trim()
 
@@ -26,31 +26,29 @@ export const loadShots = async (db: Conn, recordId: number): Promise<Shot[]> => 
 }
 
 export const pairsOf = (screens: string[], shots: Shot[]): Pair[] =>
-  screens.map((screen) => {
-    const latest = (kind: Shot['kind']) =>
-      shots.findLast((shot) => shot.screen === screen && shot.kind === kind) ?? null
-    return { screen, before: latest('before'), after: latest('after') }
+  screens.flatMap((screen): Pair[] => {
+    const mine = shots.filter((shot) => shot.screen === screen)
+    const widths = [...new Set(mine.map((shot) => shot.width))]
+    if (widths.length === 0) return [{ screen, width: null, before: null, after: null }]
+    return widths.map((width) => {
+      const latest = (kind: Shot['kind']) =>
+        mine.findLast((shot) => shot.width === width && shot.kind === kind) ?? null
+      return { screen, width, before: latest('before'), after: latest('after') }
+    })
   })
 
 const quoted = (screen: string): string => `"${screen}"`
 
-const problemOf = ({ screen, before, after }: Pair, headSha: string): string | null => {
+const problemOf = ({ screen, width, before, after }: Pair, headSha: string): string | null => {
   const name = `Screen ${quoted(screen)}`
   const how = (kind: string) => `attach it with kind ${kind} and screen ${quoted(screen)}`
   if (!before && !after) {
     return `${name} has no before and no after picture: take both at the same width, and ${how('before or after')}.`
   }
-  if (!before) {
-    return `${name} has no before picture: take it on the base commit, at width ${after?.width}, and ${how('before')}.`
-  }
-  if (!after) {
-    return `${name} has no after picture: take it on the head, at width ${before.width}, and ${how('after')}.`
-  }
-  if (before.width !== after.width) {
-    return `${name}: before is ${before.width} wide and after is ${after.width} wide: take both at the same width.`
-  }
+  if (!before) return `${name} has no before picture at width ${width}: take it on the base, and ${how('before')}.`
+  if (!after) return `${name} has no after picture at width ${width}: take it on the head, and ${how('after')}.`
   if (after.sha !== headSha) {
-    return `${name}: the after picture is not of the pull request head: take it again on the head and attach it.`
+    return `${name}: the after picture at width ${width} is not of the pull request head: take it again on the head.`
   }
   return null
 }

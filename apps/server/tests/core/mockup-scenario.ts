@@ -25,12 +25,15 @@ const screen = (done: boolean): Buffer =>
 
 const idOf = z.object({ id: z.coerce.number() })
 
-const store = (e: Engine, id: number, run: number, caption: string, bytes: Buffer, n: number) =>
+const store = (e: Engine, id: number, run: number, caption: string, bytes: Buffer, n: number, kind = 'mockup') =>
   e.db.payload.db.drizzle.execute(sql`
     INSERT INTO "attachments" ("workspace_id", "record_id", "run_id", "stage", "kind", "caption", "content_type",
-      "byte_size", "sha256", "content", "token_hash", "lease_hash", "expires_at", "updated_at", "created_at")
-    VALUES (${e.db.workspace}, ${id}, ${run}, 'brief', 'mockup', ${caption}, 'image/png', ${bytes.length},
-      ${`seed${n}`}, ${bytes.toString('base64')}, ${`seed-mockup-${id}-${n}`}, 'seed', now(), now(), now())`)
+      "byte_size", "sha256", "content", "token_hash", "lease_hash", "expires_at", "screen", "width", "proof_sha",
+      "updated_at", "created_at")
+    VALUES (${e.db.workspace}, ${id}, ${run}, 'brief', ${kind}, ${caption}, 'image/png', ${bytes.length},
+      ${`seed${n}`}, ${bytes.toString('base64')}, ${`seed-${kind}-${id}-${n}`}, 'seed', now(),
+      ${kind === 'mockup' ? null : MOCKUP_CAPTIONS[n % 2]}, ${kind === 'mockup' ? null : 1280},
+      ${kind === 'mockup' ? null : 'seedhead'}, now(), now())`)
 
 export const seedMockupTicket = async (e: Engine): Promise<number> => {
   const id = await begin(e)
@@ -44,6 +47,10 @@ export const seedMockupTicket = async (e: Engine): Promise<number> => {
   )
   const run = idOf.parse(found.rows[0]).id
   for (const [n, caption] of MOCKUP_CAPTIONS.entries()) await store(e, id, run, caption, screen(n === 1), n)
+  for (const [n, caption] of MOCKUP_CAPTIONS.entries()) {
+    await store(e, id, run, `Before: ${caption}`, screen(false), n * 2 + 2, 'before')
+    await store(e, id, run, `After: ${caption}`, screen(true), n * 2 + 3, 'after')
+  }
   const { source } = (await readRecord(e.db.payload, id)).record
   await (await mirrorSource(e)).item(source.number, { title: MOCKUP_TICKET_TITLE })
   return id

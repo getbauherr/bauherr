@@ -155,11 +155,11 @@ const lacksMockup = (record: TicketRecord, mockups: AttachmentView[]): boolean =
 
 const pairsFor = async (payload: Payload, record: TicketRecord, recordId: number, mockups: AttachmentView[]) => {
   if (!record.visible) return []
-  const pairs = pairsOf(
-    mockups.map((mockup) => mockup.screen),
-    await loadShots(payload, recordId),
-  )
-  return pairs.flatMap((pair, index) => (mockups[index] ? [{ ...pair, mockup: mockups[index] }] : []))
+  const screens = mockups.map((mockup) => mockup.screen)
+  return pairsOf(screens, await loadShots(payload, recordId)).flatMap((pair) => {
+    const mockup = mockups.find((candidate) => candidate.screen === pair.screen)
+    return mockup ? [{ ...pair, mockup }] : []
+  })
 }
 
 const withKept = async (payload: Payload, recordId: number, views: EventView[]): Promise<EventView[]> => {
