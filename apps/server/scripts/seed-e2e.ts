@@ -9,6 +9,7 @@ import { begin, seedScenario, type ScenarioNames } from '../tests/core/scenario'
 import { seedMockupTicket } from '../tests/core/mockup-scenario'
 import { seedTickets } from '../tests/core/ticket-scenario'
 import { seedConnect } from './seed-connect'
+import { seedSomeday } from './seed-someday'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -176,6 +177,7 @@ if (!ticketsSeeded.docs.length) {
   await seedMockupTicket(ticketsEngine)
 }
 await seedConnect(payload)
+await seedSomeday(payload)
 
 await ensure(
   'human_touches',
