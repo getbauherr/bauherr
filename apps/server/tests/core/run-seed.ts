@@ -2,6 +2,7 @@ import { claim, heartbeat } from '../../src/core/run/leases'
 import { finishRun } from '../../src/core/run/store'
 import { patchRecord, readRecord, setRank } from '../../src/core/record/store'
 import type { Engine } from './harness'
+import { toBrief } from './scenario'
 
 export const claimed = async (e: Engine, id: number) => {
   await setRank(e.db.payload, id, -1000)
@@ -23,3 +24,12 @@ export const failedBuild = async (e: Engine, id: number) => {
   await patchRecord(e.db.payload, id, { expectedVersion: version, writes: ['handoff'], patch: { handoff: LONG }, by })
 }
 
+
+export const runTickets = async (e: Engine) => {
+  const runQueued = await toBrief(e, false)
+  const runFailed = await toBrief(e, false)
+  await failedBuild(e, runFailed)
+  const runQuiet = await toBrief(e, false)
+  await claimed(e, runQuiet)
+  return { runQueued, runFailed, runQuiet }
+}

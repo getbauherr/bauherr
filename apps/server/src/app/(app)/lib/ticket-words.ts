@@ -10,6 +10,7 @@ export type QuestionReason =
   | 'production'
   | 'production-held'
   | 'agent'
+  | 'parked'
 
 export const REASON_WORDS: Record<BriefReason | QuestionReason, string> = {
   'open-decision': 'This Brief has an open decision.',
@@ -28,12 +29,14 @@ export const REASON_WORDS: Record<BriefReason | QuestionReason, string> = {
   production: 'The change is accepted. Release it to production or hold it.',
   'production-held': 'Production is on hold for this change. Approve it when you are ready.',
   agent: 'The agent has a question.',
+  parked: 'Parked',
 }
 
 export const CHOICE_WORDS: Record<string, Record<string, string>> = {
   brief: { approve: 'Approve Brief', 'request-changes': 'Request changes', discard: 'Discard' },
   result: { accept: 'Accept', 'send-back': 'Send back with note' },
   'question:failed-runs': { retry: 'Retry', 'retry-with-guidance': 'Retry with guidance', discard: 'Discard' },
+  'question:parked': { resume: 'Resume', discard: 'Discard' },
   'question:reporter-silent': {
     close: 'Close the issue',
     'ask-again': 'Ask the reporter again',

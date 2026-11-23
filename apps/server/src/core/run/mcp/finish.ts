@@ -17,12 +17,14 @@ export const submit = defineTool({
 
 export const release = defineTool({
   name: 'release',
-  description: 'Gives up your run so that another session can work on it. Returns once the run is released.',
+  description:
+    'Gives up your run so that another session can work on it, or parks the Ticket on need ' +
+    'when only the owner can supply a missing prerequisite, such as a Connection.',
   access: 'agent',
-  input: z.strictObject({ runId, leaseToken }),
+  input: z.strictObject({ runId, leaseToken, need: z.string().trim().min(1).max(120).optional() }),
   run: async (input, context) => {
     await ownRun(context, input.runId)
-    await releaseRun(input.runId, input.leaseToken, context.deps)
+    await releaseRun(input.runId, input.leaseToken, context.deps, input.need)
     return { status: 'released' as const }
   },
 })

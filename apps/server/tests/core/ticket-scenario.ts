@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
-import { askOwner } from '../../src/core/ask'
+import { askOwner, parkOnNeed } from '../../src/core/ask'
 import { DISCLOSURE } from '../../src/core/forge/disclosure'
 import { questionsBody } from '../../src/core/intake/questions'
 import type { Criterion, Decision, Finding, TicketRecord } from '../../src/core/record/schema'
@@ -10,7 +10,7 @@ import { heartbeat } from '../../src/core/run/leases'
 import { rememberContext } from '../../src/core/run/context'
 import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
-import { claimed, failedBuild } from './run-seed'
+import { claimed, runTickets } from './run-seed'
 import { source } from './fixtures'
 import { asked, begin, mirrorSource, patch, toBrief, workOn } from './scenario'
 
@@ -27,6 +27,7 @@ export const TICKET_TITLES = {
   adoptedWaiting: 'Adopted pull request waiting on its author',
   adoptedResult: 'Adopted pull request with a result',
   deployStalled: 'Deploy that did not finish',
+  parkedOnNeed: 'Build parked on a missing Connection',
 } as const
 
 export const POOL_SIZE = 3
@@ -207,6 +208,12 @@ const questionTicket = async (e: Engine, id: number) => {
   await askOwner(run.id, token, { text, options: ['Disk', 'Object storage'] }, e.deps())
 }
 
+const parkedTicket = async (e: Engine) => {
+  const id = await toBrief(e, false)
+  await claimed(e, id).then(({ run, token }) => parkOnNeed(run.id, token, 'AWS Connection', e.deps()))
+  return id
+}
+
 const intakeTicket = async (e: Engine, item: (number: number, fields?: { title: string }) => Promise<number>) => {
   const id = await begin(e)
   await asked(e, id, 1)
@@ -281,17 +288,14 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     question: await pooled((n) => asking(`${POOL_TITLES.question} ${n}`)),
     questionRead: await asking(TICKET_TITLES.questionRead),
     runSteps: await toBrief(e, false),
+    parkedOnNeed: await parkedTicket(e),
   }
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
-  const runQueued = await toBrief(e, false)
-  const runFailed = await toBrief(e, false)
-  await failedBuild(e, runFailed)
-  const runQuiet = await toBrief(e, false)
-  await claimed(e, runQuiet)
-  titled.push([runQueued, TICKET_TITLES.runQueued], [runFailed, TICKET_TITLES.runFailed])
-  titled.push([runQuiet, TICKET_TITLES.runQuiet])
+  const runs = await runTickets(e)
+  titled.push([runs.runQueued, TICKET_TITLES.runQueued], [runs.runFailed, TICKET_TITLES.runFailed])
+  titled.push([runs.runQuiet, TICKET_TITLES.runQuiet])
   const deployStalled = await deployStalledTicket(e, ++pr)
-  titled.push([deployStalled, TICKET_TITLES.deployStalled])
+  titled.push([deployStalled, TICKET_TITLES.deployStalled], [names.parkedOnNeed, TICKET_TITLES.parkedOnNeed])
   const briefComment = await pooled((n) => open(`${POOL_TITLES.briefComment} ${n}`))
   const adoptedWaiting = await adoptedTicket(e, ADOPTED_FIRST, false)
   const adoptedResult = await adoptedTicket(e, ADOPTED_FIRST + 1, true)
@@ -320,5 +324,5 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     await mirror.item(source.number, { title: titled.find(([found]) => found === id)?.[1] ?? '' })
   }
   const rest = { questionBack, questionOwn, briefComment, adoptedWaiting, adoptedResult, deployStalled, intake }
-  return { ...names, runQueued, runFailed, runQuiet, ...rest }
+  return { ...names, ...runs, ...rest }
 }
