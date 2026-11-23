@@ -26,7 +26,14 @@ export type Config = {
 
 export type Role = 'builder' | 'reviewer' | 'verifier'
 export type WaitOn = 'reporter' | 'run' | 'checks' | 'deploy' | 'owner' | 'author'
-export type BriefReason = 'open-decision' | 'one-way-door' | 'risk-area' | 'backlog' | 'external-request' | 'sent-back'
+export type BriefReason =
+  | 'open-decision'
+  | 'one-way-door'
+  | 'risk-area'
+  | 'visible-change'
+  | 'backlog'
+  | 'external-request'
+  | 'sent-back'
 export type Step =
   | { kind: 'run'; stage: Stage; role: Role }
   | { kind: 'card'; card: 'brief' | 'result' | 'question'; reason: string; options: string[] }
@@ -54,6 +61,7 @@ const GATES: { reason: BriefReason; applies: (record: TicketRecord, riskAreas: s
   { reason: 'open-decision', applies: (r) => r.decisions.some((d) => d.answer === undefined) },
   { reason: 'one-way-door', applies: (r) => r.risk?.door === 'one-way' },
   { reason: 'risk-area', applies: (r, areas) => (r.risk?.areas ?? []).some((a) => areas.includes(a)) },
+  { reason: 'visible-change', applies: (r) => r.visible },
   { reason: 'backlog', applies: (r) => r.source.backlog && r.source.adopted === undefined },
   {
     reason: 'external-request',

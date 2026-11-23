@@ -43,6 +43,7 @@ export const RUN_WORDS: Record<string, StatusWord> = {
   claimed: { word: 'Working', tone: 'accent' },
   submitted: { word: 'Finished', tone: 'ok', mark: 'check' },
   failed: { word: 'Failed', tone: 'destructive', mark: 'cross' },
+  expired: { word: 'Expired', tone: 'destructive', mark: 'cross' },
   released: { word: 'Released', tone: 'neutral' },
 }
 

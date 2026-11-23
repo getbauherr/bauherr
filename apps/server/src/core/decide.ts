@@ -2,11 +2,21 @@ import { z } from 'zod'
 import { answersProblem, storeAnswers, type Answers } from './answers'
 import { isBauherr } from '../lib/people'
 import { inLockedRecord, type Conn } from './conn'
-import { AGENT_ASK, agentEntry, BACK_TO_BRIEF, DECISIONS, WORKING_ASK, type DecisionEntry } from './decisions'
+import {
+  AGENT_ASK,
+  agentEntry,
+  BACK_TO_BRIEF,
+  DECISIONS,
+  WORKING_ASK,
+  withComment,
+  type DecisionEntry,
+} from './decisions'
+import type { AppEvent } from './events'
 import { runEffects } from './effects'
 import { advance, type AdvanceDeps } from './engine'
 import { resumeParked } from './intake/pacing'
 import { fold } from './fold'
+import { NOTE_MAX } from './limits'
 import { canGoBack, foldOptions, next, type State, type Step } from './lifecycle'
 import type { Effect } from './module'
 import type { TicketRecord } from './record/schema'
@@ -14,7 +24,6 @@ import { appendEvent, readEvents, readRecord, type StoredRecord } from './record
 import { releaseLive } from './run/leases'
 import { storeGiven } from './statements'
 
-export const NOTE_MAX = 1000
 
 const DISCARDING = ['brief', 'question:failed-runs', 'question:verify-rounds']
 
@@ -47,8 +56,8 @@ const askedOf = (step: Step, state: State): string | null => {
 
 const choiceOf = (asked: string, choice: string, state: State): DecisionEntry | undefined => {
   if (asked !== AGENT_ASK) return DECISIONS[asked]?.[choice]
-  const fixed = choice === BACK_TO_BRIEF && canGoBack(state) ? DECISIONS[asked]?.[choice] : undefined
-  return fixed ?? agentEntry(state.card, choice)
+  if (choice === BACK_TO_BRIEF && !canGoBack(state)) return undefined
+  return DECISIONS[asked]?.[choice] ?? agentEntry(state.card, choice)
 }
 
 type Settled = { entry: DecisionEntry; answers: Answers | null }
@@ -78,6 +87,16 @@ const answersOf = (asked: string | null, decision: Decision, record: TicketRecor
   const problem = answersProblem(record, answers)
   if (problem !== null) throw new InvalidDecision(problem)
   return answers
+}
+
+const eventsOf = (entry: DecisionEntry, state: State, note: string): AppEvent[] => {
+  const input = {
+    note,
+    patchId: state.patch?.id ?? '',
+    headSha: state.patch?.headSha ?? '',
+    question: state.card?.text ?? '',
+  }
+  return withComment(entry, entry.events(input), note)
 }
 
 const sentBackReview = (asked: string | null, choice: string, state: State, note: string): Effect[] => {
@@ -124,8 +143,7 @@ export const decide = async (
     const asked = askedOf(next(stored.record, state, config), state)
     const { entry, note } = entryOf(asked, stored.card?.seq ?? 0, decision, state)
     const answers = answersOf(asked, decision, stored.record)
-    const patch = state.patch
-    const events = entry.events({ note, patchId: patch?.id ?? '', headSha: patch?.headSha ?? '' })
+    const events = eventsOf(entry, state, note)
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
     await settle(tx, stored, { entry, answers }, deps.now)
     await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card })

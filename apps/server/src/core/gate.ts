@@ -38,6 +38,8 @@ const headMoved: Rule = ({ result, facts }) =>
     ? []
     : [refusal('head-moved', 'headSha', 'the pull request head is not headSha: re-read it and verify that commit.')]
 
+export const CHECKS_FIX = 'wait for green checks, or mark it open'
+
 const claims = (status: string): boolean => status === 'met' || status === 'partial'
 
 const kindOf = (record: TicketRecord, id: string): Criterion['verify']['kind'] | undefined =>
@@ -49,7 +51,7 @@ const checks: Rule = ({ result, record, facts }) => {
     .filter((c) => claims(c.status) && ['test', 'command'].includes(kindOf(record, c.id) ?? ''))
     .map((c) => {
       const why = `${c.id} is verified by a test or command but the checks are ${facts.checks}`
-      return refusal('checks', `criteria.${c.id}`, `${why}: wait for green checks, or mark it open.`)
+      return refusal('checks', `criteria.${c.id}`, `${why}: ${CHECKS_FIX}.`)
     })
 }
 

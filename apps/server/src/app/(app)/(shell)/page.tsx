@@ -4,6 +4,7 @@ import { EmptyState } from '../components/EmptyState'
 import { FilterRow } from '../components/factory/FilterRow'
 import { HoldStrip } from '../components/factory/HoldStrip'
 import { LoopArrows } from '../components/factory/LoopArrows'
+import { SomedayLine } from '../components/factory/SomedayLine'
 import { StageColumn } from '../components/factory/StageColumn'
 import { TotalsLine } from '../components/factory/Totals'
 import { countShows, loadFactory, parseSearch, workersOf } from '../lib/factory'
@@ -41,6 +42,7 @@ export default async function Factory({ searchParams }: { searchParams: Promise<
       </div>
       <FilterRow show={show} product={product} counts={countShows(lanes)} products={view.products} />
       <HoldStrip holds={view.held} />
+      <SomedayLine items={view.someday} />
       <div tabIndex={0} role="region" aria-label="Factory board" className={BOARD}>
         <div className={LANE}>
           <LoopArrows verify={totals.sentBackFromVerifyLast7Days} ship={totals.sentBackFromShipLast7Days} />

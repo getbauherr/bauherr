@@ -1,6 +1,10 @@
 name: core
 version: 0.1.0
 description: Bauherr core pack.
+roles:
+  builder: {tier: standard}
+  verifier: {tier: strong}
+  reviewer: {tier: strong}
 rules:
   - {path: rules/no-comments.md, purpose: No code comments; the allowlist, and encode the reason as a name, type, test or check}
 skills:

@@ -166,6 +166,12 @@ const CASES: Case[] = [
     expected: briefCard('risk-area'),
   },
   {
+    name: 'a change a user will see becomes a card although the risk rule alone would approve it',
+    events: briefWritten,
+    record: briefed({ visible: true }),
+    expected: briefCard('visible-change'),
+  },
+  {
     name: 'an external feature becomes a card',
     events: briefWritten,
     record: briefed({ source: external, type: 'feature' }),

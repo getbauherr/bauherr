@@ -54,6 +54,16 @@ describe('which answers are remembered', () => {
   })
 })
 
+describe('a free answer', () => {
+  it('is remembered like an agent answer, with its text as the answer', () => {
+    const card = { card: 'question' as const, reason: 'agent', options: ['a', 'b'], text: 'Which?' }
+    expect(statementOf({ asked: 'question:agent', choice: 'own-answer', note: 'use a queue', card })).toEqual({
+      kind: 'answer',
+      text: 'Which?: use a queue',
+    })
+  })
+})
+
 describe('statementOf', () => {
   const given = { asked: 'result', choice: 'accept', note: '', card: null }
 

@@ -30,6 +30,7 @@ export const BRIEF = {
     { text: 'The page looks right', verify: { kind: 'screenshot', how: 'open the page' } },
   ],
   outOfScope: ['export'],
+  visible: false,
   risk: { door: 'two-way', areas: [], rollback: 'revert' },
   decisions: [],
   plan: ['fix the query'],

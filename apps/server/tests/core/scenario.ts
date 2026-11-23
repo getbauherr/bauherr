@@ -33,12 +33,18 @@ export type ItemFields = Partial<{
 
 export const mirrorSource = async (e: Pick<Engine, 'db'>, repo = 'acme/app') => {
   const { payload, workspace, product } = e.db
-  const connection = idOf(await payload.create({
-    collection: 'connections', data: { name: 'gh', kind: 'github', workspace }, ...o,
-  }))
-  const source = idOf(await payload.create({
-    collection: 'ticket_sources', data: { repo, product, connection, workspace }, ...o,
-  }))
+  const known = await payload.find({
+    collection: 'ticket_sources', where: { workspace: { equals: workspace }, repo: { equals: repo } }, limit: 1, ...o,
+  })
+  const createSource = async () => {
+    const connection = idOf(await payload.create({
+      collection: 'connections', data: { name: 'gh', kind: 'github', workspace }, ...o,
+    }))
+    return idOf(await payload.create({
+      collection: 'ticket_sources', data: { repo, product, connection, workspace }, ...o,
+    }))
+  }
+  const source = known.docs[0] ? idOf(known.docs[0]) : await createSource()
   const item = async (number: number, fields: ItemFields = {}): Promise<number> => {
     const f = {
       kind: 'issue', title: `Ticket ${number}`, author: 'jo', trusted: true, state: 'open', labels: [],

@@ -32,4 +32,4 @@ export type RunnerDeps = {
   beatMs: number
 }
 
-export type Ended = 'accepted' | 'failed' | 'released'
+export type Ended = 'accepted' | 'failed' | 'released' | 'expired'

@@ -2,9 +2,13 @@ import { z } from 'zod'
 import { stageSchema } from '../events'
 import type { Role } from '../lifecycle'
 
-export const RUN_STATUSES = ['queued', 'claimed', 'submitted', 'failed', 'released'] as const
+export const RUN_STATUSES = ['queued', 'claimed', 'submitted', 'failed', 'released', 'expired'] as const
 export const ROLES = ['builder', 'reviewer', 'verifier'] as const satisfies Role[]
 export const MAX_STEPS = 50
+export const MAX_CAPACITY = 4
+export const TIERS = ['cheap', 'standard', 'strong'] as const
+export type Tier = (typeof TIERS)[number]
+export const DEFAULT_TIER: Tier = 'standard'
 
 export const contextSchema = z.object({
   statements: z.array(z.number().int()),

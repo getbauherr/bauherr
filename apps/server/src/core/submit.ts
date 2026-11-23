@@ -6,7 +6,7 @@ import { advance, type AdvanceDeps } from './engine'
 import { fold } from './fold'
 import { gate } from './gate'
 import { loadGateFacts } from './gate-facts'
-import { foldOptions } from './lifecycle'
+import { foldOptions, type Role } from './lifecycle'
 import type { Effect, LifecycleModule, Modules, Problem } from './module'
 import {
   CriteriaEditNotAllowed,
@@ -18,12 +18,13 @@ import {
 import { appendEvent, patchRecord, readEvents, readRecord } from './record/store'
 import { verifyResultSchema } from './verify-result'
 import { ModuleMissing, RecordClosed } from './run/errors'
-import { authorize, expire, release, type Expired } from './run/leases'
-import type { Run } from './run/schema'
+import { authorize, EXPIRY_REASON, expire, release, type Expired } from './run/leases'
+import type { Run, Tier } from './run/schema'
 import { finishRun, markRefused, readRun } from './run/store'
 
+export type TierLoader = (role: Role) => Promise<Tier>
 export type SkillLoader = (stage: Stage) => Promise<string | null>
-export type SubmitDeps = AdvanceDeps & { modules: Modules; skills?: SkillLoader }
+export type SubmitDeps = AdvanceDeps & { modules: Modules; skills?: SkillLoader; tiers?: TierLoader }
 export type SubmitResult = { status: 'accepted' } | { status: 'retry' | 'failed'; problems: Problem[] }
 type Accepted = { status: 'accepted'; effects: Effect[] }
 type Refused = Exclude<SubmitResult, { status: 'accepted' }>
@@ -58,6 +59,13 @@ const released = (conn: Conn, run: { id: number; recordId: number; stage: Run['s
     actor: 'factory',
   })
 
+const expiredEvent = (conn: Conn, run: { runId: number; recordId: number; stage: Run['stage'] }) =>
+  appendEvent(conn, run.recordId, {
+    type: 'run.expired',
+    data: { stage: run.stage, runId: String(run.runId), reason: EXPIRY_REASON },
+    actor: 'factory',
+  })
+
 const refuse = async (tx: Conn, run: Run, problems: Problem[], now: Date): Promise<Refused> => {
   if (run.attempt === 0) {
     await markRefused(tx, run.id)
@@ -83,6 +91,8 @@ const write = async (
 ): Promise<Written> => {
   const stored = await readRecord(tx, run.recordId)
   const config = await deps.configFor(run.recordId)
+  const missing = (await module.check?.(tx, run, data)) ?? []
+  if (missing.length > 0) return { problems: missing }
   if (module.gated) {
     const facts = await loadGateFacts(tx, stored, run, config)
     const outcome = gate({ result: verifyResultSchema.parse(data), record: stored.record, facts })
@@ -158,7 +168,7 @@ export const failRun = async (runId: number, token: string, reason: string, deps
 export const expireRuns = async (deps: AdvanceDeps): Promise<Expired[]> => {
   const expired = await expire(deps.payload, deps.now)
   for (const run of expired) {
-    await released(deps.payload, { id: run.runId, recordId: run.recordId, stage: run.stage })
+    await expiredEvent(deps.payload, run)
   }
   for (const recordId of new Set(expired.map((run) => run.recordId))) await advance(recordId, deps)
   return expired

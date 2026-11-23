@@ -107,7 +107,7 @@ describe('where the way back is offered', () => {
   })
 
   it('is a fixed action of the agent card and the working ticket, not of the factory cards', () => {
-    expect(Object.keys(DECISIONS[AGENT_ASK] ?? {})).toEqual([BACK_TO_BRIEF])
+    expect(Object.keys(DECISIONS[AGENT_ASK] ?? {})).toEqual([BACK_TO_BRIEF, 'own-answer'])
     expect(Object.keys(DECISIONS.working ?? {})).toEqual([BACK_TO_BRIEF])
     const factory = Object.entries(DECISIONS).filter(([ask]) => ask !== AGENT_ASK && ask !== 'working')
     expect(factory.filter(([, choices]) => BACK_TO_BRIEF in choices)).toEqual([])
