@@ -88,6 +88,23 @@ void describe('github merge queue', () => {
     assert.deepEqual(res, ['ci', 'e2e (1)']);
     assert.equal(calls[0]!.path, '/repos/o/r/rules/branches/main');
   });
+  void it('requiredChecks is empty where the plan of the repository has no branch rules', async () => {
+    const notInPlan = { message: 'Upgrade to GitHub Pro or make this repository public to enable this feature.' };
+    const { res } = await run(
+      () => json(notInPlan, { status: 403 }),
+      (f) => f.requiredChecks('o/r', 'main'),
+    );
+    assert.deepEqual(res, []);
+  });
+  void it('requiredChecks fails on any other refusal, so a missing answer is never read as no checks', async () => {
+    await assert.rejects(
+      run(
+        () => json({ message: 'You have exceeded a secondary rate limit.' }, { status: 403 }),
+        (f) => f.requiredChecks('o/r', 'main'),
+      ),
+      /secondary rate limit/,
+    );
+  });
   void it(
     'enqueue PUTs merge-async with the pinned head; 409 means already queued; ' + '400 and 405 are NotQueueableError',
     async () => {
