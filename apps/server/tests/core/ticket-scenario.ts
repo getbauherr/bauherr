@@ -23,6 +23,7 @@ export const TICKET_TITLES = {
   runSteps: 'Build with reported steps',
   runQueued: 'Build waiting for an agent',
   runFailed: 'Build that failed',
+  runQuiet: 'Build that has not reported',
   adoptedWaiting: 'Adopted pull request waiting on its author',
   adoptedResult: 'Adopted pull request with a result',
   deployStalled: 'Deploy that did not finish',
@@ -285,7 +286,10 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   const runQueued = await toBrief(e, false)
   const runFailed = await toBrief(e, false)
   await failedBuild(e, runFailed)
+  const runQuiet = await toBrief(e, false)
+  await claimed(e, runQuiet)
   titled.push([runQueued, TICKET_TITLES.runQueued], [runFailed, TICKET_TITLES.runFailed])
+  titled.push([runQuiet, TICKET_TITLES.runQuiet])
   const deployStalled = await deployStalledTicket(e, ++pr)
   titled.push([deployStalled, TICKET_TITLES.deployStalled])
   const briefComment = await pooled((n) => open(`${POOL_TITLES.briefComment} ${n}`))
@@ -316,5 +320,5 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     await mirror.item(source.number, { title: titled.find(([found]) => found === id)?.[1] ?? '' })
   }
   const rest = { questionBack, questionOwn, briefComment, adoptedWaiting, adoptedResult, deployStalled, intake }
-  return { ...names, runQueued, runFailed, ...rest }
+  return { ...names, runQueued, runFailed, runQuiet, ...rest }
 }

@@ -1,10 +1,9 @@
-import Link from 'next/link'
 import type { RunPage } from '../../../../core/views/run'
-import Link from 'next/link'
 import { Time } from '../Time'
 import { Card, Section } from './Section'
 
-const STEP = 'grid grid-cols-[112px_minmax(0,1fr)] gap-3 border-t border-border py-2 first:border-t-0'
+const STEP =
+  'grid grid-cols-1 gap-1 border-t border-border py-2 first:border-t-0 sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-3'
 
 const HANDOFF = 'mono m-0 whitespace-pre-wrap rounded-md bg-secondary p-3 [overflow-wrap:anywhere]'
 
@@ -18,17 +17,13 @@ const handoffText = (run: RunPage): string | null => {
   return 'This run wrote no handoff.'
 }
 
-function StepsEmpty({ run }: { run: RunPage }) {
-  if (run.status !== 'queued') return <p className="text-muted-foreground">The agent has not reported a step yet.</p>
-  if (run.sessionConnected) {
-    return <p className="text-muted-foreground">The run waits for an agent. A {run.role} session is connected.</p>
+const emptyText = (run: RunPage): string => {
+  if (run.status === 'queued') return 'No step yet. The run has not started.'
+  if (run.status === 'claimed') {
+    const minutes = Math.max(0, Math.round((Date.now() - Date.parse(run.startedAt)) / 60_000))
+    return `The agent has not reported a step yet. It started ${minutes} min ago.`
   }
-  return (
-    <p className="text-muted-foreground">
-      The run waits for an agent. No {run.role} session is connected:{' '}
-      <Link href="/settings/api-key" className="text-primary hover:underline">connect one</Link>.
-    </p>
-  )
+  return 'The agent reported no step.'
 }
 
 export function RunSteps({ run }: { run: RunPage }) {
@@ -36,7 +31,7 @@ export function RunSteps({ run }: { run: RunPage }) {
   return (
     <Card>
       <Section title="Reported steps">
-        {run.steps.length === 0 && <StepsEmpty run={run} />}
+        {run.steps.length === 0 && <p className="m-0 text-muted-foreground">{emptyText(run)}</p>}
         <ol className="m-0 grid list-none p-0">
           {run.steps.map((step) => (
             <li key={`${step.at}-${step.text}`} className={STEP}>
@@ -46,25 +41,11 @@ export function RunSteps({ run }: { run: RunPage }) {
           ))}
         </ol>
       </Section>
-      {run.memory.length > 0 && (
-        <Section title="Memory handed to this run">
-          <ul className="m-0 grid list-none p-0">
-            {run.memory.map((entry) => (
-              <li key={entry.id} className={`${STEP} grid-cols-[minmax(0,1fr)_auto]`}>
-                <Link href={`/memory/${entry.id}`} className="text-primary hover:underline">
-                  {entry.text}
-                </Link>
-                <span className="small text-muted-foreground">{entry.reason}</span>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
       <Section title="Handoff, written at the end of the run">
         {handoff === null ? (
           <pre className={HANDOFF}>{run.handoff}</pre>
         ) : (
-          <p className="[overflow-wrap:anywhere] text-muted-foreground">{handoff}</p>
+          <p className="m-0 [overflow-wrap:anywhere] text-muted-foreground">{handoff}</p>
         )}
       </Section>
     </Card>

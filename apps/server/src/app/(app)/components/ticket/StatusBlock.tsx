@@ -28,12 +28,21 @@ const sentenceOf = (view: TicketView, run: RunView | undefined): string => {
   return WAITING[view.status] ?? 'The factory has the turn. Nothing to do.'
 }
 
+const ENDED_WORDS: Record<string, string> = { failed: 'Failed run', expired: 'Expired run' }
+
+const endedRun = (view: TicketView): RunView | undefined => {
+  const last = view.runs.at(-1)
+  return last && (last.status === 'failed' || last.status === 'expired') ? last : undefined
+}
+
 function StatusBody({ view }: { view: TicketView }) {
   const run = liveRun(view)
   const step = run?.steps.at(-1)
+  const ended = run ? undefined : endedRun(view)
   return (
     <>
       <p role="status">{sentenceOf(view, run)}</p>
+      {ended && <Facts rows={[['Last run', <RunLink key="run" id={ended.id} word={ENDED_WORDS[ended.status]} />]]} />}
       {run && (
         <Facts
           rows={[

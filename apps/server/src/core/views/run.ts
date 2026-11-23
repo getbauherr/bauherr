@@ -9,6 +9,7 @@ import { readEvents, readRecord, type StoredRecord } from '../record/store'
 import type { TicketRecord } from '../record/schema'
 import { loadRunAttachments, type AttachmentView } from './attachments'
 import { AGENT_SILENCE_MS } from './holds'
+import { runHealth, type RunHealth } from './run-health'
 import { loadItem, pullNumberOf } from './ticket-parts'
 import type { Why } from '../memory'
 
@@ -50,9 +51,8 @@ export type RunPage = {
   memory: RunMemory[]
   costUsd: number | null
   attachments: AttachmentView[]
-  health: { silentMinutes: number } | null
-  sessionConnected: boolean | null
-  pullRequest: { number: number; url: string } | null
+  health: RunHealth
+  pullRequest: { number: number; url: string; forge: TicketRecord['source']['forge'] } | null
 }
 
 export type RunFilter = { workspace: number; runId: number; withCost: boolean; now?: Date }
@@ -100,11 +100,6 @@ const handoffOf = (run: { stage: Stage; status: string }, record: Pick<TicketRec
   return ended && run.stage === 'build' && record.handoff !== '' ? record.handoff : null
 }
 
-const healthOf = (run: { status: string; updated_at: Date }, now: Date): RunPage['health'] => {
-  const silent = now.getTime() - run.updated_at.getTime()
-  return run.status === 'claimed' && silent >= AGENT_SILENCE_MS ? { silentMinutes: Math.floor(silent / 60_000) } : null
-}
-
 const sessionConnected = async (payload: Payload, workspace: number, role: string, now: Date): Promise<boolean> => {
   const since = new Date(now.getTime() - AGENT_SILENCE_MS).toISOString()
   const found = await payload.db.drizzle.execute(sql`
@@ -113,10 +108,15 @@ const sessionConnected = async (payload: Payload, workspace: number, role: strin
   return found.rows.length > 0
 }
 
+const healthOf = async (payload: Payload, run: z.infer<typeof row>, workspace: number, now: Date) => {
+  const session = run.status === 'queued' && (await sessionConnected(payload, workspace, run.role, now))
+  return runHealth({ ...run, updatedAt: run.updated_at, startedAt: run.started_at ?? run.created_at }, session, now)
+}
+
 const pullOf = async (payload: Payload, stored: StoredRecord, number: number | undefined) => {
   if (number === undefined) return null
   const item = await loadItem(payload, { workspace: stored.workspace, repo: stored.record.source.repo, number })
-  return item?.url ? { number, url: item.url } : null
+  return item?.url ? { number, url: item.url, forge: stored.record.source.forge } : null
 }
 
 export const runPage = async (payload: Payload, filter: RunFilter): Promise<RunPage> => {
@@ -147,8 +147,7 @@ export const runPage = async (payload: Payload, filter: RunFilter): Promise<RunP
     memory: await memoryOf(payload, run.context),
     costUsd: filter.withCost ? run.cost_usd : null,
     attachments: await loadRunAttachments(payload, run.id),
-    health: healthOf(run, now),
-    sessionConnected: run.status === 'queued' ? await sessionConnected(payload, stored.workspace, run.role, now) : null,
+    health: await healthOf(payload, run, stored.workspace, now),
     pullRequest: await pullOf(payload, stored, pullNumberOf(stored, await readEvents(payload, run.record_id))),
   }
 }

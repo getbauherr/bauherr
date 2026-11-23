@@ -164,6 +164,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     claimed: runOf('Build with reported steps'),
     queued: runOf('Build waiting for an agent'),
     failed: runOf('Build that failed'),
+    'claimed, no step': runOf('Build that has not reported'),
     'run with memory': memoryRun,
   },
   '/settings': '/settings',
