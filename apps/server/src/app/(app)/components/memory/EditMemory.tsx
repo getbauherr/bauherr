@@ -1,7 +1,7 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition, type ReactNode } from 'react'
-import { deleteMemoryAction, saveMemoryAction, switchMemoryAction } from '../../(shell)/memory/actions'
+import { deleteMemoryAction, makeCheckAction, saveMemoryAction, switchMemoryAction } from '../../(shell)/memory/actions'
 import type { Reach } from '../../../../core/memory'
 import { Button } from '../ui/button'
 import {
@@ -20,6 +20,7 @@ type Props = {
   product: number
   initial: Draft
   off: boolean
+  mayCheck: boolean
   hasTicket: boolean
   areas: string[]
   footnote: string
@@ -63,7 +64,7 @@ function DeleteMemory({ id, text, onDeleted }: { id: number; text: string; onDel
   )
 }
 
-export function EditMemory({ id, product, initial, off, hasTicket, areas, footnote, children }: Props) {
+export function EditMemory({ id, product, initial, off, mayCheck, hasTicket, areas, footnote, children }: Props) {
   const router = useRouter()
   const { draft, set } = useDraft(initial)
   const [error, setError] = useState<string | null>(null)
@@ -80,6 +81,7 @@ export function EditMemory({ id, product, initial, off, hasTicket, areas, footno
   const save = () =>
     run(() => saveMemoryAction({ id, input: inputOf(draft) }), () => setSaved(true))
   const flip = () => run(() => switchMemoryAction({ id, off: !off }), () => router.refresh())
+  const check = () => run(() => makeCheckAction({ id }), () => router.refresh())
   const leave = () => router.push(`/memory?product=${product}`)
   return (
     <form onSubmit={(event) => event.preventDefault()} className="rounded-md border border-border bg-card">
@@ -95,6 +97,11 @@ export function EditMemory({ id, product, initial, off, hasTicket, areas, footno
         <Button type="button" variant="outline" disabled={pending} onClick={flip}>
           {off ? 'Switch on' : 'Switch off'}
         </Button>
+        {mayCheck && (
+          <Button type="button" variant="outline" disabled={pending} onClick={check}>
+            Make it a check
+          </Button>
+        )}
         <Button type="button" disabled={pending} onClick={save}>
           Save
         </Button>

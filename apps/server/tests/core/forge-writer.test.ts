@@ -1,7 +1,7 @@
 import { FakeBackend } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { DISCLOSURE } from '../../src/core/forge/disclosure'
+import { DISCLOSURE, disclosed } from '../../src/core/forge/disclosure'
 import { ProductObserving, WrongItemKind } from '../../src/core/forge/errors'
 import { createWriter } from '../../src/core/forge/writer'
 import { createRecord, readEvents } from '../../src/core/record/store'
@@ -32,6 +32,9 @@ const setup = async () => {
   return { repo, fake, issue, sha, record, backend, writer, target }
 }
 
+const at = () => ({ workspace: h.ids.workspace, product: h.ids.product })
+const issueInput = { title: 'Prevent by a check: x', body: 'The memory.', reference: 'bauherr-memory-1' }
+
 const setState = (state: string) =>
   h.rows(sql`UPDATE "products" SET "state" = ${state} WHERE "id" = ${h.ids.product}`)
 
@@ -57,6 +60,7 @@ describe('an observing Product', () => {
       () => s.writer.closeIssue(s.target('issue'), 'completed'),
       () => s.writer.reviewPullRequest(s.target('pr'), 'findings'),
       () => s.writer.openPullRequest(s.target('issue'), { title: 't', body: 'b', head: 'fix', base: 'main' }),
+      () => s.writer.openIssue(at(), issueInput),
     ]
     for (const call of calls) await expect(call()).rejects.toBeInstanceOf(ProductObserving)
     expect(s.backend).not.toHaveBeenCalled()
@@ -150,6 +154,48 @@ describe('openPullRequest', () => {
     await expect(
       s.writer.openPullRequest(s.target('pr'), { title: 't', body: 'b', head: 'fix', base: 'main' }),
     ).rejects.toBeInstanceOf(WrongItemKind)
+  })
+})
+
+describe('openIssue', () => {
+  const issuesOf = async (s: Awaited<ReturnType<typeof setup>>) => s.fake.tickets(s.repo).list({ state: 'all' })
+
+  it('opens one issue with the disclosure line on top and the reference at the end, and mirrors it', async () => {
+    const s = await setup()
+    const before = (await issuesOf(s)).length
+    const list = vi.spyOn(s.fake.tickets(s.repo), 'list')
+    const issue = await s.writer.openIssue(at(), issueInput)
+    expect(list).not.toHaveBeenCalled()
+    expect(issue.title).toBe('Prevent by a check: x')
+    expect(issue.body).toBe(`${DISCLOSURE}\n\nThe memory.\n\nReference: bauherr-memory-1`)
+    expect((await issuesOf(s)).length).toBe(before + 1)
+    const mirrored = (await h.items(s.repo)).find((r) => Number(r.number) === issue.number)
+    expect(mirrored).toMatchObject({ kind: 'issue', title: 'Prevent by a check: x', state: 'open' })
+  })
+
+  it('finds the issue of an interrupted write instead of opening a second one', async () => {
+    const s = await setup()
+    const half = await s.fake.tickets(s.repo).create({
+      title: issueInput.title,
+      body: disclosed(`${issueInput.body}\n\nReference: ${issueInput.reference}`),
+    })
+    await h.sync({ [s.repo]: readerOf(s.fake) })
+    const before = (await issuesOf(s)).length
+    const list = vi.spyOn(s.fake.tickets(s.repo), 'list')
+    const found = await s.writer.openIssue(at(), issueInput)
+    await s.writer.openIssue(at(), issueInput)
+    expect(list).not.toHaveBeenCalled()
+    expect(found.number).toBe(half.number)
+    expect((await issuesOf(s)).length).toBe(before)
+    expect((await h.items(s.repo)).filter((r) => Number(r.number) === half.number)).toHaveLength(1)
+  })
+
+  it('opens a new issue for another reference, and does not confuse memory 1 with memory 12', async () => {
+    const s = await setup()
+    const first = await s.writer.openIssue(at(), issueInput)
+    const twelfth = await s.writer.openIssue(at(), { ...issueInput, reference: 'bauherr-memory-12' })
+    const again = await s.writer.openIssue(at(), { ...issueInput, reference: 'bauherr-memory-2' })
+    expect(new Set([first.number, twelfth.number, again.number]).size).toBe(3)
   })
 })
 
