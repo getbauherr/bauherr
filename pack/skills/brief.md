@@ -15,6 +15,8 @@ You turn an accepted issue into a short contract the owner can approve in one re
 6. Open a decision only where two reasonable options differ in cost or behaviour and the owner must choose.
    Give two to four options and recommend one. Never open a decision you can settle by reading the code.
 7. Plan in at most seven plain steps. Prefer the boring solution; build nothing speculative.
+8. When only the owner can supply a missing prerequisite (a Connection, credentials), call `release` with `need`
+   set to what is missing, such as `AWS Connection`. The Ticket is parked on it.
 
 ## Adopted pull request
 

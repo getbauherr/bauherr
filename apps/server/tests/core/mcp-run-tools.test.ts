@@ -106,6 +106,21 @@ describe('run tools', () => {
     expect(live).toHaveLength(1)
     await m.e.drain()
   })
+
+  it('parks the ticket on the need passed to release and queues nothing', async () => {
+    await m.e.drain()
+    const record = await m.begin()
+    const run = await m.claimed(m.alpha)
+    const ids = { runId: run.runId, leaseToken: run.leaseToken }
+    await expect(m.call('release', { ...ids, need: '' }, m.agent(m.alpha))).rejects.toThrow()
+    await m.call('release', { ...ids, need: 'AWS Connection' }, m.agent(m.alpha))
+    expect((await readRecord(m.e.db.payload, record)).card).toMatchObject({ reason: 'parked', text: 'AWS Connection' })
+    const live = await rows(
+      sql`SELECT "status" FROM "stage_runs" WHERE "record_id" = ${record} AND "status" = 'queued'`,
+    )
+    expect(live).toHaveLength(0)
+    await m.e.drain()
+  })
 })
 
 describe('attach_proof', () => {

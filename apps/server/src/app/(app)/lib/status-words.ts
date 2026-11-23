@@ -22,6 +22,7 @@ export const STATUS_WORDS: Record<TicketStatus, StatusWord> = {
   'verify-rounds': { word: 'Sent back repeatedly', tone: 'destructive', mark: 'cross' },
   'reporter-silent': { word: 'Reporter silent', tone: 'destructive', mark: 'cross' },
   parked: { word: 'Parked', tone: 'neutral' },
+  'parked-on-need': { word: 'Parked', tone: 'warn' },
   accepted: { word: 'Accepted', tone: 'ok', mark: 'check' },
   closed: { word: 'Closed', tone: 'neutral' },
 }

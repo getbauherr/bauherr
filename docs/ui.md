@@ -74,6 +74,10 @@ Every human checkpoint uses one card. It has the ask in one sentence, a recommen
 
 After filing, the conversation is read-only history. Details of the conversation engine are in chat.
 
+## Parked Tickets
+
+A Run that finds a prerequisite only the owner can supply releases with that need. The Ticket shows a question card, `Parked: <need>`, in the Inbox and on the Ticket page, next to its current stage. The card offers Resume, which queues the same stage again, and Discard, which closes the Ticket. It never offers a plain Re-run and does not count as Stuck.
+
 ## Run page
 
 `/runs/<id>` shows one attempt of a stage. The header gives a status such as Working, Stuck or Session gone. The page shows the timeline of Steps, the proof, the links to the merge request and the times.

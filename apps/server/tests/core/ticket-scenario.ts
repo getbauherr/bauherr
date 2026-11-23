@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
-import { askOwner } from '../../src/core/ask'
+import { askOwner, parkOnNeed } from '../../src/core/ask'
 import { DISCLOSURE } from '../../src/core/forge/disclosure'
 import { questionsBody } from '../../src/core/intake/questions'
 import type { Criterion, Decision, Finding, TicketRecord } from '../../src/core/record/schema'
@@ -23,6 +23,7 @@ export const TICKET_TITLES = {
   adoptedWaiting: 'Adopted pull request waiting on its author',
   adoptedResult: 'Adopted pull request with a result',
   deployStalled: 'Deploy that did not finish',
+  parkedOnNeed: 'Build parked on a missing Connection',
 } as const
 
 export const POOL_SIZE = 3
@@ -208,6 +209,11 @@ const questionTicket = async (e: Engine, id: number) => {
   await askOwner(run.id, token, { text, options: ['Disk', 'Object storage'] }, e.deps())
 }
 
+const parkedTicket = async (e: Engine, id: number) => {
+  const { run, token } = await claimed(e, id)
+  await parkOnNeed(run.id, token, 'AWS Connection', e.deps())
+}
+
 const intakeTicket = async (e: Engine, item: (number: number, fields?: { title: string }) => Promise<number>) => {
   const id = await begin(e)
   await asked(e, id, 1)
@@ -285,6 +291,9 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
   const deployStalled = await deployStalledTicket(e, ++pr)
   titled.push([deployStalled, TICKET_TITLES.deployStalled])
+  const parkedOnNeed = await toBrief(e, false)
+  await parkedTicket(e, parkedOnNeed)
+  titled.push([parkedOnNeed, TICKET_TITLES.parkedOnNeed])
   const adoptedWaiting = await adoptedTicket(e, ADOPTED_FIRST, false)
   const adoptedResult = await adoptedTicket(e, ADOPTED_FIRST + 1, true)
   titled.push([adoptedWaiting, TICKET_TITLES.adoptedWaiting], [adoptedResult, TICKET_TITLES.adoptedResult])
@@ -304,5 +313,6 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   const closes = [3000 + ADOPTED_FIRST]
   const other = { kind: 'pr', head: 'h72', title: 'Another take on the fix', author: 'dev-lee', closes } as const
   await mirror.item(ADOPTED_FIRST + 2, { ...other, closes })
-  return { ...names, adoptedWaiting, adoptedResult, deployStalled, intake: await intakeTicket(e, mirror.item) }
+  const intake = await intakeTicket(e, mirror.item)
+  return { ...names, adoptedWaiting, adoptedResult, deployStalled, parkedOnNeed, intake }
 }

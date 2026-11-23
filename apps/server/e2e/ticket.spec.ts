@@ -84,6 +84,19 @@ test('answering a question from the agent records the chosen option', async ({ p
   await expect(page.getByText('The owner answered: Object storage')).toBeVisible()
 })
 
+test('a parked ticket names its need in the Inbox and offers Resume and Discard', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/inbox')
+  const waiting = page.getByRole('region', { name: 'Waiting on you' })
+  const row = waiting.getByRole('link', { name: /Build parked on a missing Connection/ })
+  await expect(row).toContainText('Parked: AWS Connection (build)')
+  await row.click()
+  await expect(page.getByText('Parked: AWS Connection', { exact: true })).toBeVisible()
+  await expect(page.getByRole('radio', { name: 'Resume' })).toBeVisible()
+  await expect(page.getByRole('radio', { name: 'Discard' })).toBeVisible()
+  await expect(page.getByRole('radio')).toHaveCount(2)
+})
+
 test('a decision on a card that moved on shows the stale sentence', async ({ page, browser }) => {
   const path = await enterOpen(page, 'Result decided twice')
   await page.route('**/api/changes', (route) => route.abort())

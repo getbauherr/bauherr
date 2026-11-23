@@ -25,6 +25,8 @@ const ROWS: Row[] = [
   ['question:failed-runs', 'retry', ['question.answered']],
   ['question:failed-runs', 'retry-with-guidance', ['question.answered', 'owner.note']],
   ['question:failed-runs', 'discard', ['question.answered', 'ticket.closed']],
+  ['question:parked', 'resume', ['question.answered']],
+  ['question:parked', 'discard', ['question.answered', 'ticket.closed']],
   ['question:reporter-silent', 'close', ['question.answered', 'intake.closed']],
   ['question:reporter-silent', 'ask-again', ['question.answered']],
   ['question:reporter-silent', 'accept', ['question.answered', 'intake.accepted']],
