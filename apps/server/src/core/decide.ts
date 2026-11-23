@@ -1,16 +1,17 @@
 import { z } from 'zod'
 import { answersProblem, storeAnswers, type Answers } from './answers'
 import { isBauherr } from '../lib/people'
-import { inLockedRecord } from './conn'
-import { AGENT_ASK, agentEntry, DECISIONS, type DecisionEntry } from './decisions'
+import { inLockedRecord, type Conn } from './conn'
+import { AGENT_ASK, agentEntry, BACK_TO_BRIEF, DECISIONS, WORKING_ASK, type DecisionEntry } from './decisions'
 import { runEffects } from './effects'
 import { advance, type AdvanceDeps } from './engine'
 import { resumeParked } from './intake/pacing'
-import { fold, type Card } from './fold'
-import { foldOptions, next, type State, type Step } from './lifecycle'
+import { fold } from './fold'
+import { canGoBack, foldOptions, next, type State, type Step } from './lifecycle'
 import type { Effect } from './module'
 import type { TicketRecord } from './record/schema'
-import { appendEvent, readEvents, readRecord } from './record/store'
+import { appendEvent, readEvents, readRecord, type StoredRecord } from './record/store'
+import { releaseLive } from './run/leases'
 import { storeGiven } from './statements'
 
 export const NOTE_MAX = 1000
@@ -39,20 +40,25 @@ const askedOf = (step: Step, state: State): string | null => {
   if (step.kind === 'wait' && step.on === 'owner') {
     return state.card ? `question:${state.card.reason}` : 'production-held'
   }
-  return null
+  return canGoBack(state) ? WORKING_ASK : null
 }
 
-const choiceOf = (asked: string, choice: string, card: Card | null): DecisionEntry | undefined =>
-  asked === AGENT_ASK ? agentEntry(card, choice) : DECISIONS[asked]?.[choice]
+const choiceOf = (asked: string, choice: string, state: State): DecisionEntry | undefined => {
+  if (asked !== AGENT_ASK) return DECISIONS[asked]?.[choice]
+  const fixed = choice === BACK_TO_BRIEF && canGoBack(state) ? DECISIONS[asked]?.[choice] : undefined
+  return fixed ?? agentEntry(state.card, choice)
+}
+
+type Settled = { entry: DecisionEntry; answers: Answers | null }
 
 type Chosen = { entry: DecisionEntry; note: string }
 
-const entryOf = (asked: string | null, seq: number | undefined, decision: Decision, card: Card | null): Chosen => {
+const entryOf = (asked: string | null, seq: number, decision: Decision, state: State): Chosen => {
   if (asked !== decision.ask || seq !== decision.seq) {
     const now = asked ?? 'nothing'
     throw new StaleDecision(`The ticket is not asking ${decision.ask} (${now}): reload and decide again.`)
   }
-  const entry = choiceOf(asked, decision.choice, card)
+  const entry = choiceOf(asked, decision.choice, state)
   if (!entry) throw new InvalidDecision(`${decision.choice} is not an option of ${asked}: pick one of its options.`)
   const note = noteSchema.safeParse(decision.note)
   if ((entry.needsNote || decision.note !== undefined) && !note.success) {
@@ -78,6 +84,11 @@ const sentBackReview = (asked: string | null, choice: string, state: State, note
   return [{ kind: 'review', pr: adoptedPatch.pr, body: note }]
 }
 
+const settle = async (tx: Conn, stored: StoredRecord, chosen: Settled, now: Date): Promise<void> => {
+  if (chosen.entry.endsRun) await releaseLive(tx, stored.id, now)
+  if (chosen.answers) await storeAnswers(tx, stored.id, stored, chosen.answers, now)
+}
+
 const closedAsDone = (asked: string | null, choice: string, state: State): Effect[] => {
   if (asked !== 'question:already-done' || choice !== 'close-as-done' || state.alreadyDone === null) return []
   const { by, evidence } = state.alreadyDone
@@ -101,12 +112,12 @@ export const decide = async (
     }
     const state = fold(await readEvents(tx, recordId), foldOptions(config))
     const asked = askedOf(next(stored.record, state, config), state)
-    const { entry, note } = entryOf(asked, stored.card?.seq, decision, state.card)
+    const { entry, note } = entryOf(asked, stored.card?.seq ?? 0, decision, state)
     const answers = answersOf(asked, decision, stored.record)
     const patch = state.patch
     const events = entry.events({ note, patchId: patch?.id ?? '', headSha: patch?.headSha ?? '' })
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
-    if (answers) await storeAnswers(tx, recordId, stored, answers, deps.now)
+    await settle(tx, stored, { entry, answers }, deps.now)
     await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card })
     return {
       backlogBrief: asked === 'brief' && stored.record.source.backlog,

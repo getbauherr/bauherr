@@ -27,6 +27,7 @@ export type Remote = {
   bare: string
   head: (branch: string) => string
   files: (branch: string) => string[]
+  pushOther: (branch: string) => void
 }
 
 export const makeRemote = (): Remote => {
@@ -45,6 +46,14 @@ export const makeRemote = (): Remote => {
     bare,
     head: (branch) => git(bare, 'rev-parse', `refs/heads/${branch}`),
     files: (branch) => git(bare, 'ls-tree', '-r', '--name-only', branch).split('\n'),
+    pushOther: (branch) => {
+      const other = join(root, 'other')
+      git(root, 'clone', '-q', '--branch', branch, bare, other)
+      writeFileSync(join(other, 'other.txt'), 'someone else\n')
+      git(other, 'add', '-A')
+      git(other, 'commit', '-m', 'other')
+      git(other, 'push', '-q', 'origin', branch)
+    },
   }
 }
 

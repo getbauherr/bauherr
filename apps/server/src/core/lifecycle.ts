@@ -26,7 +26,14 @@ export type Config = {
 
 export type Role = 'builder' | 'reviewer' | 'verifier'
 export type WaitOn = 'reporter' | 'run' | 'checks' | 'deploy' | 'owner' | 'author'
-export type BriefReason = 'open-decision' | 'one-way-door' | 'risk-area' | 'backlog' | 'external-request'
+export type BriefReason =
+  | 'open-decision'
+  | 'one-way-door'
+  | 'risk-area'
+  | 'visible-change'
+  | 'backlog'
+  | 'external-request'
+  | 'sent-back'
 export type Step =
   | { kind: 'run'; stage: Stage; role: Role }
   | { kind: 'card'; card: 'brief' | 'result' | 'question'; reason: string; options: string[] }
@@ -54,6 +61,7 @@ const GATES: { reason: BriefReason; applies: (record: TicketRecord, riskAreas: s
   { reason: 'open-decision', applies: (r) => r.decisions.some((d) => d.answer === undefined) },
   { reason: 'one-way-door', applies: (r) => r.risk?.door === 'one-way' },
   { reason: 'risk-area', applies: (r, areas) => (r.risk?.areas ?? []).some((a) => areas.includes(a)) },
+  { reason: 'visible-change', applies: (r) => r.visible },
   { reason: 'backlog', applies: (r) => r.source.backlog && r.source.adopted === undefined },
   {
     reason: 'external-request',
@@ -63,6 +71,9 @@ const GATES: { reason: BriefReason; applies: (record: TicketRecord, riskAreas: s
 
 export const briefGate = (record: TicketRecord, config: Pick<Config, 'riskAreas'>): BriefReason | null =>
   GATES.find((gate) => gate.applies(record, config.riskAreas))?.reason ?? null
+
+export const canGoBack = (state: State): boolean =>
+  (state.stage === 'build' || state.stage === 'verify') && !state.merged && state.closed === null
 
 const run = (stage: Stage, role: Role): Step => ({ kind: 'run', stage, role })
 const wait = (on: WaitOn): Step => ({ kind: 'wait', on })
@@ -91,7 +102,7 @@ const approvedByRule: EventOf<'brief.approved'> = { type: 'brief.approved', data
 const brief: Rule = (record, state, config) => {
   if (state.stage !== 'brief') return null
   if (state.brief === 'none' || state.note !== null) return run('brief', 'builder')
-  const reason = briefGate(record, config)
+  const reason = briefGate(record, config) ?? (state.returned ? 'sent-back' : null)
   if (reason === null) return { kind: 'emit', event: approvedByRule }
   return { kind: 'card', card: 'brief', reason, options: [] }
 }

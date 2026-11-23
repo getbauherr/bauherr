@@ -9,6 +9,7 @@ import { MAX_STEPS, toRun, type Run } from './schema'
 import { readRun, RUN_COLUMNS } from './store'
 
 export const LEASE_MS = 30 * 60_000
+export const EXPIRY_REASON = `no heartbeat for ${LEASE_MS / 60_000} minutes`
 
 export type NewRun = { stage: Stage; role: Role; fingerprint: string }
 export type Executor = 'session' | 'runner'
@@ -18,7 +19,7 @@ export type Expired = { runId: number; recordId: number; stage: Stage }
 
 const CLOSING_EVENTS = sql`('ticket.closed', 'intake.closed', 'brief.discarded')`
 
-const hashOf = (token: string): string => createHash('sha256').update(token).digest('hex')
+export const hashOf = (token: string): string => createHash('sha256').update(token).digest('hex')
 const leaseEnd = (now: Date): string => new Date(now.getTime() + LEASE_MS).toISOString()
 
 export const enqueue = async (
@@ -72,6 +73,10 @@ export const claim = async (payload: Conn, input: ClaimInput): Promise<Claimed |
 const refusal = async (payload: Conn, runId: number): Promise<never> => {
   const run = await readRun(payload, runId)
   if (run.status !== 'claimed') {
+    const found = await payload.db.drizzle.execute(sql`SELECT "stage" FROM "records" WHERE "id" = ${run.recordId}`)
+    if (found.rows[0]?.stage === 'brief' && run.stage !== 'brief') {
+      throw new RunNotClaimed(`Run ${runId} was ended: the ticket went back to Brief. Stop working on it.`)
+    }
     throw new RunNotClaimed(`Run ${runId} is ${run.status}, not claimed: stop working on it.`)
   }
   throw new WrongLeaseToken(`The lease token does not belong to run ${runId}: use the token next_work returned.`)
@@ -126,7 +131,8 @@ export const releaseLive = async (payload: Conn, recordId: number, now: Date, st
 
 export const expire = async (payload: Conn, now: Date): Promise<Expired[]> => {
   const updated = await payload.db.drizzle.execute(sql`
-    UPDATE "stage_runs" SET "status" = 'released', "finished_at" = ${now.toISOString()}, "updated_at" = now()
+    UPDATE "stage_runs" SET "status" = 'expired', "error" = ${EXPIRY_REASON},
+      "finished_at" = ${now.toISOString()}, "updated_at" = now()
     WHERE "status" = 'claimed' AND "lease_expires_at" < ${now.toISOString()}
     RETURNING ${RUN_COLUMNS}`)
   return updated.rows.map((row) => {

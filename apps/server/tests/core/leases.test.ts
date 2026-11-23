@@ -2,7 +2,8 @@ import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { setRank } from '../../src/core/record/store'
 import { RunConflict, RunNotClaimed, WrongLeaseToken } from '../../src/core/run/errors'
-import { claim, enqueue, expire, heartbeat, LEASE_MS, release } from '../../src/core/run/leases'
+import { z } from 'zod'
+import { claim, enqueue, expire, heartbeat, LEASE_MS, release, type Claimed } from '../../src/core/run/leases'
 import { readRun } from '../../src/core/run/store'
 import { openCoreDb, type CoreDb } from './db'
 
@@ -152,7 +153,9 @@ describe('expire', () => {
     expect(await expire(db.payload, later(LEASE_MS - 1))).toEqual([])
     const expired = await expire(db.payload, later(LEASE_MS + 1))
     expect(expired).toEqual([{ runId: a.run.id, recordId: a.record, stage: 'build' }])
-    expect((await readRun(db.payload, a.run.id)).status).toBe('released')
+    const gone = await readRun(db.payload, a.run.id)
+    expect(gone.status).toBe('expired')
+    expect(gone.error).toBe('no heartbeat for 30 minutes')
     expect((await readRun(db.payload, b.run.id)).status).toBe('claimed')
     expect((await readRun(db.payload, c.run.id)).status).toBe('queued')
   })
@@ -177,5 +180,23 @@ describe('claim by executor', () => {
     expect(await claimFor('session')).toBeNull()
     expect((await claimFor('runner'))?.run.id).toBe(run.id)
     await setExecutor('session')
+  })
+})
+
+describe('a session with several runs', () => {
+  it('expires only the run that stopped heartbeating', async () => {
+    const claimed: Claimed[] = []
+    for (let i = 0; i < 3; i++) {
+      await queued()
+      claimed.push(z.custom<Claimed>().parse(await claimBuilder()))
+    }
+    const [first, second, silent] = claimed.map((c) => ({ id: c.run.id, token: c.token }))
+    const beat = { now: later(LEASE_MS - 60_000) }
+    await heartbeat(db.payload, z.number().parse(first?.id), z.string().parse(first?.token), beat)
+    await heartbeat(db.payload, z.number().parse(second?.id), z.string().parse(second?.token), beat)
+    const expired = await expire(db.payload, later(LEASE_MS + 1000))
+    expect(expired.map((e) => e.runId)).toEqual([silent?.id])
+    const statuses = await Promise.all([first, second, silent].map((r) => readRun(db.payload, z.number().parse(r?.id))))
+    expect(statuses.map((r) => r.status)).toEqual(['claimed', 'claimed', 'expired'])
   })
 })

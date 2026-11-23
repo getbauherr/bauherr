@@ -3,9 +3,17 @@ import { DECISIONS } from '../src/core/decisions'
 import { CHOICE_WORDS, NOTE_PROMPTS, REASON_WORDS } from '../src/app/(app)/lib/ticket-words'
 
 const QUESTIONS = Object.keys(DECISIONS)
-  .filter((ask) => ask.startsWith('question:'))
+  .filter((ask) => ask.startsWith('question:') && ask !== 'question:agent')
   .map((ask) => ask.slice('question:'.length))
-const BRIEF_REASONS = ['open-decision', 'one-way-door', 'risk-area', 'backlog', 'external-request']
+const BRIEF_REASONS = [
+  'open-decision',
+  'one-way-door',
+  'risk-area',
+  'visible-change',
+  'backlog',
+  'external-request',
+  'sent-back',
+]
 
 describe('the words of a card', () => {
   it('has a sentence for every Brief gate reason and every question reason', () => {

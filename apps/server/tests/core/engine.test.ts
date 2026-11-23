@@ -237,6 +237,6 @@ describe('releaseRun and expireRuns', () => {
     expect(await expireRuns(e.deps())).toEqual([])
     const later = { ...e.deps(), now: new Date(e.clock.now.getTime() + 31 * 60_000) }
     expect(await expireRuns(later)).toEqual([{ runId: run.id, recordId: id, stage: 'intake' }])
-    expect((await e.view(id)).types.slice(-2)).toEqual(['run.released', 'run.started'])
+    expect((await e.view(id)).types.slice(-2)).toEqual(['run.expired', 'run.started'])
   })
 })
