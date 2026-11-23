@@ -6,6 +6,7 @@ import type { AgentsFile } from '../mirror/facts'
 import { anyWord, queryWords, sharedWords, sharesEnough } from '../mirror/match'
 import { similarItems } from '../mirror/search'
 import type { StoredRecord } from '../record/store'
+import { SCOPE_LABEL, STATEMENT_SCOPES } from '../statement-scope'
 import { STATEMENT_KINDS } from '../statements'
 import { closedAsOf, endedOf } from '../views/rows'
 import { TERMINAL_LIST } from '../views/sql'
@@ -18,6 +19,8 @@ const STATEMENT_STAGES: Stage[] = ['brief', 'build', 'verify']
 export type UsedStatement = {
   id: number
   kind: (typeof STATEMENT_KINDS)[number]
+  scope: (typeof STATEMENT_SCOPES)[number]
+  scopeLabel: string
   text: string
   ticket: number
   at: string
@@ -44,6 +47,7 @@ const idRow = z.object({ id: count })
 const statementRow = z.object({
   id: count,
   kind: z.enum(STATEMENT_KINDS),
+  scope: z.enum(STATEMENT_SCOPES),
   text: z.string(),
   created_at: z.coerce.date(),
   record_id: count,
@@ -74,7 +78,7 @@ const inOrder = <T extends { id: number }>(wanted: number[], found: T[]): T[] =>
 export const loadStatements = async (payload: Payload, wanted: number[]): Promise<UsedStatement[]> => {
   if (wanted.length === 0) return []
   const found = await payload.db.drizzle.execute(sql`
-    SELECT s."id", s."kind", s."text", s."created_at", s."record_id", r."source_number"
+    SELECT s."id", s."kind", s."scope", s."text", s."created_at", s."record_id", r."source_number"
     FROM "statements" s JOIN "records" r ON r."id" = s."record_id"
     WHERE s."id" IN (${ids(wanted)})`)
   const rows = found.rows.map((raw) => {
@@ -82,6 +86,8 @@ export const loadStatements = async (payload: Payload, wanted: number[]): Promis
     return {
       id: row.id,
       kind: row.kind,
+      scope: row.scope,
+      scopeLabel: SCOPE_LABEL[row.scope],
       text: row.text,
       ticket: row.source_number,
       at: row.created_at.toISOString(),
@@ -156,7 +162,7 @@ export const selectContext = async (
     STATEMENT_STAGES.includes(stage) && words.length > 0
       ? await payload.db.drizzle.execute(sql`
           SELECT s."id" FROM "statements" s
-          WHERE s."product_id" = ${issue.product_id} AND s."record_id" <> ${stored.id}
+          WHERE s."product_id" = ${issue.product_id} AND (s."record_id" = ${stored.id} OR s."scope" = 'product')
             AND ${vector} @@ ${anyWord(words)} AND ${sharesEnough(vector, words)}
           ORDER BY ${shared} DESC, ts_rank(${vector}, ${anyWord(words)}) DESC, s."created_at" DESC, s."id" DESC
           LIMIT ${STATEMENT_LIMIT}`)

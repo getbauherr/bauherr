@@ -11,6 +11,7 @@ import { foldOptions, next, type State, type Step } from './lifecycle'
 import type { Effect } from './module'
 import type { TicketRecord } from './record/schema'
 import { appendEvent, readEvents, readRecord } from './record/store'
+import type { StatementScope } from './statement-scope'
 import { storeGiven } from './statements'
 
 export const NOTE_MAX = 1000
@@ -30,7 +31,14 @@ export type Person = { id: string; role: string; workspaceIds: number[] }
 export const mayDecide = (person: Person, workspace: number): boolean =>
   isBauherr({ role: person.role }) && person.workspaceIds.includes(workspace)
 
-export type Decision = { ask: string; choice: string; seq: number; note?: string; answers?: Answers }
+export type Decision = {
+  ask: string
+  choice: string
+  seq: number
+  note?: string
+  scope?: StatementScope
+  answers?: Answers
+}
 
 const noteSchema = z.string().trim().min(1).max(NOTE_MAX)
 
@@ -107,7 +115,7 @@ export const decide = async (
     const events = entry.events({ note, patchId: patch?.id ?? '', headSha: patch?.headSha ?? '' })
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
     if (answers) await storeAnswers(tx, recordId, stored, answers, deps.now)
-    await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card })
+    await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card, scope: decision.scope })
     return {
       backlogBrief: asked === 'brief' && stored.record.source.backlog,
       review: [...sentBackReview(asked, decision.choice, state, note), ...closedAsDone(asked, decision.choice, state)],

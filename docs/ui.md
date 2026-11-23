@@ -54,7 +54,7 @@ The page has two halves. On the left is the conversation with the factory, which
 The action bar at the top of the Now pane holds the single next step. It shows one sentence and one primary button. The button names the step, for example Approve plan, Accept on staging or Re-run Build.
 
 - **Approve plan** is refused while critical decisions are unanswered.
-- **Send back** asks for a note and returns the Ticket to Build or the Backlog.
+- **Send back** asks for a note and returns the Ticket to Build or the Backlog. Every note has an Applies to choice: This ticket (the default) or This product, which hands it to later runs on the Product's other Tickets. The Ticket page lists each used note with its scope.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
 - **Round cap**: when review reaches its cap you grant one more round or stop.
 - **Close as done** card: when a Build Run reports that another pull request or Ticket already covers the work, the card asks "Close #n as done by #m?". Close as done posts a comment naming #m and its evidence, closes the forge issue as completed whatever the Product's auto-close setting, and moves the Ticket to done. Re-run build queues a fresh Build Run.

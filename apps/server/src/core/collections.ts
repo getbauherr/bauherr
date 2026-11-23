@@ -85,6 +85,7 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'product', type: 'relationship', relationTo: 'products', required: true, index: true },
       { name: 'record', type: 'relationship', relationTo: 'records', required: true, index: true },
       { name: 'kind', type: 'text', required: true },
+      { name: 'scope', type: 'text', required: true, defaultValue: 'ticket' },
       { name: 'text', type: 'textarea', required: true },
     ],
   },

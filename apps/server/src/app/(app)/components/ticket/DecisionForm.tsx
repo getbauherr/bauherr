@@ -1,9 +1,11 @@
 'use client'
 import { useRef, useState, useTransition, type ReactNode } from 'react'
+import { SCOPE_LABEL, STATEMENT_SCOPES, type StatementScope } from '../../../../core/statement-scope'
 import { decideTicket } from '../../(shell)/tickets/actions'
 import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog'
 import { Label } from '../ui/label'
+import { NativeSelect } from '../ui/native-select'
 import { Textarea } from '../ui/textarea'
 
 export type DecisionAction = {
@@ -25,6 +27,7 @@ type Props = {
 
 const ANSWER_PREFIX = 'answer:'
 const NOTE_ID = 'decision-note'
+const SCOPE_ID = 'decision-scope'
 
 const answersOf = (form: HTMLFormElement): Record<string, string> => {
   const answers: Record<string, string> = {}
@@ -45,10 +48,11 @@ function NoteDialog(props: {
   action: DecisionAction | null
   pending: boolean
   error: string | null
-  onSend: (note: string) => void
+  onSend: (note: string, scope: StatementScope) => void
   onClose: () => void
 }) {
   const [note, setNote] = useState('')
+  const [scope, setScope] = useState<StatementScope>('ticket')
   const { action } = props
   return (
     <Dialog open={action !== null} onOpenChange={(open) => !open && props.onClose()}>
@@ -66,9 +70,25 @@ function NoteDialog(props: {
             maxLength={1000}
             onChange={(event) => setNote(event.target.value)}
           />
+          <Label htmlFor={SCOPE_ID}>Applies to</Label>
+          <NativeSelect
+            id={SCOPE_ID}
+            value={scope}
+            onChange={(event) => setScope(event.target.value === 'product' ? 'product' : 'ticket')}
+          >
+            {STATEMENT_SCOPES.map((value) => (
+              <option key={value} value={value}>
+                {SCOPE_LABEL[value]}
+              </option>
+            ))}
+          </NativeSelect>
           {props.error && <p role="alert" className="small text-destructive">{props.error}</p>}
           <DialogFooter>
-            <Button type="button" disabled={props.pending || note.trim() === ''} onClick={() => props.onSend(note)}>
+            <Button
+              type="button"
+              disabled={props.pending || note.trim() === ''}
+              onClick={() => props.onSend(note, scope)}
+            >
               {action?.label}
             </Button>
           </DialogFooter>
@@ -118,10 +138,14 @@ export function DecisionForm({ recordId, ask, seq, sentence, actions, pick, chil
   const [noteFor, setNoteFor] = useState<DecisionAction | null>(null)
   const [pending, start] = useTransition()
 
-  const send = (action: DecisionAction, note?: string) =>
+  const send = (action: DecisionAction, note?: string, scope?: StatementScope) =>
     start(async () => {
       const answers = form.current ? answersOf(form.current) : {}
-      const extra = { ...(note ? { note } : {}), ...(Object.keys(answers).length > 0 ? { answers } : {}) }
+      const extra = {
+        ...(note ? { note } : {}),
+        ...(scope ? { scope } : {}),
+        ...(Object.keys(answers).length > 0 ? { answers } : {}),
+      }
       const result = await decideTicket({ recordId, ask, seq, choice: action.choice, ...extra })
       setError(result.error ?? null)
       if (!result.error) setNoteFor(null)
@@ -151,7 +175,7 @@ export function DecisionForm({ recordId, ask, seq, sentence, actions, pick, chil
         action={noteFor}
         pending={pending}
         error={error}
-        onSend={(note) => noteFor && send(noteFor, note)}
+        onSend={(note, scope) => noteFor && send(noteFor, note, scope)}
         onClose={() => setNoteFor(null)}
       />
     </form>
