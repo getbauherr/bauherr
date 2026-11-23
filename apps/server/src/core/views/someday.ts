@@ -10,6 +10,8 @@ export type SomedayCount = {
   count: number
 }
 
+export const SOMEDAY = 'bauherr:someday'
+
 export type SomedayFilter = { workspace: number; product?: number }
 
 const row = z.object({
@@ -32,9 +34,7 @@ export const somedayCounts = async (payload: Payload, f: SomedayFilter): Promise
       AND r."source_repo" = i."repo" AND r."source_number" = i."number"
     WHERE i."workspace_id" = ${f.workspace} AND r."id" IS NULL AND i."kind" = 'issue' AND i."state" = 'open'
       AND i."gone_at" IS NULL AND (${product}::integer IS NULL OR i."product_id" = ${product})
-      AND EXISTS (
-        SELECT 1 FROM jsonb_array_elements_text(i."labels") l
-        WHERE coalesce(p."intake_excluded_labels", '[]'::jsonb) @> to_jsonb(l))
+      AND i."labels" ? ${SOMEDAY} AND coalesce(p."intake_excluded_labels", '[]'::jsonb) ? ${SOMEDAY}
     GROUP BY p."id", c."kind", i."repo", c."config" ORDER BY p."id", i."repo"`)
   return result.rows.map((found) => {
     const parsed = row.parse(found)
