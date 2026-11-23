@@ -109,6 +109,7 @@ export const runnerHarness = (suite: string) => {
       write(request, { ...buildResult(1, 'x', 'x'), ...WRONG })
     }
     if (request.stage === 'verify') await judged(request, 'pass')
+    if (request.stage === 'done') write(request, { lessons: [], cameBack: [] })
   }
 
   const agent = async (request: AgentRequest): Promise<AgentOutcome> => {

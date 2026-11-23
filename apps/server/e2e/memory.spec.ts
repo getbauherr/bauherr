@@ -72,3 +72,43 @@ test('a memory page lists the runs that got it and the run page lists the memory
   await expect(section.getByRole('link', { name: SEEDED })).toBeVisible()
   await expect(section).toContainText('every ticket')
 })
+
+const LEARNED = ['Check the last row of every list.', 'Name the failing test in every finding.']
+
+const newMemories = (page: Page) =>
+  page.evaluate(() => {
+    const links = [...document.querySelectorAll('nav[aria-label="Main"] a')]
+    const link = links.find((a) => a.textContent?.startsWith('Memory'))
+    return Number(link?.textContent?.match(/(\d+) new/)?.[1] ?? 0)
+  })
+
+test('a memory the agents wrote shows New, says where it came from, and is no longer New once opened', async ({
+  page,
+}) => {
+  const text = LEARNED[test.info().retry] ?? ''
+  await openMemory(page)
+  await page.getByLabel('Product').selectOption({ label: 'Record Learn' })
+  await page.getByRole('button', { name: 'Show' }).click()
+  const table = page.getByRole('table', { name: 'Memory' })
+  const row = table.getByRole('row', { name: new RegExp(text) })
+  await expect(row.getByRole('cell').nth(1)).toHaveText(/^Reviewer finding, #5$/)
+  await expect(row.getByRole('cell').nth(5)).toHaveText('New')
+  const before = await newMemories(page)
+  expect(before).toBeGreaterThan(0)
+  const filters = page.getByRole('navigation', { name: 'Filter memory' })
+  await filters.getByRole('link', { name: /^Agents found/ }).click()
+  await expect(table.getByRole('row', { name: new RegExp(text) })).toBeVisible()
+  await filters.getByRole('link', { name: /^You said/ }).click()
+  await expect(table.getByRole('row', { name: new RegExp(text) })).toHaveCount(0)
+
+  await filters.getByRole('link', { name: /^New/ }).click()
+  await table.getByRole('link', { name: text }).click()
+  await expect(page.getByText('Written as a memory by Learn')).toBeVisible()
+  await expect(page.getByText('The list drops the last row. Evidence: open the list with three rows')).toBeVisible()
+
+  await page.goto('/memory')
+  await page.getByLabel('Product').selectOption({ label: 'Record Learn' })
+  await page.getByRole('button', { name: 'Show' }).click()
+  await expect(table.getByRole('row', { name: new RegExp(text) }).getByRole('cell').nth(5)).toHaveText('Active')
+  expect(await newMemories(page)).toBeLessThan(before)
+})

@@ -12,7 +12,7 @@ import { keepAlive } from './heartbeat'
 import type { AgentOutcome, Ended, RunnerDeps } from './types'
 import { FIX_PROMPT, PROMPT, readResult, writeContext, writeProblems } from './workdir'
 
-const READ_ONLY = new Set(['intake', 'brief'])
+const READ_ONLY = new Set(['intake', 'brief', 'done'])
 
 type Working = { claimed: Claimed; deps: RunnerDeps; checkout: Checkout; workspace: number; model: string }
 

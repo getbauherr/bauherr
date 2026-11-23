@@ -8,6 +8,7 @@ export type Stage = z.infer<typeof stageSchema>
 export type Actor = (typeof ACTORS)[number]
 
 const id = z.string().trim().min(1)
+const count = z.number().int().min(0)
 const none = z.object({})
 const run = { stage: stageSchema, runId: id }
 
@@ -64,6 +65,8 @@ const eventSchema = z.discriminatedUnion('type', [
   event('ship.deploy-stalled', z.object({ reason: z.enum(['failed', 'overdue']), checks: z.array(id) })),
   event('result.accepted', none),
   event('result.sent-back', z.object({ note: id })),
+  event('learn.submitted', z.object({ runId: id, memories: count, cameBack: count })),
+  event('learn.skipped', z.object({ reason: id })),
   event('production.approved', none),
   event('production.held', none),
   event('owner.note', z.object({ note: id })),

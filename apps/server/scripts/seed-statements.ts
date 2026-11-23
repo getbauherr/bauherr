@@ -51,7 +51,24 @@ const verdict = async (
   const actor = 'agent'
   if (changes) await appendEvent(p, record, { type: 'verify.changes', actor, data: { runId, patchId: 'p' } })
   else await appendEvent(p, record, { type: 'verify.passed', actor, data: { runId, patchId: 'p', headSha: 'h' } })
+  return Number(runId)
 }
+
+const cameBack = (p: Payload, statementId: number, records: number[]) =>
+  p.db.drizzle.execute(
+    sql`UPDATE "statements" SET "came_back" = ${JSON.stringify(records.map((record) => ({ record, run: 1 })))}::jsonb
+      WHERE "id" = ${statementId}`,
+  )
+
+const LEARNED = ['Check the last row of every list.', 'Name the failing test in every finding.']
+
+const learned = (p: Payload, record: number, run: number, text: string) =>
+  p.db.drizzle.execute(sql`
+    INSERT INTO "statements" ("workspace_id", "product_id", "record_id", "kind", "scope", "text", "source_kind",
+      "source_text", "learn_run", "updated_at", "created_at")
+    SELECT "workspace_id", "product_id", "id", 'learned', 'product', ${text}, 'finding',
+      'The list drops the last row. Evidence: open the list with three rows', ${run}, now(), now()
+    FROM "records" WHERE "id" = ${record}`)
 
 export const seedStatements = async (p: Payload): Promise<void> => {
   const known = await p.find({ collection: 'workspaces', where: { slug: { equals: 'record' } }, limit: 1, ...o })
@@ -74,7 +91,14 @@ export const seedStatements = async (p: Payload): Promise<void> => {
     input: { text: 'Say what changed in the handoff.', reach: 'always', stages: ['brief', 'build', 'review'] },
   })
   await verdict(p, first, [queue, cite, standing], true, { [String(standing)]: 'always' })
-  await verdict(p, await ticket(p, seed, 2), [queue, cite], true)
+  const second = await ticket(p, seed, 2)
+  await verdict(p, second, [queue, cite], true)
   await verdict(p, await ticket(p, seed, 3), [queue, cite], false)
   await verdict(p, await ticket(p, seed, 4), [cite], true)
+  await cameBack(p, queue, [first, second])
+  const learnApp = { name: 'Record Learn', slug: 'record-learn', workspace }
+  const learning = Number((await p.create({ collection: 'products', data: learnApp, ...o })).id)
+  const fifth = await ticket(p, { workspace, product: learning }, 5)
+  const run = await verdict(p, fifth, [], true)
+  for (const text of LEARNED) await learned(p, fifth, run, text)
 }
