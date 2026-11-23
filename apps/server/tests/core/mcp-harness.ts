@@ -19,6 +19,7 @@ export type Mcp = {
   claimed: (
     member: Member,
     role?: string,
+    capacity?: number,
   ) => Promise<{ session: string; runId: number; leaseToken: string; context: { note: string | null } }>
 }
 
@@ -64,10 +65,10 @@ export const openMcp = async (suite: string, modules: Modules = TEST_MODULES): P
       await advance(id, e.deps())
       return id
     },
-    claimed: async (member, role = 'builder') => {
+    claimed: async (member, role = 'builder', capacity) => {
       const { session } = z
         .object({ session: z.string() })
-        .parse(await mcp.call('connect', { role }, mcp.agent(member)))
+        .parse(await mcp.call('connect', { role, capacity }, mcp.agent(member)))
       const work = z
         .object({ runId: z.number(), leaseToken: z.string(), context: z.object({ note: z.string().nullable() }) })
         .parse(await mcp.call('next_work', { session }, mcp.agent(member)))

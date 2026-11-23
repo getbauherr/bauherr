@@ -10,12 +10,13 @@ import type { SubmitDeps } from '../submit'
 import { partsOf, rememberContext, selectContext, type ContextParts, type PackSimilar } from './context'
 import { ModuleMissing } from './errors'
 import { recordFor } from './role-view'
-import type { Run } from './schema'
+import { DEFAULT_TIER, type Run, type Tier } from './schema'
 
 export type ContextPack = {
   runId: number
   stage: Run['stage']
   role: Run['role']
+  model: { tier: Tier }
   record: TicketRecord
   resultSchema: unknown
   note: string | null
@@ -48,6 +49,7 @@ export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPa
     runId: run.id,
     stage: run.stage,
     role: run.role,
+    model: { tier: (await deps.tiers?.(run.role)) ?? DEFAULT_TIER },
     record: recordFor(run.role, stored.record),
     resultSchema: z.toJSONSchema(module.resultSchema, { io: 'input' }),
     note: await pendingNote(deps, run),
