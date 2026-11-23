@@ -4,9 +4,9 @@ import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-const signIn = async (page: Page) => {
+const signIn = async (page: Page, workspace = 'tickets') => {
   const url = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url }])
+  await page.context().addCookies([{ name: 'bauherr-ws', value: workspace, url }])
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
@@ -45,6 +45,18 @@ test('?t= opens the pane directly; an unknown id leaves the list alone', async (
   await page.goto((await first.getAttribute('href'))!)
   await expect(pane(page).getByRole('heading', { level: 2, name: heading })).toBeVisible()
   await page.goto('/inbox?t=999999')
+  await expect(waiting(page)).toBeVisible()
+  await expect(pane(page)).toHaveCount(0)
+})
+
+test('an id from another Workspace opens no pane', async ({ page }) => {
+  await signIn(page, 'factory')
+  const foreign = await page.locator('[data-inbox-row]').first().getAttribute('href')
+  expect(foreign).toMatch(/\?t=\d+$/)
+  await page.context().addCookies([
+    { name: 'bauherr-ws', value: 'tickets', url: process.env.BASE_URL ?? 'http://localhost:3000' },
+  ])
+  await page.goto(foreign!)
   await expect(waiting(page)).toBeVisible()
   await expect(pane(page)).toHaveCount(0)
 })
