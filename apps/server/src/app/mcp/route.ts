@@ -10,6 +10,7 @@ import type { Contexts } from '../../core/run/mcp/tool'
 import { engineDeps } from '../../jobs/engine-deps'
 import { MODULES, skillFor } from '../../lean'
 import { resolveAgentKey } from '../../lib/api-key'
+import { publicUrl } from '../../lib/oidc'
 import { ACCOUNT_LOCKED, lockedRequests } from '../../lib/oidc-session'
 import { isArchived } from '../../lib/workspace-delete'
 import { isBauherr, mayWorkIn, tenantIds } from '../../lib/people'
@@ -39,7 +40,7 @@ const authenticate = async (payload: Payload, token: string): Promise<Partial<Co
   if (agent) {
     const member = isBauherr(agent.owner) && mayWorkIn(agent.owner, agent.workspace)
     if (!member || (await isArchived(payload, agent.workspace))) return refuse(401, 'unauthorized')
-    return { agent: { deps, workspace: agent.workspace, keyId: Number(agent.keyId) } }
+    return { agent: { deps, workspace: agent.workspace, keyId: Number(agent.keyId), origin: publicUrl() } }
   }
   const headers = new Headers({ authorization: `bauherren API-Key ${token}` })
   const { user } = await payload.auth({ headers })

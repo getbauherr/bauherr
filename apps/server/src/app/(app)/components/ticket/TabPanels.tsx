@@ -10,7 +10,7 @@ export function BriefTab({ view }: { view: TicketView }) {
   if (record.goal === '') return <Card><p>No Brief yet. The agent writes it after Intake.</p></Card>
   return (
     <Card>
-      <BriefSheet record={record} />
+      <BriefSheet record={record} mockups={view.mockups} />
       {record.plan.steps.length > 0 && (
         <Section title="Plan">
           <ol className="m-0 grid gap-1 pl-5">{record.plan.steps.map((step) => <li key={step}>{step}</li>)}</ol>

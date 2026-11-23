@@ -16,6 +16,7 @@ import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
 import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
+import { loadMockups, type AttachmentView } from './attachments'
 import { labelOf } from './labels'
 import { statementsUsed, type StatementsUsed } from './statements-used'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
@@ -67,6 +68,7 @@ export type TicketView = {
   events: EventView[]
   runs: RunView[]
   proofs: ProofGroup[]
+  mockups: AttachmentView[]
   pullRequest: PullView | null
   similarItems: ItemHit[]
   adopted: { pr: number; author: string } | null
@@ -164,6 +166,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     events: events.map((e) => ({ id: e.id, type: e.type, actor: e.actor, at: e.createdAt, label: labelOf(e) })),
     runs,
     proofs: await loadProofs(payload, stored.id),
+    mockups: await loadMockups(payload, stored.id),
     ...pulls,
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),

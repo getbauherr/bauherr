@@ -14,6 +14,7 @@ export const REASON_WORDS: Record<BriefReason | QuestionReason, string> = {
   'open-decision': 'This Brief has an open decision.',
   'one-way-door': 'This change cannot be undone.',
   'risk-area': 'This change touches a risk area of the Product.',
+  'visible-change': 'A user will see a difference on a screen: check the mockup.',
   backlog: 'This issue existed before the project was connected.',
   'external-request': 'A person outside the team asked for this change.',
   'failed-runs': 'Runs on this ticket failed several times in a row. What should the factory do?',

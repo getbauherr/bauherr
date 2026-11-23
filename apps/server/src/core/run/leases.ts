@@ -18,7 +18,7 @@ export type Expired = { runId: number; recordId: number; stage: Stage }
 
 const CLOSING_EVENTS = sql`('ticket.closed', 'intake.closed', 'brief.discarded')`
 
-const hashOf = (token: string): string => createHash('sha256').update(token).digest('hex')
+export const hashOf = (token: string): string => createHash('sha256').update(token).digest('hex')
 const leaseEnd = (now: Date): string => new Date(now.getTime() + LEASE_MS).toISOString()
 
 export const enqueue = async (

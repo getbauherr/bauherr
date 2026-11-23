@@ -27,10 +27,17 @@ export const BAUHERR_PAGES = [
 export const PO_ROUTES: Record<string, string> = {
   'api/hooks/[connection] POST': 'forge webhook: no session, signature-verified',
   'api/health GET': 'unauthenticated health probe',
+  'api/attachments/upload/[token] PUT': 'run image upload: no session, a one-time token',
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
 }
-export const BAUHERR_ROUTES: string[] = ['api/changes GET', 'mcp GET', 'mcp POST', 'mcp DELETE']
+export const BAUHERR_ROUTES: string[] = [
+  'api/attachments/[id] GET',
+  'api/changes GET',
+  'mcp GET',
+  'mcp POST',
+  'mcp DELETE',
+]
 export const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
@@ -90,6 +97,7 @@ export const PO_COLLECTIONS: Record<string, Record<string, string>> = {
 export const BAUHERR_COLLECTIONS = [
   'agent_keys',
   'agent_sessions',
+  'attachments',
   'connections',
   'events',
   'human_touches',

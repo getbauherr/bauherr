@@ -6,6 +6,8 @@ import type { Contexts } from '../../src/core/run/mcp/tool'
 import { mintAgentKey, resolveAgentKey, rotateApiKey } from '../../src/lib/api-key'
 import { openEngine, TEST_MODULES, type Engine } from './harness'
 
+export const ORIGIN = 'http://factory.test'
+
 export type Member = { id: number; agentToken: string; personalKey: string; keyId: number }
 
 export type Mcp = {
@@ -53,6 +55,7 @@ export const openMcp = async (suite: string, modules: Modules = TEST_MODULES): P
         deps: e.deps(),
         workspace: member === alpha ? e.db.workspace : e.db.otherWorkspace,
         keyId: member.keyId,
+        origin: ORIGIN,
       },
     }),
     person: (member, workspaceIds) => ({
