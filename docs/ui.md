@@ -6,9 +6,9 @@ The Bauherr UI is served at `/`. Everything an Admin configures is a page here, 
 
 Every signed-in page has the same frame.
 
-- **Sidebar**: Inbox, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
+- **Sidebar**: Inbox, Memory, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
 - **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page and finds Tickets.
-- **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause. It names queued work that cannot run, and only while runs wait: "No builder session is connected: 2 runs wait (Build 2)" with a Connect a session link, one line per role of a session Product with no session of that role seen for 10 minutes; "The Runner has not picked up a run for 10 minutes" when a Runner Product's run waits that long. A Runner Product never asks for a session. With no queued runs neither line shows, even when no session is connected.
+- **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause, only while runs wait: "No builder session is connected: 2 runs wait (Build 2)" with a Connect a session link, one line per role of a session Product with no session of that role seen for 10 minutes; "The Runner has not picked up a run for 10 minutes" when a Runner Product's run waits that long.
 - **Ask button**: opens the [chat](#chat) dock on `Ctrl/Cmd+J`.
 - **Workspace switcher**: appears with two or more Workspaces.
 
@@ -58,7 +58,7 @@ The page has two halves. On the left is the conversation with the factory, which
 The action bar atop the Now pane holds the next step: one sentence and one primary button naming it, such as Approve plan or Re-run Build.
 
 - **Approve plan** is refused while critical decisions are unanswered.
-- **Send back** asks for a note and returns the Ticket to Build or the Backlog. Every note has an Applies to choice: This ticket (the default) or This product, which hands it to later runs on the Product's other Tickets. The Ticket page lists each used note with its scope.
+- **Send back** asks for a note and returns the Ticket to Build or the Backlog. Every comment has an Applies to choice: This ticket (the default), This product or Do not remember. The Ticket page lists each used memory with its scope.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
 - **Round cap**: when review reaches its cap you grant one more round or stop.
 - **Close as done**: when Build reports another pull request or Ticket covers the work, the card asks "Close #n as done by #m?". Close comments with the evidence, closes the issue as completed and moves the Ticket to done; Re-run build queues Build again.
@@ -113,9 +113,11 @@ Settings are grouped by scope. Account is for everyone, with Profile and API key
 
 API keys lists each session with its live Runs and slots, for example "2 of 3 working": a session connected with a capacity of 1 to 4 holds that many Runs at once, one subagent each.
 
-Product settings list each Statement's Runs and failed Verifies. Unused 60 days: removable; back three times: flagged as a check.
-
 Only an Admin edits, except Profile and API keys. Members read the rest. The sidebar's Settings item opens Profile, and the command palette lists every page you may open.
+
+## Memory
+
+`/memory` lists what the factory remembers for one Product. A memory page edits, switches off or deletes it. The run page lists the memory a run got.
 
 ## Not in the UI, by design
 

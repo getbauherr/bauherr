@@ -41,7 +41,7 @@ describe('which answers are remembered', () => {
   it('stores the note of back-to-brief like a request for changes, on a card and without one', () => {
     for (const asked of ['question:agent', 'working']) {
       const given = { asked, choice: 'back-to-brief', note: 'redo it', card: null }
-      expect(statementOf(given)).toEqual({ kind: 'brief-change', text: 'redo it' })
+      expect(statementOf(given)).toEqual({ kind: 'brief-change', scope: 'ticket', text: 'redo it' })
     }
   })
 
@@ -60,6 +60,7 @@ describe('a free answer', () => {
     const card = { card: 'question' as const, reason: 'agent', options: ['a', 'b'], text: 'Which?' }
     expect(statementOf({ asked: 'question:agent', choice: 'own-answer', note: 'use a queue', card })).toEqual({
       kind: 'answer',
+      scope: 'product',
       text: 'Which?: use a queue',
     })
   })
@@ -113,6 +114,12 @@ describe('statementOf', () => {
     ).toBe('ticket')
   })
 
+  it('stores nothing when the owner chose not to remember', () => {
+    expect(statementOf({ ...given, choice: 'send-back', note: 'no', scope: 'none' })).toBeNull()
+    const answer = { asked: 'question:disputed', choice: 'accept', note: 'x', card: null, scope: 'none' as const }
+    expect(statementOf(answer)).toBeNull()
+  })
+
   it('never exceeds the limit', () => {
     const text = statementOf({ ...given, choice: 'send-back', note: 'x'.repeat(STATEMENT_MAX + 50) })?.text
     expect(text).toHaveLength(STATEMENT_MAX)
@@ -157,6 +164,23 @@ describe('decide with statements', () => {
     await decide(id, e.owner, { ...change, seq: await e.seq(id) }, e.deps())
     const stored = await statementsFor(e.db.payload, e.db.product, 5)
     expect(stored.map((s) => [s.text, s.scope])).toEqual([['always short', 'product']])
+  })
+
+  it('hands the note to the next run of the ticket but stores no statement when told not to remember', async () => {
+    const id = await e.db.fresh()
+    await advance(id, e.deps())
+    await e.work(id, 'builder', { verdict: 'accept' })
+    await e.work(id, 'builder', { goal: 'Fix it', open: true })
+    const change = { ask: 'brief', choice: 'request-changes', note: 'only for now', scope: 'none' as const }
+    await decide(id, e.owner, { ...change, seq: await e.seq(id) }, e.deps())
+    expect(await statementsFor(e.db.payload, e.db.product, 5)).toEqual([])
+    const events = await readEvents(e.db.payload, id)
+    const requested = events.find((event) => event.type === 'brief.changes-requested')
+    expect(requested?.data).toMatchObject({ note: 'only for now' })
+    const run = await e.db.payload.db.drizzle.execute(
+      sql`SELECT count(*)::int AS n FROM "statements" WHERE "record_id" = ${id}`,
+    )
+    expect(run.rows[0]?.n).toBe(0)
   })
 
   it('stores nothing when the decision is refused', async () => {

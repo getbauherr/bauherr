@@ -6,11 +6,11 @@ import type { Card } from './fold'
 import { STATEMENT_SCOPES, type NoteScope, type StatementScope } from './statement-scope'
 
 export const STATEMENT_MAX = 1000
-export const STATEMENT_KINDS = ['answer', 'send-back', 'brief-change', 'guidance'] as const
+export const STATEMENT_KINDS = ['answer', 'send-back', 'brief-change', 'guidance', 'written'] as const
 
 export type StatementKind = (typeof STATEMENT_KINDS)[number]
 export type Statement = { kind: StatementKind; text: string; scope: StatementScope }
-export type StoredStatement = Statement & { id: number; record: number; createdAt: string }
+export type StoredStatement = Statement & { id: number; record: number | null; createdAt: string }
 
 type Given = {
   asked: string | null
@@ -25,6 +25,7 @@ export const DEFAULT_SCOPE: Record<StatementKind, StatementScope> = {
   'send-back': 'ticket',
   'brief-change': 'ticket',
   guidance: 'ticket',
+  written: 'product',
 }
 
 const clip = (text: string): string => text.slice(0, STATEMENT_MAX)
@@ -58,7 +59,7 @@ export const statementOf = ({ asked, choice, note, card, scope }: Given): Statem
 
 const rowSchema = z.object({
   id: z.coerce.number(),
-  record_id: z.coerce.number(),
+  record_id: z.number().nullable(),
   kind: z.enum(STATEMENT_KINDS),
   scope: z.enum(STATEMENT_SCOPES),
   text: z.string(),
@@ -88,12 +89,4 @@ export const statementsFor = async (tx: Conn, product: number, limit: number): P
     const { id, kind, scope, text } = parsed
     return { id, record: parsed.record_id, kind, scope, text, createdAt }
   })
-}
-
-export const deleteStatement = async (tx: Conn, f: { workspace: number; product: number; id: number }) => {
-  const deleted = await tx.db.drizzle.execute(sql`
-    DELETE FROM "statements"
-    WHERE "id" = ${f.id} AND "product_id" = ${f.product} AND "workspace_id" = ${f.workspace}
-    RETURNING "id"`)
-  if (!deleted.rows[0]) throw new Error('That Statement is not in this Product.')
 }
