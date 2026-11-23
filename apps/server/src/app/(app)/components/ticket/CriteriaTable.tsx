@@ -3,7 +3,7 @@ import type { Criterion } from '../../../../core/record/schema'
 import type { ProofGroup } from '../../../../core/views/ticket-parts'
 import { CRITERION_WORDS, PROOF_WORDS, ticketHref, VERIFY_WORDS, type Tab } from '../../lib/ticket'
 import { WordBadge } from '../WordBadge'
-import { ImageThumb } from './ImageThumb'
+import { ImageGallery } from './ImageGallery'
 
 const TABLE = 'w-full border-collapse overflow-hidden rounded-md border border-border'
 const TH = 'label border-b border-border bg-secondary px-3 py-2 text-left font-medium text-muted-foreground'
@@ -29,7 +29,7 @@ function ProofLinks({ criterion, ...linking }: { criterion: Criterion } & ProofL
       {words}
       <span className="sr-only"> for criterion {criterion.id.slice(1)}</span>
     </Link>
-    {images.map((image) => <ImageThumb key={image.id} image={image} />)}
+    <ImageGallery images={images} />
     </div>
   )
 }
