@@ -5,13 +5,18 @@ import { Time } from '../Time'
 import { Table } from '../ui/table'
 
 function State({ row }: { row: SessionRow }) {
-  if (row.state !== 'working' || !row.ticket) return row.state
+  if (row.state !== 'working') return row.state
   return (
     <>
-      working on{' '}
-      <Link href={`/tickets/${row.ticket.recordId}`} className="text-primary underline underline-offset-2">
-        #{row.ticket.number}
-      </Link>
+      {row.tickets.length} of {row.capacity} working on{' '}
+      {row.tickets.map((ticket, index) => (
+        <span key={ticket.recordId}>
+          {index > 0 && ', '}
+          <Link href={`/tickets/${ticket.recordId}`} className="text-primary underline underline-offset-2">
+            #{ticket.number}
+          </Link>
+        </span>
+      ))}
     </>
   )
 }

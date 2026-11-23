@@ -10,6 +10,7 @@ import { openMcp, type Mcp } from './mcp-harness'
 vi.mock('../../src/lean', async () => ({
   MODULES: (await import('./harness')).TEST_MODULES,
   skillFor: () => Promise.resolve(null),
+  tierFor: () => Promise.resolve('standard'),
 }))
 
 let m: Mcp
