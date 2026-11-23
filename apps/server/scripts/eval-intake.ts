@@ -8,7 +8,7 @@ import { emptyRecord } from '../src/core/record/schema'
 import type { ContextPack } from '../src/core/run/pack'
 import { MAX_BUDGET_USD, MAX_TURNS, TIMEOUT_MS } from '../src/jobs/runner/deps'
 import { PROMPT, readResult, writeContext } from '../src/jobs/runner/workdir'
-import { skillFor } from '../src/lean'
+import { skillFor, tierFor } from '../src/lean'
 import { CASES, type EvalCase } from '../src/modules/intake/eval/cases'
 import { evaluateIntake, type Ask } from '../src/modules/intake/eval/run'
 import { intake } from '../src/modules/intake/module'
@@ -29,6 +29,7 @@ const packFor = async (evalCase: EvalCase, runId: number): Promise<ContextPack> 
   runId,
   stage: 'intake',
   role: 'builder',
+  model: { tier: await tierFor('builder') },
   record: emptyRecord(
     SOURCE(runId),
     evalCase.type,
