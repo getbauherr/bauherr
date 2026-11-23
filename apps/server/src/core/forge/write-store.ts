@@ -4,6 +4,15 @@ import { z } from 'zod'
 import { TargetNotFound } from './errors'
 
 export type Target = { recordId: number; itemId: number }
+export type ProductTarget = { workspace: number; product: number }
+
+export type ProductRow = {
+  source: number
+  repo: string
+  connection: number
+  productName: string
+  productState: string
+}
 
 export type WriteRow = {
   workspace: number
@@ -21,6 +30,34 @@ export type WriteRow = {
 }
 
 const count = z.coerce.number()
+
+const productRowSchema = z.object({
+  source_id: count,
+  repo: z.string(),
+  connection_id: count,
+  product_name: z.string(),
+  product_state: z.string(),
+})
+
+export const loadProductRow = async (payload: Payload, target: ProductTarget): Promise<ProductRow> => {
+  const result = await payload.db.drizzle.execute(sql`
+    SELECT s."id" AS source_id, s."repo", s."connection_id", p."name" AS product_name, p."state" AS product_state
+    FROM "products" p JOIN "ticket_sources" s ON s."product_id" = p."id"
+    WHERE p."id" = ${target.product} AND p."workspace_id" = ${target.workspace}
+    ORDER BY s."id" LIMIT 1`)
+  const row = result.rows[0]
+  if (!row) {
+    throw new TargetNotFound(`Product ${target.product} has no repository in this Workspace: connect one first.`)
+  }
+  const parsed = productRowSchema.parse(row)
+  return {
+    source: parsed.source_id,
+    repo: parsed.repo,
+    connection: parsed.connection_id,
+    productName: parsed.product_name,
+    productState: parsed.product_state,
+  }
+}
 
 const rowSchema = z.object({
   workspace_id: count,

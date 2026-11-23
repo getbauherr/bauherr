@@ -1,26 +1,38 @@
-import type { Backend, CloseReason, Comment, Forge, NewPullRequest, PullRequest, TicketSource } from '@bauherr/adapters'
+import type {
+  Backend,
+  CloseReason,
+  Comment,
+  Forge,
+  NewPullRequest,
+  PullRequest,
+  Ticket,
+  TicketSource,
+} from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { backendFor } from '../../lib/adapters'
 import { connectionInput } from '../../lib/connection'
 import { appendEvent } from '../record/store'
 import { WRITE_KINDS, type Stage } from '../events'
-import { commentRow, errorText, itemFromPull } from '../mirror/map'
+import { commentRow, errorText, itemFromPull, itemFromTicket } from '../mirror/map'
 import { upsertComments, upsertItem } from '../mirror/store'
 import { disclosed, hashBody, planStageLabels } from './disclosure'
 import { HeadMoved, ProductObserving, WrongItemKind } from './errors'
 import {
+  loadProductRow,
   loadWriteRow,
   saveClosed,
   saveLabels,
   saveReopened,
   saveStatusComment,
+  type ProductTarget,
   type Target,
   type WriteRow,
 } from './write-store'
 
 export type WriteKind = (typeof WRITE_KINDS)[number]
 export type WriterDeps = { backend: (connection: number) => Promise<Backend>; now: () => Date }
-export type { Target }
+export type { ProductTarget, Target }
+export type NewIssue = { title: string; body: string; reference: string }
 
 type Ctx = { payload: Payload; deps: WriterDeps }
 type Session = { row: WriteRow; tickets: TicketSource; forge: Forge }
@@ -138,6 +150,22 @@ const reviewPullRequest = async (ctx: Ctx, target: Target, body: string): Promis
   })
 }
 
+const openIssue = async (ctx: Ctx, target: ProductTarget, input: NewIssue): Promise<Ticket> => {
+  const row = await loadProductRow(ctx.payload, target)
+  if (row.productState !== 'active') {
+    throw new ProductObserving(`Product ${row.productName} is observing: nothing is written to the forge.`)
+  }
+  const tickets = (await ctx.deps.backend(row.connection)).tickets(row.repo)
+  const reference = `Reference: ${input.reference}`
+  const earlier = (await tickets.list({ state: 'all' })).find((t) => t.body?.trimEnd().endsWith(reference))
+  const issue = earlier
+    ? await tickets.get(earlier.id)
+    : await tickets.create({ title: input.title, body: disclosed(`${input.body}\n\n${reference}`) })
+  const { source, repo } = row
+  await upsertItem(ctx.payload, { ...target, source, repo }, itemFromTicket(issue), ctx.deps.now())
+  return issue
+}
+
 const closeIssue = async (ctx: Ctx, target: Target, reason: CloseReason): Promise<void> => {
   const session = await open(ctx, target, 'issue')
   await perform(ctx, target, 'close', session, {
@@ -163,6 +191,7 @@ export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(pa
     mergePullRequest: (target: Target, expectedHeadSha: string) => mergePullRequest(ctx, target, expectedHeadSha),
     openPullRequest: (target: Target, input: NewPullRequest) => openPullRequest(ctx, target, input),
     reviewPullRequest: (target: Target, body: string) => reviewPullRequest(ctx, target, body),
+    openIssue: (target: ProductTarget, input: NewIssue) => openIssue(ctx, target, input),
     closeIssue: (target: Target, reason: CloseReason) => closeIssue(ctx, target, reason),
     reopenIssue: (target: Target) => reopenIssue(ctx, target),
   }

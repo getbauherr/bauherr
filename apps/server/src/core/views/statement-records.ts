@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
+import { acceptedCheck, checkOf, mayMakeCheck, type CheckState, type Prevention } from '../memory-check'
 import { APPLIES, MEMORY_STAGES, REACH_LABEL, type Applies, type MemoryStage, type Reach } from '../memory'
 import { STATEMENT_SCOPES, type StatementScope } from '../statement-scope'
 import { STATEMENT_KINDS, type StatementKind } from '../statements'
@@ -41,6 +42,8 @@ export type StatementRecord = {
   off: boolean
   handed: number
   cameBack: number
+  check: CheckState
+  mayCheck: boolean
 }
 
 export type Fare = {
@@ -71,6 +74,10 @@ const recordRow = z.object({
   off: z.boolean(),
   handed: count,
   came_back: count,
+  check_issue: count.nullable(),
+  check_record: count.nullable(),
+  check_accepted: z.boolean(),
+  check_ended_at: z.coerce.date().nullable(),
 })
 
 const fareRow = z.object({
@@ -98,6 +105,15 @@ const recordOf = (raw: unknown): StatementRecord => {
   const reach = reachOf(row)
   const { record_id: record, source_number: number } = row
   const ticket = record === null || number === null ? null : { record, number }
+  const prevention: Prevention = {
+    scope: row.scope,
+    off: row.off,
+    cameBack: row.came_back,
+    issue: row.check_issue,
+    record: row.check_record,
+    accepted: row.check_accepted,
+    endedAt: row.check_ended_at?.toISOString() ?? null,
+  }
   return {
     id: row.id,
     kind: row.kind,
@@ -117,14 +133,26 @@ const recordOf = (raw: unknown): StatementRecord => {
     off: row.off,
     handed: row.handed,
     cameBack: row.came_back,
+    check: checkOf(prevention),
+    mayCheck: mayMakeCheck(prevention),
   }
 }
+
+const preventionRecord = sql`(SELECT c."id" FROM "records" c
+  WHERE c."workspace_id" = s."workspace_id" AND c."source_number" = s."check_issue"
+    AND c."data"->'source'->>'memory' = s."id"::text LIMIT 1)`
+
+const checkEndedAt = sql`(SELECT CASE WHEN e."type" = 'ticket.restored' THEN NULL ELSE e."created_at" END
+  FROM "events" e WHERE e."record_id" = ${preventionRecord}
+    AND e."type" IN ('ticket.closed', 'brief.discarded', 'ticket.restored')
+  ORDER BY e."id" DESC LIMIT 1)`
 
 const SELECT = sql`
   SELECT s."id", s."kind", s."text", s."original_text", s."source_kind", s."source_text", s."learn_run",
     (s."kind" = 'learned' AND s."seen_at" IS NULL) AS is_new, s."record_id", rec."source_number", s."scope",
     s."applies", s."area", s."stages", s."off", count(h.run_id) AS handed,
-    jsonb_array_length(s."came_back") AS came_back
+    jsonb_array_length(s."came_back") AS came_back, s."check_issue", ${preventionRecord} AS check_record,
+    ${acceptedCheck} AS check_accepted, ${checkEndedAt} AS check_ended_at
   FROM "statements" s
   LEFT JOIN "records" rec ON rec."id" = s."record_id"
   LEFT JOIN handed h ON h.statement_id = s."id"`
@@ -174,16 +202,23 @@ export const statementFare = async (payload: Payload, f: { workspace: number; id
   })
 }
 
-export type MemoryProduct = { id: number; name: string; riskAreas: string[] }
+export type MemoryProduct = { id: number; name: string; riskAreas: string[]; repo: string | null }
 
-const productRow = z.object({ id: count, name: z.string(), risk_areas: z.array(z.string()).nullable() })
+const productRow = z.object({
+  id: count,
+  name: z.string(),
+  risk_areas: z.array(z.string()).nullable(),
+  repo: z.string().nullable(),
+})
 
 export const memoryProducts = async (payload: Payload, workspace: number): Promise<MemoryProduct[]> => {
   const found = await payload.db.drizzle.execute(sql`
-    SELECT "id", "name", "risk_areas" FROM "products" WHERE "workspace_id" = ${workspace} ORDER BY "name", "id"`)
+    SELECT p."id", p."name", p."risk_areas",
+      (SELECT s."repo" FROM "ticket_sources" s WHERE s."product_id" = p."id" ORDER BY s."id" LIMIT 1) AS repo
+    FROM "products" p WHERE p."workspace_id" = ${workspace} ORDER BY p."name", p."id"`)
   return found.rows.map((raw) => {
     const row = productRow.parse(raw)
-    return { id: row.id, name: row.name, riskAreas: row.risk_areas ?? [] }
+    return { id: row.id, name: row.name, riskAreas: row.risk_areas ?? [], repo: row.repo }
   })
 }
 
