@@ -84,6 +84,16 @@ const run = (stage: Stage, role: Role): Step => ({ kind: 'run', stage, role })
 const wait = (on: WaitOn): Step => ({ kind: 'wait', on })
 const question = (reason: string, options: string[]): Step => ({ kind: 'card', card: 'question', reason, options })
 
+const learn: Rule = (record, state, config) => {
+  if (state.stage !== 'done' || state.closed !== null || !state.accepted || state.learned) return null
+  if (!state.corrected && !record.findings.some((finding) => finding.status === 'fixed')) return null
+  if (state.run) return wait('run')
+  if (state.failedRuns >= config.caps.failedRuns) {
+    return { kind: 'emit', event: { type: 'learn.skipped', data: { reason: 'the Learn run failed twice' } } }
+  }
+  return run('done', 'reviewer')
+}
+
 const closed: Rule = (_r, state) => (state.closed !== null || state.stage === 'done' ? { kind: 'done' } : null)
 const cardOpen: Rule = (_r, state) => (state.card ? wait('owner') : null)
 const runLive: Rule = (_r, state) => (state.run ? wait('run') : null)
@@ -153,7 +163,7 @@ const ship: Rule = (_r, state, config) => {
   return state.merged ? afterMerge(state, config) : { kind: 'effect', effect: 'merge' }
 }
 
-const RULES: Rule[] = [closed, cardOpen, runLive, failedRuns, intake, brief, build, author, verify, ship]
+const RULES: Rule[] = [learn, closed, cardOpen, runLive, failedRuns, intake, brief, build, author, verify, ship]
 
 export const next = (record: TicketRecord, state: State, config: Config): Step => {
   for (const rule of RULES) {

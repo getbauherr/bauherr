@@ -18,6 +18,7 @@ import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
 import { activityOf, type EventView } from './activity'
 import { loadMockups, type AttachmentView } from './attachments'
+import { keptMemories } from './statement-records'
 import { statementsUsed, type StatementsUsed } from './statements-used'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
 import { TERMINAL_EVENTS } from './sql'
@@ -146,6 +147,12 @@ const statusFor = (stored: StoredRecord, runs: RunView[], events: StoredEvent[],
 const lacksMockup = (record: TicketRecord, mockups: AttachmentView[]): boolean =>
   record.visible && mockups.length === 0
 
+const withKept = async (payload: Payload, recordId: number, views: EventView[]): Promise<EventView[]> => {
+  if (!views.some((view) => view.type === 'learn.submitted')) return views
+  const memories = await keptMemories(payload, recordId)
+  return views.map((view) => (view.type === 'learn.submitted' ? { ...view, memories } : view))
+}
+
 export const ticket = async (payload: Payload, filter: TicketFilter): Promise<TicketView> => {
   const stored = await readRecord(payload, filter.recordId)
   if (stored.workspace !== filter.workspace) {
@@ -174,7 +181,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     card: stored.card,
     record: stored.record,
     source: issue && { repo, number, title: issue.title, body: issue.body, url: issue.url },
-    events: activityOf(events),
+    events: await withKept(payload, stored.id, activityOf(events)),
     runs,
     proofs: await loadProofs(payload, stored.id),
     mockups,

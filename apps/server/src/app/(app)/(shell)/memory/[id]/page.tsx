@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { markMemorySeen } from '../../../../../core/memory-store'
 import { memoryProducts, statementFare, statementRecord } from '../../../../../core/views/statement-records'
 import { EditMemory } from '../../../components/memory/EditMemory'
 import { Fared, Origin } from '../../../components/memory/MemoryDetail'
@@ -20,6 +21,7 @@ export default async function MemoryOnePage({ params }: { params: Promise<{ id: 
   if (!record) notFound()
   const product = (await memoryProducts(payload, workspace.id)).find((entry) => entry.id === record.product)
   if (!product) notFound()
+  await markMemorySeen(payload, { workspace: workspace.id, id })
   const fares = await statementFare(payload, { workspace: workspace.id, id })
   const title = record.text.length > TITLE_MAX ? `${record.text.slice(0, TITLE_MAX)}…` : record.text
   const stages = record.stages

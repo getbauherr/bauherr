@@ -2,12 +2,22 @@ import { sql } from '@payloadcms/db-postgres'
 import { describe, expect, it } from 'vitest'
 import { decide } from '../../src/core/decide'
 import { DISCLOSURE } from '../../src/core/forge/disclosure'
+import type { Finding } from '../../src/core/record/schema'
+import { patchRecord, readRecord } from '../../src/core/record/store'
 import { LEASE_MS } from '../../src/core/run/leases'
 import { buildResult } from './modules-harness'
 import { runnerHarness } from './runner-harness'
 
 const r = runnerHarness('core_runner_job')
 const { f } = r
+
+const FIXED: Finding = {
+  id: 'f1',
+  axis: 'spec',
+  text: 'The list drops the last row',
+  evidence: { kind: 'repro', pointer: 'open the list with three rows' },
+  status: 'fixed',
+}
 
 const ids = (rows: Record<string, unknown>[]) => rows.map((row) => Number(row.id))
 
@@ -232,6 +242,32 @@ describe('the whole flow on the fake forge', () => {
     const owner = { id: 'u7', role: 'bauherr', workspaceIds: [f.h.ids.workspace] }
     await decide(s.id, owner, { ask: 'result', choice: 'accept', seq: view.card?.seq ?? -1 }, f.subDeps())
     expect((await f.view(s.id)).stage).toBe('done')
+  })
+
+  it('works the Learn run of a corrected ticket read-only and keeps nothing for an empty answer', async () => {
+    const s = await r.toBuild()
+    await r.next()
+    await r.green(s)
+    await r.next()
+    await r.next()
+    const stored = await readRecord(f.h.payload(), s.id)
+    await patchRecord(f.h.payload(), s.id, {
+      expectedVersion: stored.version,
+      writes: ['findings'],
+      patch: { findings: [FIXED] },
+      by: { stage: 'verify', runId: 'x' },
+    })
+    const card = (await f.view(s.id)).card
+    const owner = { id: 'u7', role: 'bauherr', workspaceIds: [f.h.ids.workspace] }
+    await decide(s.id, owner, { ask: 'result', choice: 'accept', seq: card?.seq ?? -1 }, f.subDeps())
+    expect(await f.view(s.id)).toMatchObject({ stage: 'done', waitingOn: 'nobody' })
+    r.seen.length = 0
+    expect(await r.next()).toBe('accepted')
+    expect(r.seen[0]?.request).toMatchObject({ stage: 'done', model: 'model-for-reviewer', readOnly: true })
+    expect(await r.runRow('done')).toMatchObject({ status: 'submitted', leased_by: 'runner-reviewer' })
+    expect(await r.events(s.id)).toContain('learn.submitted')
+    expect(await r.next()).toBe('idle')
+    expect(r.gone()).toBe(true)
   })
 
   it('pushes a send-back Build to the same pull request', async () => {

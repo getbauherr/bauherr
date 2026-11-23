@@ -6,7 +6,7 @@ import type { Card } from './fold'
 import { STATEMENT_SCOPES, type NoteScope, type StatementScope } from './statement-scope'
 
 export const STATEMENT_MAX = 1000
-export const STATEMENT_KINDS = ['answer', 'send-back', 'brief-change', 'guidance', 'written'] as const
+export const STATEMENT_KINDS = ['answer', 'send-back', 'brief-change', 'guidance', 'written', 'learned'] as const
 
 export type StatementKind = (typeof STATEMENT_KINDS)[number]
 export type Statement = { kind: StatementKind; text: string; scope: StatementScope }
@@ -26,6 +26,7 @@ export const DEFAULT_SCOPE: Record<StatementKind, StatementScope> = {
   'brief-change': 'ticket',
   guidance: 'ticket',
   written: 'product',
+  learned: 'product',
 }
 
 const clip = (text: string): string => text.slice(0, STATEMENT_MAX)

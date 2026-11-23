@@ -1,10 +1,14 @@
 import Link from 'next/link'
 import type { StatementRecord } from '../../../../core/views/statement-records'
-import { KIND_WORDS } from '../../../../core/views/statement-records'
 import { Badge } from '../ui/badge'
 import { Table } from '../ui/table'
 
 const COUNT = 'mono text-right'
+
+const stateOf = (record: StatementRecord) => {
+  if (record.off) return <Badge>Off</Badge>
+  return record.isNew ? <Badge variant="accent">New</Badge> : <Badge variant="ok">Active</Badge>
+}
 
 export function MemoryTable({ records }: { records: StatementRecord[] }) {
   return (
@@ -28,7 +32,7 @@ export function MemoryTable({ records }: { records: StatementRecord[] }) {
               </Link>
             </td>
             <td>
-              {KIND_WORDS[record.kind]}
+              {record.from}
               {record.ticket !== null && (
                 <>
                   {', '}
@@ -41,7 +45,7 @@ export function MemoryTable({ records }: { records: StatementRecord[] }) {
             <td>{record.reachLabel}</td>
             <td className={COUNT}>{record.handed}</td>
             <td className={COUNT}>{record.cameBack}</td>
-            <td>{record.off ? <Badge>Off</Badge> : <Badge variant="ok">Active</Badge>}</td>
+            <td>{stateOf(record)}</td>
           </tr>
         ))}
       </tbody>
