@@ -111,8 +111,12 @@ const runOf = async (record: number, stage: Stage, role: Role = 'builder') => {
 const packOf = async (record: number, stage: Stage, role: Role = 'builder') =>
   contextPack(e.deps(), await runOf(record, stage, role))
 
-const said = (record: number, text: string, kind: 'answer' | 'guidance' = 'answer') =>
-  storeStatement(e.db.payload, record, { kind, text })
+const said = (
+  record: number,
+  text: string,
+  kind: 'answer' | 'guidance' = 'answer',
+  scope: 'ticket' | 'product' = 'product',
+) => storeStatement(e.db.payload, record, { kind, text, scope })
 
 describe('matching owner statements', () => {
   it('reach a brief, build and verify run from the Product\'s other tickets, best first, at most 5', async () => {
@@ -132,7 +136,17 @@ describe('matching owner statements', () => {
     expect((await packOf(own, 'verify', 'verifier')).statements).toHaveLength(5)
   })
 
-  it('leaves out the record itself, other Products and the intake stage', async () => {
+  it('hands a ticket its own statements of any scope and only product statements of the others', async () => {
+    const a = await ticketWith('Export timeout')
+    const b = await ticketWith('Export timeout again')
+    await said(a, 'Export timeout one-off for a', 'guidance', 'ticket')
+    await said(a, 'Export timeout rule for the product', 'answer', 'product')
+    const texts = async (record: number) => (await packOf(record, 'build')).statements.map((s) => s.text).sort()
+    expect(await texts(a)).toEqual(['Export timeout one-off for a', 'Export timeout rule for the product'])
+    expect(await texts(b)).toEqual(['Export timeout rule for the product'])
+  })
+
+  it('leaves out other Products, the intake stage and ticket-scoped statements of other tickets', async () => {
     const own = await ticketWith('Export timeout')
     const foreign = await e.db.payload.create({
       collection: 'products',
@@ -140,11 +154,11 @@ describe('matching owner statements', () => {
       overrideAccess: true,
     })
     const abroad = await ticketWith('Export timeout', '', { product: Number(foreign.id), number: 9001 })
-    await said(own, 'Export timeout rules of this very ticket')
     await said(abroad, 'Export timeout rules of another Product')
     expect((await packOf(own, 'brief')).statements).toEqual([])
     const near = await ticketWith('Reports')
     await said(near, 'Export timeout rules of a neighbour')
+    await said(near, 'Export timeout one-off of a neighbour', 'guidance', 'ticket')
     expect((await packOf(own, 'intake')).statements).toEqual([])
     expect((await packOf(own, 'build')).statements.map((s) => s.text)).toEqual(['Export timeout rules of a neighbour'])
   })
@@ -276,6 +290,8 @@ describe('what a run used is shown', () => {
     ])
     expect(after.statementsUsed.brief[0]).toMatchObject({
       kind: 'guidance',
+      scope: 'product',
+      scopeLabel: 'This product',
       ticket: await number(other),
       record: other,
     })

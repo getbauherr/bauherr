@@ -85,14 +85,14 @@ function ActionBar(props: {
 
 function Form({ recordId, ask, seq, sentence, actions, pick, children }: Props) {
   const form = useRef<HTMLFormElement>(null)
-  const comment = useComment()
+  const comment = useComment(ask.startsWith('question:') ? 'product' : 'ticket')
   const [error, setError] = useState<string | null>(null)
   const [pending, start] = useTransition()
 
   const send = (action: DecisionAction) =>
     start(async () => {
       const answers = form.current && action.choice === 'approve' ? answersOf(form.current) : {}
-      const note = comment.empty ? {} : { note: comment.note }
+      const note = comment.empty ? {} : { note: comment.note, scope: comment.scope }
       const extra = { ...note, ...(Object.keys(answers).length > 0 ? { answers } : {}) }
       const result = await decideTicket({ recordId, ask, seq, choice: action.choice, ...extra })
       setError(result.error ?? null)
@@ -132,7 +132,9 @@ function Form({ recordId, ask, seq, sentence, actions, pick, children }: Props) 
           hint={comment.hint}
           missing={comment.empty ? comment.missing : null}
           areaRef={comment.area}
+          scope={comment.scope}
           onChange={comment.setNote}
+          onScope={comment.setScope}
         />
       ) : (
         <CommentToggle onOpen={() => comment.reveal(null)} />

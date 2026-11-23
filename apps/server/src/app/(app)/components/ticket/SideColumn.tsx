@@ -116,7 +116,8 @@ function AnswersUsed({ view }: { view: TicketView }) {
           &quot;{statement.text}&quot;{' '}
           <Link href={`/tickets/${statement.record}`} className="text-muted-foreground underline">
             #{statement.ticket}, {shortDate(statement.at)}
-          </Link>
+          </Link>{' '}
+          <span className="text-muted-foreground">({statement.scopeLabel})</span>
         </span>
       ))}
     </Aside>
