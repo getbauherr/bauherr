@@ -17,6 +17,8 @@ Cut from the lean core on 2026-11-19. The code is at the git tag `legacy-final`.
 - A Ticket is done when the owner accepts the result on a running deploy, not when it merges (#670, #671).
 - Owners need release notes in plain words per version and area (#707), and a tested path from release candidate to final (#659, #670).
 - Release and deploy failures must be visible and retryable without double publishing (#688, #690, #695).
+- The last release is the highest semver version tag, read from tags and Releases together; a tag without a Release counts. Pre-releases count only while the newest version is one (#627).
+- A version whose tag exists is never proposed or accepted. Shipping refuses a tag that exists on another commit and names it, for example "v0.3.0 already exists on 0696693; pick 0.3.1" (#627).
 - Docs: `docs/spec/release.md` (81 lines), `docs/releasing.md` (78).
 
 ## Where the code is
@@ -43,5 +45,6 @@ The lean core's Ship stage merges, watches the deploy and asks the owner to acce
 - Trap: checks of a label-triggered workflow must report on the Ticket's merge SHA, else the wait ends `timed_out`; only runs started after approval minus 60 s of skew count.
 - Trap: a tag pushed with `GITHUB_TOKEN` starts no workflow; `gh workflow run --ref <tag>` was needed.
 - Trap: a merge may close the issue; the old code reopened it once (`bauherr:reopened`).
+- Trap: v0.3.0 was tagged by hand and got no GitHub Release, and `releaseDraft` read only `listReleases`. `lastRelease*` was written only while empty, so it stayed at v0.2.1 and the page proposed 0.3.0 again (#627).
 - Seen in souls-house ([deploy on green](https://github.com/swombat/souls-house/blob/master/docs/operations/github-deployments.md)): the deploy request carries the commit CI tested. If `main` has moved on, the result is `superseded` and nothing ships. Merged, CI green and deployed-and-verified stay three states. A failed deploy blocks the next one until a person acknowledges it.
 - Seen in souls-house ([CONTRIBUTING](https://github.com/swombat/souls-house/blob/master/CONTRIBUTING.md)): a pull request with a change a user can see carries its changelog entry, and a missing entry is treated like a missing test. The Result card already separates visible from internal changes, so the entry can be made from it.

@@ -49,6 +49,8 @@ const eventSchema = z.discriminatedUnion('type', [
   event('brief.changes-requested', z.object({ note: id })),
   event('brief.discarded', none),
   event('build.submitted', z.object({ runId: id, patchId: id, headSha: id, pr: z.number().int().positive() })),
+  event('build.already-done', z.object({ runId: id, by: id, evidence: id })),
+  event('ticket.done-elsewhere', none),
   event('pull.adopted', z.object({ pr: z.number().int().positive(), headSha: id, patchId: id })),
   event('checks.finished', z.object({ patchId: id, passed: z.boolean() })),
   event('verify.passed', z.object({ runId: id, patchId: id, headSha: id })),
