@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DECISIONS } from '../src/core/decisions'
-import { CHOICE_WORDS, NOTE_PROMPTS, REASON_WORDS } from '../src/app/(app)/lib/ticket-words'
+import { CHOICE_WORDS, NOTE_PROMPTS, NOTE_SAYS, REASON_WORDS } from '../src/app/(app)/lib/ticket-words'
 
 const QUESTIONS = Object.keys(DECISIONS)
   .filter((ask) => ask.startsWith('question:') && ask !== 'question:agent')
@@ -28,5 +28,6 @@ describe('the words of a card', () => {
       Object.entries(choices).filter(([, entry]) => entry.needsNote).map(([choice]) => `${ask}/${choice}`),
     )
     expect(Object.keys(NOTE_PROMPTS).sort()).toEqual(needing.sort())
+    expect(Object.keys(NOTE_SAYS).sort()).toEqual(needing.sort())
   })
 })

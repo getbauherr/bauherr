@@ -1,8 +1,9 @@
+import { OWN_ANSWER } from '../../../../core/decisions'
 import type { StoredCard } from '../../../../core/record/store'
 import type { TicketView } from '../../../../core/views/ticket'
 import { ANSWER_ACTION, BACK_ACTION } from '../../lib/decision-actions'
 import { questionFacts, recommendedOption } from '../../lib/question-facts'
-import { CHOICE_WORDS, NOTE_PROMPTS, REASON_WORDS } from '../../lib/ticket-words'
+import { CHOICE_WORDS, NOTE_PROMPTS, NOTE_SAYS, REASON_WORDS } from '../../lib/ticket-words'
 import { DecisionForm } from './DecisionForm'
 import { Card, Section } from './Section'
 
@@ -24,6 +25,10 @@ export function QuestionCard({ view, card, may }: Props) {
   const facts = questionFacts(view, card.reason)
   const remembered = view.answerRemembered ? 'Your answer is remembered for similar tickets.' : undefined
   const recommended = recommendedOption(view, card.reason)
+  const choices = [...card.options, ...(card.reason === 'agent' ? [OWN_ANSWER] : [])].map((option) => ({
+    option,
+    label: CHOICE_WORDS[ask]?.[option] ?? option,
+  }))
   const actions = view.canGoBack && card.reason === 'agent' ? [BACK_ACTION, ANSWER_ACTION] : [ANSWER_ACTION]
   return (
     <Card bare>
@@ -51,23 +56,21 @@ export function QuestionCard({ view, card, may }: Props) {
           )}
           <fieldset className="m-0 grid gap-2 border-0 p-0">
             <legend className="sr-only">Answer</legend>
-            {card.options.map((option) => {
-              const label = CHOICE_WORDS[ask]?.[option] ?? option
-              return (
-                <label key={option} className={OPTION}>
-                  <input
-                    type="radio"
-                    name="choice"
-                    value={option}
-                    data-label={label}
-                    data-prompt={NOTE_PROMPTS[`${ask}/${option}`]}
-                    className="accent-primary"
-                  />
-                  <span className="font-medium">{label}</span>
-                  {option === recommended && <span className="small text-muted-foreground">recommended</span>}
-                </label>
-              )
-            })}
+            {choices.map(({ option, label }) => (
+              <label key={option} className={OPTION}>
+                <input
+                  type="radio"
+                  name="choice"
+                  value={option}
+                  data-label={label}
+                  data-prompt={NOTE_PROMPTS[`${ask}/${option}`]}
+                  data-say={NOTE_SAYS[`${ask}/${option}`]}
+                  className="accent-primary"
+                />
+                <span className="font-medium">{label}</span>
+                {option === recommended && <span className="small text-muted-foreground">recommended</span>}
+              </label>
+            ))}
           </fieldset>
         </div>
       </DecisionForm>

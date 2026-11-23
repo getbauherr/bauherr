@@ -52,7 +52,7 @@ export const CHOICE_WORDS: Record<string, Record<string, string>> = {
   'question:deploy-stalled': { 'check-again': 'Check again', continue: 'It is deployed: go on' },
   'question:production': { approve: 'Approve production', hold: 'Hold production' },
   'production-held': { 'approve-production': 'Approve production' },
-  'question:agent': { 'back-to-brief': 'Back to Brief' },
+  'question:agent': { 'back-to-brief': 'Back to Brief', 'own-answer': 'None of these, my answer:' },
   working: { 'back-to-brief': 'Back to Brief' },
 }
 
@@ -64,6 +64,16 @@ export const NOTE_PROMPTS: Record<string, string> = {
   'question:agent/back-to-brief': BACK_PROMPT,
   'working/back-to-brief': BACK_PROMPT,
   'question:failed-runs/retry-with-guidance': 'The agent reads this before it tries again.',
+  'question:agent/own-answer': 'The agent reads this as your answer.',
+}
+
+export const NOTE_SAYS: Record<string, string> = {
+  'brief/request-changes': 'Say what should change',
+  'result/send-back': 'Say what should change',
+  'question:agent/back-to-brief': 'Say what is wrong with the Brief',
+  'working/back-to-brief': 'Say what is wrong with the Brief',
+  'question:failed-runs/retry-with-guidance': 'Say what the agent should do differently',
+  'question:agent/own-answer': 'Write your answer',
 }
 
 export const STALE_SENTENCE = 'The ticket moved while this was open. Reload to see where it is now.'

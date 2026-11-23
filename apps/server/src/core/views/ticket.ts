@@ -2,7 +2,6 @@ import type { Payload } from 'payload'
 import { commitChecksUrl } from '../deploy'
 import { isRemembered } from '../decisions'
 import { canGoBack, fold } from '../lifecycle'
-import type { Actor, EventType } from '../events'
 import { RecordNotFound } from '../record/errors'
 import {
   readEvents,
@@ -17,7 +16,7 @@ import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
 import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
-import { labelOf } from './labels'
+import { activityOf, type EventView } from './activity'
 import { statementsUsed, type StatementsUsed } from './statements-used'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
 import { TERMINAL_EVENTS } from './sql'
@@ -36,7 +35,7 @@ import {
 
 export const SIMILAR_LIMIT = 3
 
-export type EventView = { id: number; type: EventType; actor: Actor; at: string; label: string }
+export type { EventView }
 
 export type PullView = {
   number: number
@@ -163,7 +162,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     card: stored.card,
     record: stored.record,
     source: issue && { repo, number, title: issue.title, body: issue.body, url: issue.url },
-    events: events.map((e) => ({ id: e.id, type: e.type, actor: e.actor, at: e.createdAt, label: labelOf(e) })),
+    events: activityOf(events),
     runs,
     proofs: await loadProofs(payload, stored.id),
     ...pulls,

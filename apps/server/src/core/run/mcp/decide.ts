@@ -1,11 +1,13 @@
 import { z } from 'zod'
-import { decide as decideRecord, NOTE_MAX } from '../../decide'
+import { decide as decideRecord } from '../../decide'
+import { NOTE_MAX } from '../../limits'
 import { defineTool } from './tool'
 
 export const decide = defineTool({
   name: 'decide',
   description:
     'Records the owner decision on the card a ticket currently shows. ' +
+    'A note goes with any choice; choice own-answer on an agent question answers it in free text. ' +
     'Returns once the decision is applied; a stale card is refused.',
   access: 'person',
   input: z.strictObject({

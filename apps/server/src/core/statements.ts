@@ -1,7 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import type { Conn } from './conn'
-import { isRemembered } from './decisions'
+import { isRemembered, OWN_ANSWER } from './decisions'
 import type { Card } from './fold'
 
 export const STATEMENT_MAX = 1000
@@ -23,13 +23,18 @@ const NOTE_KINDS: Record<string, StatementKind> = {
   'question:failed-runs/retry-with-guidance': 'guidance',
 }
 
+const answerText = (choice: string, note: string): string => {
+  if (choice === OWN_ANSWER) return note
+  return note === '' ? choice : `${choice}. ${note}`
+}
+
 export const statementOf = ({ asked, choice, note, card }: Given): Statement | null => {
   const kind = NOTE_KINDS[`${asked}/${choice}`]
   if (kind) return { kind, text: clip(note) }
   if (asked?.startsWith('question:')) {
     if (!isRemembered(asked.slice('question:'.length))) return null
     const question = card?.text ?? asked.slice('question:'.length)
-    return { kind: 'answer', text: clip(note === '' ? `${question}: ${choice}` : `${question}: ${choice}. ${note}`) }
+    return { kind: 'answer', text: clip(`${question}: ${answerText(choice, note)}`) }
   }
   return note === '' ? null : { kind: 'guidance', text: clip(note) }
 }
