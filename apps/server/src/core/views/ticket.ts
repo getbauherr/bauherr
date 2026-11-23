@@ -28,6 +28,7 @@ import {
   loadOtherPulls,
   loadProofs,
   loadRuns,
+  pullNumberOf,
   type CheckView,
   type OtherPull,
   type ProofGroup,
@@ -99,8 +100,7 @@ const pullOf = async (
 
 const pullsOf = async (payload: Payload, stored: StoredRecord, events: StoredEvent[]) => {
   const { repo, number, adopted } = stored.record.source
-  const built = events.findLast((event) => event.type === 'build.submitted')
-  const pr = adopted?.pr ?? (built?.type === 'build.submitted' ? built.data.pr : undefined)
+  const pr = pullNumberOf(stored, events)
   const pullRequest = await pullOf(payload, stored.workspace, repo, pr)
   return {
     pullRequest,

@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { RunNotFound } from '../../../../../core/run/errors'
-import { runPage } from '../../../../../core/views/run'
+import { runPage, type RunPage } from '../../../../../core/views/run'
 import { AutoRefresh } from '../../../components/AutoRefresh'
 import { EmptyState } from '../../../components/EmptyState'
 import { PageTitle } from '../../../components/PageTitle'
+import { ForgeLink } from '../../../components/ticket/ForgeLink'
 import { RunAside } from '../../../components/ticket/RunAside'
 import { RunSteps } from '../../../components/ticket/RunSteps'
 import { Time } from '../../../components/Time'
@@ -13,6 +14,11 @@ import { STAGE_NAMES, workerOf } from '../../../lib/factory'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
+
+const wordOf = (run: RunPage) =>
+  run.health
+    ? { word: `No sign of life for ${run.health.silentMinutes} min`, tone: 'destructive' as const }
+    : (RUN_WORDS[run.status] ?? { word: run.status, tone: 'neutral' as const })
 
 const GONE = { href: '/', label: 'Back to the Factory' }
 
@@ -39,14 +45,17 @@ export default async function RunPageRoute({ params }: { params: Promise<{ id: s
           #{ticket.number} {ticket.title}
         </Link>
         <h1 className="title mono">Run {run.id}</h1>
-        <WordBadge word={RUN_WORDS[run.status] ?? { word: run.status, tone: 'neutral' }} />
+        <WordBadge word={wordOf(run)} />
+        {run.pullRequest && (
+          <ForgeLink href={run.pullRequest.url} label={`Open pull request #${run.pullRequest.number}`} />
+        )}
         <p className="small ml-auto text-muted-foreground">
           {STAGE_NAMES[run.stage]} · {ROLE_WORDS[run.role] ?? run.role}
           {run.leasedBy !== null && ` · ${workerOf(run.leasedBy).name}`} · started{' '}
           <Time iso={run.startedAt} />
         </p>
       </div>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <RunSteps run={run} />
         <RunAside run={run} admin={admin} />
       </div>

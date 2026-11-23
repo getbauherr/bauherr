@@ -4,10 +4,11 @@ import { z } from 'zod'
 import { stageSchema, type Stage } from '../events'
 import { RunNotFound } from '../run/errors'
 import { contextSchema, ROLES, type RunStep, type StoredContext } from '../run/schema'
-import { readRecord } from '../record/store'
+import { readEvents, readRecord, type StoredRecord } from '../record/store'
 import type { TicketRecord } from '../record/schema'
 import { loadRunAttachments, type AttachmentView } from './attachments'
-import { loadItem } from './ticket-parts'
+import { AGENT_SILENCE_MS } from './holds'
+import { loadItem, pullNumberOf } from './ticket-parts'
 
 const count = z.coerce.number()
 
@@ -23,6 +24,7 @@ const row = z.object({
   cost_usd: z.coerce.number().nullable(),
   context: contextSchema.nullable(),
   created_at: z.coerce.date(),
+  updated_at: z.coerce.date(),
   started_at: z.coerce.date().nullable(),
   finished_at: z.coerce.date().nullable(),
 })
@@ -44,9 +46,12 @@ export type RunPage = {
   parts: RunPart[]
   costUsd: number | null
   attachments: AttachmentView[]
+  health: { silentMinutes: number } | null
+  sessionConnected: boolean | null
+  pullRequest: { number: number; url: string } | null
 }
 
-export type RunFilter = { workspace: number; runId: number; withCost: boolean }
+export type RunFilter = { workspace: number; runId: number; withCost: boolean; now?: Date }
 
 const counted = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 
@@ -80,14 +85,34 @@ const handoffOf = (run: { stage: Stage; status: string }, record: Pick<TicketRec
   return ended && run.stage === 'build' && record.handoff !== '' ? record.handoff : null
 }
 
+const healthOf = (run: { status: string; updated_at: Date }, now: Date): RunPage['health'] => {
+  const silent = now.getTime() - run.updated_at.getTime()
+  return run.status === 'claimed' && silent >= AGENT_SILENCE_MS ? { silentMinutes: Math.floor(silent / 60_000) } : null
+}
+
+const sessionConnected = async (payload: Payload, workspace: number, role: string, now: Date): Promise<boolean> => {
+  const since = new Date(now.getTime() - AGENT_SILENCE_MS).toISOString()
+  const found = await payload.db.drizzle.execute(sql`
+    SELECT 1 FROM "agent_sessions" WHERE "workspace_id" = ${workspace} AND "role" = ${role}
+      AND "disconnected_at" IS NULL AND "last_seen_at" >= ${since}::timestamptz LIMIT 1`)
+  return found.rows.length > 0
+}
+
+const pullOf = async (payload: Payload, stored: StoredRecord, number: number | undefined) => {
+  if (number === undefined) return null
+  const item = await loadItem(payload, { workspace: stored.workspace, repo: stored.record.source.repo, number })
+  return item?.url ? { number, url: item.url } : null
+}
+
 export const runPage = async (payload: Payload, filter: RunFilter): Promise<RunPage> => {
   const found = await payload.db.drizzle.execute(sql`
     SELECT "id", "record_id", "stage", "role", "status", "leased_by", "steps", "error", "cost_usd", "context",
-      "created_at", "started_at", "finished_at"
+      "created_at", "updated_at", "started_at", "finished_at"
     FROM "stage_runs" WHERE "id" = ${filter.runId} AND "workspace_id" = ${filter.workspace}`)
   const raw = found.rows[0]
   if (!raw) throw new RunNotFound(`Run ${filter.runId} does not exist: check the id.`)
   const run = row.parse(raw)
+  const now = filter.now ?? new Date()
   const stored = await readRecord(payload, run.record_id)
   const { repo, number } = stored.record.source
   const issue = await loadItem(payload, { workspace: stored.workspace, repo, number })
@@ -106,5 +131,8 @@ export const runPage = async (payload: Payload, filter: RunFilter): Promise<RunP
     parts: partsOf(run.stage, stored.record, run.context),
     costUsd: filter.withCost ? run.cost_usd : null,
     attachments: await loadRunAttachments(payload, run.id),
+    health: healthOf(run, now),
+    sessionConnected: run.status === 'queued' ? await sessionConnected(payload, stored.workspace, run.role, now) : null,
+    pullRequest: await pullOf(payload, stored, pullNumberOf(stored, await readEvents(payload, run.record_id))),
   }
 }

@@ -95,7 +95,7 @@ const inTickets =
 
 const runOf = (title: string) => async (page: Page) => {
   await page.goto(await inTickets(title)(page))
-  const href = await page.locator('main a[href^="/runs/"]').first().getAttribute('href')
+  const href = await page.locator('main a[href^="/runs/"]').last().getAttribute('href')
   expect(href, 'a run link on the ticket').toBeTruthy()
   return href!
 }
@@ -137,7 +137,11 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'adopted, waiting on the author': inTickets('Adopted pull request waiting on its author'),
     'adopted, Result card': inTickets('Adopted pull request with a result'),
   },
-  '/runs/[id]': runOf('Build with reported steps'),
+  '/runs/[id]': {
+    claimed: runOf('Build with reported steps'),
+    queued: runOf('Build waiting for an agent'),
+    failed: runOf('Build that failed'),
+  },
   '/settings': '/settings',
   '/settings/api-key': '/settings/api-key',
   '/settings/audit': '/settings/audit',

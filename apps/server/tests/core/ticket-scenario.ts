@@ -5,11 +5,12 @@ import { DISCLOSURE } from '../../src/core/forge/disclosure'
 import { questionsBody } from '../../src/core/intake/questions'
 import type { Criterion, Decision, Finding, TicketRecord } from '../../src/core/record/schema'
 import { advance } from '../../src/core/engine'
-import { appendEvent, createRecord, patchRecord, readRecord, setRank } from '../../src/core/record/store'
-import { claim, heartbeat } from '../../src/core/run/leases'
+import { appendEvent, createRecord, patchRecord, readRecord } from '../../src/core/record/store'
+import { heartbeat } from '../../src/core/run/leases'
 import { rememberContext } from '../../src/core/run/context'
 import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
+import { claimed, failedBuild } from './run-seed'
 import { source } from './fixtures'
 import { asked, begin, mirrorSource, patch, toBrief, workOn } from './scenario'
 
@@ -20,6 +21,8 @@ export const TICKET_TITLES = {
   questionRead: 'Question to read',
   intake: 'Intake waiting for the reporter',
   runSteps: 'Build with reported steps',
+  runQueued: 'Build waiting for an agent',
+  runFailed: 'Build that failed',
   adoptedWaiting: 'Adopted pull request waiting on its author',
   adoptedResult: 'Adopted pull request with a result',
   deployStalled: 'Deploy that did not finish',
@@ -185,15 +188,6 @@ const adoptedTicket = async (e: Engine, pr: number, passed: boolean): Promise<nu
   return id
 }
 
-const claimed = async (e: Engine, id: number) => {
-  await setRank(e.db.payload, id, -1000)
-  const input = { workspace: e.db.workspace, role: 'builder', by: 'runner-seed', now: e.clock.now } as const
-  const got = await claim(e.db.payload, input)
-  await setRank(e.db.payload, id, 0)
-  if (!got) throw new Error('no run queued')
-  return got
-}
-
 const reportedSteps = async (e: Engine, id: number) => {
   const { run, token } = await claimed(e, id)
   const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000)
@@ -288,6 +282,10 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     runSteps: await toBrief(e, false),
   }
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
+  const runQueued = await toBrief(e, false)
+  const runFailed = await toBrief(e, false)
+  await failedBuild(e, runFailed)
+  titled.push([runQueued, TICKET_TITLES.runQueued], [runFailed, TICKET_TITLES.runFailed])
   const deployStalled = await deployStalledTicket(e, ++pr)
   titled.push([deployStalled, TICKET_TITLES.deployStalled])
   const briefComment = await pooled((n) => open(`${POOL_TITLES.briefComment} ${n}`))
@@ -317,5 +315,6 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     const { source } = (await readRecord(e.db.payload, id)).record
     await mirror.item(source.number, { title: titled.find(([found]) => found === id)?.[1] ?? '' })
   }
-  return { ...names, questionBack, questionOwn, briefComment, adoptedWaiting, adoptedResult, deployStalled, intake }
+  const rest = { questionBack, questionOwn, briefComment, adoptedWaiting, adoptedResult, deployStalled, intake }
+  return { ...names, runQueued, runFailed, ...rest }
 }
