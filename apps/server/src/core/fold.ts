@@ -1,5 +1,6 @@
 import { conflictNote } from './conflict-note'
 import type { AppEvent, EventOf, EventType, Stage } from './events'
+import { withLearning } from './fold-learn'
 
 export type Card = { card: 'question'; reason: string; options: string[]; text?: string }
 export type Verdict = { patchId: string; headSha: string }
@@ -30,8 +31,7 @@ export type State = {
   deployed: boolean
   deployStalled: { reason: 'failed' | 'overdue'; checks: string[] } | null
   accepted: boolean
-  corrected: boolean
-  learned: boolean
+  learn: { corrected: boolean; learned: boolean }
   productionApproved: boolean
   productionHeld: boolean
   note: string | null
@@ -65,8 +65,7 @@ export const initialState = (): State => ({
   deployed: false,
   deployStalled: null,
   accepted: false,
-  corrected: false,
-  learned: false,
+  learn: { corrected: false, learned: false },
   productionApproved: false,
   productionHeld: false,
   note: null,
@@ -115,10 +114,6 @@ const runs: Reducer = (state, event) => {
       return { ...endRun(state, event.data.runId), failedRuns: state.failedRuns + 1 }
     case 'run.released':
       return endRun(state, event.data.runId)
-    case 'learn.submitted':
-      return { ...submitted(state, event.data.runId), learned: true }
-    case 'learn.skipped':
-      return { ...state, learned: true }
     default:
       return null
   }
@@ -322,15 +317,10 @@ const questions: Reducer = (state, event) => {
 
 const REDUCERS: Reducer[] = [intake, runs, owner, brief, patch, verify, ship, questions]
 
-const CORRECTIONS: EventType[] = ['result.sent-back', 'brief.changes-requested']
-
 const reduce = (state: State, event: AppEvent, options: FoldOptions): State => {
   if (event.type.startsWith('forge.write.')) return state
-  for (const reducer of REDUCERS) {
-    const next = reducer(state, event, options)
-    if (next) return { ...next, corrected: next.corrected || CORRECTIONS.includes(event.type), last: event.type }
-  }
-  return { ...state, last: event.type }
+  const next = REDUCERS.reduce<State | null>((found, reducer) => found ?? reducer(state, event, options), null)
+  return { ...withLearning(next ?? state, event), last: event.type }
 }
 
 export const fold = (events: AppEvent[], options: FoldOptions = { productionGate: false }): State =>

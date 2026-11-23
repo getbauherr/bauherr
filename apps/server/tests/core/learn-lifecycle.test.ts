@@ -60,11 +60,11 @@ describe('when Learn runs', () => {
     const step = stepFor(failed, briefed({ findings: [fixed] }))
     expect(step).toEqual({ kind: 'emit', event: ev('learn.skipped', { reason: 'the Learn run failed twice' }) })
     const after = fold([...failed, ev('learn.skipped')])
-    expect(after.learned).toBe(true)
+    expect(after.learn.learned).toBe(true)
   })
 
   it('keeps the ticket accepted and done in the fold while Learn is queued', () => {
     const state = fold([...accepted, start('done', 'r9')])
-    expect(state).toMatchObject({ stage: 'done', accepted: true, closed: null, learned: false })
+    expect(state).toMatchObject({ stage: 'done', accepted: true, closed: null, learn: { learned: false } })
   })
 })

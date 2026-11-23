@@ -7,7 +7,7 @@ import { bootBlankPayload, forPayload, runSql, type MigrationDb } from './helper
 let db: MigrationDb
 let payload: Payload
 const o = { overrideAccess: true } as const
-const NAME = '20261123_150000_learn'
+const NAME = '20261123_160000_learn'
 
 beforeAll(async () => {
   db = await bootBlankPayload('migrations_learn')

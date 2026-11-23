@@ -85,8 +85,8 @@ const wait = (on: WaitOn): Step => ({ kind: 'wait', on })
 const question = (reason: string, options: string[]): Step => ({ kind: 'card', card: 'question', reason, options })
 
 const learn: Rule = (record, state, config) => {
-  if (state.stage !== 'done' || state.closed !== null || !state.accepted || state.learned) return null
-  if (!state.corrected && !record.findings.some((finding) => finding.status === 'fixed')) return null
+  if (state.stage !== 'done' || state.closed !== null || !state.accepted || state.learn.learned) return null
+  if (!state.learn.corrected && !record.findings.some((finding) => finding.status === 'fixed')) return null
   if (state.run) return wait('run')
   if (state.failedRuns >= config.caps.failedRuns) {
     return { kind: 'emit', event: { type: 'learn.skipped', data: { reason: 'the Learn run failed twice' } } }
