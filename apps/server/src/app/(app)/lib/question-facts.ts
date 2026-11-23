@@ -16,12 +16,6 @@ const reporterSilent = (view: TicketView): string[] => {
 const disputed = (view: TicketView): string[] =>
   view.facts && view.facts.missing.length > 0 ? [`Missing from the issue: ${view.facts.missing.join(', ')}.`] : []
 
-const verifyRounds = (view: TicketView): string[] => {
-  const rounds = view.events.filter((event) => event.type === 'verify.changes').length
-  const open = view.record.findings.filter((f) => f.status === 'open' || f.status === 'fixing').length
-  return [`Review asked for changes ${times(rounds, 'time')}.`, `${times(open, 'finding')} still open.`]
-}
-
 const deployStalled = (view: TicketView): string[] => {
   if (!view.deploy) return []
   const names = view.deploy.checks.join(', ')
@@ -40,7 +34,6 @@ const FACTS: Record<string, (view: TicketView) => string[]> = {
   'failed-runs': failedRuns,
   'reporter-silent': reporterSilent,
   disputed,
-  'verify-rounds': verifyRounds,
   'deploy-stalled': deployStalled,
   production,
   'production-held': production,

@@ -10,9 +10,9 @@ import { RunLink } from './RunLink'
 import { RefText } from '../RefText'
 import { TicketRef } from '../TicketRef'
 
-function Aside({ title, children }: { title: string; children: ReactNode }) {
+function Aside({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
   return (
-    <section className={`${CARD} grid gap-2 p-4`}>
+    <section id={id} className={`${CARD} grid gap-2 p-4`}>
       <h2 className="label m-0 text-muted-foreground">{title}</h2>
       {children}
     </section>
@@ -75,7 +75,7 @@ function Verdict({ view }: { view: TicketView }) {
 function Findings({ view }: { view: TicketView }) {
   if (view.record.findings.length === 0) return null
   return (
-    <Aside title="Review findings">
+    <Aside title="Review findings" id="findings">
       {view.record.findings.map((finding) => (
         <div key={finding.id} className="small grid justify-items-start gap-1">
           <WordBadge word={FINDING_WORDS[finding.status]} />
