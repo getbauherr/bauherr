@@ -70,6 +70,12 @@ const inHooks = (url: string) => async (page: Page) => {
   return url
 }
 
+const inboxAt = (width: number) => async (page: Page) => {
+  await page.setViewportSize({ width, height: 800 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  return inFactory('/inbox')(page)
+}
+
 const inTickets =
   (title: string, query = '') =>
   async (page: Page) => {
@@ -111,7 +117,7 @@ type Target = string | ((page: Page) => Promise<string>)
 
 const routes: Record<string, Target | Record<string, Target>> = {
   '/': inFactory('/'),
-  '/inbox': inFactory('/inbox'),
+  '/inbox': { desktop: inboxAt(1280), 'at 390 px': inboxAt(390) },
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
     'Brief card with earlier answers': inTickets('Large export needs earlier answers'),
