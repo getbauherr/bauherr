@@ -44,6 +44,7 @@ const eventSchema = z.discriminatedUnion('type', [
   event('run.started', z.object({ ...run, fingerprint: id })),
   event('run.failed', z.object({ ...run, reason: id })),
   event('run.released', z.object(run)),
+  event('run.expired', z.object({ ...run, reason: id })),
   event('brief.submitted', z.object({ runId: id })),
   event('brief.approved', z.object({ by: z.enum(['owner', 'rule']) })),
   event('brief.changes-requested', z.object({ note: id })),

@@ -18,7 +18,7 @@ import {
 import { appendEvent, patchRecord, readEvents, readRecord } from './record/store'
 import { verifyResultSchema } from './verify-result'
 import { ModuleMissing, RecordClosed } from './run/errors'
-import { authorize, expire, release, type Expired } from './run/leases'
+import { authorize, EXPIRY_REASON, expire, release, type Expired } from './run/leases'
 import type { Run, Tier } from './run/schema'
 import { finishRun, markRefused, readRun } from './run/store'
 
@@ -56,6 +56,13 @@ const released = (conn: Conn, run: { id: number; recordId: number; stage: Run['s
   appendEvent(conn, run.recordId, {
     type: 'run.released',
     data: { stage: run.stage, runId: String(run.id) },
+    actor: 'factory',
+  })
+
+const expiredEvent = (conn: Conn, run: { runId: number; recordId: number; stage: Run['stage'] }) =>
+  appendEvent(conn, run.recordId, {
+    type: 'run.expired',
+    data: { stage: run.stage, runId: String(run.runId), reason: EXPIRY_REASON },
     actor: 'factory',
   })
 
@@ -159,7 +166,7 @@ export const failRun = async (runId: number, token: string, reason: string, deps
 export const expireRuns = async (deps: AdvanceDeps): Promise<Expired[]> => {
   const expired = await expire(deps.payload, deps.now)
   for (const run of expired) {
-    await released(deps.payload, { id: run.runId, recordId: run.recordId, stage: run.stage })
+    await expiredEvent(deps.payload, run)
   }
   for (const recordId of new Set(expired.map((run) => run.recordId))) await advance(recordId, deps)
   return expired

@@ -174,6 +174,22 @@ describe('the heartbeat', () => {
   })
 })
 
+describe('a Build whose lease is gone', () => {
+  it('pushes nothing and opens no pull request', async () => {
+    const s = await r.toBuild()
+    r.state.behaviour = async (request) => {
+      r.edit(request, 'change.txt', 'x\n')
+      r.write(request, buildResult(1, 'x', 'x'))
+      await f.h.rows(sql`UPDATE "stage_runs" SET "lease_expires_at" = ${new Date(0).toISOString()}
+        WHERE "status" = 'claimed'`)
+    }
+    expect(await r.next()).toBe('expired')
+    expect(await r.pulls(s.repo)).toHaveLength(0)
+    const run = await r.runRow('build')
+    expect(() => r.remote.head(`bauherr/1-${String(run?.id)}`)).toThrow()
+  })
+})
+
 describe('who works a run', () => {
   it('leaves the run of a session Product alone', async () => {
     await r.start()
@@ -236,5 +252,28 @@ describe('the whole flow on the fake forge', () => {
     expect(stored.headSha).toBe(r.remote.head(first.head))
     expect(stored.headSha).not.toBe(first.headSha)
     expect(r.remote.files(first.head)).toContain('second.txt')
+  })
+
+  it('fails a send-back Build with branch moved when someone else pushed to the pull request meanwhile', async () => {
+    const s = await r.toBuild()
+    await r.next()
+    const first = await r.green(s)
+    r.state.behaviour = async (request) => {
+      if (request.stage !== 'verify') return
+      await r.verified(request, 'changes', [r.finding('open')])
+    }
+    await r.next()
+    const before = r.remote.head(first.head)
+    r.state.behaviour = async (request) => {
+      r.edit(request, 'second.txt', 'again\n')
+      r.write(request, { ...buildResult(1, 'x', 'x', ['f1']) })
+      r.remote.pushOther(first.head)
+    }
+    expect(await r.next()).toBe('failed')
+    expect(await r.runRow('build')).toMatchObject({ status: 'failed', error: 'branch moved' })
+    expect(r.remote.files(first.head)).toContain('other.txt')
+    expect(r.remote.files(first.head)).not.toContain('second.txt')
+    expect(r.remote.head(first.head)).not.toBe(before)
+    expect(await r.events(s.id)).toContain('run.failed')
   })
 })

@@ -3,7 +3,7 @@ import type { TicketView } from '../../../core/views/ticket'
 const times = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`
 
 const failedRuns = (view: TicketView): string[] => {
-  const failed = view.runs.filter((run) => run.status === 'failed')
+  const failed = view.runs.filter((run) => run.status === 'failed' || run.status === 'expired')
   const error = failed.at(-1)?.error
   return [`${times(failed.length, 'run')} failed.`, ...(error ? [`Last error: ${error}`] : [])]
 }
