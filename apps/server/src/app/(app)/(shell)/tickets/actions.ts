@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { decide, DecisionError, StaleDecision, type Decision } from '../../../../core/decide'
+import { NOTE_SCOPES } from '../../../../core/statement-scope'
 import { RecordNotFound } from '../../../../core/record/errors'
 import { engineDeps } from '../../../../jobs/engine-deps'
 import { STALE_SENTENCE } from '../../lib/ticket-words'
@@ -15,6 +16,7 @@ const input = z.object({
   choice: z.string().min(1),
   seq: z.number().int().min(0),
   note: z.string().optional(),
+  scope: z.enum(NOTE_SCOPES).optional(),
   answers: z.record(z.string(), z.string()).optional(),
 })
 
@@ -25,6 +27,7 @@ const decisionOf = (given: z.infer<typeof input>): Decision => ({
   choice: given.choice,
   seq: given.seq,
   ...(given.note === undefined ? {} : { note: given.note }),
+  ...(given.scope === undefined ? {} : { scope: given.scope }),
   ...(given.answers === undefined ? {} : { answers: given.answers }),
 })
 

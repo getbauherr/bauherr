@@ -4,6 +4,7 @@ import { foldOptions } from '../lifecycle'
 import { moduleKey } from '../module'
 import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
+import type { Why } from '../memory'
 import type { StatementKind } from '../statements'
 import type { TicketRecord } from '../record/schema'
 import { readEvents, readRecord } from '../record/store'
@@ -28,7 +29,14 @@ export type ContextPack = {
   similar: PackSimilar[]
 }
 
-export type PackStatement = { id: number; kind: StatementKind; text: string; ticket: number; at: string }
+export type PackStatement = {
+  id: number
+  kind: StatementKind
+  why: Why
+  text: string
+  ticket: number | null
+  at: string
+}
 
 const pendingNote = async (deps: SubmitDeps, run: Run): Promise<string | null> => {
   const events = await readEvents(deps.payload, run.recordId)
@@ -44,7 +52,7 @@ export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPa
   }
   const stored = await readRecord(deps.payload, run.recordId)
   const context =
-    run.context ?? (await rememberContext(deps.payload, run.id, await selectContext(deps.payload, run.stage, stored)))
+    run.context ?? (await rememberContext(deps.payload, run.id, await selectContext(deps.payload, run, stored)))
   const parts = await partsOf(deps.payload, stored, context)
   return {
     runId: run.id,
@@ -57,7 +65,7 @@ export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPa
     skill: (await deps.skills?.(run.stage, run.role)) ?? null,
     facts: run.stage === 'intake' ? await loadIntakeFacts(deps.payload, stored) : null,
     agentsFile: parts.agentsFile,
-    statements: parts.statements.map(({ id, kind, text, ticket, at }) => ({ id, kind, text, ticket, at })),
+    statements: parts.statements.map(({ id, kind, why, text, ticket, at }) => ({ id, kind, why, text, ticket, at })),
     similar: parts.similar,
   }
 }
