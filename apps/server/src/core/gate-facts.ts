@@ -1,5 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
+import { loadShots } from './attachments/pairs'
 import type { Conn } from './conn'
 import { fold } from './fold'
 import type { GateFacts } from './gate'
@@ -7,6 +8,7 @@ import { foldOptions, type Config } from './lifecycle'
 import { checksState } from './mirror/react'
 import { readEvents, type StoredRecord } from './record/store'
 import type { Run } from './run/schema'
+import { loadMockups } from './views/attachments'
 
 const rowOf = z.object({ id: z.coerce.number(), head_sha: z.string().nullable() })
 const leasedOf = z.object({ leased_by: z.string().nullable() })
@@ -56,5 +58,7 @@ export const loadGateFacts = async (tx: Conn, stored: StoredRecord, run: Run, co
     headCommit,
     checks: pull && headCommit ? await checksOf(tx, pull.id, headCommit, config.requiredChecks) : 'pending',
     proofIds: await proofsOf(tx, stored.id),
+    screens: stored.record.visible ? (await loadMockups(tx, stored.id)).map((mockup) => mockup.screen) : [],
+    shots: await loadShots(tx, stored.id),
   }
 }

@@ -18,6 +18,7 @@ import { loadIntakeFacts } from '../intake/facts-store'
 import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
 import { activityOf, type EventView } from './activity'
+import { loadShots, pairsOf, type Pair } from '../attachments/pairs'
 import { loadMockups, type AttachmentView } from './attachments'
 import { keptMemories } from './statement-records'
 import { statementsUsed, type StatementsUsed } from './statements-used'
@@ -73,6 +74,7 @@ export type TicketView = {
   proofs: ProofGroup[]
   mockups: AttachmentView[]
   noMockup: boolean
+  pairs: ScreenPair[]
   pullRequest: PullView | null
   similarItems: ItemHit[]
   adopted: { pr: number; author: string } | null
@@ -84,6 +86,8 @@ export type TicketView = {
   canArchive: boolean
   archived: boolean
 }
+
+export type ScreenPair = Pair & { mockup: AttachmentView }
 
 export type TicketFilter = { workspace: number; recordId: number }
 
@@ -149,6 +153,15 @@ const statusFor = (stored: StoredRecord, runs: RunView[], events: StoredEvent[],
 const lacksMockup = (record: TicketRecord, mockups: AttachmentView[]): boolean =>
   record.visible && mockups.length === 0
 
+const pairsFor = async (payload: Payload, record: TicketRecord, recordId: number, mockups: AttachmentView[]) => {
+  if (!record.visible) return []
+  const pairs = pairsOf(
+    mockups.map((mockup) => mockup.screen),
+    await loadShots(payload, recordId),
+  )
+  return pairs.flatMap((pair, index) => (mockups[index] ? [{ ...pair, mockup: mockups[index] }] : []))
+}
+
 const withKept = async (payload: Payload, recordId: number, views: EventView[]): Promise<EventView[]> => {
   if (!views.some((view) => view.type === 'learn.submitted')) return views
   const memories = await keptMemories(payload, recordId)
@@ -189,6 +202,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     proofs: await loadProofs(payload, stored.id),
     mockups,
     noMockup: lacksMockup(stored.record, mockups),
+    pairs: await pairsFor(payload, stored.record, stored.id, mockups),
     ...pulls,
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),

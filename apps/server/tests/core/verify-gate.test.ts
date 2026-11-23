@@ -16,6 +16,8 @@ const facts: GateFacts = {
   headCommit: 'h1',
   checks: 'passed',
   proofIds: ['11', '12', '13'],
+  screens: [],
+  shots: [],
 }
 
 const finding = (extra: Partial<Finding> = {}): Finding => ({
@@ -187,5 +189,52 @@ describe('the review gate', () => {
   it('refuses a finding without an evidence pointer', () => {
     const bad = finding({ status: 'open', evidence: { kind: 'test', pointer: ' ' } })
     refusedReview(review({ findings: [bad] }), {}, 'evidence')
+  })
+})
+
+describe('the before and after pairs', () => {
+  const visible = { ...record, visible: true }
+  const shot = (kind: 'before' | 'after', screen: string, width = 1280, sha = 'h1') => ({
+    id: kind === 'before' ? 1 : 2,
+    kind,
+    screen,
+    width,
+    sha,
+  })
+  const outcomeOf = (change: Partial<GateFacts>, result = passing(), shown = visible) =>
+    gate({ result, record: shown, facts: { ...facts, screens: ['List', 'Detail'], ...change } })
+  const messages = (change: Partial<GateFacts>, result = passing(), shown = visible) => {
+    const outcome = outcomeOf(change, result, shown)
+    return outcome.accepted ? [] : outcome.refusals.map((r) => r.message)
+  }
+  const both = (screen: string) => [shot('before', screen), shot('after', screen)]
+
+  it('accepts a pair for every mockup screen', () => {
+    expect(outcomeOf({ shots: [...both('List'), ...both('Detail')] })).toEqual({ accepted: true })
+  })
+
+  it('names each screen without a pair and what to attach', () => {
+    const found = messages({ shots: both('List').slice(0, 1) })
+    expect(found).toHaveLength(2)
+    expect(found[0]).toContain('Screen "List" has no after picture')
+    expect(found[1]).toContain('Screen "Detail" has no before and no after picture')
+  })
+
+  it('names a missing before', () => {
+    const found = messages({ shots: [shot('after', 'List'), ...both('Detail')] })
+    expect(found).toEqual([expect.stringContaining('Screen "List" has no before picture')])
+  })
+
+  it('refuses another width and an after that is not the head', () => {
+    const wide = [shot('before', 'List', 390), shot('after', 'List')]
+    expect(messages({ shots: [...wide, ...both('Detail')] })).toEqual([expect.stringContaining('same width')])
+    const old = [shot('before', 'List'), shot('after', 'List', 1280, 'h0')]
+    expect(messages({ shots: [...old, ...both('Detail')] })).toEqual([expect.stringContaining('pull request head')])
+  })
+
+  it('does not check a ticket that is not visible, or a verdict that is not a pass', () => {
+    expect(outcomeOf({ shots: [] }, passing(), record)).toEqual({ accepted: true })
+    const changes = passing({ verdict: 'changes' })
+    expect(messages({ shots: [] }, changes).join(' ')).not.toContain('Gate pairs')
   })
 })

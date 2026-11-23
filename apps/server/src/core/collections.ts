@@ -97,6 +97,8 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'expiresAt', type: 'date', required: true },
       { name: 'criterion', type: 'text' },
       { name: 'proofSha', type: 'text' },
+      { name: 'screen', type: 'text' },
+      { name: 'width', type: 'number' },
     ],
   },
   {

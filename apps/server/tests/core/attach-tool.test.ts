@@ -83,6 +83,28 @@ describe('attach_proof forms', () => {
     ).rejects.toThrow(z.ZodError)
   })
 
+  it('takes a before and after for a mockup screen only, with screen, width and sha', async () => {
+    await m.e.drain()
+    const { record, ids } = await briefRun()
+    await m.call('submit', { ...ids, result: { goal: 'g', open: false } }, m.agent(m.alpha))
+    const build = await m.claimed(m.alpha)
+    const brief = await rows(sql`SELECT "id" FROM "stage_runs" WHERE "record_id" = ${record} AND "stage" = 'brief'`)
+    await rows(sql`
+      INSERT INTO "attachments" ("workspace_id", "record_id", "run_id", "stage", "kind", "caption", "content_type",
+        "content", "byte_size", "token_hash", "lease_hash", "expires_at", "updated_at", "created_at")
+      VALUES (${m.e.db.workspace}, ${record}, ${Number(brief[0]?.id)}, 'brief', 'mockup', 'List (wide)', 'image/png',
+        'AA', 2, 'mockup-hash', 'l', now(), now(), now())`)
+    const ready = { runId: build.runId, leaseToken: build.leaseToken, kind: 'before', sha: 'abc', width: 1280, upload }
+    expect(address.parse(await call({ ...ready, screen: 'List' }))).toBeTruthy()
+    const stored = await rows(sql`
+      SELECT "screen", "width", "proof_sha", "criterion" FROM "attachments" WHERE "run_id" = ${build.runId}`)
+    expect(stored).toMatchObject([{ screen: 'List', width: '1280', proof_sha: 'abc', criterion: null }])
+    await expect(call({ ...ready, screen: 'Settings' })).rejects.toThrow(/use one of: List/)
+    await expect(call({ ...ready, screen: 'List', sha: undefined })).rejects.toThrow(z.ZodError)
+    await expect(call({ ...ready, screen: 'List', width: undefined })).rejects.toThrow(z.ZodError)
+    await expect(call({ ...ready, kind: 'screenshot', criterion: 'c1', screen: 'List' })).rejects.toThrow(z.ZodError)
+  })
+
   it('refuses outside an own live run', async () => {
     await m.e.drain()
     const { ids } = await briefRun()
@@ -93,11 +115,11 @@ describe('attach_proof forms', () => {
     await expect(call(input)).rejects.toThrow(RunNotClaimed)
   })
 
-  it('refuses the seventh image of a run and the thirty-first of a record', async () => {
+  it('refuses the thirteenth image of a run and the thirty-first of a record', async () => {
     await m.e.drain()
     const { record, ids } = await briefRun()
     for (let i = 0; i < RUN_IMAGE_MAX; i++) await call({ ...ids, kind: 'mockup', upload })
-    await expect(call({ ...ids, kind: 'mockup', upload })).rejects.toThrow(/already has 6 images/)
+    await expect(call({ ...ids, kind: 'mockup', upload })).rejects.toThrow(/already has 12 images/)
     await rows(sql`DELETE FROM "attachments" WHERE "run_id" = ${ids.runId}`)
     await rows(sql`
       INSERT INTO "attachments" ("workspace_id", "record_id", "run_id", "stage", "kind", "caption", "content_type",
