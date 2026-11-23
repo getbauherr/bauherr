@@ -20,7 +20,7 @@ export function BriefCard({ view, seq, reason, may }: Props) {
         actions={may ? BRIEF_ACTIONS : []}
       >
         <div className="grid gap-5 p-6">
-          <BriefSheet record={view.record} mockups={view.mockups} reason={why} />
+          <BriefSheet record={view.record} mockups={view.mockups} missing={view.noMockup} reason={why} />
           <OpenDecisions decisions={view.record.decisions} />
         </div>
       </DecisionForm>

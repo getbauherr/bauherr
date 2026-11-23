@@ -11,9 +11,9 @@ export const riskSentence = (risk: TicketRecord['risk']): string => {
   return `${door}${area} Rollback: ${risk.rollback}`
 }
 
-type Props = { record: TicketRecord; mockups: AttachmentView[]; reason?: string }
+type Props = { record: TicketRecord; mockups: AttachmentView[]; missing: boolean; reason?: string }
 
-export function BriefSheet({ record, mockups, reason }: Props) {
+export function BriefSheet({ record, mockups, missing, reason }: Props) {
   const rows: [string, string][] = [
     ['Out of scope', record.outOfScope.length > 0 ? record.outOfScope.join(' ') : 'Nothing listed.'],
     ['Risk', riskSentence(record.risk)],
@@ -24,7 +24,7 @@ export function BriefSheet({ record, mockups, reason }: Props) {
       <Section title="Goal">
         <p>{record.goal}</p>
       </Section>
-      <MockupRow mockups={mockups} />
+      <MockupRow mockups={mockups} missing={missing} />
       <Section title="Acceptance criteria">
         <CriteriaTable criteria={record.criteria} mode="brief" />
       </Section>

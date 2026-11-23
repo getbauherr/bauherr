@@ -1,3 +1,4 @@
+import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { receiveUpload } from '../../src/core/attachments/store'
@@ -67,6 +68,24 @@ describe('a Brief for a visible change', () => {
     await m.call('release', first.ids, m.agent(m.alpha))
     const second = await briefRun()
     expect(await submit(second.ids, true)).toMatchObject({ status: 'retry' })
+  })
+})
+
+describe('a Brief for a visible change worked by the Runner', () => {
+  const executor = (value: string) =>
+    m.e.db.payload.db.drizzle.execute(sql`UPDATE "products" SET "executor" = ${value} WHERE "id" = ${m.e.db.product}`)
+
+  it('is accepted without a mockup and goes to the owner, while a session still gets it refused', async () => {
+    const { record, ids } = await briefRun()
+    await executor('runner')
+    try {
+      expect(await submit(ids, true)).toEqual({ status: 'accepted' })
+      expect(await m.e.view(record)).toMatchObject({ waitingOn: 'owner', card: { reason: 'visible-change' } })
+    } finally {
+      await executor('session')
+    }
+    const session = await briefRun()
+    expect(await submit(session.ids, true)).toMatchObject({ status: 'retry' })
   })
 })
 

@@ -37,6 +37,7 @@ it('carries the mockups of the latest submitted Brief run only, and a screenshot
     "attachment_id", "updated_at", "created_at") VALUES (${s.e.db.workspace}, ${id}, 'c3', 'screenshot', 'session',
     'h1', ${shotId}, now(), now())`)
   const t = await view(id)
+  expect(t.noMockup).toBe(false)
   expect(t.mockups).toMatchObject([{ caption: 'New list', bytes: 2048 }])
   const proof = t.proofs.find((group) => group.criterion === 'c3')?.proofs[0]
   expect(proof).toMatchObject({ body: null, url: null, attachment: { id: shotId, caption: 'Shot of the list' } })
@@ -44,3 +45,10 @@ it('carries the mockups of the latest submitted Brief run only, and a screenshot
   expect(page.attachments.map((a) => a.caption)).toEqual(['New list', 'Shot of the list'])
 })
 
+
+it('flags a visible Brief without a mockup for the card', async () => {
+  const id = s.names.resultCard
+  expect((await view(id)).noMockup).toBe(false)
+  await run(sql`UPDATE "records" SET "data" = jsonb_set("data", '{visible}', 'true') WHERE "id" = ${id}`)
+  expect((await view(id)).noMockup).toBe(true)
+})

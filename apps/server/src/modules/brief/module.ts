@@ -34,6 +34,10 @@ export const brief = defineModule({
   resultSchema,
   check: async (tx, run, result) => {
     if (!result.visible) return []
+    const worked = await tx.db.drizzle.execute(sql`
+      SELECT coalesce(p."executor", 'session') AS executor FROM "records" r
+      JOIN "products" p ON p."id" = r."product_id" WHERE r."id" = ${run.recordId}`)
+    if (worked.rows[0]?.executor === 'runner') return []
     const found = await tx.db.drizzle.execute(sql`
       SELECT 1 FROM "attachments" WHERE "run_id" = ${run.id} AND "kind" = 'mockup' AND "content" IS NOT NULL LIMIT 1`)
     return found.rows.length > 0 ? [] : [{ path: 'visible', message: NO_MOCKUP }]

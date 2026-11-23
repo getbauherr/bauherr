@@ -69,6 +69,7 @@ export type TicketView = {
   runs: RunView[]
   proofs: ProofGroup[]
   mockups: AttachmentView[]
+  noMockup: boolean
   pullRequest: PullView | null
   similarItems: ItemHit[]
   adopted: { pr: number; author: string } | null
@@ -137,6 +138,9 @@ const statusFor = (stored: StoredRecord, runs: RunView[], events: StoredEvent[],
   return statusOf({ stage, waitingOn, card, parked, hasRun: live !== undefined, claimed, questionDrafted, ended })
 }
 
+const lacksMockup = (record: TicketRecord, mockups: AttachmentView[]): boolean =>
+  record.visible && mockups.length === 0
+
 export const ticket = async (payload: Payload, filter: TicketFilter): Promise<TicketView> => {
   const stored = await readRecord(payload, filter.recordId)
   if (stored.workspace !== filter.workspace) {
@@ -148,6 +152,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
   const runs = await loadRuns(payload, stored.id)
   const { ended, closedAs } = endOf(stored, events)
   const pulls = await pullsOf(payload, stored, events)
+  const mockups = await loadMockups(payload, stored.id)
   return {
     recordId: stored.id,
     number,
@@ -166,7 +171,8 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     events: events.map((e) => ({ id: e.id, type: e.type, actor: e.actor, at: e.createdAt, label: labelOf(e) })),
     runs,
     proofs: await loadProofs(payload, stored.id),
-    mockups: await loadMockups(payload, stored.id),
+    mockups,
+    noMockup: lacksMockup(stored.record, mockups),
     ...pulls,
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),
