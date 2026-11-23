@@ -58,8 +58,8 @@ const useInboxKeys = (focused: RefObject<string | null>, setHelp: (open: boolean
       if (e.key !== 'Escape') e.preventDefault()
     }
     const onFocusIn = (e: FocusEvent) => {
-      if (!(e.target instanceof HTMLElement) || e.target.closest(DIALOG)) return
-      focused.current = e.target.dataset.inboxRow ?? null
+      const key = e.target instanceof HTMLElement ? e.target.dataset.inboxRow : undefined
+      if (key !== undefined) focused.current = key
     }
     document.addEventListener('keydown', onKey)
     document.addEventListener('focusin', onFocusIn)
