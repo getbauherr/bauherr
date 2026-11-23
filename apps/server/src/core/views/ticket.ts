@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 import { commitChecksUrl } from '../deploy'
 import { isRemembered } from '../decisions'
+import { sentenceOf } from '../memory-check'
 import { canArchive, canGoBack, fold } from '../lifecycle'
 import { RecordNotFound } from '../record/errors'
 import {
@@ -66,6 +67,7 @@ export type TicketView = {
   card: StoredCard | null
   record: TicketRecord
   source: { repo: string; number: number; title: string; body: string; url: string } | null
+  fromMemory: { id: number; text: string } | null
   events: EventView[]
   runs: RunView[]
   proofs: ProofGroup[]
@@ -180,6 +182,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     parked: stored.parked,
     card: stored.card,
     record: stored.record,
+    fromMemory: await sentenceOf(payload, { workspace: stored.workspace, id: stored.record.source.memory }),
     source: issue && { repo, number, title: issue.title, body: issue.body, url: issue.url },
     events: await withKept(payload, stored.id, activityOf(events)),
     runs,

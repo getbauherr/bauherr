@@ -4,6 +4,7 @@ const build = (): FakeBackend => {
   const fake = new FakeBackend({ native: true, users: ['fake', 'e2e-admin'] })
   fake.commit('acme/web', 'main', 'README.md', '# Web\n')
   fake.commit('acme/picker', 'main', 'README.md', '# Picker\n')
+  fake.commit('check/app', 'main', 'README.md', '# Check\n')
   const checks = fake.commit('acme/checks', 'main', 'README.md', '# Checks\n')
   fake.setCommits('acme/checks', [{ sha: checks, message: 'Deploy to production' }])
   fake.setChecks('acme/checks', checks, [

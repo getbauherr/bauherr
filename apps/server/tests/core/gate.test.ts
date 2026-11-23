@@ -42,6 +42,13 @@ describe('briefGate', () => {
     expect(briefGate(briefed({ source: external, type: 'chore' }), config)).toBeNull()
   })
 
+  it('flags a check asked for from a memory, although the risk rule alone would approve it', () => {
+    const asked = briefed({ source: { ...source, memory: 12 }, risk: risk('two-way'), visible: false })
+    expect(briefGate({ ...asked, source: { ...source } }, config)).toBeNull()
+    expect(briefGate(asked, config)).toBe('memory')
+    expect(briefGate({ ...asked, source: { ...source, memory: 12, backlog: true } }, config)).toBe('backlog')
+  })
+
   it('gives the first reason in priority order when several apply', () => {
     const all = briefed({
       decisions: [decision(1)],

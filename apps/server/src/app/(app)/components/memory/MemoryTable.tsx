@@ -3,11 +3,13 @@ import type { StatementRecord } from '../../../../core/views/statement-records'
 import { Badge } from '../ui/badge'
 import { Table } from '../ui/table'
 import { TicketRef } from '../TicketRef'
+import { CheckBadge, isShown } from './CheckState'
 
 const COUNT = 'mono text-right'
 
 const stateOf = (record: StatementRecord) => {
   if (record.off) return <Badge>Off</Badge>
+  if (isShown(record.check)) return <CheckBadge check={record.check} />
   return record.isNew ? <Badge variant="accent">New</Badge> : <Badge variant="ok">Active</Badge>
 }
 
