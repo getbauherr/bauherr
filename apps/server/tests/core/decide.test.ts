@@ -39,6 +39,8 @@ const ROWS: Row[] = [
   ['question:production', 'approve', ['question.answered', 'production.approved']],
   ['question:production', 'hold', ['question.answered', 'production.held']],
   ['production-held', 'approve-production', ['production.approved']],
+  ['question:agent', 'back-to-brief', ['question.answered', 'brief.changes-requested']],
+  ['working', 'back-to-brief', ['brief.changes-requested']],
 ]
 
 describe('the decision table', () => {

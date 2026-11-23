@@ -33,6 +33,7 @@ export const POOL_TITLES = {
   resultAccept: 'Result to accept',
   resultStale: 'Result decided twice',
   question: 'Question from the agent',
+  questionBack: 'Question to send back to Brief',
 } as const
 
 export type TicketNames = Record<keyof typeof TICKET_TITLES, number> &
@@ -304,5 +305,11 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   const closes = [3000 + ADOPTED_FIRST]
   const other = { kind: 'pr', head: 'h72', title: 'Another take on the fix', author: 'dev-lee', closes } as const
   await mirror.item(ADOPTED_FIRST + 2, { ...other, closes })
-  return { ...names, adoptedWaiting, adoptedResult, deployStalled, intake: await intakeTicket(e, mirror.item) }
+  const intake = await intakeTicket(e, mirror.item)
+  const questionBack = await pooled((n) => asking(`${POOL_TITLES.questionBack} ${n}`))
+  for (const id of questionBack) {
+    const { source } = (await readRecord(e.db.payload, id)).record
+    await mirror.item(source.number, { title: titled.find(([found]) => found === id)?.[1] ?? '' })
+  }
+  return { ...names, questionBack, adoptedWaiting, adoptedResult, deployStalled, intake }
 }
