@@ -1,9 +1,4 @@
 {
-  "apps/server/src/lib/providers.ts": {
-    "max-len": {
-      "count": 1
-    }
-  },
   "apps/server/src/migrations/20261029_165423_initial.ts": {
     "max-lines": {
       "count": 1
