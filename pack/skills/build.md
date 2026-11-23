@@ -42,7 +42,7 @@ what you were unsure about, and what you left alone on purpose.
 
 Everything a person reads (titles, goals, criteria, questions, answers, findings, notes, comments) is plain English.
 - A title is one normal sentence you would say to a colleague: "Choosing the answer "Send back to Brief" does not send the ticket back".
-- Use no internal term (gate, lease, run, patch id, context pack, statement) unless you explain it in the same sentence.
+- Use no internal term (gate, lease, run, patch id, statement) unless you explain it in the same sentence.
 - A criterion is a full sentence about what a person sees or what a test checks.
 - Name another ticket or pull request by number, title and link: "#555 Run page redesign (link)", never "#555" alone.
 - Put file paths and technical detail last, under "Technical notes".
