@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { RunNotFound } from '../../../../../core/run/errors'
 import { runPage } from '../../../../../core/views/run'
 import { AutoRefresh } from '../../../components/AutoRefresh'
@@ -11,6 +10,7 @@ import { WordBadge } from '../../../components/WordBadge'
 import { ROLE_WORDS, RUN_WORDS } from '../../../lib/ticket'
 import { RUN_NAMES, workerOf } from '../../../lib/factory'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
+import { TicketRef } from '../../../components/TicketRef'
 
 export const dynamic = 'force-dynamic'
 
@@ -35,9 +35,8 @@ export default async function RunPageRoute({ params }: { params: Promise<{ id: s
     <>
       <PageTitle>{`Run ${run.id}`}</PageTitle>
       <div className="flex flex-wrap items-center gap-3">
-        <Link href={`/tickets/${ticket.recordId}`} className="text-primary hover:underline">
-          #{ticket.number} {ticket.title}
-        </Link>
+        <TicketRef recordId={ticket.recordId} number={ticket.number} />
+        <span>{ticket.title}</span>
         <h1 className="title mono">Run {run.id}</h1>
         <WordBadge word={RUN_WORDS[run.status] ?? { word: run.status, tone: 'neutral' }} />
         <p className="small ml-auto text-muted-foreground">

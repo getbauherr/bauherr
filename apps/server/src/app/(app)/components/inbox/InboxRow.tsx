@@ -6,6 +6,7 @@ import { captionOf } from '../factory/TicketCard'
 import { StatusChip } from '../StatusChip'
 import { Time } from '../Time'
 import { Badge } from '../ui/badge'
+import { TicketRef } from '../TicketRef'
 
 const ROW = cn(
   'flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-4 py-2.5 outline-none',
@@ -13,7 +14,7 @@ const ROW = cn(
   'md:grid md:grid-cols-[56px_minmax(0,1.6fr)_110px_200px_minmax(0,1.4fr)_96px]',
 )
 
-export function InboxRow({ row }: { row: Row }) {
+export async function InboxRow({ row }: { row: Row }) {
   if (row.kind === 'held') {
     const { item } = row
     return (
@@ -32,13 +33,15 @@ export function InboxRow({ row }: { row: Row }) {
   }
   const { card } = row
   return (
-    <Link href={`/tickets/${card.recordId}`} className={ROW}>
-      <span className="mono">#{card.number}</span>
-      <span className="font-medium">{card.title}</span>
+    <div className={cn(ROW, 'relative')}>
+      <span className="relative z-10"><TicketRef recordId={card.recordId} number={card.number} /></span>
+      <Link href={`/tickets/${card.recordId}`} className="font-medium outline-none after:absolute after:inset-0">
+        {card.title}
+      </Link>
       <span className="small text-muted-foreground">{card.product.name}</span>
       <span><StatusChip status={card.status} closedAs={card.closedAs} /></span>
       <span className="small text-muted-foreground">{captionOf(card)}</span>
       <Time iso={card.enteredAt} className="mono whitespace-nowrap text-muted-foreground md:text-right" />
-    </Link>
+    </div>
   )
 }

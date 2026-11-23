@@ -1,8 +1,8 @@
-import Link from 'next/link'
 import type { SessionRow } from '../../../../core/views/sessions'
 import { EmptyState } from '../EmptyState'
 import { Time } from '../Time'
 import { Table } from '../ui/table'
+import { TicketRef } from '../TicketRef'
 
 function State({ row }: { row: SessionRow }) {
   if (row.state !== 'working') return row.state
@@ -12,9 +12,7 @@ function State({ row }: { row: SessionRow }) {
       {row.tickets.map((ticket, index) => (
         <span key={ticket.recordId}>
           {index > 0 && ', '}
-          <Link href={`/tickets/${ticket.recordId}`} className="text-primary underline underline-offset-2">
-            #{ticket.number}
-          </Link>
+          <TicketRef recordId={ticket.recordId} number={ticket.number} />
         </span>
       ))}
     </>

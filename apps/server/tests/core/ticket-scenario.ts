@@ -11,6 +11,7 @@ import { rememberContext } from '../../src/core/run/context'
 import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
 import { source } from './fixtures'
+import { QUESTION, referral } from './question-text'
 import { asked, begin, mirrorSource, patch, toBrief, workOn } from './scenario'
 
 export const TICKET_TITLES = {
@@ -207,10 +208,9 @@ const reportedSteps = async (e: Engine, id: number) => {
   for (const [minutes, step] of steps) await heartbeat(e.db.payload, run.id, token, { now: ago(minutes), step })
 }
 
-const questionTicket = async (e: Engine, id: number) => {
+const questionTicket = async (e: Engine, id: number, text = QUESTION) => {
   const { run, token } = await claimed(e, id)
-  const text = 'Which storage should the export use?'
-  await askOwner(run.id, token, { text, options: ['Disk', 'Object storage'] }, e.deps())
+  return askOwner(run.id, token, { text, options: ['Disk', 'Object storage'] }, e.deps())
 }
 
 const parkedTicket = async (e: Engine) => {
@@ -274,15 +274,15 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     titled.push([id, title])
     return id
   }
-  const asking = async (title: string) => {
+  const asking = async (title: string, text?: string) => {
     const id = await toBrief(e, false)
-    await questionTicket(e, id)
-    titled.push([id, title])
+    await questionTicket(e, id, text).then(() => titled.push([id, title]))
     return id
   }
   let pr = 10
+  const briefTitle = await open(TICKET_TITLES.briefTitle)
   const names = {
-    briefTitle: await open(TICKET_TITLES.briefTitle),
+    briefTitle,
     briefAnswers: await open(TICKET_TITLES.briefAnswers),
     briefApprove: await pooled((n) => open(`${POOL_TITLES.briefApprove} ${n}`)),
     briefArchive: await pooled((n) => open(`${POOL_TITLES.briefArchive} ${n}`)),
@@ -291,7 +291,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     resultAccept: await pooled((n) => result(`${POOL_TITLES.resultAccept} ${n}`, ++pr)),
     resultStale: await pooled((n) => result(`${POOL_TITLES.resultStale} ${n}`, ++pr)),
     question: await pooled((n) => asking(`${POOL_TITLES.question} ${n}`)),
-    questionRead: await asking(TICKET_TITLES.questionRead),
+    questionRead: await asking(TICKET_TITLES.questionRead, await referral(e, briefTitle)),
     runSteps: await toBrief(e, false),
     parkedOnNeed: await parkedTicket(e),
   }

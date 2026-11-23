@@ -6,6 +6,7 @@ import { questionFacts, recommendedOption } from '../../lib/question-facts'
 import { CHOICE_WORDS, NOTE_PROMPTS, NOTE_SAYS, REASON_WORDS } from '../../lib/ticket-words'
 import { DecisionForm } from './DecisionForm'
 import { Card, Section } from './Section'
+import { RefText } from '../RefText'
 
 const OPTION = [
   'flex cursor-pointer items-baseline gap-2 rounded-md border border-border px-3 py-2',
@@ -44,7 +45,7 @@ export function QuestionCard({ view, card, may }: Props) {
         actions={may ? actions : []}
       >
         <div className="grid gap-5 p-6">
-          <p>{textOf(card)}</p>
+          <p><RefText text={textOf(card)} repo={view.record.source.repo} /></p>
           {facts.length > 0 && (
             <Section title="Facts">
               <ul className="m-0 grid gap-1 pl-5">{facts.map((fact) => <li key={fact}>{fact}</li>)}</ul>

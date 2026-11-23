@@ -1,0 +1,76 @@
+import { expect, test, type Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { email } from './user'
+
+const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
+const REFERENCED = 'Brief with a decision for the tabs'
+
+const signIn = async (page: Page) => {
+  const url = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url }])
+  await page.goto('/login')
+  await page.getByLabel('Email').fill(email)
+  await page.getByLabel('Password').fill(password())
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await expect(page.getByRole('banner')).toBeVisible()
+}
+
+const openFromInbox = async (page: Page, title: string) => {
+  await page.goto('/inbox')
+  await page.getByRole('link', { name: title, exact: true }).click()
+  await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
+}
+
+const popover = (page: Page) => page.locator('[data-slot="popover-content"]')
+
+const expectBox = async (page: Page) => {
+  await expect(popover(page)).toBeVisible()
+  await expect(popover(page)).toContainText(REFERENCED)
+  await expect(popover(page)).toContainText('Brief')
+  await expect(popover(page).getByRole('link', { name: 'Open ticket' })).toHaveAttribute('href', /^\/tickets\/\d+$/)
+}
+
+for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 800 }]) {
+  test.describe(`ticket references at ${viewport.width}px`, () => {
+    test.use({ viewport })
+
+    test('agent text links a known number with its title and keeps an unknown one plain', async ({ page }) => {
+      await signIn(page)
+      await openFromInbox(page, 'Question to read')
+      const link = page.getByRole('main').getByRole('link', { name: new RegExp(`^#\\d+ ${REFERENCED}$`) })
+      await expect(link).toHaveAttribute('href', /^\/tickets\/\d+$/)
+      await expect(page.getByText('#9999', { exact: false }).first()).toBeVisible()
+      await expect(page.getByRole('link', { name: /#9999/ })).toHaveCount(0)
+    })
+
+    test('Tab and Enter or Space open the box, Escape closes it and focus returns', async ({ page }) => {
+      await signIn(page)
+      await openFromInbox(page, 'Question to read')
+      const link = page.getByRole('main').getByRole('link', { name: new RegExp(`^#\\d+ ${REFERENCED}$`) })
+      for (const key of ['Enter', 'Space']) {
+        await link.focus()
+        await page.keyboard.press(key)
+        await expectBox(page)
+        await page.keyboard.press('Escape')
+        await expect(popover(page)).toHaveCount(0)
+        await expect(link).toBeFocused()
+      }
+    })
+
+    test('the box opens on tap or hover in the Inbox, on the Ticket page and on the Run page', async ({ page }) => {
+      await signIn(page)
+      await page.goto('/inbox')
+      const row = page.getByRole('link', { name: REFERENCED, exact: true }).locator('xpath=ancestor::div[1]')
+      await row.getByRole('link', { name: /^#\d+$/ }).click()
+      await expectBox(page)
+      await openFromInbox(page, REFERENCED)
+      await page.getByRole('heading', { level: 1 }).locator('xpath=preceding-sibling::a[1]').click()
+      await expectBox(page)
+      await openFromInbox(page, 'Build with reported steps')
+      await page.getByRole('link', { name: /^Run \d+/ }).first().click()
+      await expect(page.getByRole('heading', { level: 1, name: /^Run \d+$/ })).toBeVisible()
+      await page.getByRole('heading', { level: 1 }).locator('xpath=preceding-sibling::a[1]').click()
+      await expect(popover(page)).toBeVisible()
+    })
+  })
+}
