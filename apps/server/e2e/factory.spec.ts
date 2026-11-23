@@ -4,9 +4,9 @@ import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-const enter = async (page: Page, path: string) => {
+const enter = async (page: Page, path: string, workspace = 'factory') => {
   const url = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'factory', url }])
+  await page.context().addCookies([{ name: 'bauherr-ws', value: workspace, url }])
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
@@ -60,4 +60,18 @@ test('the Inbox lists the tickets waiting on the owner first', async ({ page }) 
   }
   const working = page.getByRole('region', { name: 'Agents working' })
   await expect(working.getByRole('link', { name: /Rename report columns/ })).toBeVisible()
+})
+
+test('the Factory view counts Someday ideas per Product and links to the forge issue list', async ({ page }) => {
+  await enter(page, '/', 'someday')
+  const links = page.getByRole('link', { name: 'Someday: 2' })
+  await expect(links).toHaveCount(2)
+  await expect(links.nth(0)).toHaveAttribute(
+    'href',
+    'https://github.com/someday/hub/issues?q=is:open+label:bauherr:someday',
+  )
+  await expect(links.nth(1)).toHaveAttribute(
+    'href',
+    'https://git.example.com/someday/lab/-/issues?label_name[]=bauherr:someday',
+  )
 })

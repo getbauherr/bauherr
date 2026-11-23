@@ -93,7 +93,7 @@ it('stores a gitlab Connection with its base URL', async () => {
     data: {
       name: 'gl',
       kind: 'gitlab',
-      config: { baseUrl: 'https://git.einsfuenf.de' },
+      config: { baseUrl: 'https://git.example.com' },
       secret: 'glpat',
       workspace: ws.id,
     },
@@ -101,7 +101,7 @@ it('stores a gitlab Connection with its base URL', async () => {
   })
   expect(await payload.findByID({ collection: 'connections', id: c.id, ...o })).toMatchObject({
     kind: 'gitlab',
-    config: { baseUrl: 'https://git.einsfuenf.de' },
+    config: { baseUrl: 'https://git.example.com' },
   })
 })
 

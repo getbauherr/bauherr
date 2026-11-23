@@ -9,6 +9,7 @@ import { MAX_STEPS, toRun, type Run } from './schema'
 import { readRun, RUN_COLUMNS } from './store'
 
 export const LEASE_MS = 30 * 60_000
+export const EXPIRY_REASON = `no heartbeat for ${LEASE_MS / 60_000} minutes`
 
 export type NewRun = { stage: Stage; role: Role; fingerprint: string }
 export type Executor = 'session' | 'runner'
@@ -17,8 +18,10 @@ export type Claimed = { run: Run; token: string }
 export type Expired = { runId: number; recordId: number; stage: Stage }
 
 const CLOSING_EVENTS = sql`('ticket.closed', 'intake.closed', 'brief.discarded')`
+const SINCE_RESTORE = sql`e."id" > coalesce(
+  (SELECT max(x."id") FROM "events" x WHERE x."record_id" = r."id" AND x."type" = 'ticket.restored'), 0)`
 
-const hashOf = (token: string): string => createHash('sha256').update(token).digest('hex')
+export const hashOf = (token: string): string => createHash('sha256').update(token).digest('hex')
 const leaseEnd = (now: Date): string => new Date(now.getTime() + LEASE_MS).toISOString()
 
 export const enqueue = async (
@@ -60,8 +63,9 @@ export const claim = async (payload: Conn, input: ClaimInput): Promise<Claimed |
       JOIN "products" p ON p."id" = r."product_id"
       WHERE s."status" = 'queued' AND s."role" = ${input.role} AND s."workspace_id" = ${input.workspace}
         AND (${executor}::text IS NULL OR coalesce(p."executor", 'session') = ${executor}::text)
-        AND r."stage" <> 'done' AND NOT EXISTS (
-          SELECT 1 FROM "events" e WHERE e."record_id" = r."id" AND e."type" IN ${CLOSING_EVENTS})
+        AND (r."stage" <> 'done' OR s."stage" = 'done') AND NOT EXISTS (
+          SELECT 1 FROM "events" e WHERE e."record_id" = r."id" AND e."type" IN ${CLOSING_EVENTS}
+            AND ${SINCE_RESTORE})
       ORDER BY r."rank", s."created_at", s."id" LIMIT 1 FOR UPDATE OF s SKIP LOCKED
     ) AND "status" = 'queued'
     RETURNING ${RUN_COLUMNS}`)
@@ -130,7 +134,8 @@ export const releaseLive = async (payload: Conn, recordId: number, now: Date, st
 
 export const expire = async (payload: Conn, now: Date): Promise<Expired[]> => {
   const updated = await payload.db.drizzle.execute(sql`
-    UPDATE "stage_runs" SET "status" = 'released', "finished_at" = ${now.toISOString()}, "updated_at" = now()
+    UPDATE "stage_runs" SET "status" = 'expired', "error" = ${EXPIRY_REASON},
+      "finished_at" = ${now.toISOString()}, "updated_at" = now()
     WHERE "status" = 'claimed' AND "lease_expires_at" < ${now.toISOString()}
     RETURNING ${RUN_COLUMNS}`)
   return updated.rows.map((row) => {

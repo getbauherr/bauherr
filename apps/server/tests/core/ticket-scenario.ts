@@ -30,11 +30,14 @@ export const POOL_SIZE = 3
 
 export const POOL_TITLES = {
   briefApprove: 'Brief with a decision to approve',
+  briefArchive: 'Brief to archive',
   resultSendBack: 'Result to send back',
   resultAccept: 'Result to accept',
   resultStale: 'Result decided twice',
   question: 'Question from the agent',
   questionBack: 'Question to send back to Brief',
+  questionOwn: 'Question to answer in own words',
+  briefComment: 'Brief to comment on',
 } as const
 
 export type TicketNames = Record<keyof typeof TICKET_TITLES, number> &
@@ -210,9 +213,10 @@ const questionTicket = async (e: Engine, id: number) => {
   await askOwner(run.id, token, { text, options: ['Disk', 'Object storage'] }, e.deps())
 }
 
-const parkedTicket = async (e: Engine, id: number) => {
-  const { run, token } = await claimed(e, id)
-  await parkOnNeed(run.id, token, 'AWS Connection', e.deps())
+const parkedTicket = async (e: Engine) => {
+  const id = await toBrief(e, false)
+  await claimed(e, id).then(({ run, token }) => parkOnNeed(run.id, token, 'AWS Connection', e.deps()))
+  return id
 }
 
 const intakeTicket = async (e: Engine, item: (number: number, fields?: { title: string }) => Promise<number>) => {
@@ -237,7 +241,7 @@ const EARLIER_ANSWERS = [
 const RESULT_ANSWERS = ['Run the old export tests before the new ones.', EARLIER_ANSWERS[1] ?? '']
 
 const answered = async (e: Engine, id: number, stages: string[], from: number, texts: string[]) => {
-  for (const text of texts) await storeStatement(e.db.payload, from, { kind: 'answer', text })
+  for (const text of texts) await storeStatement(e.db.payload, from, { kind: 'answer', scope: 'product', text })
   const db = e.db.payload.db.drizzle
   const found = await db.execute(sql`SELECT "id" FROM "statements" WHERE "record_id" = ${from} ORDER BY "id"`)
   const statements = found.rows.map((row) => proofRow.parse(row).id)
@@ -281,6 +285,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     briefTitle: await open(TICKET_TITLES.briefTitle),
     briefAnswers: await open(TICKET_TITLES.briefAnswers),
     briefApprove: await pooled((n) => open(`${POOL_TITLES.briefApprove} ${n}`)),
+    briefArchive: await pooled((n) => open(`${POOL_TITLES.briefArchive} ${n}`)),
     resultReadonly: await result(TICKET_TITLES.resultReadonly, ++pr),
     resultSendBack: await pooled((n) => result(`${POOL_TITLES.resultSendBack} ${n}`, ++pr)),
     resultAccept: await pooled((n) => result(`${POOL_TITLES.resultAccept} ${n}`, ++pr)),
@@ -288,13 +293,12 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     question: await pooled((n) => asking(`${POOL_TITLES.question} ${n}`)),
     questionRead: await asking(TICKET_TITLES.questionRead),
     runSteps: await toBrief(e, false),
+    parkedOnNeed: await parkedTicket(e),
   }
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
   const deployStalled = await deployStalledTicket(e, ++pr)
-  titled.push([deployStalled, TICKET_TITLES.deployStalled])
-  const parkedOnNeed = await toBrief(e, false)
-  await parkedTicket(e, parkedOnNeed)
-  titled.push([parkedOnNeed, TICKET_TITLES.parkedOnNeed])
+  titled.push([deployStalled, TICKET_TITLES.deployStalled], [names.parkedOnNeed, TICKET_TITLES.parkedOnNeed])
+  const briefComment = await pooled((n) => open(`${POOL_TITLES.briefComment} ${n}`))
   const adoptedWaiting = await adoptedTicket(e, ADOPTED_FIRST, false)
   const adoptedResult = await adoptedTicket(e, ADOPTED_FIRST + 1, true)
   titled.push([adoptedWaiting, TICKET_TITLES.adoptedWaiting], [adoptedResult, TICKET_TITLES.adoptedResult])
@@ -316,9 +320,10 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   await mirror.item(ADOPTED_FIRST + 2, { ...other, closes })
   const intake = await intakeTicket(e, mirror.item)
   const questionBack = await pooled((n) => asking(`${POOL_TITLES.questionBack} ${n}`))
-  for (const id of questionBack) {
+  const questionOwn = await pooled((n) => asking(`${POOL_TITLES.questionOwn} ${n}`))
+  for (const id of [...questionBack, ...questionOwn]) {
     const { source } = (await readRecord(e.db.payload, id)).record
     await mirror.item(source.number, { title: titled.find(([found]) => found === id)?.[1] ?? '' })
   }
-  return { ...names, questionBack, adoptedWaiting, adoptedResult, deployStalled, parkedOnNeed, intake }
+  return { ...names, questionBack, questionOwn, briefComment, adoptedWaiting, adoptedResult, deployStalled, intake }
 }

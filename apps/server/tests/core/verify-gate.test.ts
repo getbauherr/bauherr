@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { gate, type GateFacts } from '../../src/core/gate'
+import { gate, reviewGate, type GateFacts } from '../../src/core/gate'
 import type { Finding } from '../../src/core/record/schema'
+import type { ReviewResult } from '../../src/core/review-result'
 import type { VerifyResult } from '../../src/core/verify-result'
 import { briefed, criterion } from './fixtures'
 
@@ -121,5 +122,70 @@ describe('the verification gate', () => {
   it('lists every refusal at once', () => {
     const refusals = refused(passing({ patchId: 'p0' }), { verifyHeldBy: 'session-build' })
     expect(refusals).toHaveLength(2)
+  })
+})
+
+describe('a verdict after a review', () => {
+  const held = (status: Finding['status']) => ({ ...record, findings: [finding({ status })] })
+  const verdictOn = (status: Finding['status'], result: VerifyResult = passing()) =>
+    gate({ result, record: held(status), facts })
+
+  it.each(['open', 'fixing'] as const)('refuses pass while a finding of the review is %s', (status) => {
+    const outcome = verdictOn(status)
+    expect(outcome.accepted).toBe(false)
+    if (!outcome.accepted) expect(outcome.refusals.map((r) => r.message).join(' ')).toContain('Gate verdict')
+  })
+
+  it.each(['fixed', 'invalid'] as const)('accepts pass once a finding of the review is %s', (status) => {
+    expect(verdictOn(status)).toEqual({ accepted: true })
+  })
+
+  it('accepts pass when the verifier settles an open finding as invalid in the same result', () => {
+    const result = passing({ findings: [finding({ status: 'invalid' })] })
+    expect(verdictOn('open', result)).toEqual({ accepted: true })
+  })
+})
+
+describe('the review gate', () => {
+  const review = (extra: Partial<ReviewResult> = {}): ReviewResult => ({
+    headSha: 'h1',
+    patchId: 'p1',
+    findings: [],
+    ...extra,
+  })
+  const refusedReview = (result: ReviewResult, change: Partial<GateFacts>, rule: string) => {
+    const outcome = reviewGate({ result, facts: { ...facts, ...change } })
+    expect(outcome.accepted).toBe(false)
+    if (!outcome.accepted) expect(outcome.refusals.map((r) => r.message).join(' ')).toContain(`Gate ${rule}`)
+  }
+
+  it('accepts a review by another session of the latest patch, with open findings', () => {
+    const open = finding({ status: 'open' })
+    expect(reviewGate({ result: review({ findings: [open] }), facts })).toEqual({ accepted: true })
+  })
+
+  it('does not apply the checks, proof and verdict rules', () => {
+    const open = finding({ status: 'open' })
+    expect(reviewGate({ result: review({ findings: [open] }), facts: { ...facts, checks: 'pending' } })).toEqual({
+      accepted: true,
+    })
+  })
+
+  it('refuses a review by the session that built the patch', () => {
+    refusedReview(review(), { verifyHeldBy: 'session-build' }, 'author')
+  })
+
+  it('refuses a review of a stale patch', () => {
+    refusedReview(review({ patchId: 'p0' }), {}, 'stale-patch')
+    refusedReview(review({ headSha: 'h0' }), {}, 'stale-patch')
+  })
+
+  it('refuses a review when the head of the pull request moved', () => {
+    refusedReview(review(), { headCommit: 'h2' }, 'head-moved')
+  })
+
+  it('refuses a finding without an evidence pointer', () => {
+    const bad = finding({ status: 'open', evidence: { kind: 'test', pointer: ' ' } })
+    refusedReview(review({ findings: [bad] }), {}, 'evidence')
   })
 })

@@ -12,6 +12,10 @@ const PURPOSE = 'Which issues enter, how many an outsider may add and when a rep
 const numeric = (range: { min: number; max: number }) =>
   ({ type: 'number', min: range.min, max: range.max, inputMode: 'numeric' }) as const
 
+const HINT =
+  'An issue with one of these labels never enters. bauherr:someday is on by default and parks an idea as ' +
+  'Someday: label the issue to park it, remove the label to bring it back. A Ticket that has entered stays.'
+
 type Props = { product: ProductSettings; admin: boolean }
 
 export function IntakeSection({ product, admin }: Props) {
@@ -26,7 +30,7 @@ export function IntakeSection({ product, admin }: Props) {
           <MultiPick
             name="excludedLabels"
             legend="Excluded labels"
-            hint="An issue with one of these labels never enters."
+            hint={HINT}
             options={[]}
             value={product.excludedLabels}
             addLabel="Add an excluded label"

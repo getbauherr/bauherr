@@ -3,6 +3,8 @@ import { z } from 'zod'
 import type { Stage } from '../../../core/events'
 import { board, type Board, type BoardCard } from '../../../core/views/board'
 import { holds } from '../../../core/views/holds'
+import { somedayCounts, type SomedayCount } from '../../../core/views/someday'
+import { webOrigin } from '../../../lib/connection'
 import { stageStats, type StageStat } from '../../../core/views/stats'
 
 export const SHOWS = ['all', 'you', 'working', 'stuck', 'others'] as const
@@ -15,6 +17,8 @@ export const STAGE_NAMES: Record<Stage, string> = {
   ship: 'Ship',
   done: 'Done',
 }
+
+export const RUN_NAMES: Record<Stage, string> = { ...STAGE_NAMES, done: 'Learn' }
 
 export type Who = Exclude<Show, 'all'>
 
@@ -71,12 +75,20 @@ export const productsIn = async (payload: Payload, workspace: number): Promise<{
 export const loadFactory = async (payload: Payload, input: { workspace: number; product?: number }) => {
   const now = new Date()
   const filter = input.product === undefined ? { workspace: input.workspace, now } : { ...input, now }
-  const [lanes, stats, held] = await Promise.all([
+  const [lanes, stats, held, someday] = await Promise.all([
     board(payload, filter),
     stageStats(payload, filter),
     holds(payload, { workspace: input.workspace, now }),
+    somedayCounts(payload, input),
   ])
-  return { lanes, stats, held, products: await productsIn(payload, input.workspace) }
+  return { lanes, stats, held, someday, products: await productsIn(payload, input.workspace) }
+}
+
+export const somedayHref = (item: Pick<SomedayCount, 'forge' | 'repo' | 'config'>): string => {
+  const base = `${webOrigin({ kind: item.forge, config: item.config })}/${item.repo}`
+  return item.forge === 'gitlab'
+    ? `${base}/-/issues?label_name[]=bauherr:someday`
+    : `${base}/issues?q=is:open+label:bauherr:someday`
 }
 
 export type Worker = { key: string; mark: 'R' | 'S'; title: string }

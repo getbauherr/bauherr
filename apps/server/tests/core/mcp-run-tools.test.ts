@@ -173,6 +173,8 @@ describe('attach_proof', () => {
         m.call('attach_proof', { ...ids, criterion: 'c1', kind: 'output', sha: 'abc', ...extra }, m.agent(m.alpha)),
       ).rejects.toThrow(z.ZodError)
     }
+    const both = { ...ids, criterion: 'c1', kind: 'output', sha: 'abc', body: 'x', url: 'https://a.example' }
+    await expect(m.call('attach_proof', both, m.agent(m.alpha))).rejects.toThrow(/give exactly one of body, url/)
     expect(await rows(sql`SELECT 1 FROM "proofs" WHERE "record_id" = ${run.record}`)).toHaveLength(2)
     await m.e.drain()
   })
@@ -263,6 +265,18 @@ describe('session capacity', () => {
     expect(capacity).toBe(1)
     const held = work.parse(await nextWork(session))
     expect(atCapacity.parse(await nextWork(session)).holding).toEqual([held.runId])
+    await m.e.drain()
+  })
+
+  it('gives two instances of one key a slot each', async () => {
+    await m.e.drain()
+    await m.begin()
+    await m.begin()
+    const a = await connectWith({ instance: 'proc-a' })
+    const b = await connectWith({ instance: 'proc-b' })
+    expect(a.session).not.toBe(b.session)
+    expect(work.parse(await nextWork(a.session)).status).toBe('work')
+    expect(work.parse(await nextWork(b.session)).status).toBe('work')
     await m.e.drain()
   })
 

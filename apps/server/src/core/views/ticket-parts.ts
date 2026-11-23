@@ -58,6 +58,8 @@ const proofRow = z.object({
   sha: z.string(),
   body: z.string().nullable(),
   url: z.string().nullable(),
+  attachment_id: count.nullable(),
+  caption: z.string().nullable(),
 })
 
 export type ProofView = {
@@ -67,17 +69,20 @@ export type ProofView = {
   sha: string
   body: string | null
   url: string | null
+  attachment: { id: number; caption: string } | null
 }
 export type ProofGroup = { criterion: string; proofs: ProofView[] }
 
 export const loadProofs = async (payload: Payload, recordId: number): Promise<ProofGroup[]> => {
   const result = await payload.db.drizzle.execute(sql`
-    SELECT "id", "criterion", "kind", "source", "sha", "body", "url" FROM "proofs"
-    WHERE "record_id" = ${recordId} ORDER BY "criterion", "id"`)
+    SELECT p."id", p."criterion", p."kind", p."source", p."sha", p."body", p."url", p."attachment_id", a."caption"
+    FROM "proofs" p LEFT JOIN "attachments" a ON a."id" = p."attachment_id" AND a."content" IS NOT NULL
+    WHERE p."record_id" = ${recordId} ORDER BY p."criterion", p."id"`)
   const groups = new Map<string, ProofView[]>()
   for (const row of result.rows) {
-    const { criterion, ...proof } = proofRow.parse(row)
-    groups.set(criterion, [...(groups.get(criterion) ?? []), proof])
+    const { criterion, attachment_id: attachmentId, caption, ...rest } = proofRow.parse(row)
+    const attachment = attachmentId === null ? null : { id: attachmentId, caption: caption ?? '' }
+    groups.set(criterion, [...(groups.get(criterion) ?? []), { ...rest, attachment }])
   }
   return [...groups].map(([criterion, proofs]) => ({ criterion, proofs }))
 }

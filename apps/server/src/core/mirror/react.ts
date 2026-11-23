@@ -4,7 +4,13 @@ import type { State } from '../fold'
 import { DISCLOSURE } from '../forge/disclosure'
 import type { TicketRecord } from '../record/schema'
 
-export type ReactItem = { state: 'open' | 'closed' | 'merged'; headSha: string | null; mergeSha: string | null }
+export type ReactItem = {
+  state: 'open' | 'closed' | 'merged'
+  headSha: string | null
+  mergeSha: string | null
+  baseRef: string | null
+  conflicts: boolean
+}
 export type ReactComment = { author: string; body: string; createdAt: string }
 export type ReactCheck = { status: string; conclusion: string | null }
 
@@ -17,6 +23,7 @@ export type ReactInput = {
   comments: ReactComment[]
   checks: ReactCheck[]
   deploy: DeployWait | null
+  closeWritten: boolean
 }
 
 export type Reaction = (input: ReactInput) => AppEvent[]
@@ -50,6 +57,18 @@ export const checksFinished: Reaction = ({ state, pull, checks }) => {
   return [{ type: 'checks.finished', data: { patchId: patch.id, passed: outcome === 'passed' } }]
 }
 
+const CONFLICT_STAGES: Stage[] = ['verify', 'ship']
+
+const conflictBase = (pull: ReactItem | null, patch: State['patch']): string | null =>
+  pull?.state === 'open' && pull.headSha === patch?.headSha && pull.conflicts ? pull.baseRef : null
+
+export const pullConflicted: Reaction = ({ state, pull }) => {
+  const { patch } = state
+  const base = conflictBase(pull, patch)
+  if (patch === null || base === null || state.merged || !CONFLICT_STAGES.includes(state.stage)) return []
+  return state.conflict?.patchId === patch.id ? [] : [{ type: 'pull.conflicted', data: { patchId: patch.id, base } }]
+}
+
 const mergeStages = (state: State): Stage[] => (state.adopted ? ['verify', 'ship'] : ['ship'])
 
 export const pullMerged: Reaction = ({ state, pull }) => {
@@ -68,6 +87,9 @@ export const issueClosed: Reaction = ({ state, issue, pull }) => {
 
 export const pullClosed: Reaction = ({ state, pull }) =>
   state.adopted && pull?.state === 'closed' ? [{ type: 'ticket.closed', data: { reason: 'closed-on-forge' } }] : []
+
+export const issueReopened: Reaction = ({ state, issue, closeWritten }) =>
+  state.closed === 'archived' && closeWritten && issue.state === 'open' ? [{ type: 'ticket.restored', data: {} }] : []
 
 export const headMoved: Reaction = ({ state, pull }) => {
   const patch = state.patch
@@ -97,9 +119,10 @@ export const deployFinished: Reaction = ({ deploy }) => {
   return [{ type: 'ship.deploy-stalled', data: { reason: 'overdue', checks: namesOf('none') } }]
 }
 
-const REACTIONS: Reaction[] = [reporterReplied, checksFinished, pullMerged, headMoved, deployFinished]
+const REACTIONS: Reaction[] = [reporterReplied, checksFinished, pullConflicted, pullMerged, headMoved, deployFinished]
 
 export const react = (input: ReactInput): AppEvent[] => {
+  if (input.state.closed === 'archived') return issueReopened(input)
   const closed = [...pullClosed(input), ...issueClosed(input)]
   if (closed.length > 0) return closed.slice(0, 1)
   return REACTIONS.flatMap((reaction) => reaction(input))

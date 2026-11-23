@@ -1,5 +1,6 @@
 import type { Problem } from './module'
 import type { Criterion, TicketRecord } from './record/schema'
+import type { ReviewResult } from './review-result'
 import type { VerifyResult } from './verify-result'
 
 export type ChecksState = 'passed' | 'failed' | 'pending' | 'none'
@@ -14,29 +15,33 @@ export type GateFacts = {
 }
 
 export type GateInput = { result: VerifyResult; record: TicketRecord; facts: GateFacts }
+export type ReviewGateInput = { result: ReviewResult; facts: GateFacts }
 export type GateOutcome = { accepted: true } | { accepted: false; refusals: Problem[] }
 
 type Rule = (input: GateInput) => Problem[]
+type ReviewRule = (input: ReviewGateInput) => Problem[]
 
 const refusal = (rule: string, path: string, message: string): Problem => ({
   path,
   message: `Gate ${rule}: ${message}`,
 })
 
-const author: Rule = ({ facts }) =>
+const author: ReviewRule = ({ facts }) =>
   facts.buildClaimedBy !== null && facts.buildClaimedBy === facts.verifyHeldBy
     ? [refusal('author', '', 'this session built the patch, and a verdict needs a non-author: release the run.')]
     : []
 
-const stalePatch: Rule = ({ result, facts }) =>
+const stalePatch: ReviewRule = ({ result, facts }) =>
   facts.patch?.id === result.patchId && facts.patch.headSha === result.headSha
     ? []
     : [refusal('stale-patch', 'patchId', 'the result is not for the latest patch: verify the patch of the record.')]
 
-const headMoved: Rule = ({ result, facts }) =>
+const headMoved: ReviewRule = ({ result, facts }) =>
   facts.headCommit === result.headSha
     ? []
     : [refusal('head-moved', 'headSha', 'the pull request head is not headSha: re-read it and verify that commit.')]
+
+export const CHECKS_FIX = 'wait for green checks, or mark it open'
 
 const claims = (status: string): boolean => status === 'met' || status === 'partial'
 
@@ -49,7 +54,7 @@ const checks: Rule = ({ result, record, facts }) => {
     .filter((c) => claims(c.status) && ['test', 'command'].includes(kindOf(record, c.id) ?? ''))
     .map((c) => {
       const why = `${c.id} is verified by a test or command but the checks are ${facts.checks}`
-      return refusal('checks', `criteria.${c.id}`, `${why}: wait for green checks, or mark it open.`)
+      return refusal('checks', `criteria.${c.id}`, `${why}: ${CHECKS_FIX}.`)
     })
 }
 
@@ -66,7 +71,7 @@ const known: Rule = ({ result, record }) =>
     .filter((c) => !record.criteria.some((criterion) => criterion.id === c.id))
     .map((c) => refusal('criterion', `criteria.${c.id}`, `${c.id} is not a criterion of the record: use its ids.`))
 
-const evidence: Rule = ({ result }) =>
+const evidence: ReviewRule = ({ result }) =>
   result.findings
     .filter((f) => f.evidence.pointer.trim() === '')
     .map((f) => {
@@ -88,7 +93,12 @@ const verdict: Rule = ({ result, record }) => {
 
 const RULES: Rule[] = [author, stalePatch, headMoved, checks, proof, known, evidence, verdict]
 
-export const gate = (input: GateInput): GateOutcome => {
-  const refusals = RULES.flatMap((rule) => rule(input))
-  return refusals.length === 0 ? { accepted: true } : { accepted: false, refusals }
-}
+const REVIEW_RULES: ReviewRule[] = [author, stalePatch, headMoved, evidence]
+
+const outcomeOf = (refusals: Problem[]): GateOutcome =>
+  refusals.length === 0 ? { accepted: true } : { accepted: false, refusals }
+
+export const gate = (input: GateInput): GateOutcome => outcomeOf(RULES.flatMap((rule) => rule(input)))
+
+export const reviewGate = (input: ReviewGateInput): GateOutcome =>
+  outcomeOf(REVIEW_RULES.flatMap((rule) => rule(input)))

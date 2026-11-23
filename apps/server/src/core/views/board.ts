@@ -63,6 +63,7 @@ export const toCard = (row: TicketRow): BoardCard => {
       card,
       parked,
       hasRun,
+      reviewer: row.run?.role === 'reviewer',
       claimed: row.run?.leasedBy != null,
       questionDrafted: row.questionDrafted,
       ended,

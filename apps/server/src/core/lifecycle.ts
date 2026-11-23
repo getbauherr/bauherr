@@ -26,7 +26,14 @@ export type Config = {
 
 export type Role = 'builder' | 'reviewer' | 'verifier'
 export type WaitOn = 'reporter' | 'run' | 'checks' | 'deploy' | 'owner' | 'author'
-export type BriefReason = 'open-decision' | 'one-way-door' | 'risk-area' | 'backlog' | 'external-request' | 'sent-back'
+export type BriefReason =
+  | 'open-decision'
+  | 'one-way-door'
+  | 'risk-area'
+  | 'visible-change'
+  | 'backlog'
+  | 'external-request'
+  | 'sent-back'
 export type Step =
   | { kind: 'run'; stage: Stage; role: Role }
   | { kind: 'card'; card: 'brief' | 'result' | 'question'; reason: string; options: string[] }
@@ -54,6 +61,7 @@ const GATES: { reason: BriefReason; applies: (record: TicketRecord, riskAreas: s
   { reason: 'open-decision', applies: (r) => r.decisions.some((d) => d.answer === undefined) },
   { reason: 'one-way-door', applies: (r) => r.risk?.door === 'one-way' },
   { reason: 'risk-area', applies: (r, areas) => (r.risk?.areas ?? []).some((a) => areas.includes(a)) },
+  { reason: 'visible-change', applies: (r) => r.visible },
   { reason: 'backlog', applies: (r) => r.source.backlog && r.source.adopted === undefined },
   {
     reason: 'external-request',
@@ -67,9 +75,24 @@ export const briefGate = (record: TicketRecord, config: Pick<Config, 'riskAreas'
 export const canGoBack = (state: State): boolean =>
   (state.stage === 'build' || state.stage === 'verify') && !state.merged && state.closed === null
 
+const ARCHIVABLE: Stage[] = ['intake', 'brief', 'build', 'verify']
+
+export const canArchive = (state: State): boolean =>
+  state.closed === null && !state.merged && ARCHIVABLE.includes(state.stage)
+
 const run = (stage: Stage, role: Role): Step => ({ kind: 'run', stage, role })
 const wait = (on: WaitOn): Step => ({ kind: 'wait', on })
 const question = (reason: string, options: string[]): Step => ({ kind: 'card', card: 'question', reason, options })
+
+const learn: Rule = (record, state, config) => {
+  if (state.stage !== 'done' || state.closed !== null || !state.accepted || state.learn.learned) return null
+  if (!state.learn.corrected && !record.findings.some((finding) => finding.status === 'fixed')) return null
+  if (state.run) return wait('run')
+  if (state.failedRuns >= config.caps.failedRuns) {
+    return { kind: 'emit', event: { type: 'learn.skipped', data: { reason: 'the Learn run failed twice' } } }
+  }
+  return run('done', 'reviewer')
+}
 
 const closed: Rule = (_r, state) => (state.closed !== null || state.stage === 'done' ? { kind: 'done' } : null)
 const cardOpen: Rule = (_r, state) => (state.card ? wait('owner') : null)
@@ -117,6 +140,7 @@ const author: Rule = (_r, state, config) => {
 
 const verify: Rule = (_r, state) => {
   if (state.stage !== 'verify') return null
+  if (state.reviewed !== (state.patch?.id ?? null)) return run('verify', 'reviewer')
   return state.checks === 'pending' ? wait('checks') : run('verify', 'verifier')
 }
 
@@ -139,7 +163,7 @@ const ship: Rule = (_r, state, config) => {
   return state.merged ? afterMerge(state, config) : { kind: 'effect', effect: 'merge' }
 }
 
-const RULES: Rule[] = [closed, cardOpen, runLive, failedRuns, intake, brief, build, author, verify, ship]
+const RULES: Rule[] = [learn, closed, cardOpen, runLive, failedRuns, intake, brief, build, author, verify, ship]
 
 export const next = (record: TicketRecord, state: State, config: Config): Step => {
   for (const rule of RULES) {

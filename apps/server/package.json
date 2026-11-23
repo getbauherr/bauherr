@@ -21,6 +21,7 @@
     "test:gateway": "vitest run --config vitest.integration.config.ts",
     "gen:migrations": "tsx scripts/gen-migrations.ts",
     "tokens": "tsx scripts/tokens.ts",
+    "eval:intake": "tsx scripts/eval-intake.ts",
     "design:check": "tsx scripts/design-md.ts",
     "e2e": "playwright test",
     "a11y:coverage": "tsx scripts/a11y-coverage.ts"

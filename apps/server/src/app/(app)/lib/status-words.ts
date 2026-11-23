@@ -8,7 +8,8 @@ export const STATUS_WORDS: Record<TicketStatus, StatusWord> = {
   triaging: { word: 'Triaging', tone: 'accent' },
   'drafting-brief': { word: 'Drafting Brief', tone: 'accent' },
   building: { word: 'Building', tone: 'accent' },
-  verifying: { word: 'Reviewing', tone: 'accent' },
+  reviewing: { word: 'Reviewing', tone: 'accent' },
+  verifying: { word: 'Verifying', tone: 'accent' },
   queued: { word: 'Queued', tone: 'neutral', mark: 'clock' },
   'waiting-for-checks': { word: 'Waiting for CI', tone: 'neutral', mark: 'clock' },
   'waiting-for-deploy': { word: 'Waiting for deploy', tone: 'neutral', mark: 'clock' },
@@ -33,6 +34,7 @@ export const CLOSED_WORDS: Record<ClosedAs, string> = {
   'not-planned': 'Not planned',
   discarded: 'Discarded',
   'closed-on-forge': 'Closed on the forge',
+  archived: 'Archived',
 }
 
 export const HELD_SENTENCES: Record<string, string> = {

@@ -1,13 +1,13 @@
 # CI templates for target repos (#20)
 
 Proposal, nothing executed. Sources: #20, #7 resolution (items 6, 7, 9), `runner-execution-model.md` §4-5,
-klima-portal `.gitlab-ci.yml` / `tools/docs-lint.sh`, ai-tooling `evals/README.md`. `[unverified]` = not checked.
+sample-app `.gitlab-ci.yml` / `tools/docs-lint.sh`, ai-tooling `evals/README.md`. `[unverified]` = not checked.
 
 ## 1. Delivery mechanism
 | | GitHub | GitLab |
 |---|---|---|
 | Recommend | **Reusable workflow** `getbauherr/bauherr/.github/workflows/bauherr-ci.yml@v1` | **`include: project:`** with `ref: v1.x.y` from a gitlab.com mirror of the CI repo |
-| Why | Multi-job, own permissions, central logic. Composite action = steps only (no jobs, no `permissions`). Copied template drifts (the klima-portal `docs-lint` fork problem #7 fixed). | Works on Free, no catalog publishing step. |
+| Why | Multi-job, own permissions, central logic. Composite action = steps only (no jobs, no `permissions`). Copied template drifts (the sample-app `docs-lint` fork problem #7 fixed). | Works on Free, no catalog publishing step. |
 | Alternative | Starter workflow (org `.github` repo) is a copy: scaffolding the caller only. | CI/CD components: Free, `Tier: Free, Premium, Ultimate`; refs `@sha`/`@tag`/`@~latest` ([docs](https://docs.gitlab.com/ci/components/)). Needs the component project on the consumer's instance; gitlab.com components on Self-Managed need Premium (same page). Revisit when inputs/versions matter more. |
 
 GitHub ([reuse-workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows)):
@@ -31,18 +31,18 @@ only a client estimate ("can overshoot", same doc).
 ## 2. Jobs
 Jobs: `lint` (`npx bauherr@$VER pack lint`), `eval` (`npx bauherr@$VER eval`), `secrets`, `test` (opt-in), `sast` (GitLab only).
 
-- **Tests.** No language-agnostic magic. Contract: one command, default `make test` (klima-portal has it; its CI
+- **Tests.** No language-agnostic magic. Contract: one command, default `make test` (sample-app has it; its CI
   runs `php artisan test --parallel` against Postgres services, `.gitlab-ci.yml` `.test_base`). The template runs `test-command` on a bare runner. Products needing services keep their own job (reusable workflows
   cannot declare `services:`) and mark it a required check. Per-stack packs may later supply a default command.
   Default: off.
-- **Lint.** klima-portal wiring: `docs:check` job runs only on MRs touching `docs/**`, `CLAUDE.md`, `.ai/**`,
+- **Lint.** sample-app wiring: `docs:check` job runs only on MRs touching `docs/**`, `CLAUDE.md`, `.ai/**`,
   `.claude/**`, lock files (`.gitlab-ci.yml` L357+) and calls `tools/docs-lint.sh` (cited paths exist, version
   drift vs lock files, size caps, removed trees, skill front matter, rules listed in index, token budget). #7 item
   7 turns this into `bauherr pack lint` with a config file; php/Boost checks move to the laravel stack pack. Lint
   is deterministic, no LLM, no secret needed, so it also runs on fork PRs.
 - **SAST.** GitLab Free: `Jobs/SAST` works, Semgrep analyzer "All tiers"; Advanced SAST (cross-file) Ultimate;
   JSON artifact only, no MR widget ([docs](https://docs.gitlab.com/user/application_security/sast/)).
-  klima-portal already includes it. GitHub: CodeQL default setup needs a public repo or GitHub Code Security
+  sample-app already includes it. GitHub: CodeQL default setup needs a public repo or GitHub Code Security
   ([docs](https://docs.github.com/code-security/code-scanning/enabling-code-scanning/configuring-default-setup-for-code-scanning)).
   So **do not bundle SAST in the GitHub template**: customers enable CodeQL
   default setup in repo settings (zero YAML), or add Semgrep OSS themselves. Bauherr is not a SAST vendor.
@@ -131,7 +131,7 @@ on:
     inputs:
       repo-kind:        {type: string,  required: true}          # product | knowledge
       bauherr-version:  {type: string,  default: "1.0.0"}        # npx bauherr@<ver>
-      gateway-url:      {type: string,  default: "https://ai.einsfuenf.de"}
+      gateway-url:      {type: string,  default: "https://ai.example.com"}
       test-command:     {type: string,  default: ""}             # empty = no test job
       eval-model:       {type: string,  default: "cheap-default"}   # judge-model, max-usd likewise
     secrets:

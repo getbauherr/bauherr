@@ -37,6 +37,7 @@ const row = (title: string, extra: Partial<ItemRow> = {}): ItemRow => ({
   forgeClosedAt: null,
   headSha: null,
   headRef: null,
+  baseRef: null,
   mergeSha: null,
   closes: [],
   draft: false,

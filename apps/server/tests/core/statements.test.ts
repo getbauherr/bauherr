@@ -26,7 +26,7 @@ describe('which answers are remembered', () => {
       const statement = statementOf({ asked: ask, choice, note: '', card: null })
       const reason = ask.slice('question:'.length)
       if (REMEMBERED[reason as keyof typeof REMEMBERED]) {
-        expect(statement).toEqual({ kind: 'answer', text: `${reason}: ${choice}` })
+        expect(statement).toEqual({ kind: 'answer', scope: 'product', text: `${reason}: ${choice}` })
       } else {
         expect(statement).toBeNull()
       }
@@ -35,13 +35,13 @@ describe('which answers are remembered', () => {
 
   it('stores the note of retry-with-guidance as guidance although the reason is not remembered', () => {
     const given = { asked: 'question:failed-runs', choice: 'retry-with-guidance', note: 'try X', card: null }
-    expect(statementOf(given)).toEqual({ kind: 'guidance', text: 'try X' })
+    expect(statementOf(given)).toEqual({ kind: 'guidance', scope: 'ticket', text: 'try X' })
   })
 
   it('stores the note of back-to-brief like a request for changes, on a card and without one', () => {
     for (const asked of ['question:agent', 'working']) {
       const given = { asked, choice: 'back-to-brief', note: 'redo it', card: null }
-      expect(statementOf(given)).toEqual({ kind: 'brief-change', text: 'redo it' })
+      expect(statementOf(given)).toEqual({ kind: 'brief-change', scope: 'ticket', text: 'redo it' })
     }
   })
 
@@ -49,7 +49,19 @@ describe('which answers are remembered', () => {
     const card = { card: 'question' as const, reason: 'agent', options: ['a', 'b'], text: 'Which?' }
     expect(statementOf({ asked: 'question:agent', choice: 'a', note: '', card })).toEqual({
       kind: 'answer',
+      scope: 'product',
       text: 'Which?: a',
+    })
+  })
+})
+
+describe('a free answer', () => {
+  it('is remembered like an agent answer, with its text as the answer', () => {
+    const card = { card: 'question' as const, reason: 'agent', options: ['a', 'b'], text: 'Which?' }
+    expect(statementOf({ asked: 'question:agent', choice: 'own-answer', note: 'use a queue', card })).toEqual({
+      kind: 'answer',
+      scope: 'product',
+      text: 'Which?: use a queue',
     })
   })
 })
@@ -58,9 +70,14 @@ describe('statementOf', () => {
   const given = { asked: 'result', choice: 'accept', note: '', card: null }
 
   it('turns a note on a send-back or a Brief change into a statement of that kind', () => {
-    expect(statementOf({ ...given, choice: 'send-back', note: 'no' })).toEqual({ kind: 'send-back', text: 'no' })
+    expect(statementOf({ ...given, choice: 'send-back', note: 'no' })).toEqual({
+      kind: 'send-back',
+      scope: 'ticket',
+      text: 'no',
+    })
     expect(statementOf({ ...given, asked: 'brief', choice: 'request-changes', note: 'shorter' })).toEqual({
       kind: 'brief-change',
+      scope: 'ticket',
       text: 'shorter',
     })
   })
@@ -69,22 +86,38 @@ describe('statementOf', () => {
     const card = { card: 'question' as const, reason: 'agent', options: ['a', 'b'], text: 'Which one?' }
     expect(statementOf({ asked: 'question:agent', choice: 'a', note: 'soon', card })).toEqual({
       kind: 'answer',
+      scope: 'product',
       text: 'Which one?: a. soon',
     })
     expect(statementOf({ asked: 'question:disputed', choice: 'accept', note: '', card: null })).toEqual({
       kind: 'answer',
+      scope: 'product',
       text: 'disputed: accept',
     })
   })
 
   it('records guidance, and nothing for a bare choice', () => {
     expect(statementOf({ asked: 'question:failed-runs', choice: 'retry-with-guidance', note: 'x', card: null }))
-      .toEqual({ kind: 'guidance', text: 'x' })
+      .toEqual({ kind: 'guidance', scope: 'ticket', text: 'x' })
     expect(statementOf({ ...given, choice: 'approve', asked: 'brief', note: 'go' })).toEqual({
       kind: 'guidance',
+      scope: 'ticket',
       text: 'go',
     })
     expect(statementOf(given)).toBeNull()
+  })
+
+  it('takes the scope the owner chose over the default of the kind', () => {
+    expect(statementOf({ ...given, choice: 'send-back', note: 'no', scope: 'product' })?.scope).toBe('product')
+    expect(
+      statementOf({ asked: 'question:disputed', choice: 'accept', note: '', card: null, scope: 'ticket' })?.scope,
+    ).toBe('ticket')
+  })
+
+  it('stores nothing when the owner chose not to remember', () => {
+    expect(statementOf({ ...given, choice: 'send-back', note: 'no', scope: 'none' })).toBeNull()
+    const answer = { asked: 'question:disputed', choice: 'accept', note: 'x', card: null, scope: 'none' as const }
+    expect(statementOf(answer)).toBeNull()
   })
 
   it('never exceeds the limit', () => {
@@ -115,9 +148,39 @@ describe('decide with statements', () => {
     await decide(id, e.owner, change, e.deps())
     await e.work(id, 'builder', { goal: 'Fix it', open: false })
     const stored = await statementsFor(e.db.payload, e.db.product, 5)
-    expect(stored.map((s) => [s.kind, s.text, s.record])).toEqual([['brief-change', 'cut it down', id]])
+    expect(stored.map((s) => [s.kind, s.scope, s.text, s.record])).toEqual([
+      ['brief-change', 'ticket', 'cut it down', id],
+    ])
     await e.drain()
     expect(await statementsFor(e.db.payload, e.db.product + 1, 5)).toEqual([])
+  })
+
+  it('stores the scope the owner chose with the note', async () => {
+    const id = await e.db.fresh()
+    await advance(id, e.deps())
+    await e.work(id, 'builder', { verdict: 'accept' })
+    await e.work(id, 'builder', { goal: 'Fix it', open: true })
+    const change = { ask: 'brief', choice: 'request-changes', note: 'always short', scope: 'product' as const }
+    await decide(id, e.owner, { ...change, seq: await e.seq(id) }, e.deps())
+    const stored = await statementsFor(e.db.payload, e.db.product, 5)
+    expect(stored.map((s) => [s.text, s.scope])).toEqual([['always short', 'product']])
+  })
+
+  it('hands the note to the next run of the ticket but stores no statement when told not to remember', async () => {
+    const id = await e.db.fresh()
+    await advance(id, e.deps())
+    await e.work(id, 'builder', { verdict: 'accept' })
+    await e.work(id, 'builder', { goal: 'Fix it', open: true })
+    const change = { ask: 'brief', choice: 'request-changes', note: 'only for now', scope: 'none' as const }
+    await decide(id, e.owner, { ...change, seq: await e.seq(id) }, e.deps())
+    expect(await statementsFor(e.db.payload, e.db.product, 5)).toEqual([])
+    const events = await readEvents(e.db.payload, id)
+    const requested = events.find((event) => event.type === 'brief.changes-requested')
+    expect(requested?.data).toMatchObject({ note: 'only for now' })
+    const run = await e.db.payload.db.drizzle.execute(
+      sql`SELECT count(*)::int AS n FROM "statements" WHERE "record_id" = ${id}`,
+    )
+    expect(run.rows[0]?.n).toBe(0)
   })
 
   it('stores nothing when the decision is refused', async () => {
