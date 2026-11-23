@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { parkOnNeed } from './ask'
 import { inLockedRecord, type Conn } from './conn'
 import { runEffects } from './effects'
 import type { Stage } from './events'
@@ -6,7 +7,8 @@ import { advance, type AdvanceDeps } from './engine'
 import { fold } from './fold'
 import { gate, reviewGate, type GateFacts, type GateOutcome } from './gate'
 import { loadGateFacts } from './gate-facts'
-import { foldOptions, type Role } from './lifecycle'
+import { rememberLessons } from './memory-store'
+import { foldOptions, type Config, type Role } from './lifecycle'
 import { moduleKey, type Effect, type LifecycleModule, type Modules, type Problem } from './module'
 import {
   CriteriaEditNotAllowed,
@@ -16,7 +18,7 @@ import {
   StatusChangeNotAllowed,
 } from './record/errors'
 import type { TicketRecord } from './record/schema'
-import { appendEvent, patchRecord, readEvents, readRecord } from './record/store'
+import { appendEvent, patchRecord, readEvents, readRecord, type StoredRecord } from './record/store'
 import { reviewResultSchema } from './review-result'
 import { verifyResultSchema } from './verify-result'
 import { ModuleMissing, RecordClosed } from './run/errors'
@@ -89,6 +91,23 @@ const gated = (module: LifecycleModule, data: unknown, record: TicketRecord, fac
 
 type Written = { problems: Problem[] } | { effects: Effect[] }
 
+const applyIn = async (
+  tx: Conn,
+  run: Run,
+  module: LifecycleModule,
+  data: unknown,
+  f: { stored: StoredRecord; config: Config },
+): Promise<Effect[]> => {
+  const state = fold(await readEvents(tx, run.recordId), foldOptions(f.config))
+  const applied = module.apply(f.stored.record, data, run, { config: f.config, state })
+  const by = { stage: run.stage, runId: String(run.id) }
+  const input = { expectedVersion: f.stored.version, writes: module.writes, patch: applied.patch, by }
+  await patchRecord(tx, run.recordId, input)
+  for (const event of applied.events) await appendEvent(tx, run.recordId, { ...event, actor: 'agent' })
+  if (applied.memory) await rememberLessons(tx, run, applied.memory)
+  return applied.effects ?? []
+}
+
 const write = async (
   tx: Conn,
   run: Run,
@@ -105,13 +124,7 @@ const write = async (
     if (!outcome.accepted) return { problems: outcome.refusals }
   }
   try {
-    const state = fold(await readEvents(tx, run.recordId), foldOptions(config))
-    const applied = module.apply(stored.record, data, run, { config, state })
-    const by = { stage: run.stage, runId: String(run.id) }
-    const input = { expectedVersion: stored.version, writes: module.writes, patch: applied.patch, by }
-    await patchRecord(tx, run.recordId, input)
-    for (const event of applied.events) await appendEvent(tx, run.recordId, { ...event, actor: 'agent' })
-    return { effects: applied.effects ?? [] }
+    return { effects: await applyIn(tx, run, module, data, { stored, config }) }
   } catch (error) {
     const problems = refusalOf(error)
     if (problems) return { problems }
@@ -122,7 +135,7 @@ const write = async (
 const submitLocked = async (tx: Conn, run: Run, token: string, rawResult: unknown, deps: SubmitDeps) => {
   const current = await authorize(tx, run.id, token)
   const state = fold(await readEvents(tx, current.recordId), foldOptions(await deps.configFor(current.recordId)))
-  if (state.closed !== null || state.stage === 'done') {
+  if (state.closed !== null || (state.stage === 'done' && current.stage !== 'done')) {
     throw new RecordClosed(`Record ${current.recordId} is closed: stop working on run ${current.id}.`)
   }
   const module = deps.modules[moduleKey(current.stage, current.role)]
@@ -150,7 +163,8 @@ export const submit = async (
   return locked.status === 'accepted' ? { status: 'accepted' } : locked
 }
 
-export const releaseRun = async (runId: number, token: string, deps: AdvanceDeps): Promise<void> => {
+export const releaseRun = async (runId: number, token: string, deps: AdvanceDeps, need?: string): Promise<void> => {
+  if (need !== undefined) return parkOnNeed(runId, token, need, deps)
   const run = await release(deps.payload, runId, token, deps.now)
   await released(deps.payload, run)
   await advance(run.recordId, deps)

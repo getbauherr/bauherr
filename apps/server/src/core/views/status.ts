@@ -36,6 +36,7 @@ export const STATUSES = [
   'verify-rounds',
   'reporter-silent',
   'parked',
+  'parked-on-need',
   'accepted',
   'closed',
 ] as const
@@ -74,6 +75,7 @@ type Rule = (input: StatusInput) => TicketStatus | null
 const RULES: Rule[] = [
   (i) => i.ended,
   (i) => (i.parked === null ? null : 'parked'),
+  (i) => (i.card?.card === 'question' && i.card.reason === 'parked' ? 'parked-on-need' : null),
   (i) => STUCK_REASONS.find((reason) => isStuck(i.card) && i.card?.reason === reason) ?? null,
   (i) => (i.card === null ? null : OPEN_CARD[i.card.card]),
   (i) => (i.waitingOn === 'reporter' ? (i.questionDrafted ? 'question-drafted' : 'reporter-asked') : null),

@@ -89,7 +89,7 @@ describe('an adopted pull request against the fake forge', () => {
     const types = await f.types(s.id)
     expect(types.indexOf('result.accepted')).toBeLessThan(types.indexOf('ship.merged'))
     expect((await f.fake().forge.getPullRequest(s.repo, s.pr)).state).toBe('merged')
-    expect(await stages(s.id)).toEqual(['brief', 'verify', 'verify', 'verify', 'verify'])
+    expect(await stages(s.id)).toEqual(['brief', 'verify', 'verify', 'verify', 'verify', 'done'])
     expect(await reviews(s.repo, s.pr)).toHaveLength(1)
     expect((await f.fake().forge.getPullRequest(s.repo, s.pr)).headSha).toBe(second)
   })

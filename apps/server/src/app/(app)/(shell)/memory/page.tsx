@@ -43,8 +43,7 @@ export default async function MemoryPage({ searchParams }: Props) {
         <>
           <MemoryTable records={keep(records, show)} />
           <p className="small max-w-prose text-muted-foreground">
-            Handed: runs that got this memory. Came back: of those, runs after which Verify still asked for changes,
-            for whatever reason.
+            Handed: runs that got this memory. Came back: tickets that were corrected for this although a run had it.
           </p>
         </>
       )}

@@ -8,7 +8,7 @@ Every signed-in page has the same frame.
 
 - **Sidebar**: Inbox, Memory, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
 - **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page and finds Tickets.
-- **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause, only while runs wait: "No builder session is connected: 2 runs wait (Build 2)" with a Connect a session link, one line per role of a session Product with no session of that role seen for 10 minutes; "The Runner has not picked up a run for 10 minutes" when a Runner Product's run waits that long.
+- **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause, only while runs wait: "No builder session is connected: 2 runs wait (Build 2)" with a Connect a session link; "The Runner has not picked up a run for 10 minutes" when a Runner Product's run waits that long.
 - **Ask button**: opens the [chat](#chat) dock on `Ctrl/Cmd+J`.
 - **Workspace switcher**: appears with two or more Workspaces.
 
@@ -45,11 +45,11 @@ Only acceptance on staging closes a Ticket.
 
 The `/` page shows the workflow of your factory file. Tickets are listed by stage, with "Needs you" first. The Graph tab orders Tickets by blockers. A Ticket with sub-tickets is an epic and shows its progress on the Epics tab.
 
-Every Ticket has one status. The labels are Done, Split, In progress, Queued, Waiting for you, Waiting for CI, Blocked and Failed. The first matching label wins, and the list, the graph, the chat and the Ticket page show it the same way.
+Every Ticket has one status. The labels are Done, Split, In progress, Queued, Waiting for you, Waiting for CI, Blocked and Failed. The first matching label wins, and every page shows it the same way.
 
 ## Someday
 
-Label an issue `bauherr:someday` to park an idea: no Intake Run, no Inbox item. It is excluded by default (Product settings, Intake). The Factory view shows `Someday: N`, linked to those issues. Remove the label and the next sync takes it into Intake.
+Label an issue `bauherr:someday` to park an idea: no Intake Run, no Inbox item. It is excluded by default (Product settings, Intake). The Factory view shows `Someday: N`, linked to those issues.
 
 ## Ticket page
 
@@ -61,14 +61,14 @@ The action bar atop the Now pane holds the next step: one sentence and one prima
 - **Send back** asks for a note and returns the Ticket to Build or the Backlog. Every comment has an Applies to choice: This ticket (the default), This product or Do not remember. The Ticket page lists each used memory with its scope.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
 - **Round cap**: when review reaches its cap you grant one more round or stop.
-- **Close as done**: when Build reports another pull request or Ticket covers the work, the card asks "Close #n as done by #m?". Close comments with the evidence, closes the issue as completed and moves the Ticket to done; Re-run build queues Build again.
+- **Close as done**: when Build reports another pull request or Ticket covers the work, the card asks "Close #n as done by #m?". Close comments with the evidence and moves the Ticket to done; Re-run build queues Build again.
 
 - **Archive** (before Ship, after a dialog): releases the Run, hides the Ticket, closes the issue as not planned.
 - **Restore** reopens the issue and reruns the stage; so does reopening it on the forge.
 
 ### Decision card
 
-Every human checkpoint uses one card. It has the ask in one sentence, a recommendation, at most three reasons, the options and a collapsed details section. The Inbox and the Ticket page show the same card. Each option is an existing action, and a decided card does not come back.
+Every human checkpoint uses one card. It has the ask in one sentence, a recommendation, at most three reasons, the options and a collapsed details section. The Inbox and the Ticket page show the same card. A decided card does not come back.
 
 ## Request conversation
 
@@ -81,6 +81,10 @@ Every human checkpoint uses one card. It has the ask in one sentence, a recommen
 - File request is enabled when the card is complete or the question limit is reached.
 
 After filing, the conversation is read-only history.
+
+## Parked Tickets
+
+A Run missing a prerequisite only the owner can supply releases with that need. The Inbox and Ticket page show `Parked: <need>` with the stage. Resume queues the stage again; Discard closes the Ticket. Not Stuck, no Re-run.
 
 ## Run page
 
@@ -117,7 +121,7 @@ Only an Admin edits, except Profile and API keys. Members read the rest. The sid
 
 ## Memory
 
-`/memory` lists what the factory remembers for one Product. A memory page edits, switches off or deletes it. The run page lists the memory a run got.
+`/memory` lists one Product's memory and marks what Learn wrote as New. A memory page edits, switches off or deletes it. The run page lists the memory a run got.
 
 ## Not in the UI, by design
 

@@ -17,6 +17,8 @@ You implement the Brief on a branch and hand a pull request to a verifier who di
    (the file, test or command that shows it) instead of the pull request fields. The owner then closes the Ticket or
    sends you again. Never use it for work that is only partly there.
 7. For each finding you fixed, name its id in `addressed`. The verifier decides whether it is fixed.
+8. When only the owner can supply a missing prerequisite (a Connection, credentials), do not guess or fail:
+   call `release` with `need` set to what is missing, such as `AWS Connection`. The Ticket is parked on it.
 
 ## When your note says the pull request conflicts
 
@@ -37,3 +39,12 @@ Run the checks, push, and submit the pull request with a new patch id. Change no
 
 Write the handoff for a stranger who has not seen this run: what changed and where, what to run to see it,
 what you were unsure about, and what you left alone on purpose.
+
+## Writing for the owner
+
+Everything a person reads (titles, goals, criteria, questions, answers, findings, notes, comments) is plain English.
+- A title is one normal sentence you would say to a colleague: "Choosing the answer "Send back to Brief" does not send the ticket back".
+- Use no internal term (gate, lease, run, patch id, statement) unless you explain it in the same sentence.
+- A criterion is a full sentence about what a person sees or what a test checks.
+- Name another ticket or pull request by number, title and link: "#555 Run page redesign (link)", never "#555" alone.
+- Put file paths and technical detail last, under "Technical notes".

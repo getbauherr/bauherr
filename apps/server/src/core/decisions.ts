@@ -58,6 +58,10 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
     ]),
     discard: answer('discard', discarded),
   },
+  'question:parked': {
+    resume: answer('resume'),
+    discard: answer('discard', discarded),
+  },
   'question:reporter-silent': {
     close: answer('close', closed('not-planned')),
     'ask-again': answer('ask-again'),
@@ -107,6 +111,7 @@ export const QUESTION_REASONS = [
   'deploy-stalled',
   'production',
   'agent',
+  'parked',
 ] as const
 
 export type QuestionReason = (typeof QUESTION_REASONS)[number]
@@ -120,6 +125,7 @@ export const REMEMBERED: Record<QuestionReason, boolean> = {
   'deploy-stalled': false,
   production: false,
   agent: true,
+  parked: false,
 }
 
 export const isRemembered = (reason: string): boolean => REMEMBERED[reason as QuestionReason] === true
