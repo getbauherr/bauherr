@@ -106,6 +106,7 @@ describe('the brief module', () => {
     goal: 'Show the total',
     criteria: [1, 2, 3].map((n) => ({ text: `c ${n}`, verify: { kind: 'test', how: 'a test' } })),
     outOfScope: ['export'],
+    visible: true,
     risk: { door: 'two-way', areas: [], rollback: 'revert' },
     decisions: [],
     plan: ['one'],
@@ -117,6 +118,7 @@ describe('the brief module', () => {
     expect(applied.events).toEqual([{ type: 'brief.submitted', data: { runId: '9' } }])
     const merged = { ...briefed({ goal: '', criteria: [], risk: null }), ...applied.patch }
     expect(briefReady.safeParse(merged).success).toBe(true)
+    expect(applied.patch.visible).toBe(true)
     expect(applied.patch.criteria?.map((c) => [c.id, c.status, c.proof])).toEqual([
       ['c1', 'open', []],
       ['c2', 'open', []],
@@ -129,6 +131,7 @@ describe('the brief module', () => {
     ['eight criteria', { criteria: Array.from({ length: 8 }, () => result.criteria[0]) }],
     ['a criterion with a status', { criteria: result.criteria.map((c) => ({ ...c, status: 'met' })) }],
     ['no risk', { risk: undefined }],
+    ['no visible', { visible: undefined }],
   ])('refuses %s', (_name, change) => {
     expect(() => apply('brief', briefed(), { ...result, ...change })).toThrow()
   })

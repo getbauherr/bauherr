@@ -19,6 +19,7 @@ export const agentSessions = col(
     rel('agentKey', 'agent_keys'),
     text('role', { required: true, admin: { description: 'A role id of the Workspace workflow.' } }),
     text('label'),
+    { name: 'capacity', type: 'number', required: true, defaultValue: 1, min: 1, max: 4 },
     text('clientKey', {
       admin: { description: 'Stable id the client supplies; the same key reconnects the same row.' },
     }),
