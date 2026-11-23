@@ -13,7 +13,14 @@ export const EXPIRY_REASON = `no heartbeat for ${LEASE_MS / 60_000} minutes`
 
 export type NewRun = { stage: Stage; role: Role; fingerprint: string }
 export type Executor = 'session' | 'runner'
-export type ClaimInput = { workspace: number; role: Role; by: string; now: Date; executor?: Executor }
+export type ClaimInput = {
+  workspace: number
+  role: Role
+  by: string
+  now: Date
+  executor?: Executor
+  clientSession?: string | null
+}
 export type Claimed = { run: Run; token: string }
 export type Expired = { runId: number; recordId: number; stage: Stage }
 
@@ -57,7 +64,8 @@ export const claim = async (payload: Conn, input: ClaimInput): Promise<Claimed |
   const token = randomBytes(32).toString('hex')
   const updated = await payload.db.drizzle.execute(sql`
     UPDATE "stage_runs" SET "status" = 'claimed', "leased_by" = ${input.by}, "lease_token_hash" = ${hashOf(token)},
-      "lease_expires_at" = ${leaseEnd(input.now)}, "started_at" = ${input.now.toISOString()}, "updated_at" = now()
+      "lease_expires_at" = ${leaseEnd(input.now)}, "started_at" = ${input.now.toISOString()},
+      "client_session" = ${input.clientSession ?? null}, "updated_at" = now()
     WHERE "id" = (
       SELECT s."id" FROM "stage_runs" s JOIN "records" r ON r."id" = s."record_id"
       JOIN "products" p ON p."id" = r."product_id"
