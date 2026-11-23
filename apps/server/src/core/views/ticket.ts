@@ -17,6 +17,7 @@ import { loadIntakeFacts } from '../intake/facts-store'
 import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
 import { activityOf, type EventView } from './activity'
+import { loadMockups, type AttachmentView } from './attachments'
 import { statementsUsed, type StatementsUsed } from './statements-used'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
 import { TERMINAL_EVENTS } from './sql'
@@ -67,6 +68,8 @@ export type TicketView = {
   events: EventView[]
   runs: RunView[]
   proofs: ProofGroup[]
+  mockups: AttachmentView[]
+  noMockup: boolean
   pullRequest: PullView | null
   similarItems: ItemHit[]
   adopted: { pr: number; author: string } | null
@@ -136,6 +139,9 @@ const statusFor = (stored: StoredRecord, runs: RunView[], events: StoredEvent[],
   return statusOf({ stage, waitingOn, card, parked, hasRun: live !== undefined, claimed, questionDrafted, ended })
 }
 
+const lacksMockup = (record: TicketRecord, mockups: AttachmentView[]): boolean =>
+  record.visible && mockups.length === 0
+
 export const ticket = async (payload: Payload, filter: TicketFilter): Promise<TicketView> => {
   const stored = await readRecord(payload, filter.recordId)
   if (stored.workspace !== filter.workspace) {
@@ -147,6 +153,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
   const runs = await loadRuns(payload, stored.id)
   const { ended, closedAs } = endOf(stored, events)
   const pulls = await pullsOf(payload, stored, events)
+  const mockups = await loadMockups(payload, stored.id)
   return {
     recordId: stored.id,
     number,
@@ -165,6 +172,8 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     events: activityOf(events),
     runs,
     proofs: await loadProofs(payload, stored.id),
+    mockups,
+    noMockup: lacksMockup(stored.record, mockups),
     ...pulls,
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),

@@ -11,6 +11,7 @@ function Proof({ proof }: { proof: ProofView }) {
     <li className="grid gap-1">
       <span className="small text-muted-foreground">{word}</span>
       {proof.body !== null && <pre className={BLOCK}>{proof.body}</pre>}
+      {proof.attachment !== null && <span>{proof.attachment.caption}</span>}
       {proof.url !== null && <ForgeLink href={proof.url} label={proof.url} />}
     </li>
   )
