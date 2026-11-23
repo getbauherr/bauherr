@@ -1,30 +1,31 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
-import type { Stage } from '../events'
 import type { AgentsFile } from '../mirror/facts'
-import { anyWord, queryWords, sharedWords, sharesEnough } from '../mirror/match'
+import { runStageOf, type Why } from '../memory'
+import { queryWords } from '../mirror/match'
 import { similarItems } from '../mirror/search'
 import type { StoredRecord } from '../record/store'
 import { SCOPE_LABEL, STATEMENT_SCOPES } from '../statement-scope'
 import { STATEMENT_KINDS } from '../statements'
 import { closedAsOf, endedOf } from '../views/rows'
 import { TERMINAL_LIST } from '../views/sql'
-import { contextSchema, type StoredContext } from './schema'
+import { selectMemories } from './memory-select'
+import { contextSchema, type Run, type StoredContext } from './schema'
 
-export const STATEMENT_LIMIT = 5
 export const SIMILAR_TICKETS = 3
-const STATEMENT_STAGES: Stage[] = ['brief', 'build', 'verify']
 
 export type UsedStatement = {
   id: number
   kind: (typeof STATEMENT_KINDS)[number]
   scope: (typeof STATEMENT_SCOPES)[number]
   scopeLabel: string
+  why: Why
+  area: string | null
   text: string
-  ticket: number
+  ticket: number | null
   at: string
-  record: number
+  record: number | null
 }
 
 export type PackSimilar = {
@@ -42,16 +43,16 @@ export type ContextParts = {
 }
 
 const count = z.coerce.number()
-const idRow = z.object({ id: count })
 
 const statementRow = z.object({
   id: count,
   kind: z.enum(STATEMENT_KINDS),
   scope: z.enum(STATEMENT_SCOPES),
+  area: z.string().nullable(),
   text: z.string(),
   created_at: z.coerce.date(),
-  record_id: count,
-  source_number: count,
+  record_id: count.nullable(),
+  source_number: count.nullable(),
 })
 
 const similarRow = z.object({
@@ -75,11 +76,15 @@ const ids = (values: number[]) => sql.join(values.map((value) => sql`${value}`),
 const inOrder = <T extends { id: number }>(wanted: number[], found: T[]): T[] =>
   wanted.flatMap((id) => found.filter((row) => row.id === id))
 
-export const loadStatements = async (payload: Payload, wanted: number[]): Promise<UsedStatement[]> => {
+export const loadStatements = async (
+  payload: Payload,
+  wanted: number[],
+  reasons: Record<string, Why> = {},
+): Promise<UsedStatement[]> => {
   if (wanted.length === 0) return []
   const found = await payload.db.drizzle.execute(sql`
-    SELECT s."id", s."kind", s."scope", s."text", s."created_at", s."record_id", r."source_number"
-    FROM "statements" s JOIN "records" r ON r."id" = s."record_id"
+    SELECT s."id", s."kind", s."scope", s."area", s."text", s."created_at", s."record_id", r."source_number"
+    FROM "statements" s LEFT JOIN "records" r ON r."id" = s."record_id"
     WHERE s."id" IN (${ids(wanted)})`)
   const rows = found.rows.map((raw) => {
     const row = statementRow.parse(raw)
@@ -88,6 +93,8 @@ export const loadStatements = async (payload: Payload, wanted: number[]): Promis
       kind: row.kind,
       scope: row.scope,
       scopeLabel: SCOPE_LABEL[row.scope],
+      why: reasons[String(row.id)] ?? ('fit' as const),
+      area: row.area,
       text: row.text,
       ticket: row.source_number,
       at: row.created_at.toISOString(),
@@ -144,7 +151,7 @@ const loadAgentsFile = async (payload: Payload, workspace: number, repo: string)
 
 export const selectContext = async (
   payload: Payload,
-  stage: Stage,
+  run: Pick<Run, 'stage' | 'role'>,
   stored: StoredRecord,
 ): Promise<StoredContext> => {
   const agents = await loadAgentsFile(payload, stored.workspace, stored.record.source.repo)
@@ -155,25 +162,19 @@ export const selectContext = async (
       AND i."number" = r."source_number" AND i."kind" = 'issue'
     WHERE r."id" = ${stored.id}`)
   const issue = issueRow.parse(found.rows[0])
-  const words = queryWords(`${issue.title ?? ''} ${stored.record.goal}`)
-  const vector = sql`to_tsvector('simple', s."text")`
-  const shared = sharedWords(vector, words)
-  const statements =
-    STATEMENT_STAGES.includes(stage) && words.length > 0
-      ? await payload.db.drizzle.execute(sql`
-          SELECT s."id" FROM "statements" s
-          WHERE s."product_id" = ${issue.product_id} AND (s."record_id" = ${stored.id} OR s."scope" = 'product')
-            AND ${vector} @@ ${anyWord(words)} AND ${sharesEnough(vector, words)}
-          ORDER BY ${shared} DESC, ts_rank(${vector}, ${anyWord(words)}) DESC, s."created_at" DESC, s."id" DESC
-          LIMIT ${STATEMENT_LIMIT}`)
-      : { rows: [] }
+  const stage = runStageOf(run.stage, run.role)
+  const memories = stage
+    ? await selectMemories(payload, {
+        product: issue.product_id,
+        record: stored.id,
+        stage,
+        areas: stored.record.risk?.areas ?? [],
+        words: queryWords(`${issue.title ?? ''} ${stored.record.goal}`),
+      })
+    : { ids: [], reasons: {} }
   const similar =
-    stage === 'brief' && issue.id !== null ? await similarItems(payload, issue.id, SIMILAR_TICKETS, 'issue') : []
-  return {
-    ...none,
-    statements: statements.rows.map((row) => idRow.parse(row).id),
-    similar: similar.map((hit) => hit.id),
-  }
+    run.stage === 'brief' && issue.id !== null ? await similarItems(payload, issue.id, SIMILAR_TICKETS, 'issue') : []
+  return { ...none, statements: memories.ids, reasons: memories.reasons, similar: similar.map((hit) => hit.id) }
 }
 
 export const rememberContext = async (payload: Payload, runId: number, selected: StoredContext) => {
@@ -193,6 +194,6 @@ export const partsOf = async (
   agentsFile: context.agentsFile.given
     ? await loadAgentsFile(payload, stored.workspace, stored.record.source.repo)
     : null,
-  statements: await loadStatements(payload, context.statements),
+  statements: await loadStatements(payload, context.statements, context.reasons),
   similar: await loadSimilar(payload, context.similar),
 })

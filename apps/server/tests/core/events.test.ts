@@ -23,6 +23,8 @@ const BAD: [EventType, unknown][] = [
   ['verify.overridden', {}],
   ['verify.overridden', { patchId: 'p1', headSha: ' ' }],
   ['verify.passed', { runId: 'r2', patchId: 'p1' }],
+  ['review.submitted', { findings: -1 }],
+  ['review.submitted', { patchId: ' ' }],
   ['build.submitted', { runId: 'r1', patchId: 'p1', pr: 12 }],
   ['forge.write.started', { kind: 'delete', target: { repo: 'a/b', number: 1 } }],
   ['forge.write.failed', { kind: 'merge', target: { repo: 'a/b', number: 1 } }],
@@ -34,14 +36,14 @@ const BAD: [EventType, unknown][] = [
 
 describe('parseEvent', () => {
   it('has a sample for every event type, and parses each', () => {
-    expect(Object.keys(SAMPLES)).toHaveLength(37)
+    expect(Object.keys(SAMPLES)).toHaveLength(43)
     for (const [type, data] of Object.entries(SAMPLES)) {
       expect(parseEvent({ type, data })).toEqual({ type, data })
     }
   })
 
-  it('accepts the closed-on-forge reason', () => {
-    const data = { reason: 'closed-on-forge' }
+  it.each(['closed-on-forge', 'archived'])('accepts the %s reason', (reason) => {
+    const data = { reason }
     expect(parseEvent({ type: 'ticket.closed', data })).toEqual({ type: 'ticket.closed', data })
   })
 

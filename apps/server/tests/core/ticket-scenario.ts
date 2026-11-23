@@ -29,10 +29,14 @@ export const POOL_SIZE = 3
 
 export const POOL_TITLES = {
   briefApprove: 'Brief with a decision to approve',
+  briefArchive: 'Brief to archive',
   resultSendBack: 'Result to send back',
   resultAccept: 'Result to accept',
   resultStale: 'Result decided twice',
   question: 'Question from the agent',
+  questionBack: 'Question to send back to Brief',
+  questionOwn: 'Question to answer in own words',
+  briefComment: 'Brief to comment on',
 } as const
 
 export type TicketNames = Record<keyof typeof TICKET_TITLES, number> &
@@ -274,6 +278,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     briefTitle: await open(TICKET_TITLES.briefTitle),
     briefAnswers: await open(TICKET_TITLES.briefAnswers),
     briefApprove: await pooled((n) => open(`${POOL_TITLES.briefApprove} ${n}`)),
+    briefArchive: await pooled((n) => open(`${POOL_TITLES.briefArchive} ${n}`)),
     resultReadonly: await result(TICKET_TITLES.resultReadonly, ++pr),
     resultSendBack: await pooled((n) => result(`${POOL_TITLES.resultSendBack} ${n}`, ++pr)),
     resultAccept: await pooled((n) => result(`${POOL_TITLES.resultAccept} ${n}`, ++pr)),
@@ -285,6 +290,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
   const deployStalled = await deployStalledTicket(e, ++pr)
   titled.push([deployStalled, TICKET_TITLES.deployStalled])
+  const briefComment = await pooled((n) => open(`${POOL_TITLES.briefComment} ${n}`))
   const adoptedWaiting = await adoptedTicket(e, ADOPTED_FIRST, false)
   const adoptedResult = await adoptedTicket(e, ADOPTED_FIRST + 1, true)
   titled.push([adoptedWaiting, TICKET_TITLES.adoptedWaiting], [adoptedResult, TICKET_TITLES.adoptedResult])
@@ -304,5 +310,12 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   const closes = [3000 + ADOPTED_FIRST]
   const other = { kind: 'pr', head: 'h72', title: 'Another take on the fix', author: 'dev-lee', closes } as const
   await mirror.item(ADOPTED_FIRST + 2, { ...other, closes })
-  return { ...names, adoptedWaiting, adoptedResult, deployStalled, intake: await intakeTicket(e, mirror.item) }
+  const intake = await intakeTicket(e, mirror.item)
+  const questionBack = await pooled((n) => asking(`${POOL_TITLES.questionBack} ${n}`))
+  const questionOwn = await pooled((n) => asking(`${POOL_TITLES.questionOwn} ${n}`))
+  for (const id of [...questionBack, ...questionOwn]) {
+    const { source } = (await readRecord(e.db.payload, id)).record
+    await mirror.item(source.number, { title: titled.find(([found]) => found === id)?.[1] ?? '' })
+  }
+  return { ...names, questionBack, questionOwn, briefComment, adoptedWaiting, adoptedResult, deployStalled, intake }
 }

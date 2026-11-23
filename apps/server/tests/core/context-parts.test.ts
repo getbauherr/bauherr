@@ -130,7 +130,7 @@ describe('matching owner statements', () => {
     expect(pack.statements).toHaveLength(5)
     expect(pack.statements[0]?.text).toContain('is retried')
     expect(pack.statements.every((s) => s.text.includes('timeout'))).toBe(true)
-    expect(Object.keys(pack.statements[0] ?? {}).sort()).toEqual(['at', 'id', 'kind', 'text', 'ticket'])
+    expect(Object.keys(pack.statements[0] ?? {}).sort()).toEqual(['at', 'id', 'kind', 'text', 'ticket', 'why'])
     expect(pack.statements[0]).toMatchObject({ kind: 'answer', ticket: await number(other) })
     expect((await packOf(own, 'build')).statements).toHaveLength(5)
     expect((await packOf(own, 'verify', 'verifier')).statements).toHaveLength(5)
@@ -296,7 +296,7 @@ describe('what a run used is shown', () => {
       record: other,
     })
     const page = await runPage(e.db.payload, { ...view, runId: brief.id, withCost: false })
-    expect(page.parts).toContainEqual({ label: 'Your earlier answers', detail: '1' })
+    expect(page.parts).toContainEqual({ label: 'Memory', detail: '1' })
   })
 
   it('lists nothing for a ticket whose runs used no statements', async () => {

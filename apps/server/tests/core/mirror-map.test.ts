@@ -74,6 +74,7 @@ describe('itemFromTicket', () => {
       forgeClosedAt: '2026-11-02T09:00:00Z',
       headSha: null,
       headRef: null,
+      baseRef: null,
       mergeSha: null,
       closes: [],
       draft: false,

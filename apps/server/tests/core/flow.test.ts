@@ -3,7 +3,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { decide, type Decision, StaleDecision } from '../../src/core/decide'
 import { advance } from '../../src/core/engine'
 import { fingerprint } from '../../src/core/lifecycle'
-import { readRecord } from '../../src/core/record/store'
+import { questionFacts } from '../../src/app/(app)/lib/question-facts'
+import { board } from '../../src/core/views/board'
+import { ticket } from '../../src/core/views/ticket'
+import { readEvents, readRecord } from '../../src/core/record/store'
 import { claim, LEASE_MS } from '../../src/core/run/leases'
 import { expireRuns, submit } from '../../src/core/submit'
 import { openEngine, type Engine } from './harness'
@@ -73,9 +76,10 @@ describe('a ticket from intake to done', () => {
     await expectView(id, 'done', 'nobody')
     expect((await e.view(id)).types).toEqual([
       'run.started', 'intake.accepted', 'run.started', 'brief.submitted', 'brief.approved', 'run.started',
-      'build.submitted', 'checks.finished', 'run.started', 'verify.passed', 'ship.merged', 'result.accepted',
+      'build.submitted', 'run.started', 'checks.finished', 'review.submitted', 'run.started', 'verify.passed',
+      'ship.merged', 'result.accepted',
     ])
-    expect((await runRows(id)).map((r) => r.status)).toEqual(['submitted', 'submitted', 'submitted', 'submitted'])
+    expect((await runRows(id)).map((r) => r.status)).toEqual(Array(5).fill('submitted'))
   })
 
   it('stops at a Brief card for an open decision until the owner approves', async () => {
@@ -133,17 +137,36 @@ describe('a ticket from intake to done', () => {
     expect((await e.view(id)).types.filter((t) => t === 'run.failed')).toHaveLength(2)
   })
 
-  it('releases a run whose lease expired and queues a new one', async () => {
+  it('expires a run whose lease passed and queues a new one', async () => {
     const id = await begin()
     const first = await claim(e.db.payload, { workspace: e.db.workspace, role: 'builder', by: 'x', now: e.clock.now })
     const later = { ...e.deps(), now: new Date(e.clock.now.getTime() + LEASE_MS + 1) }
     expect(await expireRuns(later)).toHaveLength(1)
     const rows = await runRows(id)
-    expect(rows.map((r) => r.status)).toEqual(['released', 'queued'])
-    expect((await e.view(id)).types).toEqual(['run.started', 'run.released', 'run.started'])
+    expect(rows.map((r) => r.status)).toEqual(['expired', 'queued'])
+    expect((await e.view(id)).types).toEqual(['run.started', 'run.expired', 'run.started'])
     await expectView(id, 'intake', 'agents')
     const again = await claim(e.db.payload, { workspace: e.db.workspace, role: 'builder', by: 'y', now: e.clock.now })
     expect(again?.run.id).not.toBe(first?.run.id)
+  })
+
+  it('asks failed-runs after two expiries in a row and names the missing heartbeat', async () => {
+    const id = await begin()
+    for (let i = 0; i < 2; i++) {
+      await claim(e.db.payload, { workspace: e.db.workspace, role: 'builder', by: 'x', now: e.clock.now })
+      await expireRuns({ ...e.deps(), now: new Date(e.clock.now.getTime() + LEASE_MS + 1) })
+    }
+    const ask = { card: 'question', reason: 'failed-runs', options: ['retry', 'retry-with-guidance', 'discard'] }
+    await expectView(id, 'intake', 'owner', ask)
+    const events = await readEvents(e.db.payload, id)
+    expect(events.filter((event) => event.type === 'run.expired')).toHaveLength(2)
+    expect(events.find((event) => event.type === 'run.expired')?.data).toMatchObject({
+      reason: 'no heartbeat for 30 minutes',
+    })
+    const filter = { workspace: e.db.workspace, recordId: id }
+    expect(questionFacts(await ticket(e.db.payload, filter), 'failed-runs').join(' ')).toContain('no heartbeat')
+    const { stages } = await board(e.db.payload, { workspace: e.db.workspace, now: e.clock.now })
+    expect(Object.values(stages).flat().find((card) => card.recordId === id)?.state).toBe('stuck')
   })
 
   it('refuses to approve a Brief while the Result card is open', async () => {
@@ -160,7 +183,7 @@ describe('a ticket from intake to done', () => {
     const ask = { card: 'question', reason: 'production', options: ['approve', 'hold'] }
     await expectView(id, 'ship', 'owner', ask)
     await answer(id, { ask: 'question:production', choice: 'hold' })
-    const held = { card: 'question', reason: 'production-held', options: ['approve-production'], seq: 15 }
+    const held = { card: 'question', reason: 'production-held', options: ['approve-production'], seq: 17 }
     await expectView(id, 'ship', 'owner', held)
     await expect(answer(id, { ask: 'question:production', choice: 'approve' })).rejects.toThrow(
       StaleDecision,

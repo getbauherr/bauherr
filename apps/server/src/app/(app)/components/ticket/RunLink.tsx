@@ -1,9 +1,9 @@
 import Link from 'next/link'
 
-export function RunLink({ id }: { id: number }) {
+export function RunLink({ id, word = 'Run' }: { id: number; word?: string }) {
   return (
     <Link href={`/runs/${id}`} className="mono text-primary hover:underline">
-      Run {id}
+      {word} {id}
     </Link>
   )
 }

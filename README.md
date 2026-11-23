@@ -168,6 +168,8 @@ Connect to the factory as engineer and work until told to stop.
 
 The session calls `connect {role}`, then loops on `next_work` until nothing is queued for its role. It shows as Working, Idle or Offline with its active time. The orchestrator also receives stuck Tickets. The Ticket status and Steps name who works ("<session> (<role>)", "Runner" or "CI"), and the chat can answer who is working. Details: docs/session-mode.md.
 
+To work several Tickets from one session, connect with a capacity (`connect {role, capacity}`, 1 to 4, default 1). The session claims up to that many Runs with `next_work`, which answers `at_capacity` and names the Runs it holds when the slots are full. For each Run it starts one subagent from `pack/agents/bauherr-builder.md` on the model tier the context pack names for the role (`pack/pack.yaml`: cheap, standard or strong), in its own worktree. The subagent heartbeats and submits or releases; a Run that stops heartbeating is requeued without touching the others. Settings, API keys lists every live Run of each session and its slots ("2 of 3 working").
+
 ## ⚙️ Configuration
 
 | What | Where |

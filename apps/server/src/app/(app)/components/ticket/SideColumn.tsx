@@ -37,6 +37,11 @@ const verdictOf = (view: TicketView): string | null => {
   return view.events.some((event) => event.type === 'verify.passed') ? 'Passed verification.' : null
 }
 
+function ReviewedBy({ runs }: { runs: TicketView['runs'] }) {
+  const review = runs.findLast((entry) => entry.role === 'reviewer' && entry.status === 'submitted')
+  return review ? <>, reviewed by <RunLink id={review.id} word="run" /></> : null
+}
+
 function Verdict({ view }: { view: TicketView }) {
   const { pullRequest: pull } = view
   const verdict = verdictOf(view)
@@ -49,6 +54,7 @@ function Verdict({ view }: { view: TicketView }) {
         <span className="small">
           {verdict}
           {run && <> <RunLink id={run.id} /></>}
+          <ReviewedBy runs={view.runs} />
         </span>
       )}
       {pull && (
@@ -104,13 +110,17 @@ function AnswersUsed({ view }: { view: TicketView }) {
   const used = kind === 'brief' ? view.statementsUsed.brief : kind === 'result' ? view.statementsUsed.result : []
   if (used.length === 0) return null
   return (
-    <Aside title="Your earlier answers used">
+    <Aside title="Memory used">
       {used.map((statement) => (
         <span key={statement.id} className="small">
-          &quot;{statement.text}&quot;{' '}
-          <Link href={`/tickets/${statement.record}`} className="text-muted-foreground underline">
-            #{statement.ticket}, {shortDate(statement.at)}
+          <Link href={`/memory/${statement.id}`} className="hover:underline">
+            &quot;{statement.text}&quot;
           </Link>{' '}
+          {statement.record !== null && (
+            <Link href={`/tickets/${statement.record}`} className="text-muted-foreground underline">
+              #{statement.ticket}, {shortDate(statement.at)}
+            </Link>
+          )}{' '}
           <span className="text-muted-foreground">({statement.scopeLabel})</span>
         </span>
       ))}

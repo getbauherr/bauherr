@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { readerFor } from '../../core/forge/reader'
 import { createWriter } from '../../core/forge/writer'
 import type { Role } from '../../core/lifecycle'
-import { MODULES, skillFor } from '../../lean'
+import { MODULES, skillFor, tierFor } from '../../lean'
 import { gitToken } from '../../lib/adapters'
 import { connectionInput, webOrigin, type ConnectionInput } from '../../lib/connection'
 import { tierModels } from '../../lib/gateway'
@@ -100,7 +100,7 @@ const onGateway = async (payload: Payload, request: AgentRequest): Promise<Agent
 }
 
 export const runnerDeps = (payload: Payload): RunnerDeps => ({
-  engine: () => ({ ...engineDeps(payload), modules: MODULES, skills: skillFor }),
+  engine: () => ({ ...engineDeps(payload), modules: MODULES, skills: skillFor, tiers: tierFor }),
   writer: createWriter(payload),
   access: (recordId) => repoAccess(payload, recordId),
   model: (workspace, role) => modelFor(payload, workspace, role),

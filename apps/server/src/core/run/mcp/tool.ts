@@ -5,7 +5,7 @@ import type { AdvanceDeps } from '../../engine'
 import type { SubmitDeps } from '../../submit'
 import { RunNotFound, WrongKeyKind } from '../errors'
 
-export type AgentContext = { deps: SubmitDeps; workspace: number; keyId: number }
+export type AgentContext = { deps: SubmitDeps; workspace: number; keyId: number; origin: string }
 export type PersonContext = { deps: AdvanceDeps; person: Person }
 export type Contexts = { agent: AgentContext; person: PersonContext }
 export type Access = keyof Contexts

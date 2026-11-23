@@ -1,23 +1,23 @@
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import type { Conn } from './conn'
-import { isRemembered } from './decisions'
+import { isRemembered, OWN_ANSWER } from './decisions'
 import type { Card } from './fold'
-import { STATEMENT_SCOPES, type StatementScope } from './statement-scope'
+import { STATEMENT_SCOPES, type NoteScope, type StatementScope } from './statement-scope'
 
 export const STATEMENT_MAX = 1000
-export const STATEMENT_KINDS = ['answer', 'send-back', 'brief-change', 'guidance'] as const
+export const STATEMENT_KINDS = ['answer', 'send-back', 'brief-change', 'guidance', 'written', 'learned'] as const
 
 export type StatementKind = (typeof STATEMENT_KINDS)[number]
 export type Statement = { kind: StatementKind; text: string; scope: StatementScope }
-export type StoredStatement = Statement & { id: number; record: number; createdAt: string }
+export type StoredStatement = Statement & { id: number; record: number | null; createdAt: string }
 
 type Given = {
   asked: string | null
   choice: string
   note: string
   card: Card | null
-  scope?: StatementScope | undefined
+  scope?: NoteScope | undefined
 }
 
 export const DEFAULT_SCOPE: Record<StatementKind, StatementScope> = {
@@ -25,6 +25,8 @@ export const DEFAULT_SCOPE: Record<StatementKind, StatementScope> = {
   'send-back': 'ticket',
   'brief-change': 'ticket',
   guidance: 'ticket',
+  written: 'product',
+  learned: 'product',
 }
 
 const clip = (text: string): string => text.slice(0, STATEMENT_MAX)
@@ -32,14 +34,18 @@ const clip = (text: string): string => text.slice(0, STATEMENT_MAX)
 const NOTE_KINDS: Record<string, StatementKind> = {
   'brief/request-changes': 'brief-change',
   'result/send-back': 'send-back',
+  'question:agent/back-to-brief': 'brief-change',
+  'working/back-to-brief': 'brief-change',
   'question:failed-runs/retry-with-guidance': 'guidance',
 }
 
-const made = (kind: StatementKind, text: string, scope: StatementScope | undefined): Statement => ({
-  kind,
-  text: clip(text),
-  scope: scope ?? DEFAULT_SCOPE[kind],
-})
+const answerText = (choice: string, note: string): string => {
+  if (choice === OWN_ANSWER) return note
+  return note === '' ? choice : `${choice}. ${note}`
+}
+
+const made = (kind: StatementKind, text: string, scope: NoteScope | undefined): Statement | null =>
+  scope === 'none' ? null : { kind, text: clip(text), scope: scope ?? DEFAULT_SCOPE[kind] }
 
 export const statementOf = ({ asked, choice, note, card, scope }: Given): Statement | null => {
   const kind = NOTE_KINDS[`${asked}/${choice}`]
@@ -47,14 +53,14 @@ export const statementOf = ({ asked, choice, note, card, scope }: Given): Statem
   if (asked?.startsWith('question:')) {
     if (!isRemembered(asked.slice('question:'.length))) return null
     const question = card?.text ?? asked.slice('question:'.length)
-    return made('answer', note === '' ? `${question}: ${choice}` : `${question}: ${choice}. ${note}`, scope)
+    return made('answer', `${question}: ${answerText(choice, note)}`, scope)
   }
   return note === '' ? null : made('guidance', note, scope)
 }
 
 const rowSchema = z.object({
   id: z.coerce.number(),
-  record_id: z.coerce.number(),
+  record_id: z.number().nullable(),
   kind: z.enum(STATEMENT_KINDS),
   scope: z.enum(STATEMENT_SCOPES),
   text: z.string(),

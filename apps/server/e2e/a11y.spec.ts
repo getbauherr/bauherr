@@ -64,6 +64,26 @@ const inFactory = (url: string) => async (page: Page) => {
   return url
 }
 
+const inRecord = (url: string) => async (page: Page) => {
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'record', url: base }])
+  return url
+}
+
+const memoryOne = async (page: Page) => {
+  await inRecord('/memory')(page)
+  return linkOn('/memory', /^\/memory\/\d+$/)(page)
+}
+
+const memoryRun = async (page: Page) => {
+  await inRecord('/memory')(page)
+  await page.goto('/memory')
+  await page.getByRole('link', { name: 'Say what changed in the handoff.' }).click()
+  const href = await page.locator('main a[href^="/runs/"]').first().getAttribute('href')
+  expect(href, 'a run link on the memory').toBeTruthy()
+  return href!
+}
+
 const withHoldStrip = (url: string) => async (page: Page) => {
   await inFactory(url)(page)
   await page.goto(url)
@@ -124,6 +144,9 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'cannot-run line': withHoldStrip('/'),
   },
   '/inbox': inFactory('/inbox'),
+  '/memory': inRecord('/memory'),
+  '/memory/new': inRecord('/memory/new'),
+  '/memory/[id]': memoryOne,
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
     'Brief card with earlier answers': inTickets('Large export needs earlier answers'),
@@ -131,12 +154,16 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'Result tab': inTickets('Result to read', '?tab=result'),
     'Activity tab': inTickets('Result to read', '?tab=activity'),
     'question card': inTickets('Question to read'),
+    'build in progress with the way back': inTickets('Build with reported steps'),
     'deploy that did not finish': inTickets('Deploy that did not finish'),
     Intake: inTickets('Intake waiting for the reporter'),
     'adopted, waiting on the author': inTickets('Adopted pull request waiting on its author'),
     'adopted, Result card': inTickets('Adopted pull request with a result'),
   },
-  '/runs/[id]': runOf('Build with reported steps'),
+  '/runs/[id]': {
+    'run with steps': runOf('Build with reported steps'),
+    'run with memory': memoryRun,
+  },
   '/settings': '/settings',
   '/settings/api-key': '/settings/api-key',
   '/settings/audit': '/settings/audit',

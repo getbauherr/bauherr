@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { MODULES, skillFor } from '../../src/lean'
+import { tierIn } from '../../src/core/run/tiers'
+import { MODULES, skillFor, tierFor } from '../../src/lean'
 import { openMcp, type Mcp } from './mcp-harness'
 
 let m: Mcp
@@ -18,6 +19,7 @@ const pack = z.object({
   status: z.literal('work'),
   context: z.object({
     stage: z.string(),
+    model: z.object({ tier: z.string() }),
     skill: z.string().nullable(),
     facts: z.object({ missing: z.array(z.string()) }).nullable(),
     agentsFile: z.object({ text: z.string(), cut: z.boolean() }).nullable(),
@@ -57,9 +59,35 @@ describe('the context pack', () => {
 
 describe('the skill loader', () => {
   it('reads the skill of every stage that has a module and none for the others', async () => {
-    for (const stage of ['intake', 'brief', 'build', 'verify'] as const) {
-      expect(await skillFor(stage)).toMatch(/^# \w+/)
+    for (const stage of ['intake', 'brief', 'build'] as const) {
+      expect(await skillFor(stage, 'builder')).toMatch(/^# \w+/)
     }
-    expect(await skillFor('ship')).toBeNull()
+    expect(await skillFor('verify', 'verifier')).toMatch(/^# Verify/)
+    expect(await skillFor('verify', 'reviewer')).toMatch(/^# Review/)
+    expect(await skillFor('ship', 'builder')).toBeNull()
+  })
+})
+
+describe('the model tier', () => {
+  it('names the tier of the role in pack/pack.yaml and standard for a role without one', async () => {
+    expect(await tierFor('builder')).toBe('standard')
+    expect(await tierFor('verifier')).toBe('strong')
+    expect(await tierFor('reviewer')).toBe('strong')
+    expect(tierIn({ roles: { builder: { tier: 'cheap' } } }, 'builder')).toBe('cheap')
+    expect(tierIn({ roles: { builder: { tier: 'cheap' } } }, 'verifier')).toBe('standard')
+    expect(tierIn({}, 'builder')).toBe('standard')
+    expect(() => tierIn({ roles: { builder: { tier: 'huge' } } }, 'builder')).toThrow()
+  })
+
+  it('carries the tier in the pack of a run', async () => {
+    await m.begin()
+    const { agent } = m.agent(m.alpha)
+    const contexts = { agent: { ...agent, deps: { ...agent.deps, tiers: () => Promise.resolve('cheap' as const) } } }
+    const { session } = z.object({ session: z.string() }).parse(await m.call('connect', { role: 'builder' }, contexts))
+    expect(pack.parse(await m.call('next_work', { session }, contexts)).context.model).toEqual({ tier: 'cheap' })
+    await m.e.drain()
+    await m.begin()
+    const plain = await claimWith(() => Promise.resolve(null))
+    expect(plain.context.model).toEqual({ tier: 'standard' })
   })
 })

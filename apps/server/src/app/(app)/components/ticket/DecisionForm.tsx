@@ -1,18 +1,18 @@
 'use client'
 import { useRef, useState, useTransition, type ReactNode } from 'react'
-import { SCOPE_LABEL, STATEMENT_SCOPES, type StatementScope } from '../../../../core/statement-scope'
+import { NOTE_MAX } from '../../../../core/limits'
 import { decideTicket } from '../../(shell)/tickets/actions'
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog'
-import { Label } from '../ui/label'
-import { NativeSelect } from '../ui/native-select'
-import { Textarea } from '../ui/textarea'
+import { CommentField, CommentToggle } from './CommentField'
+import { useComment } from './useComment'
 
 export type DecisionAction = {
   choice: string
   label: string
   variant: 'default' | 'outline' | 'danger'
   prompt?: string
+  say?: string
+  fixed?: boolean
 }
 
 type Props = {
@@ -26,8 +26,6 @@ type Props = {
 }
 
 const ANSWER_PREFIX = 'answer:'
-const NOTE_ID = 'decision-note'
-const SCOPE_ID = 'decision-scope'
 
 const answersOf = (form: HTMLFormElement): Record<string, string> => {
   const answers: Record<string, string> = {}
@@ -37,66 +35,19 @@ const answersOf = (form: HTMLFormElement): Record<string, string> => {
   return answers
 }
 
+type Prompted = { prompt?: string; say?: string }
+
+const promptOf = (input: HTMLInputElement): Prompted => ({
+  ...(input.dataset.prompt ? { prompt: input.dataset.prompt } : {}),
+  ...(input.dataset.say ? { say: input.dataset.say } : {}),
+})
+
 const resolve = (action: DecisionAction, picked: HTMLInputElement | null): DecisionAction => ({
   ...action,
   choice: picked?.value ?? action.choice,
   label: picked?.dataset.label ?? action.label,
-  ...(picked?.dataset.prompt ? { prompt: picked.dataset.prompt } : {}),
+  ...(picked ? promptOf(picked) : {}),
 })
-
-function NoteDialog(props: {
-  action: DecisionAction | null
-  pending: boolean
-  error: string | null
-  onSend: (note: string, scope: StatementScope) => void
-  onClose: () => void
-}) {
-  const [note, setNote] = useState('')
-  const [scope, setScope] = useState<StatementScope>('ticket')
-  const { action } = props
-  return (
-    <Dialog open={action !== null} onOpenChange={(open) => !open && props.onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{action?.label}</DialogTitle>
-          <DialogDescription>{action?.prompt}</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-3">
-          <Label htmlFor={NOTE_ID}>Note</Label>
-          <Textarea
-            id={NOTE_ID}
-            className="font-sans"
-            value={note}
-            maxLength={1000}
-            onChange={(event) => setNote(event.target.value)}
-          />
-          <Label htmlFor={SCOPE_ID}>Applies to</Label>
-          <NativeSelect
-            id={SCOPE_ID}
-            value={scope}
-            onChange={(event) => setScope(event.target.value === 'product' ? 'product' : 'ticket')}
-          >
-            {STATEMENT_SCOPES.map((value) => (
-              <option key={value} value={value}>
-                {SCOPE_LABEL[value]}
-              </option>
-            ))}
-          </NativeSelect>
-          {props.error && <p role="alert" className="small text-destructive">{props.error}</p>}
-          <DialogFooter>
-            <Button
-              type="button"
-              disabled={props.pending || note.trim() === ''}
-              onClick={() => props.onSend(note, scope)}
-            >
-              {action?.label}
-            </Button>
-          </DialogFooter>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
 function ActionBar(props: {
   sentence: string | undefined
@@ -132,52 +83,67 @@ function ActionBar(props: {
   )
 }
 
-export function DecisionForm({ recordId, ask, seq, sentence, actions, pick, children }: Props) {
+function Form({ recordId, ask, seq, sentence, actions, pick, children }: Props) {
   const form = useRef<HTMLFormElement>(null)
+  const comment = useComment(ask.startsWith('question:') ? 'product' : 'ticket')
   const [error, setError] = useState<string | null>(null)
-  const [noteFor, setNoteFor] = useState<DecisionAction | null>(null)
   const [pending, start] = useTransition()
 
-  const send = (action: DecisionAction, note?: string, scope?: StatementScope) =>
+  const send = (action: DecisionAction) =>
     start(async () => {
-      const answers = form.current ? answersOf(form.current) : {}
-      const extra = {
-        ...(note ? { note } : {}),
-        ...(scope ? { scope } : {}),
-        ...(Object.keys(answers).length > 0 ? { answers } : {}),
-      }
+      const answers = form.current && action.choice === 'approve' ? answersOf(form.current) : {}
+      const note = comment.empty ? {} : { note: comment.note, scope: comment.scope }
+      const extra = { ...note, ...(Object.keys(answers).length > 0 ? { answers } : {}) }
       const result = await decideTicket({ recordId, ask, seq, choice: action.choice, ...extra })
       setError(result.error ?? null)
-      if (!result.error) setNoteFor(null)
+      if (!result.error) comment.reset()
     })
 
   const press = (action: DecisionAction) => {
-    const picked = pick ? (form.current?.querySelector<HTMLInputElement>('input[name="choice"]:checked') ?? null) : null
-    if (pick && !picked) return setError('Choose an answer first.')
+    const picking = pick && !action.fixed
+    const checked = form.current?.querySelector<HTMLInputElement>('input[name="choice"]:checked') ?? null
+    const picked = picking ? checked : null
+    if (picking && !picked) return setError('Choose an answer first.')
     const chosen = resolve(action, picked)
     setError(null)
-    if (chosen.prompt) return setNoteFor(chosen)
-    send(chosen)
+    if (!chosen.prompt || !comment.empty) return send(chosen)
+    comment.demand(`${chosen.say ?? 'Write a comment'}, then press ${action.label} again.`, chosen.prompt)
+  }
+
+  const picked = (target: EventTarget) => {
+    if (!(target instanceof HTMLInputElement) || target.name !== 'choice') return
+    setError(null)
+    comment.settle(target.dataset.prompt ?? null)
+    if (target.dataset.prompt) comment.reveal(target.dataset.prompt)
   }
 
   return (
-    <form ref={form} onSubmit={(event) => event.preventDefault()} className="contents">
+    <form
+      ref={form}
+      onSubmit={(event) => event.preventDefault()}
+      onChange={(event) => picked(event.target)}
+      className="contents"
+    >
       {children}
-      <ActionBar
-        sentence={sentence}
-        actions={actions}
-        error={noteFor ? null : error}
-        pending={pending}
-        onPress={press}
-      />
-      <NoteDialog
-        key={noteFor?.choice ?? 'closed'}
-        action={noteFor}
-        pending={pending}
-        error={error}
-        onSend={(note, scope) => noteFor && send(noteFor, note, scope)}
-        onClose={() => setNoteFor(null)}
-      />
+      {comment.open ? (
+        <CommentField
+          value={comment.note}
+          max={NOTE_MAX}
+          hint={comment.hint}
+          missing={comment.empty ? comment.missing : null}
+          areaRef={comment.area}
+          scope={comment.scope}
+          onChange={comment.setNote}
+          onScope={comment.setScope}
+        />
+      ) : (
+        <CommentToggle onOpen={() => comment.reveal(null)} />
+      )}
+      <ActionBar sentence={sentence} actions={actions} error={error} pending={pending} onPress={press} />
     </form>
   )
+}
+
+export function DecisionForm(props: Props) {
+  return <Form key={`${props.ask}:${props.seq}`} {...props} />
 }

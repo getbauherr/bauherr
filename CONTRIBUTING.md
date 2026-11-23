@@ -21,3 +21,7 @@ Rules every e2e test follows (the mechanical ones are pinned by `apps/server/tes
 Bauherr's own UI rules, for the UX specialist and any agent changing the UI of this repository: [docs/agents/ui-development.md](docs/agents/ui-development.md) (rules, e2e) and [docs/ui.md](docs/ui.md) (pages), [docs/design/README.md](docs/design/README.md) (tokens, patterns, chat), and the shadcn components in `apps/server/src/app/(app)/components/ui`. They are not part of the core pack, which names no Product's paths.
 
 Every page meets WCAG 2.2 AA; an axe scan per page runs in the e2e job and a new page must be added to it: [docs/accessibility.md](docs/accessibility.md).
+
+## Intake eval
+
+`apps/server/src/modules/intake/eval/cases.ts` holds ten labelled Intake cases. `pnpm --filter server eval:intake` runs each through the real Runner against the gateway (model call, so it costs money) with the Intake skill and a pack of the real shape, prints expected and actual outcome per case and exits 1 below 80% correct. It needs `BAUHERR_EVAL_GATEWAY_URL`, `BAUHERR_EVAL_GATEWAY_KEY` and `BAUHERR_EVAL_MODEL`; without them it exits 2 and runs nothing. The `cut-rc` workflow runs it before it tags: set the two secrets (a budget-capped key) and the repository variable of the same names.

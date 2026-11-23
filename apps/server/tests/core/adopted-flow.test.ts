@@ -31,6 +31,8 @@ const verifyResult = async (id: number, headSha: string, change: object) => {
   return { ...base, changes: [], walkthrough: [], notVerified: [], ...change }
 }
 
+const reviewOf = (headSha: string) => ({ headSha, patchId: `adopted:${headSha}`, findings: [] })
+
 const toVerify = async () => {
   const s = await f.startAdopted('active')
   await f.work(s.id, 'builder', BRIEF)
@@ -87,7 +89,7 @@ describe('an adopted pull request against the fake forge', () => {
     const types = await f.types(s.id)
     expect(types.indexOf('result.accepted')).toBeLessThan(types.indexOf('ship.merged'))
     expect((await f.fake().forge.getPullRequest(s.repo, s.pr)).state).toBe('merged')
-    expect(await stages(s.id)).toEqual(['brief', 'verify', 'verify'])
+    expect(await stages(s.id)).toEqual(['brief', 'verify', 'verify', 'verify', 'verify', 'done'])
     expect(await reviews(s.repo, s.pr)).toHaveLength(1)
     expect((await f.fake().forge.getPullRequest(s.repo, s.pr)).headSha).toBe(second)
   })
@@ -111,6 +113,7 @@ describe('an adopted pull request against the fake forge', () => {
 
   it('releases a live Verify run on a new commit: no failure, a stale lease, a new run after the checks', async () => {
     const s = await toVerify()
+    await f.work(s.id, 'reviewer', reviewOf(s.headSha))
     const claimed = await f.claimRun(s.id, 'verifier')
     await authorCommits(s, 'b.txt')
     const types = await f.types(s.id)
@@ -120,8 +123,8 @@ describe('an adopted pull request against the fake forge', () => {
     await expect(heartbeat(f.h.payload(), claimed.run.id, claimed.token, { now: f.clock.now })).rejects.toThrow()
     expect(fold(await readEvents(f.h.payload(), s.id)).failedRuns).toBe(0)
     expect(await f.view(s.id)).toMatchObject({ stage: 'verify', waitingOn: 'agents' })
-    expect(await stages(s.id)).toEqual(['brief', 'verify', 'verify'])
-    await f.claimRun(s.id, 'verifier')
+    expect(await stages(s.id)).toEqual(['brief', 'verify', 'verify', 'verify'])
+    await f.claimRun(s.id, 'reviewer')
   })
 
   it('does not merge a commit pushed after the verdict', async () => {
@@ -140,6 +143,7 @@ describe('an adopted pull request against the fake forge', () => {
 
   it('builds the fix itself when the owner sends back a pull request a person already merged', async () => {
     const s = await toVerify()
+    await f.work(s.id, 'reviewer', reviewOf(s.headSha))
     await f.fake().forge.mergePullRequest(s.repo, s.pr, { method: 'squash', expectSha: s.headSha })
     f.h.later(DAY)
     await s.sync()
@@ -148,7 +152,7 @@ describe('an adopted pull request against the fake forge', () => {
     const note = 'The empty state still needs a message'
     await decide(s.id, owner(), { ask: 'result', choice: 'send-back', note, seq }, f.subDeps())
     expect(await f.view(s.id)).toMatchObject({ stage: 'build', waitingOn: 'agents', card: null })
-    expect(await stages(s.id)).toEqual(['brief', 'verify', 'build'])
+    expect(await stages(s.id)).toEqual(['brief', 'verify', 'verify', 'build'])
     const comments = await f.fake().forge.listPullRequestComments(s.repo, s.pr)
     expect(comments.filter((c) => c.body.includes(note))).toEqual([])
   })
@@ -165,7 +169,7 @@ describe('an adopted pull request against the fake forge', () => {
     expect((await f.fake().forge.getPullRequest(s.repo, s.pr)).state).toBe('open')
     await authorCommits(s, 'b.txt')
     expect(await f.view(s.id)).toMatchObject({ stage: 'verify', waitingOn: 'agents' })
-    expect(await stages(s.id)).toEqual(['brief', 'verify', 'verify'])
+    expect(await stages(s.id)).toEqual(['brief', 'verify', 'verify', 'verify'])
   })
 
   it('closes the ticket when the pull request is closed without a merge', async () => {
@@ -179,6 +183,7 @@ describe('an adopted pull request against the fake forge', () => {
 
   it('counts a merge by a person as merged and still asks the owner at the Result card', async () => {
     const s = await toVerify()
+    await f.work(s.id, 'reviewer', reviewOf(s.headSha))
     await f.fake().forge.mergePullRequest(s.repo, s.pr, { method: 'squash', expectSha: s.headSha })
     f.h.later(DAY)
     await s.sync()

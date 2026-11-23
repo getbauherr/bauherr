@@ -2,12 +2,22 @@ import { sql } from '@payloadcms/db-postgres'
 import { describe, expect, it } from 'vitest'
 import { decide } from '../../src/core/decide'
 import { DISCLOSURE } from '../../src/core/forge/disclosure'
+import type { Finding } from '../../src/core/record/schema'
+import { patchRecord, readRecord } from '../../src/core/record/store'
 import { LEASE_MS } from '../../src/core/run/leases'
 import { buildResult } from './modules-harness'
 import { runnerHarness } from './runner-harness'
 
 const r = runnerHarness('core_runner_job')
 const { f } = r
+
+const FIXED: Finding = {
+  id: 'f1',
+  axis: 'spec',
+  text: 'The list drops the last row',
+  evidence: { kind: 'repro', pointer: 'open the list with three rows' },
+  status: 'fixed',
+}
 
 const ids = (rows: Record<string, unknown>[]) => rows.map((row) => Number(row.id))
 
@@ -174,6 +184,22 @@ describe('the heartbeat', () => {
   })
 })
 
+describe('a Build whose lease is gone', () => {
+  it('pushes nothing and opens no pull request', async () => {
+    const s = await r.toBuild()
+    r.state.behaviour = async (request) => {
+      r.edit(request, 'change.txt', 'x\n')
+      r.write(request, buildResult(1, 'x', 'x'))
+      await f.h.rows(sql`UPDATE "stage_runs" SET "lease_expires_at" = ${new Date(0).toISOString()}
+        WHERE "status" = 'claimed'`)
+    }
+    expect(await r.next()).toBe('expired')
+    expect(await r.pulls(s.repo)).toHaveLength(0)
+    const run = await r.runRow('build')
+    expect(() => r.remote.head(`bauherr/1-${String(run?.id)}`)).toThrow()
+  })
+})
+
 describe('who works a run', () => {
   it('leaves the run of a session Product alone', async () => {
     await r.start()
@@ -197,6 +223,8 @@ describe('the whole flow on the fake forge', () => {
     await r.green(s)
     expect(await f.view(s.id)).toMatchObject({ stage: 'verify', waitingOn: 'agents' })
     expect(await r.next()).toBe('accepted')
+    expect(await r.events(s.id)).toContain('review.submitted')
+    expect(await r.next()).toBe('accepted')
     expect(await r.next()).toBe('idle')
     const view = await f.view(s.id)
     expect(view).toMatchObject({ stage: 'ship', waitingOn: 'owner' })
@@ -205,13 +233,41 @@ describe('the whole flow on the fake forge', () => {
     expect(types).toEqual(expect.arrayContaining(['build.submitted', 'verify.passed', 'ship.merged']))
     const [pull] = await r.pulls(s.repo)
     expect(pull?.state).toBe('merged')
-    const verifier = r.seen.at(-1)
+    const [reviewer, verifier] = r.seen.slice(-2)
+    expect(reviewer?.request).toMatchObject({ stage: 'verify', model: 'model-for-reviewer', readOnly: false })
     expect(verifier?.request).toMatchObject({ stage: 'verify', model: 'model-for-verifier' })
+    expect(reviewer?.dir).not.toBe(verifier?.dir)
     expect((await r.runRow('verify'))?.leased_by).toBe('runner-verifier')
     expect(r.gone()).toBe(true)
     const owner = { id: 'u7', role: 'bauherr', workspaceIds: [f.h.ids.workspace] }
     await decide(s.id, owner, { ask: 'result', choice: 'accept', seq: view.card?.seq ?? -1 }, f.subDeps())
     expect((await f.view(s.id)).stage).toBe('done')
+  })
+
+  it('works the Learn run of a corrected ticket read-only and keeps nothing for an empty answer', async () => {
+    const s = await r.toBuild()
+    await r.next()
+    await r.green(s)
+    await r.next()
+    await r.next()
+    const stored = await readRecord(f.h.payload(), s.id)
+    await patchRecord(f.h.payload(), s.id, {
+      expectedVersion: stored.version,
+      writes: ['findings'],
+      patch: { findings: [FIXED] },
+      by: { stage: 'verify', runId: 'x' },
+    })
+    const card = (await f.view(s.id)).card
+    const owner = { id: 'u7', role: 'bauherr', workspaceIds: [f.h.ids.workspace] }
+    await decide(s.id, owner, { ask: 'result', choice: 'accept', seq: card?.seq ?? -1 }, f.subDeps())
+    expect(await f.view(s.id)).toMatchObject({ stage: 'done', waitingOn: 'nobody' })
+    r.seen.length = 0
+    expect(await r.next()).toBe('accepted')
+    expect(r.seen[0]?.request).toMatchObject({ stage: 'done', model: 'model-for-reviewer', readOnly: true })
+    expect(await r.runRow('done')).toMatchObject({ status: 'submitted', leased_by: 'runner-reviewer' })
+    expect(await r.events(s.id)).toContain('learn.submitted')
+    expect(await r.next()).toBe('idle')
+    expect(r.gone()).toBe(true)
   })
 
   it('pushes a send-back Build to the same pull request', async () => {
@@ -220,8 +276,9 @@ describe('the whole flow on the fake forge', () => {
     const first = await r.green(s)
     r.state.behaviour = async (request) => {
       if (request.stage !== 'verify') return
-      await r.verified(request, 'changes', [r.finding('open')])
+      await r.judged(request, 'changes', [r.finding('open')])
     }
+    await r.next()
     await r.next()
     expect(await r.events(s.id)).toContain('verify.changes')
     r.state.behaviour = async (request) => {
@@ -236,5 +293,29 @@ describe('the whole flow on the fake forge', () => {
     expect(stored.headSha).toBe(r.remote.head(first.head))
     expect(stored.headSha).not.toBe(first.headSha)
     expect(r.remote.files(first.head)).toContain('second.txt')
+  })
+
+  it('fails a send-back Build with branch moved when someone else pushed to the pull request meanwhile', async () => {
+    const s = await r.toBuild()
+    await r.next()
+    const first = await r.green(s)
+    r.state.behaviour = async (request) => {
+      if (request.stage !== 'verify') return
+      await r.judged(request, 'changes', [r.finding('open')])
+    }
+    await r.next()
+    await r.next()
+    const before = r.remote.head(first.head)
+    r.state.behaviour = async (request) => {
+      r.edit(request, 'second.txt', 'again\n')
+      r.write(request, { ...buildResult(1, 'x', 'x', ['f1']) })
+      r.remote.pushOther(first.head)
+    }
+    expect(await r.next()).toBe('failed')
+    expect(await r.runRow('build')).toMatchObject({ status: 'failed', error: 'branch moved' })
+    expect(r.remote.files(first.head)).toContain('other.txt')
+    expect(r.remote.files(first.head)).not.toContain('second.txt')
+    expect(r.remote.head(first.head)).not.toBe(before)
+    expect(await r.events(s.id)).toContain('run.failed')
   })
 })

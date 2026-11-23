@@ -1,5 +1,5 @@
 import type { RunPage } from '../../../../core/views/run'
-import { duration, usd } from '../../lib/format'
+import { duration, kilobytes, usd } from '../../lib/format'
 import { CARD } from './Section'
 
 const secondsOf = (run: RunPage): number =>
@@ -14,6 +14,16 @@ export function RunAside({ run, admin }: { run: RunPage; admin: boolean }) {
           <span key={part.label} className="small">{part.label}: <span className="mono">{part.detail}</span></span>
         ))}
       </section>
+      {run.attachments.length > 0 && (
+        <section className={`${CARD} grid gap-2 p-4`}>
+          <h2 className="label m-0 text-muted-foreground">Attachments</h2>
+          {run.attachments.map((attachment) => (
+            <span key={attachment.id} className="small">
+              {attachment.caption} <span className="mono">{kilobytes(attachment.bytes)}</span>
+            </span>
+          ))}
+        </section>
+      )}
       {admin && (
         <section className={`${CARD} grid gap-2 p-4`}>
           <h2 className="label m-0 text-muted-foreground">

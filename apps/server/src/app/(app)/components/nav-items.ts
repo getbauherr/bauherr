@@ -1,10 +1,11 @@
-import { Factory, Inbox, Settings } from './icons'
+import { Factory, Inbox, Memory, Settings } from './icons'
 
 export type NavItem = { href: string; label: string; Icon: typeof Factory; match: (path: string) => boolean }
 
 export const mainItems = (): NavItem[] => [
   { href: '/', label: 'Factory', Icon: Factory, match: (p) => p === '/' },
   { href: '/inbox', label: 'Inbox', Icon: Inbox, match: (p) => p.startsWith('/inbox') },
+  { href: '/memory', label: 'Memory', Icon: Memory, match: (p) => p.startsWith('/memory') },
 ]
 
 export const settingsItem = (): NavItem => ({

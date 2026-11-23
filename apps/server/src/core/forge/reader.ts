@@ -7,6 +7,7 @@ export type ReadForge = Pick<
   Forge,
   | 'listOpenPullRequests'
   | 'getPullRequest'
+  | 'getBranch'
   | 'listChecks'
   | 'getRepository'
   | 'requiredChecks'
