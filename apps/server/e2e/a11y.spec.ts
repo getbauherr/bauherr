@@ -119,8 +119,10 @@ const connectOf =
 type Target = string | ((page: Page) => Promise<string>)
 
 const routes: Record<string, Target | Record<string, Target>> = {
-  '/': inFactory('/'),
-  '/ with a cannot-run line': withHoldStrip('/'),
+  '/': {
+    Factory: inFactory('/'),
+    'cannot-run line': withHoldStrip('/'),
+  },
   '/inbox': inFactory('/inbox'),
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
