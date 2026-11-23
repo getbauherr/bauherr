@@ -102,6 +102,7 @@ describe('back to Brief through decide and the MCP route', () => {
   it('is not offered in Ship or Done', async () => {
     const { record, build } = await toBuild()
     await submitAs(build, { patchId: 'p1', headSha: 'h1', pr: 3 })
+    await submitAs(await m.claimed(m.alpha, 'reviewer'), { patchId: 'p1', headSha: 'h1' })
     await m.e.checks(record)
     await submitAs(await m.claimed(m.alpha, 'verifier'), { passed: true, patchId: 'p1', headSha: 'h1' })
     expect(await m.e.view(record)).toMatchObject({ stage: 'ship', card: { card: 'result' } })

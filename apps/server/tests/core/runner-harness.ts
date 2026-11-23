@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import { beforeEach } from 'vitest'
+import { z } from 'zod'
 import { createWriter } from '../../src/core/forge/writer'
 import { readEvents } from '../../src/core/record/store'
 import { workNext } from '../../src/jobs/runner'
@@ -88,6 +89,15 @@ export const runnerHarness = (suite: string) => {
     write(request, { ...WRONG, criteria, findings, verdict, changes: [], walkthrough: [], notVerified: [] })
   }
 
+  const roleOf = (request: AgentRequest): string =>
+    z.object({ role: z.string() }).parse(JSON.parse(readFileSync(join(request.cwd, '.bauherr/context.json'), 'utf8')))
+      .role
+
+  const judged = async (request: AgentRequest, verdict: string, findings: unknown[] = []) => {
+    if (roleOf(request) === 'reviewer') write(request, { ...WRONG, findings: [] })
+    else await verified(request, verdict, findings)
+  }
+
   const edit = (request: AgentRequest, file: string, content: string) =>
     writeFileSync(join(request.cwd, file), content)
 
@@ -98,7 +108,7 @@ export const runnerHarness = (suite: string) => {
       edit(request, 'change.txt', `change for ${request.runId}\n`)
       write(request, { ...buildResult(1, 'x', 'x'), ...WRONG })
     }
-    if (request.stage === 'verify') await verified(request, 'pass')
+    if (request.stage === 'verify') await judged(request, 'pass')
   }
 
   const agent = async (request: AgentRequest): Promise<AgentOutcome> => {
@@ -182,5 +192,5 @@ export const runnerHarness = (suite: string) => {
   const read = (dir: string, file: string) => readFileSync(join(dir, '.bauherr', file), 'utf8')
 
   const actions = { start, next, toBuild, runRow, pulls, green, events }
-  return { f, remote, seen, state, deps, ...actions, gone, read, edit, write, verified, finding }
+  return { f, remote, seen, state, deps, ...actions, gone, read, edit, write, verified, judged, finding }
 }

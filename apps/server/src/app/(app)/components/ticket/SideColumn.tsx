@@ -37,6 +37,11 @@ const verdictOf = (view: TicketView): string | null => {
   return view.events.some((event) => event.type === 'verify.passed') ? 'Passed verification.' : null
 }
 
+function ReviewedBy({ runs }: { runs: TicketView['runs'] }) {
+  const review = runs.findLast((entry) => entry.role === 'reviewer' && entry.status === 'submitted')
+  return review ? <>, reviewed by <RunLink id={review.id} word="run" /></> : null
+}
+
 function Verdict({ view }: { view: TicketView }) {
   const { pullRequest: pull } = view
   const verdict = verdictOf(view)
@@ -49,6 +54,7 @@ function Verdict({ view }: { view: TicketView }) {
         <span className="small">
           {verdict}
           {run && <> <RunLink id={run.id} /></>}
+          <ReviewedBy runs={view.runs} />
         </span>
       )}
       {pull && (

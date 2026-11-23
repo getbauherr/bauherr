@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { fold } from '../fold'
 import { foldOptions } from '../lifecycle'
+import { moduleKey } from '../module'
 import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
 import type { StatementKind } from '../statements'
@@ -37,7 +38,7 @@ const pendingNote = async (deps: SubmitDeps, run: Run): Promise<string | null> =
 }
 
 export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPack> => {
-  const module = deps.modules[run.stage]
+  const module = deps.modules[moduleKey(run.stage, run.role)]
   if (!module) {
     throw new ModuleMissing(`No module is registered for stage ${run.stage} yet: nothing can be worked here.`)
   }
@@ -53,7 +54,7 @@ export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPa
     record: recordFor(run.role, stored.record),
     resultSchema: z.toJSONSchema(module.resultSchema, { io: 'input' }),
     note: await pendingNote(deps, run),
-    skill: (await deps.skills?.(run.stage)) ?? null,
+    skill: (await deps.skills?.(run.stage, run.role)) ?? null,
     facts: run.stage === 'intake' ? await loadIntakeFacts(deps.payload, stored) : null,
     agentsFile: parts.agentsFile,
     statements: parts.statements.map(({ id, kind, text, ticket, at }) => ({ id, kind, text, ticket, at })),
