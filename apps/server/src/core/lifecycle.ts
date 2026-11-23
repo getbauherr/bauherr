@@ -75,6 +75,11 @@ export const briefGate = (record: TicketRecord, config: Pick<Config, 'riskAreas'
 export const canGoBack = (state: State): boolean =>
   (state.stage === 'build' || state.stage === 'verify') && !state.merged && state.closed === null
 
+const ARCHIVABLE: Stage[] = ['intake', 'brief', 'build', 'verify']
+
+export const canArchive = (state: State): boolean =>
+  state.closed === null && !state.merged && ARCHIVABLE.includes(state.stage)
+
 const run = (stage: Stage, role: Role): Step => ({ kind: 'run', stage, role })
 const wait = (on: WaitOn): Step => ({ kind: 'wait', on })
 const question = (reason: string, options: string[]): Step => ({ kind: 'card', card: 'question', reason, options })

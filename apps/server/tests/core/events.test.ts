@@ -34,14 +34,14 @@ const BAD: [EventType, unknown][] = [
 
 describe('parseEvent', () => {
   it('has a sample for every event type, and parses each', () => {
-    expect(Object.keys(SAMPLES)).toHaveLength(38)
+    expect(Object.keys(SAMPLES)).toHaveLength(39)
     for (const [type, data] of Object.entries(SAMPLES)) {
       expect(parseEvent({ type, data })).toEqual({ type, data })
     }
   })
 
-  it('accepts the closed-on-forge reason', () => {
-    const data = { reason: 'closed-on-forge' }
+  it.each(['closed-on-forge', 'archived'])('accepts the %s reason', (reason) => {
+    const data = { reason }
     expect(parseEvent({ type: 'ticket.closed', data })).toEqual({ type: 'ticket.closed', data })
   })
 

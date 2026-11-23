@@ -55,13 +55,16 @@ Label an issue `bauherr:someday` to park an idea: no Intake Run, no Inbox item. 
 
 The page has two halves. On the left is the conversation with the factory, which ends in a comment box. On the right is the Now pane with four tabs: Now, Plan, Proof and History.
 
-The action bar at the top of the Now pane holds the single next step. It shows one sentence and one primary button. The button names the step, for example Approve plan, Accept on staging or Re-run Build.
+The action bar atop the Now pane holds the next step: one sentence and one primary button naming it, such as Approve plan or Re-run Build.
 
 - **Approve plan** is refused while critical decisions are unanswered.
 - **Send back** asks for a note and returns the Ticket to Build or the Backlog.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
 - **Round cap**: when review reaches its cap you grant one more round or stop.
-- **Close as done** card: when a Build Run reports that another pull request or Ticket already covers the work, the card asks "Close #n as done by #m?". Close as done posts a comment naming #m and its evidence, closes the forge issue as completed whatever the Product's auto-close setting, and moves the Ticket to done. Re-run build queues a fresh Build Run.
+- **Close as done**: when Build reports another pull request or Ticket covers the work, the card asks "Close #n as done by #m?". Close comments with the evidence, closes the issue as completed and moves the Ticket to done; Re-run build queues Build again.
+
+- **Archive** (before Ship, after a dialog): releases the Run, hides the Ticket, closes the issue as not planned.
+- **Restore** reopens the issue and reruns the stage; so does reopening it on the forge.
 
 ### Decision card
 

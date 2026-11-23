@@ -48,6 +48,8 @@ export const BAUHERR_ACTIONS = [
   'lib/actions.ts#selectWorkspace',
   '(shell)/actions.ts#moveCard',
   '(shell)/tickets/actions.ts#decideTicket',
+  '(shell)/tickets/archive-actions.ts#archiveTicket',
+  '(shell)/tickets/archive-actions.ts#restoreTicket',
   '(shell)/settings/state-action.ts#setProductState',
   '(shell)/settings/webhook-action.ts#createWebhookSecret',
 ].concat(

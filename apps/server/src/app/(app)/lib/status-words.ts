@@ -32,6 +32,7 @@ export const CLOSED_WORDS: Record<ClosedAs, string> = {
   'not-planned': 'Not planned',
   discarded: 'Discarded',
   'closed-on-forge': 'Closed on the forge',
+  archived: 'Archived',
 }
 
 export const HELD_SENTENCES: Record<string, string> = {
