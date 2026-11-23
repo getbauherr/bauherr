@@ -43,3 +43,5 @@ The lean core's Ship stage merges, watches the deploy and asks the owner to acce
 - Trap: checks of a label-triggered workflow must report on the Ticket's merge SHA, else the wait ends `timed_out`; only runs started after approval minus 60 s of skew count.
 - Trap: a tag pushed with `GITHUB_TOKEN` starts no workflow; `gh workflow run --ref <tag>` was needed.
 - Trap: a merge may close the issue; the old code reopened it once (`bauherr:reopened`).
+- Seen in souls-house ([deploy on green](https://github.com/swombat/souls-house/blob/master/docs/operations/github-deployments.md)): the deploy request carries the commit CI tested. If `main` has moved on, the result is `superseded` and nothing ships. Merged, CI green and deployed-and-verified stay three states. A failed deploy blocks the next one until a person acknowledges it.
+- Seen in souls-house ([CONTRIBUTING](https://github.com/swombat/souls-house/blob/master/CONTRIBUTING.md)): a pull request with a change a user can see carries its changelog entry, and a missing entry is treated like a missing test. The Result card already separates visible from internal changes, so the entry can be made from it.
