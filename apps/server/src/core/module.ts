@@ -37,7 +37,10 @@ export type LifecycleModule = {
   apply: (record: TicketRecord, result: unknown, run: Run, context: ApplyContext) => Applied
 }
 
-export type Modules = Partial<Record<Stage, LifecycleModule>>
+export type ModuleKey = Stage | 'review'
+export type Modules = Partial<Record<ModuleKey, LifecycleModule>>
+
+export const moduleKey = (stage: Stage, role: Role): ModuleKey => (role === 'reviewer' ? 'review' : stage)
 
 export const defineModule = <Result>(definition: ModuleDefinition<Result>): LifecycleModule => {
   const { check, ...rest } = definition

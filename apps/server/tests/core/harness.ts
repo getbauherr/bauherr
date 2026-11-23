@@ -73,7 +73,32 @@ const verify = defineModule({
   }),
 })
 
-export const TEST_MODULES: Modules = { intake, brief, build, verify }
+const review = defineModule({
+  stage: 'verify',
+  role: 'reviewer',
+  writes: [],
+  resultSchema: z.object({ patchId: z.string().min(1), headSha: z.string().min(1) }),
+  apply: (_record, result, run) => ({
+    patch: {},
+    events: [
+      {
+        type: 'review.submitted',
+        data: { runId: String(run.id), patchId: result.patchId, headSha: result.headSha, findings: 0 },
+      },
+    ],
+  }),
+})
+
+export const TEST_MODULES: Modules = { intake, brief, build, review, verify }
+
+const queuedRole = async (db: CoreDb, recordId: number): Promise<string | null> => {
+  const found = await db.payload.db.drizzle.execute(
+    sql`SELECT "role" FROM "stage_runs" WHERE "record_id" = ${recordId} AND "status" = 'queued'`,
+  )
+  return found.rows[0] ? z.object({ role: z.string() }).parse(found.rows[0]).role : null
+}
+
+const reviewTarget = z.object({ patchId: z.string(), headSha: z.string() })
 
 export type Engine = {
   db: CoreDb
@@ -116,6 +141,10 @@ export const engineOn = (db: CoreDb, modules: Modules = TEST_MODULES, now = new 
       modules,
     }),
     work: async (recordId, role, result) => {
+      const target = reviewTarget.safeParse(result)
+      if (role === 'verifier' && target.success && (await queuedRole(db, recordId)) === 'reviewer') {
+        await engine.work(recordId, 'reviewer', target.data)
+      }
       const claimed = await claim(db.payload, { workspace: db.workspace, role, by: 'executor', now: clock.now })
       if (!claimed || claimed.run.recordId !== recordId) throw new Error(`no ${role} run queued for record ${recordId}`)
       return submit(claimed.run.id, claimed.token, result, engine.deps())

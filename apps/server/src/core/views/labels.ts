@@ -42,6 +42,10 @@ const LABELS: Labels = {
   'ticket.done-elsewhere': () => 'The owner closed the ticket as done by other work',
   'pull.adopted': (e) => `Pull request #${e.data.pr} was adopted at ${e.data.headSha.slice(0, 7)}`,
   'checks.finished': (e) => (e.data.passed ? 'The checks passed' : 'The checks failed'),
+  'review.submitted': (e) =>
+    e.data.findings === 0
+      ? 'The reviewer found nothing'
+      : `The reviewer found ${e.data.findings} ${e.data.findings === 1 ? 'finding' : 'findings'}`,
   'verify.passed': () => 'Verification passed',
   'verify.changes': () => 'Verification asked for changes',
   'ship.merged': (e) => `The pull request was merged (${e.data.sha.slice(0, 7)})`,

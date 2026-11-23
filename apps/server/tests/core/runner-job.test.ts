@@ -213,6 +213,8 @@ describe('the whole flow on the fake forge', () => {
     await r.green(s)
     expect(await f.view(s.id)).toMatchObject({ stage: 'verify', waitingOn: 'agents' })
     expect(await r.next()).toBe('accepted')
+    expect(await r.events(s.id)).toContain('review.submitted')
+    expect(await r.next()).toBe('accepted')
     expect(await r.next()).toBe('idle')
     const view = await f.view(s.id)
     expect(view).toMatchObject({ stage: 'ship', waitingOn: 'owner' })
@@ -221,8 +223,10 @@ describe('the whole flow on the fake forge', () => {
     expect(types).toEqual(expect.arrayContaining(['build.submitted', 'verify.passed', 'ship.merged']))
     const [pull] = await r.pulls(s.repo)
     expect(pull?.state).toBe('merged')
-    const verifier = r.seen.at(-1)
+    const [reviewer, verifier] = r.seen.slice(-2)
+    expect(reviewer?.request).toMatchObject({ stage: 'verify', model: 'model-for-reviewer', readOnly: false })
     expect(verifier?.request).toMatchObject({ stage: 'verify', model: 'model-for-verifier' })
+    expect(reviewer?.dir).not.toBe(verifier?.dir)
     expect((await r.runRow('verify'))?.leased_by).toBe('runner-verifier')
     expect(r.gone()).toBe(true)
     const owner = { id: 'u7', role: 'bauherr', workspaceIds: [f.h.ids.workspace] }
@@ -236,8 +240,9 @@ describe('the whole flow on the fake forge', () => {
     const first = await r.green(s)
     r.state.behaviour = async (request) => {
       if (request.stage !== 'verify') return
-      await r.verified(request, 'changes', [r.finding('open')])
+      await r.judged(request, 'changes', [r.finding('open')])
     }
+    await r.next()
     await r.next()
     expect(await r.events(s.id)).toContain('verify.changes')
     r.state.behaviour = async (request) => {
@@ -260,8 +265,9 @@ describe('the whole flow on the fake forge', () => {
     const first = await r.green(s)
     r.state.behaviour = async (request) => {
       if (request.stage !== 'verify') return
-      await r.verified(request, 'changes', [r.finding('open')])
+      await r.judged(request, 'changes', [r.finding('open')])
     }
+    await r.next()
     await r.next()
     const before = r.remote.head(first.head)
     r.state.behaviour = async (request) => {

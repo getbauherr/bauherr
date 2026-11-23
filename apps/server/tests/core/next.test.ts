@@ -14,13 +14,17 @@ import {
   inShip,
   inVerify,
   merged,
+  reviewed,
   source,
   start,
 } from './fixtures'
 
 type Case = { name: string; events: AppEvent[]; expected: Step; config?: Partial<Config>; record?: TicketRecord }
 
-const run = (stage: 'intake' | 'brief' | 'build' | 'verify', role: 'builder' | 'verifier' = 'builder'): Step => ({
+const run = (
+  stage: 'intake' | 'brief' | 'build' | 'verify',
+  role: 'builder' | 'reviewer' | 'verifier' = 'builder',
+): Step => ({
   kind: 'run',
   stage,
   role,
@@ -227,17 +231,17 @@ const CASES: Case[] = [
     config: { caps: { ...CONFIG.caps, verifyRounds: 1 } },
     expected: verifyRounds,
   },
-  { name: 'pending checks wait on the checks', events: inVerify, expected: wait('checks') },
   {
     name: 'passed checks run the verifier',
-    events: [...inVerify, ev('checks.finished')],
+    events: [...inVerify, reviewed, ev('checks.finished')],
     expected: run('verify', 'verifier'),
   },
   {
     name: 'failed checks still go to the verifier',
-    events: [...inVerify, ev('checks.finished', { passed: false })],
+    events: [...inVerify, reviewed, ev('checks.finished', { passed: false })],
     expected: run('verify', 'verifier'),
   },
+  { name: 'a reviewed patch waits on the checks', events: [...inVerify, reviewed], expected: wait('checks') },
   { name: 'a verified patch is merged', events: inShip, expected: merge },
   {
     name: 'a merged patch waits for the deploy when deploy checks are on',

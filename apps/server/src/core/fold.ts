@@ -18,6 +18,7 @@ export type State = {
   adopted: boolean
   waitingAuthor: boolean
   patch: { id: string; pr: number; headSha: string } | null
+  reviewed: string | null
   alreadyDone: { by: string; evidence: string } | null
   checks: 'none' | 'pending' | 'passed' | 'failed'
   verdict: Verdict | null
@@ -49,6 +50,7 @@ export const initialState = (): State => ({
   adopted: false,
   waitingAuthor: false,
   patch: null,
+  reviewed: null,
   alreadyDone: null,
   checks: 'none',
   verdict: null,
@@ -159,6 +161,7 @@ const adopt = (state: State, data: EventOf<'pull.adopted'>['data'], options: Fol
     adopted: true,
     waitingAuthor: false,
     patch: { id: data.patchId, pr: data.pr, headSha: data.headSha },
+    reviewed: null,
     checks: options.requiredChecks === false ? 'none' : 'pending',
     verdict: null,
     accepted: false,
@@ -182,7 +185,7 @@ const patch: Reducer = (state, event, options) => {
       }
       const latest = { id: event.data.patchId, pr: event.data.pr, headSha: event.data.headSha }
       const checks = options.requiredChecks === false ? 'none' : 'pending'
-      return { ...enter(fresh, 'verify'), patch: latest, checks, verdict: null }
+      return { ...enter(fresh, 'verify'), patch: latest, reviewed: null, checks, verdict: null }
     }
     case 'build.already-done': {
       const { by, evidence } = event.data
@@ -202,6 +205,8 @@ const verdictOf = (data: Verdict): Verdict => ({ patchId: data.patchId, headSha:
 
 const verify: Reducer = (state, event) => {
   switch (event.type) {
+    case 'review.submitted':
+      return { ...submitted(state, event.data.runId), reviewed: event.data.patchId }
     case 'verify.passed':
       return {
         ...enter(submitted(state, event.data.runId), 'ship'),

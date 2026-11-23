@@ -75,7 +75,7 @@ describe('advance', () => {
     expect(e.merges).toEqual([1])
     expect(view.types.slice(-2)).toEqual(['verify.passed', 'ship.merged'])
     expect(view).toMatchObject({ stage: 'ship', waitingOn: 'owner' })
-    expect(view.card).toEqual({ card: 'result', reason: 'result', options: [], seq: 11 })
+    expect(view.card).toEqual({ card: 'result', reason: 'result', options: [], seq: 13 })
   })
 
   it('records a failed merge as a failed ship run and tries again', async () => {

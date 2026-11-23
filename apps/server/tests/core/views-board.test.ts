@@ -48,7 +48,11 @@ describe('board', () => {
       expect.arrayContaining([[n.building, 'queued', 'agents'], [n.verifyRounds, 'verify-rounds', 'stuck']]),
     )
     expect(rows(stages.verify)).toEqual(
-      expect.arrayContaining([[n.waitingChecks, 'waiting-for-checks', 'others'], [n.verifying, 'queued', 'agents']]),
+      expect.arrayContaining([
+        [n.waitingChecks, 'waiting-for-checks', 'others'],
+        [n.reviewing, 'reviewing', 'agents'],
+        [n.verifying, 'queued', 'agents'],
+      ]),
     )
     expect(rows(stages.ship)).toEqual([[n.resultCard, 'result-ready', 'owner']])
     expect(rows(stages.done)).toEqual(
@@ -87,7 +91,7 @@ describe('board', () => {
     const none = await board(s.e.db.payload, { workspace: s.e.db.workspace, product: s.e.db.product + 99, now: now() })
     expect(Object.values(none.stages).flat()).toEqual([])
     const mine = await board(s.e.db.payload, { workspace: s.e.db.workspace, product: s.e.db.product, now: now() })
-    expect(Object.values(mine.stages).flat()).toHaveLength(14)
+    expect(Object.values(mine.stages).flat()).toHaveLength(15)
   })
 
   it('shows held mirror issues of outside authors under intake and drops done tickets after seven days', async () => {
@@ -117,11 +121,11 @@ describe('stageStats counts', () => {
     expect(by.intake?.counts).toEqual({ owner: 0, agents: 2, stuck: 2, others: 1 })
     expect(by.brief?.counts).toEqual({ owner: 1, agents: 1, stuck: 0, others: 0 })
     expect(by.build?.counts).toEqual({ owner: 0, agents: 1, stuck: 1, others: 0 })
-    expect(by.verify?.counts).toEqual({ owner: 0, agents: 1, stuck: 0, others: 1 })
+    expect(by.verify?.counts).toEqual({ owner: 0, agents: 2, stuck: 0, others: 1 })
     expect(by.ship?.counts).toEqual({ owner: 1, agents: 0, stuck: 0, others: 0 })
     expect(by.done?.total).toBe(2)
     expect(by.intake?.runs.map((r) => r.leasedBy).sort()).toEqual([null, 'worker-1'])
-    expect(by.verify?.runs).toHaveLength(1)
+    expect(by.verify?.runs.map((r) => r.role).sort()).toEqual(['reviewer', 'verifier'])
     expect(totals.shippedLast7Days).toBe(1)
   })
 

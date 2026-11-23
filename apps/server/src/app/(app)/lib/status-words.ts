@@ -8,6 +8,7 @@ export const STATUS_WORDS: Record<TicketStatus, StatusWord> = {
   triaging: { word: 'Triaging', tone: 'accent' },
   'drafting-brief': { word: 'Drafting Brief', tone: 'accent' },
   building: { word: 'Building', tone: 'accent' },
+  reviewing: { word: 'Review', tone: 'accent' },
   verifying: { word: 'Reviewing', tone: 'accent' },
   queued: { word: 'Queued', tone: 'neutral', mark: 'clock' },
   'waiting-for-checks': { word: 'Waiting for CI', tone: 'neutral', mark: 'clock' },

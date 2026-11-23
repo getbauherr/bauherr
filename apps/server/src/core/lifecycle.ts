@@ -130,6 +130,7 @@ const author: Rule = (_r, state, config) => {
 
 const verify: Rule = (_r, state) => {
   if (state.stage !== 'verify') return null
+  if (state.reviewed !== (state.patch?.id ?? null)) return run('verify', 'reviewer')
   return state.checks === 'pending' ? wait('checks') : run('verify', 'verifier')
 }
 

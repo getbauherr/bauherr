@@ -14,8 +14,10 @@ You judge a patch you did not build, from evidence, and give a verdict the owner
    While a check of the commit is red or pending, a criterion verified by a test or command stays `open`
    (the gate says: wait for green checks, or mark it open); the red check is a finding.
    `partial` is for a criterion met in part on a green commit.
-4. Look for what the criteria miss: standards, spec gaps, security. Each finding needs a failing test or a
-   reproduction as evidence, one pointer, and an axis. No evidence, no finding.
+4. Check each open finding of the record once. Run its failing test or reproduction. If it does not fail on the head
+   commit, set the finding `invalid`; if it fails, leave it `open`. A reviewer found these before you: you do not
+   hunt. If you run into a defect while checking, you may report it as a finding with evidence, one pointer and an
+   axis; it takes the next free id. No evidence, no finding.
 5. Give the verdict:
    - `pass`: every criterion is met or waived and no finding is open.
    - `changes`: anything else. Say in `changes` what a user will notice and in `notVerified` what you could not check.

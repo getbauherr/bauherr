@@ -59,10 +59,12 @@ describe('the context pack', () => {
 
 describe('the skill loader', () => {
   it('reads the skill of every stage that has a module and none for the others', async () => {
-    for (const stage of ['intake', 'brief', 'build', 'verify'] as const) {
-      expect(await skillFor(stage)).toMatch(/^# \w+/)
+    for (const stage of ['intake', 'brief', 'build'] as const) {
+      expect(await skillFor(stage, 'builder')).toMatch(/^# \w+/)
     }
-    expect(await skillFor('ship')).toBeNull()
+    expect(await skillFor('verify', 'verifier')).toMatch(/^# Verify/)
+    expect(await skillFor('verify', 'reviewer')).toMatch(/^# Review/)
+    expect(await skillFor('ship', 'builder')).toBeNull()
   })
 })
 

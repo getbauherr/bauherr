@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { initialState } from '../../src/core/fold'
 import { questionsBody } from '../../src/core/intake/questions'
 import type { ApplyContext } from '../../src/core/module'
-import { InvalidPatch } from '../../src/core/record/errors'
+import { FieldNotWritable, InvalidPatch } from '../../src/core/record/errors'
+import { checkWrites } from '../../src/core/record/guard'
 import { briefReady, recordSchema, type Finding, type TicketRecord } from '../../src/core/record/schema'
 import type { Run } from '../../src/core/run/schema'
 import { MODULES } from '../../src/lean'
@@ -30,7 +31,7 @@ const context = (change: Partial<ApplyContext['config']> = {}, rounds = 0): Appl
   state: { ...initialState(), reporter: { rounds, waiting: false, reminded: false } },
 })
 
-type Stage = 'intake' | 'brief' | 'build' | 'verify'
+type Stage = 'intake' | 'brief' | 'build' | 'review' | 'verify'
 
 const apply = (stage: Stage, record: TicketRecord, result: unknown, ctx = context()) => {
   const module = MODULES[stage]
@@ -205,5 +206,34 @@ describe('the verify module', () => {
     expect(MODULES.verify?.writes).toEqual(['criteria', 'findings', 'result'])
     expect(MODULES.verify?.role).toBe('verifier')
     expect(criterion(1).id).toBe('c1')
+  })
+})
+
+describe('the review module', () => {
+  const result = { headSha: 'h1', patchId: 'p1', findings: [finding('f1', 'fixed'), finding('f2', 'open')] }
+  const record = briefed({ findings: [finding('f1', 'fixing')] })
+
+  it('merges findings, writes nothing else and emits review.submitted with the open count', () => {
+    const applied = apply('review', record, result)
+    expect(applied.patch.findings?.map((f) => [f.id, f.status])).toEqual([['f1', 'fixed'], ['f2', 'open']])
+    expect(Object.keys(applied.patch)).toEqual(['findings'])
+    expect(applied.events).toEqual([
+      { type: 'review.submitted', data: { runId: '9', patchId: 'p1', headSha: 'h1', findings: 1 } },
+    ])
+    expect(recordSchema.safeParse({ ...record, ...applied.patch }).success).toBe(true)
+  })
+
+  it('cannot write criteria or the result', () => {
+    expect(MODULES.review?.writes).toEqual(['findings'])
+    expect(MODULES.review?.role).toBe('reviewer')
+    expect(MODULES.review?.stage).toBe('verify')
+    expect(MODULES.review?.gated).toBe(true)
+    expect(() => checkWrites({ criteria: [], result: null }, MODULES.review?.writes ?? [])).toThrow(FieldNotWritable)
+  })
+
+  it('refuses more than twenty findings and a result without a head', () => {
+    const many = Array.from({ length: 21 }, (_, i) => ({ ...finding(`f${i + 1}`, 'open') }))
+    expect(MODULES.review?.resultSchema.safeParse({ ...result, findings: many }).success).toBe(false)
+    expect(MODULES.review?.resultSchema.safeParse({ patchId: 'p1', findings: [] }).success).toBe(false)
   })
 })

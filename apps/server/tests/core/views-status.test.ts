@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { parseEvent } from '../../src/core/events'
 import { labelOf } from '../../src/core/views/labels'
 import { isStuck, statusOf, stateOf, STUCK_REASONS, type StatusInput } from '../../src/core/views/status'
+import { STATUS_WORDS } from '../../src/app/(app)/lib/status-words'
 import { SAMPLES } from './fixtures'
 
 const card = (kind: 'brief' | 'result' | 'question', reason: string) => ({ card: kind, reason, options: [], seq: 1 })
 
 const base: StatusInput = {
-  stage: 'build', waitingOn: 'agents', card: null, parked: null, hasRun: true, claimed: true,
+  stage: 'build', waitingOn: 'agents', card: null, parked: null, hasRun: true, reviewer: false, claimed: true,
   questionDrafted: false, ended: null,
 }
 
@@ -42,6 +43,8 @@ describe('state and status', () => {
     expect(status({ stage: 'verify', claimed: false })).toBe('queued')
     expect(status({ stage: 'verify', hasRun: false, claimed: false })).toBe('waiting-for-checks')
     expect(status({ stage: 'verify' })).toBe('verifying')
+    expect(status({ stage: 'verify', reviewer: true })).toBe('reviewing')
+    expect(status({ stage: 'verify', reviewer: true, claimed: false })).toBe('reviewing')
     expect(status({ stage: 'ship', hasRun: false, claimed: false })).toBe('waiting-for-deploy')
     expect(status({ waitingOn: 'reporter', stage: 'intake', hasRun: false })).toBe('reporter-asked')
     expect(status({ waitingOn: 'reporter', stage: 'intake', hasRun: false, questionDrafted: true })).toBe(
@@ -73,6 +76,21 @@ describe('event labels', () => {
     expect(labelOf(parseEvent({ type: 'ticket.closed', data: { reason: 'closed-on-forge' } }))).toBe(
       'The issue was closed on the forge',
     )
+  })
+})
+
+describe('the review words', () => {
+  it('names the review run Review and the verifier run as before', () => {
+    expect(STATUS_WORDS.reviewing.word).toBe('Review')
+    expect(STATUS_WORDS.verifying.word).toBe('Reviewing')
+  })
+
+  it('counts the findings of a review in the Activity words', () => {
+    const data = { runId: 'r1', patchId: 'p1', headSha: 'h1' }
+    const label = (findings: number) => labelOf(parseEvent({ type: 'review.submitted', data: { ...data, findings } }))
+    expect(label(0)).toBe('The reviewer found nothing')
+    expect(label(1)).toBe('The reviewer found 1 finding')
+    expect(label(3)).toBe('The reviewer found 3 findings')
   })
 })
 

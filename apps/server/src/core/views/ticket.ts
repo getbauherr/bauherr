@@ -138,7 +138,9 @@ const statusFor = (stored: StoredRecord, runs: RunView[], events: StoredEvent[],
   const { stage, waitingOn, card, parked } = stored
   const claimed = live?.status === 'claimed'
   const questionDrafted = questionPostedAt(events) === null
-  return statusOf({ stage, waitingOn, card, parked, hasRun: live !== undefined, claimed, questionDrafted, ended })
+  const reviewer = live?.role === 'reviewer'
+  const hasRun = live !== undefined
+  return statusOf({ stage, waitingOn, card, parked, hasRun, reviewer, claimed, questionDrafted, ended })
 }
 
 const lacksMockup = (record: TicketRecord, mockups: AttachmentView[]): boolean =>
