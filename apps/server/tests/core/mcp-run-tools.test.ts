@@ -215,7 +215,7 @@ describe('ask options', () => {
     ['back to Brief', ['Send back to Brief: full redesign from a mockup', 'Keep the gaps Brief']],
     ['discard', ['Discard this ticket', 'Keep going']],
     ['close', ['Close the ticket as done', 'Keep going']],
-    ['park', ['Park it for later', 'Keep going']],
+    ['park', ['Park the ticket for later', 'Keep going']],
     ['close this ticket', ['Close this ticket as done', 'Keep going']],
     ['park the ticket', ['Parking the ticket until #555 lands', 'Keep going']],
     ['park with a label', ['Parked: wait for the owner', 'Keep going']],
@@ -237,8 +237,8 @@ describe('ask options', () => {
     await m.e.drain()
     const record = await m.begin()
     const run = await m.claimed(m.alpha)
-    const options = ['Keep the per-role sentence', 'Parking is out of scope', 'Send back 404 for an unknown session']
-    options.push('Discard the stale cache entry and recompute')
+    const options = ['Close this modal on save', 'Parking is out of scope', 'Send back 404 for an unknown session']
+    options.push('Discard it and recompute from source')
     const ids = { runId: run.runId, leaseToken: run.leaseToken }
     expect(await m.call('ask', { ...ids, question: 'Which?', options }, m.agent(m.alpha))).toEqual({ status: 'asked' })
     expect(await m.e.view(record)).toMatchObject({ card: { card: 'question', options } })

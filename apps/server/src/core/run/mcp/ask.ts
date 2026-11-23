@@ -7,7 +7,7 @@ const TICKET_VERB = '(?:discard|clos|park|archiv)\\w*'
 const STAGE_MOVES = [
   /\bback to (?:the )?brief\b/i,
   /\bsend(?:s|ing)?\b(?:\s+\w+){0,2}\s+back\s+to\b/i,
-  new RegExp(`\\b${TICKET_VERB}\\b(?:\\s+\\w+){0,2}\\s+(?:ticket|issue|it|this)\\b`, 'i'),
+  new RegExp(`\\b${TICKET_VERB}\\b(?:\\s+\\w+){0,2}\\s+(?:ticket|issue|brief)\\b`, 'i'),
   new RegExp(`^\\s*${TICKET_VERB}\\s*(?::|-|$)`, 'i'),
 ]
 
