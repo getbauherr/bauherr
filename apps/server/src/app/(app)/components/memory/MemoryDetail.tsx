@@ -63,8 +63,8 @@ export function Fared({ fares }: { fares: Fare[] }) {
                 <td>
                   <Link href={`/tickets/${fare.ticket.record}`} className="mono text-primary hover:underline">
                     #{fare.ticket.number}
-                  </Link>{' '}
-                  {fare.ticket.title}
+                  </Link>
+                  {fare.ticket.title !== null && ` ${fare.ticket.title}`}
                 </td>
                 <td>
                   {stageOf(fare)},{' '}

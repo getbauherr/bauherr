@@ -35,7 +35,7 @@ export type Fare = {
   run: number
   stage: string
   role: string
-  ticket: { record: number; number: number; title: string }
+  ticket: { record: number; number: number; title: string | null }
   outcome: 'came-back' | 'clean' | 'open'
 }
 
@@ -147,7 +147,7 @@ export const statementFare = async (payload: Payload, f: { workspace: number; id
   return found.rows.map((raw) => {
     const row = fareRow.parse(raw)
     const { run_id: run, stage, role } = row
-    const ticket = { record: row.record_id, number: row.source_number, title: row.title ?? `#${row.source_number}` }
+    const ticket = { record: row.record_id, number: row.source_number, title: row.title }
     return { run, stage, role, ticket, outcome: OUTCOMES[row.outcome ?? ''] ?? 'open' }
   })
 }

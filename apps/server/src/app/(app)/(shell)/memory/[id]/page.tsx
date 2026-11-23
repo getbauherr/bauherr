@@ -25,7 +25,7 @@ export default async function MemoryOnePage({ params }: { params: Promise<{ id: 
   const stages = record.stages
   return (
     <>
-      <PageTitle>Memory</PageTitle>
+      <PageTitle>Edit memory</PageTitle>
       <div className="flex flex-wrap items-center gap-3">
         <Link href={`/memory?product=${product.id}`} className="text-primary hover:underline">
           Memory

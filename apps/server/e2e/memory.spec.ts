@@ -23,7 +23,7 @@ test('the Memory page lists what the factory remembers with how often it was han
   await openMemory(page)
   const table = page.getByRole('table', { name: 'Memory' })
   const queue = table.getByRole('row', { name: /Never block the queue/ })
-  await expect(queue.getByRole('cell').nth(2)).toHaveText('Tickets that fit')
+  await expect(queue.getByRole('cell').nth(2)).toHaveText('This ticket only')
   await expect(queue.getByRole('cell').nth(3)).toHaveText('3')
   await expect(queue.getByRole('cell').nth(4)).toHaveText('2')
   await expect(queue.getByRole('cell').nth(5)).toHaveText('Active')
@@ -33,7 +33,7 @@ test('the Memory page lists what the factory remembers with how often it was han
   const filters = page.getByRole('navigation', { name: 'Filter memory' })
   await filters.getByRole('link', { name: /^Came back/ }).click()
   await expect(table.getByRole('row', { name: /Never block the queue/ })).toBeVisible()
-  await expect(table.getByRole('row', { name: new RegExp(SEEDED) })).toHaveCount(0)
+  await expect(table.getByRole('row', { name: /Old rule nobody hit/ })).toHaveCount(0)
 })
 
 test('adds a memory for every ticket, edits it, switches it off and finds it under Off', async ({ page }) => {
@@ -53,7 +53,7 @@ test('adds a memory for every ticket, edits it, switches it off and finds it und
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByRole('status')).toHaveText('Saved')
   await expect(page.getByText('Before your first edit:')).toBeVisible()
-  await expect(page.getByText(first)).toBeVisible()
+  await expect(page.getByText(first, { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Switch off' }).click()
   await expect(page.getByRole('button', { name: 'Switch on' })).toBeVisible()
   await page.goto('/memory')
