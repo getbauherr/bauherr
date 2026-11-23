@@ -1,5 +1,6 @@
 'use server'
 import { revalidatePath } from 'next/cache'
+import { deleteStatement } from '../../../../../../core/statements'
 import { forgeCheckNames, productSettings, type ProductSettings } from '../../../../../../core/views/product-settings'
 import { currentWorkspace, payloadClient } from '../../../../lib/session'
 import { only, run, type FormState } from '../../../../lib/settings'
@@ -52,4 +53,17 @@ export async function copyForgeChecks(_prev: FormState, fd: FormData): Promise<F
     if (!forgeChecks.length) throw new Error('The forge does not require any checks.')
     return { requiredChecks: forgeChecks.join(', ') }
   })
+}
+
+export async function removeStatement(_prev: FormState, fd: FormData): Promise<FormState> {
+  const { user, workspace } = await currentWorkspace()
+  const payload = await payloadClient()
+  const result = await run(async () => {
+    only(user)
+    if (!workspace) throw new Error('No Workspace selected.')
+    const f = { workspace: workspace.id, product: Number(fd.get('product')), id: Number(fd.get('id')) }
+    await deleteStatement(payload, f)
+  })
+  if (result.saved) revalidatePath('/settings', 'layout')
+  return result
 }

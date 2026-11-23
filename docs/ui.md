@@ -7,7 +7,7 @@ The Bauherr UI is served at `/`. Everything an Admin configures is a page here, 
 Every signed-in page has the same frame.
 
 - **Sidebar**: Inbox, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
-- **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page, finds Tickets by number or title and runs actions such as Toggle theme.
+- **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page and finds Tickets.
 - **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause. It names queued work that cannot run, and only while runs wait: "No builder session is connected: 2 runs wait (Build 2)" with a Connect a session link, one line per role of a session Product with no session of that role seen for 10 minutes; "The Runner has not picked up a run for 10 minutes" when a Runner Product's run waits that long. A Runner Product never asks for a session. With no queued runs neither line shows, even when no session is connected.
 - **Ask button**: opens the [chat](#chat) dock on `Ctrl/Cmd+J`.
 - **Workspace switcher**: appears with two or more Workspaces.
@@ -77,13 +77,13 @@ Every human checkpoint uses one card. It has the ask in one sentence, a recommen
 - Several problems in one message become several Tickets.
 - File request is enabled when the card is complete or the question limit is reached.
 
-After filing, the conversation is read-only history. Details of the conversation engine are in chat.
+After filing, the conversation is read-only history.
 
 ## Run page
 
-`/runs/<id>` shows one attempt of a stage. The header gives a status such as Working, Stuck or Session gone. The page shows the timeline of Steps, the proof, the links to the merge request and the times.
+`/runs/<id>` shows one attempt of a stage. The header gives a status such as Working, Stuck or Session gone. It shows the Steps, the proof, the merge request links and the times.
 
-A Run offers at most one primary action. It is Connect an agent, Re-run the stage or Open ticket. An Admin can release the lock on a stuck Run.
+A Run offers one primary action: Connect an agent, Re-run the stage or Open ticket. An Admin can release the lock on a stuck Run.
 
 ## Agent team
 
@@ -104,13 +104,13 @@ One assistant is docked on every page. It answers questions about the factory an
 - Rate answers with thumbs. Admins read the ratings at `/settings/chat-feedback`.
 - Slash commands: `/context`, `/new`, `/request`, `/help`. On a Ticket thread, `/comment <text>` posts to the issue.
 
-More in chat.
-
 ## Settings
 
 Settings are grouped by scope. Account is for everyone, with Profile and API keys. Factory has Workflow, Templates, Models and budget, and AI usage. Workspace has General, Products, Connections, People and Knowledge. Admin has Audit and Health.
 
 API keys lists each session with its live Runs and slots, for example "2 of 3 working": a session connected with a capacity of 1 to 4 holds that many Runs at once, one subagent each.
+
+Product settings list each Statement with its Runs and the Verifies that still found problems. Unused for 60 days, it can be removed; back three times, it is flagged as a check.
 
 Only an Admin edits, except Profile and API keys. Members read the rest. The sidebar's Settings item opens Profile, and the command palette lists every page you may open.
 
