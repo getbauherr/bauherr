@@ -1,6 +1,6 @@
 import type { StatementRecord } from '../../../core/views/statement-records'
 
-export const SHOWS = ['all', 'new', 'said', 'agents', 'back', 'off'] as const
+export const SHOWS = ['all', 'new', 'said', 'agents', 'back', 'check', 'off'] as const
 export type Show = (typeof SHOWS)[number]
 
 export const SHOW_LABELS: Record<Show, string> = {
@@ -9,6 +9,7 @@ export const SHOW_LABELS: Record<Show, string> = {
   said: 'You said',
   agents: 'Agents found',
   back: 'Came back',
+  check: 'Wants a check',
   off: 'Off',
 }
 
@@ -18,6 +19,7 @@ const KEPT: Record<Show, (record: StatementRecord) => boolean> = {
   said: (record) => record.kind !== 'learned',
   agents: (record) => record.kind === 'learned',
   back: (record) => record.cameBack > 0,
+  check: (record) => record.check.kind === 'wants',
   off: (record) => record.off,
 }
 
