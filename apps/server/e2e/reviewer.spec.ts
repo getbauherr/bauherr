@@ -20,7 +20,7 @@ test('a ticket with a live review run shows Review in Verify', async ({ page }) 
   const verify = page.getByRole('region', { name: 'Factory board' }).getByRole('region', { name: 'Verify' })
   const title = page.getByRole('link', { name: 'Review of the export patch' })
   const card = verify.getByRole('listitem').filter({ has: title })
-  await expect(card.getByText('Review', { exact: true })).toBeVisible()
+  await expect(card.getByText('Reviewing', { exact: true })).toBeVisible()
 })
 
 test('a Result card names the review run next to the verifier run', async ({ page }) => {

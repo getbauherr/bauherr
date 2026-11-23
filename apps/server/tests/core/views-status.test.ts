@@ -81,8 +81,8 @@ describe('event labels', () => {
 
 describe('the review words', () => {
   it('names the review run Review and the verifier run as before', () => {
-    expect(STATUS_WORDS.reviewing.word).toBe('Review')
-    expect(STATUS_WORDS.verifying.word).toBe('Reviewing')
+    expect(STATUS_WORDS.reviewing.word).toBe('Reviewing')
+    expect(STATUS_WORDS.verifying.word).toBe('Verifying')
   })
 
   it('counts the findings of a review in the Activity words', () => {

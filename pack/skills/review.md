@@ -7,8 +7,9 @@ you hunt for what the criteria miss.
 
 1. Read the record, the pull request at the head commit you were given, and the findings the record already holds.
    You do not get the builder's summary: judge the diff, not the story.
-2. Settle the earlier findings first. For each finding of the record, run its evidence at the head commit.
-   If it no longer fails, set it `fixed`; if it still fails, leave it `open`. Do not change a finding you did not run.
+2. Settle the earlier findings first. For each finding of the record that is `open` or `fixing`, run its evidence
+   at the head commit. If it no longer fails, set it `fixed`; if it still fails, set it `open`.
+   Do not change a finding you did not run.
 3. Review the new diff for:
    - spec gaps: something the criteria, the decisions or the plan ask for is missing or wrong;
    - broken standards of this repository: read `AGENTS.md`. Lint is not your job; the checks run it;
