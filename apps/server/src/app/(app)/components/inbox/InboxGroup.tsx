@@ -1,7 +1,7 @@
 import { GROUP_TITLES, type GroupId, type InboxRow as Row } from '../../lib/inbox'
-import { InboxRow, rowKeyOf } from './InboxRow'
+import { InboxRow, rowKeyOf, type Selection } from './InboxRow'
 
-export function InboxGroup({ id, rows }: { id: GroupId; rows: Row[] }) {
+export function InboxGroup({ id, rows, selected, split }: { id: GroupId; rows: Row[] } & Selection) {
   return (
     <section id={id} aria-labelledby={`group-${id}`} className="scroll-mt-20 rounded-md border border-border bg-card">
       <header className="flex items-baseline gap-2 rounded-t-md bg-secondary px-4 py-3">
@@ -14,7 +14,11 @@ export function InboxGroup({ id, rows }: { id: GroupId; rows: Row[] }) {
       </header>
       {rows.length ? (
         <ul className="m-0 list-none p-0">
-          {rows.map((row) => <li key={rowKeyOf(row)}><InboxRow row={row} /></li>)}
+          {rows.map((row) => (
+            <li key={rowKeyOf(row)}>
+              <InboxRow row={row} group={id} selected={selected} split={split} />
+            </li>
+          ))}
         </ul>
       ) : (
         <p className="small px-4 py-3 text-muted-foreground">Nothing here.</p>

@@ -18,6 +18,7 @@ const enter = async (page: Page, path: string, workspace = 'factory') => {
 const STAGES = ['Intake', 'Brief', 'Build', 'Verify', 'Ship', 'Done']
 const GROUPS = ['Waiting on you', 'Agents working', 'Waiting on others', 'Done']
 const TICKET = /^\/tickets\/\d+$/
+const PANE = /^\/inbox\?t=\d+$/
 const filters = (page: Page) => page.getByRole('navigation', { name: 'Filter tickets' })
 
 const card = (page: Page, title: string) =>
@@ -56,7 +57,7 @@ test('the Inbox lists the tickets waiting on the owner first', async ({ page }) 
   await expect(page.getByRole('heading', { level: 2 })).toHaveText(GROUPS)
   const waiting = page.getByRole('region', { name: 'Waiting on you' })
   for (const title of ['Export fails for large files', 'Add target-year check', 'Import skips empty rows']) {
-    await expect(waiting.getByRole('link', { name: new RegExp(title) })).toHaveAttribute('href', TICKET)
+    await expect(waiting.getByRole('link', { name: new RegExp(title) })).toHaveAttribute('href', PANE)
   }
   const working = page.getByRole('region', { name: 'Agents working' })
   await expect(working.getByRole('link', { name: /Rename report columns/ })).toBeVisible()

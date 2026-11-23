@@ -35,8 +35,8 @@ test('j, k and o move the focus across groups and open the row', async ({ page }
   await expect(all.nth(0)).toBeFocused()
   const href = await all.nth(0).getAttribute('href')
   await page.keyboard.press('o')
-  await expect(page).toHaveURL(new RegExp(`${href}$`))
-  expect(href).toMatch(/^\/tickets\/\d+$/)
+  await expect(page).toHaveURL((url) => `${url.pathname}${url.search}` === href)
+  expect(href).toMatch(/^\/(tickets\/|inbox\?t=)\d+$/)
 })
 
 test('ArrowDown walks over every row and into the next group; Esc clears the focus', async ({ page }) => {
@@ -59,7 +59,7 @@ test('Enter opens the focused row', async ({ page }) => {
   await page.keyboard.press('j')
   const href = await focused(page).getAttribute('href')
   await page.keyboard.press('Enter')
-  await expect(page).toHaveURL(new RegExp(`${href}$`))
+  await expect(page).toHaveURL((url) => `${url.pathname}${url.search}` === href)
 })
 
 test('the keys do nothing while focus is in an input or an open dialog', async ({ page }) => {
@@ -110,7 +110,8 @@ test('the live refresh keeps the focused Ticket focused when rows change', async
   await other.goto('/inbox')
   await other.getByRole('link', { name: new RegExp(LIVE) }).click()
   await other.getByRole('button', { name: 'Accept', exact: true }).click()
-  await expect(other.getByRole('button', { name: 'Accept', exact: true })).toHaveCount(0)
+  const waitingOnYou = other.getByRole('region', { name: 'Waiting on you' })
+  await expect(waitingOnYou.getByRole('link', { name: new RegExp(LIVE) })).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Done' }).getByRole('link', { name: new RegExp(LIVE) })).toBeVisible({
     timeout: 30_000,
   })

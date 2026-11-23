@@ -29,7 +29,7 @@ Only acceptance on staging closes a Ticket.
 
 | Path | What you do |
 |---|---|
-| `/inbox` | Decide what waits for you, Waiting on you first. `j`/`k` or the arrow keys move the focus, `o` or `Enter` opens, `Esc` clears, `?` lists the keys. Refreshes every 5 s and keeps the focus. |
+| `/inbox` | Decide what waits for you. A Waiting on you row opens its decision in a side pane (full width below 1024 px). Keys: `j`/`k` move, `o`/`Enter` open, `Esc` clear, `?` help. |
 | `/` | See the workflow as a graph and the open Tickets by stage. Tabs Workflow, Graph and Epics. |
 | `/workflow/<stage>` | See the Jobs of one stage and the Tickets in each. |
 | `/requests` | Follow your requests in four sections, starting with Needs you. |
