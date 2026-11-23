@@ -64,6 +64,15 @@ const inFactory = (url: string) => async (page: Page) => {
   return url
 }
 
+const withHoldStrip = (url: string) => async (page: Page) => {
+  await inFactory(url)(page)
+  await page.goto(url)
+  const strip = page.getByRole('region', { name: 'Holding up work' })
+  await expect(strip).toContainText('session is connected')
+  await expect(strip.getByRole('link', { name: 'Connect a session' }).first()).toBeVisible()
+  return url
+}
+
 const inHooks = (url: string) => async (page: Page) => {
   const base = process.env.BASE_URL ?? 'http://localhost:3000'
   await page.context().addCookies([{ name: 'bauherr-ws', value: 'hooks', url: base }])
@@ -110,7 +119,10 @@ const connectOf =
 type Target = string | ((page: Page) => Promise<string>)
 
 const routes: Record<string, Target | Record<string, Target>> = {
-  '/': inFactory('/'),
+  '/': {
+    Factory: inFactory('/'),
+    'cannot-run line': withHoldStrip('/'),
+  },
   '/inbox': inFactory('/inbox'),
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
