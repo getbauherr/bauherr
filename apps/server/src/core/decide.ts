@@ -22,6 +22,7 @@ import type { Effect } from './module'
 import type { TicketRecord } from './record/schema'
 import { appendEvent, readEvents, readRecord, type StoredRecord } from './record/store'
 import { releaseLive } from './run/leases'
+import type { NoteScope } from './statement-scope'
 import { storeGiven } from './statements'
 
 
@@ -42,7 +43,14 @@ export type Person = { id: string; role: string; workspaceIds: number[]; name?: 
 export const mayDecide = (person: Person, workspace: number): boolean =>
   isBauherr({ role: person.role }) && person.workspaceIds.includes(workspace)
 
-export type Decision = { ask: string; choice: string; seq: number; note?: string; answers?: Answers }
+export type Decision = {
+  ask: string
+  choice: string
+  seq: number
+  note?: string
+  scope?: NoteScope
+  answers?: Answers
+}
 
 const noteSchema = z.string().trim().min(1).max(NOTE_MAX)
 
@@ -146,7 +154,7 @@ export const decide = async (
     const events = eventsOf(entry, state, note)
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
     await settle(tx, stored, { entry, answers }, deps.now)
-    await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card })
+    await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card, scope: decision.scope })
     return {
       backlogBrief: asked === 'brief' && stored.record.source.backlog,
       review: [

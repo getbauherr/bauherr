@@ -76,9 +76,10 @@ describe('a ticket from intake to done', () => {
     await expectView(id, 'done', 'nobody')
     expect((await e.view(id)).types).toEqual([
       'run.started', 'intake.accepted', 'run.started', 'brief.submitted', 'brief.approved', 'run.started',
-      'build.submitted', 'checks.finished', 'run.started', 'verify.passed', 'ship.merged', 'result.accepted',
+      'build.submitted', 'run.started', 'checks.finished', 'review.submitted', 'run.started', 'verify.passed',
+      'ship.merged', 'result.accepted',
     ])
-    expect((await runRows(id)).map((r) => r.status)).toEqual(['submitted', 'submitted', 'submitted', 'submitted'])
+    expect((await runRows(id)).map((r) => r.status)).toEqual(Array(5).fill('submitted'))
   })
 
   it('stops at a Brief card for an open decision until the owner approves', async () => {
@@ -182,7 +183,7 @@ describe('a ticket from intake to done', () => {
     const ask = { card: 'question', reason: 'production', options: ['approve', 'hold'] }
     await expectView(id, 'ship', 'owner', ask)
     await answer(id, { ask: 'question:production', choice: 'hold' })
-    const held = { card: 'question', reason: 'production-held', options: ['approve-production'], seq: 15 }
+    const held = { card: 'question', reason: 'production-held', options: ['approve-production'], seq: 17 }
     await expectView(id, 'ship', 'owner', held)
     await expect(answer(id, { ask: 'question:production', choice: 'approve' })).rejects.toThrow(
       StaleDecision,

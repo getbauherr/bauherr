@@ -15,6 +15,11 @@ const WRITES: Record<EventOf<'forge.write.done'>['data']['kind'], string> = {
 
 const article = (word: string): string => (/^[aeiou]/.test(word) ? 'An' : 'A')
 
+const runOf = (stage: string): string => {
+  const name = stage === 'done' ? 'learn' : stage
+  return `${article(name)} ${name} run`
+}
+
 const CLOSED_LABELS = {
   discarded: 'The owner discarded the ticket',
   'closed-on-forge': 'The issue was closed on the forge',
@@ -29,10 +34,10 @@ const LABELS: Labels = {
   'reporter.silent': () => 'The reporter did not answer in time',
   'intake.closed': (e) => `The issue was closed as ${e.data.reason.replace(/-/g, ' ')}`,
   'intake.disputed': () => 'The agent disputes that this is a change to make',
-  'run.started': (e) => `${article(e.data.stage)} ${e.data.stage} run was queued`,
-  'run.failed': (e) => `${article(e.data.stage)} ${e.data.stage} run failed: ${e.data.reason}`,
-  'run.expired': (e) => `${article(e.data.stage)} ${e.data.stage} run expired: ${e.data.reason}`,
-  'run.released': (e) => `${article(e.data.stage)} ${e.data.stage} run was released`,
+  'run.started': (e) => `${runOf(e.data.stage)} was queued`,
+  'run.failed': (e) => `${runOf(e.data.stage)} failed: ${e.data.reason}`,
+  'run.expired': (e) => `${runOf(e.data.stage)} expired: ${e.data.reason}`,
+  'run.released': (e) => `${runOf(e.data.stage)} was released`,
   'brief.submitted': () => 'A Brief was submitted',
   'brief.approved': (e) => (e.data.by === 'owner' ? 'The owner approved the Brief' : 'The Brief was approved by rule'),
   'brief.changes-requested': (e) => `The owner asked for changes to the Brief: ${e.data.note}`,
@@ -41,7 +46,12 @@ const LABELS: Labels = {
   'build.already-done': (e) => `The builder found the work already done by ${e.data.by}`,
   'ticket.done-elsewhere': () => 'The owner closed the ticket as done by other work',
   'pull.adopted': (e) => `Pull request #${e.data.pr} was adopted at ${e.data.headSha.slice(0, 7)}`,
+  'pull.conflicted': (e) => `The pull request conflicts with ${e.data.base} and needs a rebase`,
   'checks.finished': (e) => (e.data.passed ? 'The checks passed' : 'The checks failed'),
+  'review.submitted': (e) =>
+    e.data.findings === 0
+      ? 'The reviewer found nothing'
+      : `The reviewer found ${e.data.findings} ${e.data.findings === 1 ? 'finding' : 'findings'}`,
   'verify.passed': () => 'Verification passed',
   'verify.changes': () => 'Verification asked for changes',
   'ship.merged': (e) => `The pull request was merged (${e.data.sha.slice(0, 7)})`,
@@ -52,6 +62,11 @@ const LABELS: Labels = {
       : `No deploy result arrived in time for: ${e.data.checks.join(', ')}`,
   'result.accepted': () => 'The owner accepted the Result',
   'result.sent-back': (e) => `The owner sent the Result back: ${e.data.note}`,
+  'learn.submitted': (e) =>
+    e.data.memories === 0
+      ? 'Learn kept nothing'
+      : `Learn kept ${e.data.memories} ${e.data.memories === 1 ? 'memory' : 'memories'}`,
+  'learn.skipped': (e) => `Learn was skipped: ${e.data.reason}`,
   'production.approved': () => 'The owner approved production',
   'production.held': () => 'The owner holds production',
   'owner.note': (e) => `The owner left a note: ${e.data.note}`,

@@ -3,7 +3,7 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { AdvanceDeps } from './engine'
 import type { Deferred } from './events'
-import { fold } from './fold'
+import { fold, type State } from './fold'
 import { ProductObserving, TargetNotFound, WrongItemKind } from './forge/errors'
 import { renderStatus } from './forge/status'
 import type { ForgeWriter, Target } from './forge/writer'
@@ -45,6 +45,9 @@ const itemOf = (payload: Payload, stored: StoredRecord, effect: Effect): Promise
     ? mirrorItem(payload, stored, 'pr', effect.pr)
     : mirrorItem(payload, stored, 'issue', stored.record.source.number)
 
+const waitingOnConflict = (state: State): string | null =>
+  state.adopted && state.conflict !== null && state.conflict.patchId === state.patch?.id ? state.conflict.base : null
+
 const statusOf = async (deps: AdvanceDeps, stored: StoredRecord, target: Target, writer: ForgePort) => {
   const events = await readEvents(deps.payload, stored.id)
   const state = fold(events, foldOptions(await deps.configFor(stored.id)))
@@ -54,6 +57,7 @@ const statusOf = async (deps: AdvanceDeps, stored: StoredRecord, target: Target,
     stage: state.stage,
     pr: state.patch?.pr ?? null,
     changedAt: changed?.createdAt ?? null,
+    conflict: waitingOnConflict(state),
   })
   await writer.setStageLabel(target, state.stage)
   await writer.upsertStatusComment(target, body)

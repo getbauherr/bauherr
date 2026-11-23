@@ -228,7 +228,7 @@ const EARLIER_ANSWERS = [
 const RESULT_ANSWERS = ['Run the old export tests before the new ones.', EARLIER_ANSWERS[1] ?? '']
 
 const answered = async (e: Engine, id: number, stages: string[], from: number, texts: string[]) => {
-  for (const text of texts) await storeStatement(e.db.payload, from, { kind: 'answer', text })
+  for (const text of texts) await storeStatement(e.db.payload, from, { kind: 'answer', scope: 'product', text })
   const db = e.db.payload.db.drizzle
   const found = await db.execute(sql`SELECT "id" FROM "statements" WHERE "record_id" = ${from} ORDER BY "id"`)
   const statements = found.rows.map((row) => proofRow.parse(row).id)

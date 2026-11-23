@@ -10,13 +10,13 @@ const signInSpecs = [
   'a11y',
   'admin-pages',
   'gateway',
+  'memory',
   'people',
   'perf',
   'product-settings',
   'selects',
   'settings',
   'shell',
-  'statements',
   'workspace-delete',
 ].map((name) => `${name}.spec.ts`)
 

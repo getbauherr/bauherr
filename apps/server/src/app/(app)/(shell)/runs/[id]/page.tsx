@@ -10,7 +10,7 @@ import { RunSteps } from '../../../components/ticket/RunSteps'
 import { Time } from '../../../components/Time'
 import { WordBadge } from '../../../components/WordBadge'
 import { ROLE_WORDS, RUN_WORDS } from '../../../lib/ticket'
-import { STAGE_NAMES, workerOf } from '../../../lib/factory'
+import { RUN_NAMES, workerOf } from '../../../lib/factory'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -50,7 +50,7 @@ export default async function RunPageRoute({ params }: { params: Promise<{ id: s
           <ForgeLink href={run.pullRequest.url} label={`Open pull request #${run.pullRequest.number}`} />
         )}
         <p className="small ml-auto text-muted-foreground">
-          {STAGE_NAMES[run.stage]} · {ROLE_WORDS[run.role] ?? run.role}
+          {RUN_NAMES[run.stage]} · {ROLE_WORDS[run.role] ?? run.role}
           {run.leasedBy !== null && ` · ${workerOf(run.leasedBy).name}`} · started{' '}
           <Time iso={run.startedAt} />
         </p>

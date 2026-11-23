@@ -13,7 +13,7 @@ const idOf = (doc: { id: number | string }) => z.coerce.number().parse(doc.id)
 
 export type ScenarioNames = Record<
   | 'intakeQueued' | 'intakeWorking' | 'reporterAsked' | 'failedRuns' | 'reporterSilent'
-  | 'briefQueued' | 'briefCard' | 'building' | 'verifyRounds' | 'waitingChecks' | 'verifying'
+  | 'briefQueued' | 'briefCard' | 'building' | 'verifyRounds' | 'waitingChecks' | 'reviewing' | 'verifying'
   | 'resultCard' | 'accepted' | 'closed' | 'parked',
   number
 >
@@ -66,7 +66,7 @@ export const mirrorSource = async (e: Pick<Engine, 'db'>, repo = 'acme/app') => 
   return { source, item }
 }
 
-export const workOn = async (e: Engine, id: number, role: 'builder' | 'verifier', result: unknown) => {
+export const workOn = async (e: Engine, id: number, role: 'builder' | 'reviewer' | 'verifier', result: unknown) => {
   await setRank(e.db.payload, id, -1000)
   try {
     return await e.work(id, role, result)
@@ -177,8 +177,12 @@ export const seedScenario = async (e: Engine, title?: (name: keyof ScenarioNames
   await accept(names.accepted ?? 0)
   names.waitingChecks = await toBrief(e, false)
   await workOn(e, names.waitingChecks, 'builder', { patchId: 'p1', headSha: 'h1', pr: 1 })
+  await workOn(e, names.waitingChecks, 'reviewer', { patchId: 'p1', headSha: 'h1' })
+  names.reviewing = await toBrief(e, false)
+  await workOn(e, names.reviewing, 'builder', { patchId: 'p1', headSha: 'h1', pr: 1 })
   names.verifying = await toBrief(e, false)
   await patch(e, names.verifying, 1)
+  await workOn(e, names.verifying, 'reviewer', { patchId: 'p1', headSha: 'h1' })
   names.building = await toBrief(e, false)
   names.briefQueued = await begin(e)
   await workOn(e, names.briefQueued, 'builder', { verdict: 'accept' })

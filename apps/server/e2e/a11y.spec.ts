@@ -64,6 +64,26 @@ const inFactory = (url: string) => async (page: Page) => {
   return url
 }
 
+const inRecord = (url: string) => async (page: Page) => {
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'record', url: base }])
+  return url
+}
+
+const memoryOne = async (page: Page) => {
+  await inRecord('/memory')(page)
+  return linkOn('/memory', /^\/memory\/\d+$/)(page)
+}
+
+const memoryRun = async (page: Page) => {
+  await inRecord('/memory')(page)
+  await page.goto('/memory')
+  await page.getByRole('link', { name: 'Say what changed in the handoff.' }).click()
+  const href = await page.locator('main a[href^="/runs/"]').first().getAttribute('href')
+  expect(href, 'a run link on the memory').toBeTruthy()
+  return href!
+}
+
 const withHoldStrip = (url: string) => async (page: Page) => {
   await inFactory(url)(page)
   await page.goto(url)
@@ -124,6 +144,9 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'cannot-run line': withHoldStrip('/'),
   },
   '/inbox': inFactory('/inbox'),
+  '/memory': inRecord('/memory'),
+  '/memory/new': inRecord('/memory/new'),
+  '/memory/[id]': memoryOne,
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
     'Brief card with earlier answers': inTickets('Large export needs earlier answers'),
@@ -141,6 +164,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     claimed: runOf('Build with reported steps'),
     queued: runOf('Build waiting for an agent'),
     failed: runOf('Build that failed'),
+    'run with memory': memoryRun,
   },
   '/settings': '/settings',
   '/settings/api-key': '/settings/api-key',

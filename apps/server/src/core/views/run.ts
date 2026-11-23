@@ -3,12 +3,14 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import { stageSchema, type Stage } from '../events'
 import { RunNotFound } from '../run/errors'
+import { loadStatements } from '../run/context'
 import { contextSchema, ROLES, type RunStep, type StoredContext } from '../run/schema'
 import { readEvents, readRecord, type StoredRecord } from '../record/store'
 import type { TicketRecord } from '../record/schema'
 import { loadRunAttachments, type AttachmentView } from './attachments'
 import { AGENT_SILENCE_MS } from './holds'
 import { loadItem, pullNumberOf } from './ticket-parts'
+import type { Why } from '../memory'
 
 const count = z.coerce.number()
 
@@ -30,6 +32,7 @@ const row = z.object({
 })
 
 export type RunPart = { label: string; detail: string }
+export type RunMemory = { id: number; text: string; reason: string }
 
 export type RunPage = {
   id: number
@@ -44,6 +47,7 @@ export type RunPage = {
   ticket: { recordId: number; number: number; title: string }
   handoff: string | null
   parts: RunPart[]
+  memory: RunMemory[]
   costUsd: number | null
   attachments: AttachmentView[]
   health: { silentMinutes: number } | null
@@ -73,12 +77,23 @@ const partsOf = (
     ? [{ label: 'Repository map', detail: context.agentsFile.cut ? 'AGENTS.md, cut' : 'AGENTS.md' }]
     : []),
   ...(context && context.statements.length > 0
-    ? [{ label: 'Your earlier answers', detail: String(context.statements.length) }]
+    ? [{ label: 'Memory', detail: String(context.statements.length) }]
     : []),
   ...(context && context.similar.length > 0
     ? [{ label: 'Similar tickets', detail: String(context.similar.length) }]
     : []),
 ]
+
+const REASON_WORDS: Record<Why, string> = { always: 'every ticket', area: 'area', fit: 'fits the ticket' }
+
+const memoryOf = async (payload: Payload, context: StoredContext | null): Promise<RunMemory[]> => {
+  const used = await loadStatements(payload, context?.statements ?? [], context?.reasons)
+  return used.map(({ id, text, why, area }) => ({
+    id,
+    text,
+    reason: why === 'area' ? `area: ${area ?? ''}` : REASON_WORDS[why],
+  }))
+}
 
 const handoffOf = (run: { stage: Stage; status: string }, record: Pick<TicketRecord, 'handoff'>): string | null => {
   const ended = ['submitted', 'failed', 'expired'].includes(run.status)
@@ -129,6 +144,7 @@ export const runPage = async (payload: Payload, filter: RunFilter): Promise<RunP
     ticket: { recordId: stored.id, number, title: issue?.title ?? `#${number}` },
     handoff: handoffOf(run, stored.record),
     parts: partsOf(run.stage, stored.record, run.context),
+    memory: await memoryOf(payload, run.context),
     costUsd: filter.withCost ? run.cost_usd : null,
     attachments: await loadRunAttachments(payload, run.id),
     health: healthOf(run, now),

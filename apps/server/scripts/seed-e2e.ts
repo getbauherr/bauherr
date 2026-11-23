@@ -41,6 +41,7 @@ const FACTORY_TITLES: Record<keyof ScenarioNames, string> = {
   building: 'Rename report columns',
   verifyRounds: 'Tag filter keeps failing',
   waitingChecks: 'Speed up measure search',
+  reviewing: 'Review of the export patch',
   verifying: 'Review of the date filter',
   resultCard: 'Add target-year check',
   accepted: 'Fix date format',

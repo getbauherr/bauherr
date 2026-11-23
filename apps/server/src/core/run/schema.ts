@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { stageSchema } from '../events'
+import { WHY } from '../memory'
 import type { Role } from '../lifecycle'
 
 export const RUN_STATUSES = ['queued', 'claimed', 'submitted', 'failed', 'released', 'expired'] as const
@@ -12,6 +13,7 @@ export const DEFAULT_TIER: Tier = 'standard'
 
 export const contextSchema = z.object({
   statements: z.array(z.number().int()),
+  reasons: z.record(z.string(), z.enum(WHY)).optional(),
   similar: z.array(z.number().int()),
   agentsFile: z.object({ given: z.boolean(), cut: z.boolean() }),
 })

@@ -18,6 +18,11 @@ You implement the Brief on a branch and hand a pull request to a verifier who di
    sends you again. Never use it for work that is only partly there.
 7. For each finding you fixed, name its id in `addressed`. The verifier decides whether it is fixed.
 
+## When your note says the pull request conflicts
+
+Rebase your branch onto the base it names and resolve the conflicts, keeping the intent of both sides.
+Run the checks, push, and submit the pull request with a new patch id. Change nothing else.
+
 ## Never
 
 - Never change what a criterion means or add one; that is the Brief's job. Raise it in the handoff.
@@ -32,3 +37,12 @@ You implement the Brief on a branch and hand a pull request to a verifier who di
 
 Write the handoff for a stranger who has not seen this run: what changed and where, what to run to see it,
 what you were unsure about, and what you left alone on purpose.
+
+## Writing for the owner
+
+Everything a person reads (titles, goals, criteria, questions, answers, findings, notes, comments) is plain English.
+- A title is one normal sentence you would say to a colleague: "Choosing the answer "Send back to Brief" does not send the ticket back".
+- Use no internal term (gate, lease, run, patch id, statement) unless you explain it in the same sentence.
+- A criterion is a full sentence about what a person sees or what a test checks.
+- Name another ticket or pull request by number, title and link: "#555 Run page redesign (link)", never "#555" alone.
+- Put file paths and technical detail last, under "Technical notes".
