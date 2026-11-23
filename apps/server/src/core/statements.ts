@@ -69,3 +69,11 @@ export const statementsFor = async (tx: Conn, product: number, limit: number): P
     return { id: parsed.id, record: parsed.record_id, kind: parsed.kind, text: parsed.text, createdAt }
   })
 }
+
+export const deleteStatement = async (tx: Conn, f: { workspace: number; product: number; id: number }) => {
+  const deleted = await tx.db.drizzle.execute(sql`
+    DELETE FROM "statements"
+    WHERE "id" = ${f.id} AND "product_id" = ${f.product} AND "workspace_id" = ${f.workspace}
+    RETURNING "id"`)
+  if (!deleted.rows[0]) throw new Error('That Statement is not in this Product.')
+}

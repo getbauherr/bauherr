@@ -16,6 +16,7 @@ const signInSpecs = [
   'selects',
   'settings',
   'shell',
+  'statements',
   'workspace-delete',
 ].map((name) => `${name}.spec.ts`)
 
