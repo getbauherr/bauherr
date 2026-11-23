@@ -29,9 +29,9 @@ test('a memory that came back three times shows Wants a check on the list and un
     .toHaveAttribute('aria-current', 'true')
 })
 
-test('Make it a check opens the ticket and the memory reads Check being built with the issue number', async ({
-  page,
-}) => {
+const pressing = 'Make it a check opens the ticket and the memory reads Check being built with the issue number'
+
+test(pressing, { tag: '@fake-forge' }, async ({ page }) => {
   const text = PRESSED[test.info().retry] ?? ''
   await openMemory(page)
   await page.getByRole('table', { name: 'Memory' }).getByRole('link', { name: text }).click()
