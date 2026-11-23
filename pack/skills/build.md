@@ -25,7 +25,7 @@ You implement the Brief on a branch and hand a pull request to a verifier who di
 - Never mark your own work verified, and never write a proof.
 - Never skip a failing check by weakening the test.
 - When the Brief is wrong, contradicts an owner decision or cannot be built as written, `ask` and say so.
-  The owner can send the ticket back to Brief; an answer only runs your stage again with the answer as a note.
+  Options are answers for your next run, never stage moves: the owner's Back to Brief is already on the card.
 - Never rewrite the contract yourself, and never offer an option the factory cannot carry out.
 
 ## Handoff

@@ -210,6 +210,37 @@ describe('ask', () => {
   })
 })
 
+describe('ask options', () => {
+  it.each([
+    ['back to Brief', ['Send back to Brief: full redesign from a mockup', 'Keep the gaps Brief']],
+    ['discard', ['Discard this ticket', 'Keep going']],
+    ['close', ['Close the ticket as done', 'Keep going']],
+    ['park', ['Park it for later', 'Keep going']],
+  ])('refuses an option that promises to %s and keeps the run claimed', async (_name, options) => {
+    await m.e.drain()
+    const record = await m.begin()
+    const run = await m.claimed(m.alpha)
+    const ids = { runId: run.runId, leaseToken: run.leaseToken }
+    await expect(m.call('ask', { ...ids, question: 'How?', options }, m.agent(m.alpha))).rejects.toThrow(
+      new RegExp(`Option "${options[0]}".*Back to Brief is already on the card`),
+    )
+    expect(await status(run.runId)).toBe('claimed')
+    expect((await m.e.view(record)).waitingOn).toBe('agents')
+    await m.e.drain()
+  })
+
+  it('accepts normal options', async () => {
+    await m.e.drain()
+    const record = await m.begin()
+    const run = await m.claimed(m.alpha)
+    const options = ['Keep the per-role sentence', 'Parking is out of scope']
+    const ids = { runId: run.runId, leaseToken: run.leaseToken }
+    expect(await m.call('ask', { ...ids, question: 'Which?', options }, m.agent(m.alpha))).toEqual({ status: 'asked' })
+    expect(await m.e.view(record)).toMatchObject({ card: { card: 'question', options } })
+    await m.e.drain()
+  })
+})
+
 describe('session capacity', () => {
   const connectWith = async (extra: Record<string, unknown> = {}) =>
     z
