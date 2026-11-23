@@ -39,7 +39,7 @@ describe('ChecksPanel', () => {
     const logs = [...out.matchAll(/<a href="https:\/\/ci\/[^"]+"[^>]*>/g)].map((m) => m[0])
     expect(logs).toHaveLength(3)
     for (const tag of logs) expect(tag).toContain('target="_blank" rel="noopener noreferrer"')
-    expect(out.match(/\(opens in new tab\)/g)).toHaveLength(4)
+    expect(out.match(/\(opens in new tab\)/g)).toHaveLength(3)
     expect(out).not.toContain('https://ci/image')
     expect(out).not.toContain('https://ci/lone')
   })
@@ -52,9 +52,11 @@ describe('ChecksPanel', () => {
 
   it('shows the notice with the pull request link from 10 minutes without a check', () => {
     expect(html([], 9)).not.toContain(NOTICE)
+    expect(html([], 9)).not.toContain(pull.label)
     expect(html([], 10)).toContain(NOTICE)
     expect(html([], 11)).toContain(NOTICE)
     expect(html([], 11)).toContain(pull.label)
     expect(html([check('lint', 'queued', null)], 11)).not.toContain(NOTICE)
+    expect(html([check('lint', 'queued', null)], 11)).not.toContain(pull.label)
   })
 })

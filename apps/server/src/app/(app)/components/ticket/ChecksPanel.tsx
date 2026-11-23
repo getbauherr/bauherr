@@ -77,7 +77,7 @@ export function ChecksPanel({ checks, since, now: initial, pull }: ChecksPanelPr
           with main or the workflow is turned off.
         </p>
       )}
-      {pull && <ForgeLink href={pull.url} label={pull.label} />}
+      {silent && pull && <ForgeLink href={pull.url} label={pull.label} />}
     </>
   )
 }
