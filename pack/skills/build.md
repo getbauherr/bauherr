@@ -17,6 +17,8 @@ You implement the Brief on a branch and hand a pull request to a verifier who di
    (the file, test or command that shows it) instead of the pull request fields. The owner then closes the Ticket or
    sends you again. Never use it for work that is only partly there.
 7. For each finding you fixed, name its id in `addressed`. The verifier decides whether it is fixed.
+8. When only the owner can supply a missing prerequisite (a Connection, credentials), do not guess or fail:
+   call `release` with `need` set to what is missing, such as `AWS Connection`. The Ticket is parked on it.
 
 ## When your note says the pull request conflicts
 

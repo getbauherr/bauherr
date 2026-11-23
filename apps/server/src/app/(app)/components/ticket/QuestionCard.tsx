@@ -15,8 +15,11 @@ const OPTION = [
 
 const askOf = (reason: string): string => (reason === 'production-held' ? reason : `question:${reason}`)
 
-const textOf = (card: StoredCard): string =>
-  card.reason === 'agent' && card.text ? card.text : (REASON_WORDS[card.reason as keyof typeof REASON_WORDS] ?? '')
+const textOf = (card: StoredCard): string => {
+  if (card.reason === 'parked') return `${REASON_WORDS.parked}: ${card.text ?? ''}`
+  if (card.reason === 'agent' && card.text) return card.text
+  return REASON_WORDS[card.reason as keyof typeof REASON_WORDS] ?? ''
+}
 
 type Props = { view: TicketView; card: StoredCard; may: boolean }
 

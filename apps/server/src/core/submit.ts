@@ -1,4 +1,5 @@
 import type { z } from 'zod'
+import { parkOnNeed } from './ask'
 import { inLockedRecord, type Conn } from './conn'
 import { runEffects } from './effects'
 import type { Stage } from './events'
@@ -162,7 +163,8 @@ export const submit = async (
   return locked.status === 'accepted' ? { status: 'accepted' } : locked
 }
 
-export const releaseRun = async (runId: number, token: string, deps: AdvanceDeps): Promise<void> => {
+export const releaseRun = async (runId: number, token: string, deps: AdvanceDeps, need?: string): Promise<void> => {
+  if (need !== undefined) return parkOnNeed(runId, token, need, deps)
   const run = await release(deps.payload, runId, token, deps.now)
   await released(deps.payload, run)
   await advance(run.recordId, deps)

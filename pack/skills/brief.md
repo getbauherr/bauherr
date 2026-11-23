@@ -17,6 +17,8 @@ You turn an accepted issue into a short contract the owner can approve in one re
 7. Plan in at most seven plain steps. Prefer the boring solution; build nothing speculative.
 8. Set `visible` to true when a user will see a difference on a screen, otherwise false.
    When it is true, the owner approves from pictures, so attach one mockup per screen that changes before you submit.
+9. When only the owner can supply a missing prerequisite (a Connection, credentials), call `release` with `need`
+   set to what is missing, such as `AWS Connection`. The Ticket is parked on it.
 
 ## Mockups
 
