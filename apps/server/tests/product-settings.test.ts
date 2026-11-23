@@ -40,7 +40,7 @@ it('productSettings answers null for a Product of another Workspace and reads th
       state: 'observing',
       executor: 'session',
       riskAreas: [],
-      excludedLabels: [],
+      excludedLabels: ['bauherr:someday'],
       outsideIssuesPerDay: 5,
       reporterRemindDays: 7,
       reporterSilentDays: 21,

@@ -47,6 +47,10 @@ The `/` page shows the workflow of your factory file. Tickets are listed by stag
 
 Every Ticket has one status. The labels are Done, Split, In progress, Queued, Waiting for you, Waiting for CI, Blocked and Failed. The first matching label wins, and the list, the graph, the chat and the Ticket page show it the same way.
 
+## Someday
+
+Label an issue `bauherr:someday` on the forge to park an idea. The factory leaves it alone: no Intake Run, no Inbox item. Every Product excludes this label by default; change the list under Intake in the Product settings. The Factory view shows `Someday: N` for open issues held back by an excluded label, linked to the forge issue list. Remove the label to bring an idea back: the next sync takes it into Intake once. A Ticket that has already entered stays.
+
 ## Ticket page
 
 The page has two halves. On the left is the conversation with the factory, which ends in a comment box. On the right is the Now pane with four tabs: Now, Plan, Proof and History.
