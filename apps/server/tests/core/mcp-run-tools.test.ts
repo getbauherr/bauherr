@@ -216,6 +216,10 @@ describe('ask options', () => {
     ['discard', ['Discard this ticket', 'Keep going']],
     ['close', ['Close the ticket as done', 'Keep going']],
     ['park', ['Park it for later', 'Keep going']],
+    ['close this ticket', ['Close this ticket as done', 'Keep going']],
+    ['park the ticket', ['Parking the ticket until #555 lands', 'Keep going']],
+    ['park with a label', ['Parked: wait for the owner', 'Keep going']],
+    ['send it back', ['Send it back to Build', 'Keep going']],
   ])('refuses an option that promises to %s and keeps the run claimed', async (_name, options) => {
     await m.e.drain()
     const record = await m.begin()
@@ -233,7 +237,12 @@ describe('ask options', () => {
     await m.e.drain()
     const record = await m.begin()
     const run = await m.claimed(m.alpha)
-    const options = ['Keep the per-role sentence', 'Parking is out of scope']
+    const options = [
+      'Keep the per-role sentence',
+      'Parking is out of scope',
+      'Send back 404 for an unknown session',
+      'Discard the stale cache entry and recompute',
+    ]
     const ids = { runId: run.runId, leaseToken: run.leaseToken }
     expect(await m.call('ask', { ...ids, question: 'Which?', options }, m.agent(m.alpha))).toEqual({ status: 'asked' })
     expect(await m.e.view(record)).toMatchObject({ card: { card: 'question', options } })

@@ -3,10 +3,16 @@ import { askOwner } from '../../ask'
 import { OptionRefused } from '../errors'
 import { defineTool, leaseToken, ownRun, runId } from './tool'
 
-const STAGE_MOVES = /\b(back to brief|send back|discard|close the ticket|park)\b/i
+const TICKET_VERB = '(?:discard|clos|park|archiv)\\w*'
+const STAGE_MOVES = [
+  /\bback to (?:the )?brief\b/i,
+  /\bsend(?:s|ing)?\b(?:\s+\w+){0,2}\s+back\s+to\b/i,
+  new RegExp(`\\b${TICKET_VERB}\\b(?:\\s+\\w+){0,2}\\s+(?:ticket|issue|it|this)\\b`, 'i'),
+  new RegExp(`^\\s*${TICKET_VERB}\\s*(?::|-|$)`, 'i'),
+]
 
 const refuseStageMoves = (options: string[]): void => {
-  const offending = options.find((option) => STAGE_MOVES.test(option))
+  const offending = options.find((option) => STAGE_MOVES.some((move) => move.test(option)))
   if (offending) {
     throw new OptionRefused(
       `Option "${offending}" promises a move an answer cannot make: Back to Brief is already on the card. ` +
