@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { forgeCheckNames, productSettings } from '../../../../../../core/views/product-settings'
-import { statementRecords } from '../../../../../../core/views/statement-records'
 import { ticketsMessage, blockedBy, recordCountOf } from '../../../../../../lib/settings-guards'
 import { EmptyState } from '../../../../components/EmptyState'
 import { PageTitle } from '../../../../components/PageTitle'
@@ -10,7 +9,6 @@ import { IntakeSection } from '../../../../components/product/IntakeSection'
 import { ProofSection } from '../../../../components/product/ProofSection'
 import { RemoveDoc } from '../../../../components/product/RemoveDoc'
 import { RepositorySection } from '../../../../components/product/RepositorySection'
-import { StatementsSection } from '../../../../components/product/StatementsSection'
 import { SettingsSection } from '../../../../components/SettingsParts'
 import { gitConnections } from '../../../../lib/git-connections'
 import { currentWorkspace, payloadClient } from '../../../../lib/session'
@@ -76,7 +74,13 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           <ProofSection product={product} forgeChecks={await forgeCheckNames(payload, filter)} admin={admin} />
         </div>
       </div>
-      <StatementsSection product={product.id} records={await statementRecords(payload, filter)} admin={admin} />
+      <p className="small text-muted-foreground">
+        What the factory remembers for this Product is on the{' '}
+        <Link href={`/memory?product=${product.id}`} className="text-primary hover:underline">
+          Memory page
+        </Link>
+        .
+      </p>
       {admin && <DangerZone product={product.id} />}
     </div>
   )

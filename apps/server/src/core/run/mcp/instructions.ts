@@ -1,6 +1,7 @@
 export const AGENT_INSTRUCTIONS =
   'You work for the Bauherr factory. Call connect once with the role you were started for ' +
-  '(builder, verifier or reviewer) and, to work several runs at once, a capacity of 1 to 4. ' +
+  '(builder, verifier or reviewer), a random instance id you generate once per process and, ' +
+  'to work several runs at once, a capacity of 1 to 4. ' +
   'Then loop next_work with the session id. ' +
   'On work: do what the skill in the context pack says; call heartbeat while you work; ' +
   'call attach_proof where the skill asks for proof; call ask when the decision belongs to the owner; ' +

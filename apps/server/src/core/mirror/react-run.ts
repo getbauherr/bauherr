@@ -1,4 +1,5 @@
 import { inLockedRecord, type Conn } from '../conn'
+import { runEffects } from '../effects'
 import { advance, type AdvanceDeps } from '../engine'
 import type { AppEvent } from '../events'
 import { fold, foldOptions, type Config, type State } from '../lifecycle'
@@ -20,23 +21,30 @@ const releaseStaleVerify = async (tx: Conn, recordId: number, state: State, now:
   }
 }
 
-const reactLocked = async (deps: AdvanceDeps, recordId: number, config: Config): Promise<number> =>
+const STALES_VERIFY: AppEvent['type'][] = ['pull.adopted', 'pull.conflicted']
+
+const reactLocked = async (deps: AdvanceDeps, recordId: number, config: Config): Promise<AppEvent[]> =>
   inLockedRecord(deps.payload, recordId, async (tx) => {
     const stored = await readRecord(tx, recordId)
     const events = await readEvents(tx, recordId)
     const state = fold(events, foldOptions(config))
-    if ((state.closed !== null && state.closed !== 'archived') || state.stage === 'done') return 0
+    if ((state.closed !== null && state.closed !== 'archived') || state.stage === 'done') return []
     const input = await loadReactInput(tx, stored, state, events, config, deps.now)
     const derived = input ? react(input) : []
     for (const event of derived) await appendEvent(tx, recordId, { ...event, actor: actorOf(event) })
-    if (derived.some((event) => event.type === 'pull.adopted')) await releaseStaleVerify(tx, recordId, state, deps.now)
-    return derived.length
+    if (derived.some((event) => STALES_VERIFY.includes(event.type))) {
+      await releaseStaleVerify(tx, recordId, state, deps.now)
+    }
+    return derived
   })
 
 export const reactToRecords = async (deps: AdvanceDeps, recordIds: number[]): Promise<void> => {
   for (const recordId of recordIds) {
     const appended = await reactLocked(deps, recordId, await deps.configFor(recordId))
-    if (appended > 0) await advance(recordId, deps)
+    if (appended.length > 0) await advance(recordId, deps)
+    if (appended.some((event) => event.type === 'pull.conflicted')) {
+      await runEffects(deps, recordId, [{ kind: 'status' }])
+    }
   }
 }
 

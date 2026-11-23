@@ -5,7 +5,7 @@ import { appendEvent, createRecord } from '../../src/core/record/store'
 import { enqueue } from '../../src/core/run/leases'
 import { rememberContext } from '../../src/core/run/context'
 import { storeStatement } from '../../src/core/statements'
-import { statementRecords } from '../../src/core/views/statement-records'
+import { statementFare, statementRecords } from '../../src/core/views/statement-records'
 import { source } from './fixtures'
 import { openEngine, type Engine } from './harness'
 
@@ -30,7 +30,7 @@ const ticket = async () =>
   (await createRecord(e.db.payload, { ...scope(), source: { ...source, number: next++ }, type: 'bug' })).id
 
 const statement = async (record: number, text: string) => {
-  await storeStatement(e.db.payload, record, { kind: 'guidance', text })
+  await storeStatement(e.db.payload, record, { kind: 'guidance', scope: 'ticket', text })
   const found = await e.db.payload.db.drizzle.execute(
     sql`SELECT max("id") AS id FROM "statements" WHERE "record_id" = ${record}`,
   )
@@ -66,7 +66,7 @@ describe('statementRecords', () => {
   it('counts the runs a statement reached and the next Verify of each Ticket that found problems', async () => {
     const id = await statement(await ticket(), 'Never block the queue')
     await handed(id, ['verify.changes', 'verify.changes', 'verify.passed'])
-    expect(await records()).toMatchObject([{ id, handed: 3, cameBack: 2, makeCheck: false, unused: false }])
+    expect(await records()).toMatchObject([{ id, handed: 3, cameBack: 2 }])
   })
 
   it('looks only at the next Verify after the run, and skips a Verify that gave no verdict', async () => {
@@ -80,28 +80,17 @@ describe('statementRecords', () => {
     expect(await records()).toMatchObject([{ id, handed: 1, cameBack: 1 }])
   })
 
-  it('flags make this a check at three comebacks, not at two', async () => {
-    const two = await statement(await ticket(), 'Two')
-    const three = await statement(await ticket(), 'Three')
-    await handed(two, ['verify.changes', 'verify.changes'])
-    await handed(three, ['verify.changes', 'verify.changes', 'verify.changes'])
-    const found = await records()
-    expect(found.find((r) => r.id === two)?.makeCheck).toBe(false)
-    expect(found.find((r) => r.id === three)?.makeCheck).toBe(true)
-  })
-
-  it('lists a statement as unused after 60 days without a run, and not when a run reached it since', async () => {
-    const old = await statement(await ticket(), 'Old and unused')
-    const used = await statement(await ticket(), 'Old but used')
-    const fresh = await statement(await ticket(), 'Fresh')
-    await run(await ticket(), 'build', [used])
-    await e.db.payload.db.drizzle.execute(
-      sql`UPDATE "statements" SET "created_at" = now() - interval '61 days' WHERE "id" IN (${old}, ${used})`,
-    )
-    const found = await records()
-    expect(found.filter((r) => r.unused).map((r) => r.id)).toEqual([old])
-    expect(found.find((r) => r.id === fresh)?.unused).toBe(false)
-    const later = await statementRecords(e.db.payload, scope(), new Date(Date.now() + 61 * 86_400_000))
-    expect(later.filter((r) => r.unused)).toHaveLength(3)
+  it('lists one row per run that got the statement, with the outcome of the next Verify', async () => {
+    const id = await statement(await ticket(), 'Never block the queue')
+    await handed(id, ['verify.changes', 'verify.passed'])
+    const record = await ticket()
+    await run(record, 'build', [id])
+    const fares = await statementFare(e.db.payload, { workspace: e.db.workspace, id })
+    expect(fares.map((fare) => [fare.stage, fare.outcome]).sort()).toEqual([
+      ['build', 'came-back'],
+      ['build', 'clean'],
+      ['build', 'open'],
+    ])
+    expect(fares.find((fare) => fare.ticket.record === record)?.outcome).toBe('open')
   })
 })

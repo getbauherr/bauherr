@@ -12,7 +12,7 @@ import {
 } from '../../src/core/mirror/react'
 import { briefed, ev, inBrief, inBuild, inShip, inVerify, start } from './fixtures'
 
-const open: ReactItem = { state: 'open', headSha: null, mergeSha: null }
+const open: ReactItem = { state: 'open', headSha: null, mergeSha: null, baseRef: null, conflicts: false }
 const pull = (extra: Partial<ReactItem> = {}): ReactItem => ({ ...open, headSha: 'h1', ...extra })
 const ASKED = '2026-11-10T10:00:00Z'
 const AFTER = '2026-11-11T10:00:00Z'

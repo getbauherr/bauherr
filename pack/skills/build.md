@@ -18,6 +18,11 @@ You implement the Brief on a branch and hand a pull request to a verifier who di
    sends you again. Never use it for work that is only partly there.
 7. For each finding you fixed, name its id in `addressed`. The verifier decides whether it is fixed.
 
+## When your note says the pull request conflicts
+
+Rebase your branch onto the base it names and resolve the conflicts, keeping the intent of both sides.
+Run the checks, push, and submit the pull request with a new patch id. Change nothing else.
+
 ## Never
 
 - Never change what a criterion means or add one; that is the Brief's job. Raise it in the handoff.

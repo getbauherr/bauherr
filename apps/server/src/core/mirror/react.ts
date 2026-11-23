@@ -4,7 +4,13 @@ import type { State } from '../fold'
 import { DISCLOSURE } from '../forge/disclosure'
 import type { TicketRecord } from '../record/schema'
 
-export type ReactItem = { state: 'open' | 'closed' | 'merged'; headSha: string | null; mergeSha: string | null }
+export type ReactItem = {
+  state: 'open' | 'closed' | 'merged'
+  headSha: string | null
+  mergeSha: string | null
+  baseRef: string | null
+  conflicts: boolean
+}
 export type ReactComment = { author: string; body: string; createdAt: string }
 export type ReactCheck = { status: string; conclusion: string | null }
 
@@ -49,6 +55,18 @@ export const checksFinished: Reaction = ({ state, pull, checks }) => {
   const outcome = checksState(checks)
   if (outcome === 'pending') return []
   return [{ type: 'checks.finished', data: { patchId: patch.id, passed: outcome === 'passed' } }]
+}
+
+const CONFLICT_STAGES: Stage[] = ['verify', 'ship']
+
+const conflictBase = (pull: ReactItem | null, patch: State['patch']): string | null =>
+  pull?.state === 'open' && pull.headSha === patch?.headSha && pull.conflicts ? pull.baseRef : null
+
+export const pullConflicted: Reaction = ({ state, pull }) => {
+  const { patch } = state
+  const base = conflictBase(pull, patch)
+  if (patch === null || base === null || state.merged || !CONFLICT_STAGES.includes(state.stage)) return []
+  return state.conflict?.patchId === patch.id ? [] : [{ type: 'pull.conflicted', data: { patchId: patch.id, base } }]
 }
 
 const mergeStages = (state: State): Stage[] => (state.adopted ? ['verify', 'ship'] : ['ship'])
@@ -101,7 +119,7 @@ export const deployFinished: Reaction = ({ deploy }) => {
   return [{ type: 'ship.deploy-stalled', data: { reason: 'overdue', checks: namesOf('none') } }]
 }
 
-const REACTIONS: Reaction[] = [reporterReplied, checksFinished, pullMerged, headMoved, deployFinished]
+const REACTIONS: Reaction[] = [reporterReplied, checksFinished, pullConflicted, pullMerged, headMoved, deployFinished]
 
 export const react = (input: ReactInput): AppEvent[] => {
   if (input.state.closed === 'archived') return issueReopened(input)

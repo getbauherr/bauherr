@@ -293,6 +293,18 @@ describe('session capacity', () => {
     await m.e.drain()
   })
 
+  it('gives two instances of one key a slot each', async () => {
+    await m.e.drain()
+    await m.begin()
+    await m.begin()
+    const a = await connectWith({ instance: 'proc-a' })
+    const b = await connectWith({ instance: 'proc-b' })
+    expect(a.session).not.toBe(b.session)
+    expect(work.parse(await nextWork(a.session)).status).toBe('work')
+    expect(work.parse(await nextWork(b.session)).status).toBe('work')
+    await m.e.drain()
+  })
+
   it('clamps capacity to 1..4 and updates it on reconnect', async () => {
     await m.e.drain()
     for (let i = 0; i < 3; i++) await m.begin()

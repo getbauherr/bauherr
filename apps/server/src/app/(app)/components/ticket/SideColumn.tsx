@@ -110,13 +110,18 @@ function AnswersUsed({ view }: { view: TicketView }) {
   const used = kind === 'brief' ? view.statementsUsed.brief : kind === 'result' ? view.statementsUsed.result : []
   if (used.length === 0) return null
   return (
-    <Aside title="Your earlier answers used">
+    <Aside title="Memory used">
       {used.map((statement) => (
         <span key={statement.id} className="small">
-          &quot;{statement.text}&quot;{' '}
-          <Link href={`/tickets/${statement.record}`} className="text-muted-foreground underline">
-            #{statement.ticket}, {shortDate(statement.at)}
-          </Link>
+          <Link href={`/memory/${statement.id}`} className="hover:underline">
+            &quot;{statement.text}&quot;
+          </Link>{' '}
+          {statement.record !== null && (
+            <Link href={`/tickets/${statement.record}`} className="text-muted-foreground underline">
+              #{statement.ticket}, {shortDate(statement.at)}
+            </Link>
+          )}{' '}
+          <span className="text-muted-foreground">({statement.scopeLabel})</span>
         </span>
       ))}
     </Aside>
