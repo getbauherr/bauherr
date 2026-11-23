@@ -92,9 +92,12 @@ describe('pullConflicted', () => {
     expect(pullConflicted(input([...inVerify, conflicted]))).toEqual([])
   })
 
-  it('does nothing without a conflict, for another head, after the merge, or outside Verify and Ship', () => {
+  it('sends the patch back when the branch was pushed again after the submit and conflicts', () => {
+    expect(pullConflicted(input(inVerify, { ...open, headSha: 'pushed-later' }))).toEqual([event])
+  })
+
+  it('does nothing without a conflict, after the merge, or outside Verify and Ship', () => {
     expect(pullConflicted(input(inVerify, { ...open, conflicts: false }))).toEqual([])
-    expect(pullConflicted(input(inVerify, { ...open, headSha: 'other' }))).toEqual([])
     expect(pullConflicted(input(inVerify, null))).toEqual([])
     expect(pullConflicted(input([...inShip, ev('ship.merged')]))).toEqual([])
     expect(pullConflicted(input([...inVerify.slice(0, 4)]))).toEqual([])

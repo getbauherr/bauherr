@@ -59,12 +59,14 @@ export const checksFinished: Reaction = ({ state, pull, checks }) => {
 
 const CONFLICT_STAGES: Stage[] = ['verify', 'ship']
 
-const conflictBase = (pull: ReactItem | null, patch: State['patch']): string | null =>
-  pull?.state === 'open' && pull.headSha === patch?.headSha && pull.conflicts ? pull.baseRef : null
+const conflictBase = (pull: ReactItem | null, state: State): string | null => {
+  if (pull?.state !== 'open' || !pull.conflicts) return null
+  return state.adopted && pull.headSha !== state.patch?.headSha ? null : pull.baseRef
+}
 
 export const pullConflicted: Reaction = ({ state, pull }) => {
   const { patch } = state
-  const base = conflictBase(pull, patch)
+  const base = conflictBase(pull, state)
   if (patch === null || base === null || state.merged || !CONFLICT_STAGES.includes(state.stage)) return []
   return state.conflict?.patchId === patch.id ? [] : [{ type: 'pull.conflicted', data: { patchId: patch.id, base } }]
 }
