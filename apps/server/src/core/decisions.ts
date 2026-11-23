@@ -72,6 +72,10 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
     },
     discard: answer('discard', discarded),
   },
+  'question:already-done': {
+    'close-as-done': answer('close-as-done', { type: 'ticket.done-elsewhere', data: {} }),
+    're-run-build': answer('re-run-build'),
+  },
   'question:deploy-stalled': {
     'check-again': answer('check-again'),
     continue: answer('continue', { type: 'ship.deployed', data: {} }),
@@ -92,6 +96,7 @@ export const QUESTION_REASONS = [
   'reporter-silent',
   'disputed',
   'verify-rounds',
+  'already-done',
   'deploy-stalled',
   'production',
   'agent',
@@ -104,6 +109,7 @@ export const REMEMBERED: Record<QuestionReason, boolean> = {
   'reporter-silent': false,
   disputed: true,
   'verify-rounds': false,
+  'already-done': false,
   'deploy-stalled': false,
   production: false,
   agent: true,

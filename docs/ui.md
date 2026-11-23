@@ -57,6 +57,7 @@ The action bar at the top of the Now pane holds the single next step. It shows o
 - **Send back** asks for a note and returns the Ticket to Build or the Backlog.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
 - **Round cap**: when review reaches its cap you grant one more round or stop.
+- **Close as done** card: when a Build Run reports that another pull request or Ticket already covers the work, the card asks "Close #n as done by #m?". Close as done posts a comment naming #m and its evidence, closes the forge issue as completed whatever the Product's auto-close setting, and moves the Ticket to done. Re-run build queues a fresh Build Run.
 
 ### Decision card
 

@@ -62,7 +62,7 @@ export type TicketRow = {
   run: { role: 'builder' | 'reviewer' | 'verifier'; leasedBy: string | null; step: string | null } | null
 }
 
-const ACCEPTED = ['result.accepted', 'production.approved']
+const ACCEPTED = ['result.accepted', 'production.approved', 'ticket.done-elsewhere']
 
 const CLOSED_AS: ClosedAs[] = ['not-a-bug', 'duplicate', 'not-planned', 'discarded', 'closed-on-forge']
 

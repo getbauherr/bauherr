@@ -11,7 +11,11 @@ You implement the Brief on a branch and hand a pull request to a verifier who di
    whenever the head changes.
 5. Fill the self check with one entry per criterion: `met`, `partial` or `missing`, with a pointer
    (a file, a test name or a command) where the evidence lives. Be honest: `partial` is better than a wrong `met`.
-6. For each finding you fixed, name its id in `addressed`. The verifier decides whether it is fixed.
+6. Report already done only when a pull request or Ticket other than yours already satisfies every criterion in the
+   repository as it is now. Submit `alreadyDone` with `by` (`#<number>` of that pull request or Ticket) and `evidence`
+   (the file, test or command that shows it) instead of the pull request fields. The owner then closes the Ticket or
+   sends you again. Never use it for work that is only partly there.
+7. For each finding you fixed, name its id in `addressed`. The verifier decides whether it is fixed.
 
 ## Never
 
