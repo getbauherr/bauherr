@@ -1,6 +1,20 @@
 import { z } from 'zod'
 
-export type Preset = 'anthropic' | 'openai' | 'gemini' | 'greenpt' | 'bedrock' | 'vertex' | 'foundry' | 'anthropic-compatible' | 'openai-compatible' | 'bedrock-iam' | 'foundry-entra' | 'bedrock-ambient' | 'vertex-ambient' | 'foundry-ambient'
+export type Preset =
+  | 'anthropic'
+  | 'openai'
+  | 'gemini'
+  | 'greenpt'
+  | 'bedrock'
+  | 'vertex'
+  | 'foundry'
+  | 'anthropic-compatible'
+  | 'openai-compatible'
+  | 'bedrock-iam'
+  | 'foundry-entra'
+  | 'bedrock-ambient'
+  | 'vertex-ambient'
+  | 'foundry-ambient'
 type Tier = 'cheap' | 'standard' | 'strong'
 type Cfg = Record<string, string | undefined>
 
