@@ -78,6 +78,15 @@ const sentBackReview = (asked: string | null, choice: string, state: State, note
   return [{ kind: 'review', pr: adoptedPatch.pr, body: note }]
 }
 
+const closedAsDone = (asked: string | null, choice: string, state: State): Effect[] => {
+  if (asked !== 'question:already-done' || choice !== 'close-as-done' || state.alreadyDone === null) return []
+  const { by, evidence } = state.alreadyDone
+  return [
+    { kind: 'question', body: `Closing as already done by ${by}: ${evidence}` },
+    { kind: 'close', reason: 'completed' },
+  ]
+}
+
 export const decide = async (
   recordId: number,
   person: Person,
@@ -101,7 +110,7 @@ export const decide = async (
     await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card })
     return {
       backlogBrief: asked === 'brief' && stored.record.source.backlog,
-      review: sentBackReview(asked, decision.choice, state, note),
+      review: [...sentBackReview(asked, decision.choice, state, note), ...closedAsDone(asked, decision.choice, state)],
     }
   })
   await advance(recordId, deps)

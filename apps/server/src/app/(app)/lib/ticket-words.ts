@@ -5,6 +5,7 @@ export type QuestionReason =
   | 'reporter-silent'
   | 'disputed'
   | 'verify-rounds'
+  | 'already-done'
   | 'deploy-stalled'
   | 'production'
   | 'production-held'
@@ -20,6 +21,7 @@ export const REASON_WORDS: Record<BriefReason | QuestionReason, string> = {
   'reporter-silent': 'The reporter did not answer the questions the factory asked. What should the factory do?',
   disputed: 'The agent disputes that this issue is a change to make. What should the factory do?',
   'verify-rounds': 'The patch was sent back from review several times. What should the factory do?',
+  'already-done': 'The builder found this ticket already done by other work. What should the factory do?',
   'deploy-stalled': 'The change is merged, but it is not confirmed to be on staging yet. What should the factory do?',
   production: 'The change is accepted. Release it to production or hold it.',
   'production-held': 'Production is on hold for this change. Approve it when you are ready.',
@@ -45,6 +47,7 @@ export const CHOICE_WORDS: Record<string, Record<string, string>> = {
     'accept-as-is': 'Accept the patch as it is',
     discard: 'Discard',
   },
+  'question:already-done': { 'close-as-done': 'Close as done', 're-run-build': 'Re-run build' },
   'question:deploy-stalled': { 'check-again': 'Check again', continue: 'It is deployed: go on' },
   'question:production': { approve: 'Approve production', hold: 'Hold production' },
   'production-held': { 'approve-production': 'Approve production' },

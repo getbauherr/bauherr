@@ -65,6 +65,8 @@ export const SAMPLES: Record<EventType, unknown> = {
   'brief.changes-requested': { note: 'shorter' },
   'brief.discarded': {},
   'build.submitted': { runId: 'r1', patchId: 'p1', headSha: 'h1', pr: 12 },
+  'build.already-done': { runId: 'r1', by: '#9', evidence: 'src/list.ts already returns the rows' },
+  'ticket.done-elsewhere': {},
   'pull.adopted': { pr: 12, headSha: 'h1', patchId: 'adopted:h1' },
   'checks.finished': { patchId: 'p1', passed: true },
   'verify.passed': { runId: 'r2', patchId: 'p1', headSha: 'h1' },

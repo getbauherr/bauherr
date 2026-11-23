@@ -17,6 +17,7 @@ export type State = {
   adopted: boolean
   waitingAuthor: boolean
   patch: { id: string; pr: number; headSha: string } | null
+  alreadyDone: { by: string; evidence: string } | null
   checks: 'none' | 'pending' | 'passed' | 'failed'
   verdict: Verdict | null
   overridden: boolean
@@ -46,6 +47,7 @@ export const initialState = (): State => ({
   adopted: false,
   waitingAuthor: false,
   patch: null,
+  alreadyDone: null,
   checks: 'none',
   verdict: null,
   overridden: false,
@@ -112,6 +114,8 @@ const owner: Reducer = (state, event) => {
       return { ...state, note: event.data.note }
     case 'ticket.closed':
       return { ...state, closed: event.data.reason }
+    case 'ticket.done-elsewhere':
+      return enter(state, 'done')
     default:
       return null
   }
@@ -163,6 +167,10 @@ const patch: Reducer = (state, event, options) => {
       const latest = { id: event.data.patchId, pr: event.data.pr, headSha: event.data.headSha }
       const checks = options.requiredChecks === false ? 'none' : 'pending'
       return { ...enter(fresh, 'verify'), patch: latest, checks, verdict: null }
+    }
+    case 'build.already-done': {
+      const { by, evidence } = event.data
+      return { ...submitted(state, event.data.runId), alreadyDone: { by, evidence } }
     }
     case 'pull.adopted':
       return adopt(state, event.data, options)
@@ -260,6 +268,7 @@ const questions: Reducer = (state, event) => {
       return {
         ...state,
         card: null,
+        alreadyDone: null,
         deployStalled: null,
         failedRuns: 0,
         extraRounds: state.extraRounds + (event.data.option === 'one-more-round' ? 1 : 0),
