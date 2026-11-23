@@ -15,8 +15,10 @@ export const REASON_WORDS: Record<BriefReason | QuestionReason, string> = {
   'open-decision': 'This Brief has an open decision.',
   'one-way-door': 'This change cannot be undone.',
   'risk-area': 'This change touches a risk area of the Product.',
+  'visible-change': 'A user will see a difference on a screen: check the mockup.',
   backlog: 'This issue existed before the project was connected.',
   'external-request': 'A person outside the team asked for this change.',
+  'sent-back': 'You sent this ticket back to Brief. Check the new Brief before the build goes on.',
   'failed-runs': 'Runs on this ticket failed several times in a row. What should the factory do?',
   'reporter-silent': 'The reporter did not answer the questions the factory asked. What should the factory do?',
   disputed: 'The agent disputes that this issue is a change to make. What should the factory do?',
@@ -51,12 +53,28 @@ export const CHOICE_WORDS: Record<string, Record<string, string>> = {
   'question:deploy-stalled': { 'check-again': 'Check again', continue: 'It is deployed: go on' },
   'question:production': { approve: 'Approve production', hold: 'Hold production' },
   'production-held': { 'approve-production': 'Approve production' },
+  'question:agent': { 'back-to-brief': 'Back to Brief', 'own-answer': 'None of these, my answer:' },
+  working: { 'back-to-brief': 'Back to Brief' },
 }
+
+const BACK_PROMPT = 'The agent reads this before it rewrites the Brief. The pull request stays open.'
 
 export const NOTE_PROMPTS: Record<string, string> = {
   'brief/request-changes': 'The agent reads this before it rewrites the Brief.',
   'result/send-back': 'The agent reads this before it starts the next build.',
+  'question:agent/back-to-brief': BACK_PROMPT,
+  'working/back-to-brief': BACK_PROMPT,
   'question:failed-runs/retry-with-guidance': 'The agent reads this before it tries again.',
+  'question:agent/own-answer': 'The agent reads this as your answer.',
+}
+
+export const NOTE_SAYS: Record<string, string> = {
+  'brief/request-changes': 'Say what should change',
+  'result/send-back': 'Say what should change',
+  'question:agent/back-to-brief': 'Say what is wrong with the Brief',
+  'working/back-to-brief': 'Say what is wrong with the Brief',
+  'question:failed-runs/retry-with-guidance': 'Say what the agent should do differently',
+  'question:agent/own-answer': 'Write your answer',
 }
 
 export const STALE_SENTENCE = 'The ticket moved while this was open. Reload to see where it is now.'

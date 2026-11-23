@@ -1,8 +1,13 @@
 import type { AppEvent } from './events'
 
-export type DecisionInput = { note: string; patchId: string; headSha: string }
+export type DecisionInput = { note: string; patchId: string; headSha: string; question: string }
 export type AgentCard = { options: string[]; text?: string }
-export type DecisionEntry = { needsNote: boolean; events: (input: DecisionInput) => AppEvent[] }
+export type DecisionEntry = {
+  needsNote: boolean
+  keepsNote?: boolean
+  endsRun?: boolean
+  events: (input: DecisionInput) => AppEvent[]
+}
 
 const answered = (option: string): AppEvent => ({ type: 'question.answered', data: { option } })
 const closed = (reason: 'not-planned' | 'not-a-bug'): AppEvent => ({ type: 'intake.closed', data: { reason } })
@@ -15,6 +20,25 @@ const withNote = (make: (note: string) => AppEvent[]): DecisionEntry => ({
   needsNote: true,
   events: ({ note }) => make(note),
 })
+
+export const BACK_TO_BRIEF = 'back-to-brief'
+export const WORKING_ASK = 'working'
+export const AGENT_ASK = 'question:agent'
+export const OWN_ANSWER = 'own-answer'
+
+const backToBrief = (open: boolean): DecisionEntry => ({
+  needsNote: true,
+  endsRun: true,
+  events: ({ note }) => [
+    ...(open ? [answered(BACK_TO_BRIEF)] : []),
+    { type: 'brief.changes-requested', data: { note } },
+  ],
+})
+
+const ownAnswer: DecisionEntry = {
+  needsNote: true,
+  events: ({ note, question }) => [answered(OWN_ANSWER), agentNote(question, note, '')],
+}
 
 export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
   brief: {
@@ -70,6 +94,8 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
   'production-held': {
     'approve-production': one({ type: 'production.approved', data: {} }),
   },
+  [AGENT_ASK]: { [BACK_TO_BRIEF]: backToBrief(true), [OWN_ANSWER]: ownAnswer },
+  [WORKING_ASK]: { [BACK_TO_BRIEF]: backToBrief(false) },
 }
 
 export const QUESTION_REASONS = [
@@ -98,20 +124,21 @@ export const REMEMBERED: Record<QuestionReason, boolean> = {
 
 export const isRemembered = (reason: string): boolean => REMEMBERED[reason as QuestionReason] === true
 
-export const AGENT_ASK = 'question:agent'
+export const agentNote = (question: string, answer: string, comment: string): AppEvent => ({
+  type: 'owner.note',
+  data: { note: [`Question: ${question}`, `Answer: ${answer}`, comment].filter((l) => l !== '').join('\n') },
+})
 
 export const agentEntry = (card: AgentCard | null, choice: string): DecisionEntry | undefined =>
   card?.options.includes(choice)
     ? {
         needsNote: false,
-        events: ({ note }) => [
-          answered(choice),
-          {
-            type: 'owner.note',
-            data: {
-              note: [`Question: ${card.text ?? ''}`, `Answer: ${choice}`, note].filter((l) => l !== '').join('\n'),
-            },
-          },
-        ],
+        keepsNote: true,
+        events: ({ note }) => [answered(choice), agentNote(card.text ?? '', choice, note)],
       }
     : undefined
+
+export const withComment = (entry: DecisionEntry, events: AppEvent[], note: string): AppEvent[] => {
+  if (entry.needsNote || entry.keepsNote === true || note === '') return events
+  return [...events.slice(0, 1), { type: 'owner.note', data: { note } }, ...events.slice(1)]
+}

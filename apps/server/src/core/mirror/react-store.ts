@@ -93,6 +93,13 @@ const loadDeployWait = async (
   return { names: config.deployNames, since, limitMinutes: config.deployWaitMinutes, now, checks }
 }
 
+const closeWritten = (events: StoredEvent[]): boolean => {
+  const archived = events.findLastIndex((event) => event.type === 'ticket.closed')
+  return events
+    .slice(archived + 1)
+    .some((event) => event.type === 'forge.write.done' && event.data.kind === 'close')
+}
+
 export const loadReactInput = async (
   conn: Conn,
   stored: StoredRecord,
@@ -114,6 +121,7 @@ export const loadReactInput = async (
     comments: await readComments(conn, issue.id),
     checks: pr && state.patch ? await readChecks(conn, pr.id, state.patch.headSha) : [],
     deploy: await loadDeployWait(conn, stored, state, events, config, now),
+    closeWritten: closeWritten(events),
   }
 }
 
@@ -131,7 +139,9 @@ export const recordsOfItems = async (conn: Conn, items: number[]): Promise<numbe
 
 export const openRecords = async (conn: Conn): Promise<number[]> => {
   const result = await conn.db.drizzle.execute(sql`
-    SELECT "id" FROM "records" WHERE "stage" <> 'done' AND ("waiting_on" <> 'nobody' OR "parked" IS NOT NULL)
+    SELECT "id" FROM "records" WHERE "stage" <> 'done' AND ("waiting_on" <> 'nobody' OR "parked" IS NOT NULL
+      OR (SELECT e."data"->>'reason' FROM "events" e WHERE e."record_id" = "records"."id"
+        AND e."type" IN ('ticket.closed', 'ticket.restored') ORDER BY e."id" DESC LIMIT 1) = 'archived')
     ORDER BY "id"`)
   return result.rows.map((row) => idRow.parse(row).id)
 }

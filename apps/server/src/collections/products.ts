@@ -71,8 +71,8 @@ export const products = col(
     {
       name: 'intakeExcludedLabels',
       type: 'json',
-      defaultValue: [],
-      admin: { description: 'Issue labels that keep an issue out of intake.' },
+      defaultValue: ['bauherr:someday'],
+      admin: { description: 'Issue labels that keep an issue out of intake. bauherr:someday parks an idea.' },
     },
     {
       name: 'outsideIssuesPerDay',

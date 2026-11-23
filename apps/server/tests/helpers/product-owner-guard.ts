@@ -27,10 +27,17 @@ export const BAUHERR_PAGES = [
 export const PO_ROUTES: Record<string, string> = {
   'api/hooks/[connection] POST': 'forge webhook: no session, signature-verified',
   'api/health GET': 'unauthenticated health probe',
+  'api/attachments/upload/[token] PUT': 'run image upload: no session, a one-time token',
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
 }
-export const BAUHERR_ROUTES: string[] = ['api/changes GET', 'mcp GET', 'mcp POST', 'mcp DELETE']
+export const BAUHERR_ROUTES: string[] = [
+  'api/attachments/[id] GET',
+  'api/changes GET',
+  'mcp GET',
+  'mcp POST',
+  'mcp DELETE',
+]
 export const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
@@ -41,6 +48,8 @@ export const BAUHERR_ACTIONS = [
   'lib/actions.ts#selectWorkspace',
   '(shell)/actions.ts#moveCard',
   '(shell)/tickets/actions.ts#decideTicket',
+  '(shell)/tickets/archive-actions.ts#archiveTicket',
+  '(shell)/tickets/archive-actions.ts#restoreTicket',
   '(shell)/settings/state-action.ts#setProductState',
   '(shell)/settings/webhook-action.ts#createWebhookSecret',
 ].concat(
@@ -73,7 +82,14 @@ export const BAUHERR_ACTIONS = [
 )
 const CONNECT_PAGES = ['settings/products/[id]/connect']
 BAUHERR_PAGES.push(...CONNECT_PAGES)
-const PRODUCT_SECTION_ACTIONS = ['saveExecutor', 'saveIntake', 'saveGates', 'saveProof', 'copyForgeChecks']
+const PRODUCT_SECTION_ACTIONS = [
+  'saveExecutor',
+  'saveIntake',
+  'saveGates',
+  'saveProof',
+  'copyForgeChecks',
+  'removeStatement',
+]
 BAUHERR_ACTIONS.push(...PRODUCT_SECTION_ACTIONS.map((n) => `(shell)/settings/products/[id]/actions.ts#${n}`))
 export const PO_COLLECTIONS: Record<string, Record<string, string>> = {
   bauherren: {
@@ -90,6 +106,7 @@ export const PO_COLLECTIONS: Record<string, Record<string, string>> = {
 export const BAUHERR_COLLECTIONS = [
   'agent_keys',
   'agent_sessions',
+  'attachments',
   'connections',
   'events',
   'human_touches',

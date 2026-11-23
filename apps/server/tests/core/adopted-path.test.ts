@@ -7,7 +7,7 @@ import { adoptedSource, adoptEvent, briefed, CONFIG, decision, ev, fail, inVerif
 
 type Case = { name: string; events: AppEvent[]; expected: Step; config?: Partial<Config>; record?: TicketRecord }
 
-const run = (stage: 'brief' | 'build' | 'verify', role: 'builder' | 'verifier' = 'builder'): Step => ({
+const run = (stage: 'brief' | 'build' | 'verify', role: 'builder' | 'reviewer' | 'verifier' = 'builder'): Step => ({
   kind: 'run',
   stage,
   role,
@@ -17,19 +17,21 @@ const question = (reason: string, options: string[]): Step => ({ kind: 'card', c
 const resultCard: Step = { kind: 'card', card: 'result', reason: 'result', options: [] }
 const verifyRounds = question('verify-rounds', ['one-more-round', 'accept-as-is', 'discard'])
 const merge: Step = { kind: 'effect', effect: 'merge' }
+const reviewerRun = run('verify', 'reviewer')
 
 const adopted = briefed({ source: adoptedSource })
 const backlogAdopted = briefed({ source: { ...adoptedSource, backlog: true } })
 const checksDone = ev('checks.finished', { patchId: 'adopted:h1' })
 const checksDoneAt = (sha: string) => ev('checks.finished', { patchId: `adopted:${sha}` })
+const reviewedAt = (sha = 'h1') => ev('review.submitted', { patchId: `adopted:${sha}` })
 const changed = (runId: string) => [start('verify', runId), ev('verify.changes', { runId })]
 const briefWritten = [adoptEvent(), start('brief'), ev('brief.submitted')]
 const approved = [...briefWritten, ev('brief.approved', { by: 'owner' })]
-const verifying = [...approved, checksDone]
+const verifying = [...approved, reviewedAt(), checksDone]
 const passed = [...verifying, start('verify', 'r2'), ev('verify.passed', { runId: 'r2', patchId: 'adopted:h1' })]
 const sentBack = [...passed, ev('result.sent-back')]
 const mergedByPerson = [...verifying, ev('ship.merged')]
-const secondCommit = [adoptEvent('h2'), checksDoneAt('h2')]
+const secondCommit = [adoptEvent('h2'), reviewedAt('h2'), checksDoneAt('h2')]
 const atCap = [...verifying, ...changed('r2'), ...secondCommit, ...changed('r3')]
 const mergedAndPassed = [
   ...mergedByPerson,
@@ -60,18 +62,28 @@ const CASES: Case[] = [
     record: briefed({ source: adoptedSource, risk: { door: 'two-way', areas: ['security'], rollback: 'r' } }),
     expected: { kind: 'card', card: 'brief', reason: 'risk-area', options: [] },
   },
-  { name: 'an approved Brief goes to Verify and waits for the checks', events: approved, expected: wait('checks') },
+  { name: 'an approved Brief goes to Verify and is reviewed at once', events: approved, expected: reviewerRun },
+  {
+    name: 'a reviewed pull request waits for the checks',
+    events: [...approved, reviewedAt()],
+    expected: wait('checks'),
+  },
   { name: 'passed checks run the verifier', events: verifying, expected: run('verify', 'verifier') },
   {
-    name: 'without required checks an approved Brief runs the verifier at once',
-    events: approved,
+    name: 'without required checks a reviewed pull request runs the verifier at once',
+    events: [...approved, reviewedAt()],
     config: { requiredChecks: false },
     expected: run('verify', 'verifier'),
   },
   { name: 'verify.changes waits on the author', events: [...verifying, ...changed('r2')], expected: wait('author') },
   {
-    name: 'a new head commit waits for its checks, then runs the verifier again',
+    name: 'a new head commit is reviewed again',
     events: [...verifying, ...changed('r2'), adoptEvent('h2')],
+    expected: reviewerRun,
+  },
+  {
+    name: 'a reviewed new head commit waits for its checks, then runs the verifier again',
+    events: [...verifying, ...changed('r2'), adoptEvent('h2'), reviewedAt('h2')],
     expected: wait('checks'),
   },
   {
@@ -91,7 +103,7 @@ const CASES: Case[] = [
       ...atCap,
       ev('question.asked'),
       ev('question.answered', { option: 'one-more-round' }),
-      ...[adoptEvent('h3'), checksDoneAt('h3')],
+      ...[adoptEvent('h3'), reviewedAt('h3'), checksDoneAt('h3')],
     ],
     expected: run('verify', 'verifier'),
   },
@@ -138,12 +150,12 @@ const CASES: Case[] = [
   },
   {
     name: 'a new commit while the Result card is open sends the ticket back to the checks',
-    events: [...passed, adoptEvent('h2')],
+    events: [...passed, adoptEvent('h2'), reviewedAt('h2')],
     expected: wait('checks'),
   },
   {
     name: 'a new commit that released the live Verify run waits for its checks, without a failed run',
-    events: [...verifying, start('verify', 'r2'), adoptEvent('h2'), released],
+    events: [...verifying, start('verify', 'r2'), adoptEvent('h2'), reviewedAt('h2'), released],
     expected: wait('checks'),
   },
   {

@@ -14,9 +14,11 @@ export type State = {
   extraRounds: number
   failedRuns: number
   brief: 'none' | 'submitted' | 'approved'
+  returned: boolean
   adopted: boolean
   waitingAuthor: boolean
   patch: { id: string; pr: number; headSha: string } | null
+  reviewed: string | null
   alreadyDone: { by: string; evidence: string } | null
   checks: 'none' | 'pending' | 'passed' | 'failed'
   verdict: Verdict | null
@@ -44,9 +46,11 @@ export const initialState = (): State => ({
   extraRounds: 0,
   failedRuns: 0,
   brief: 'none',
+  returned: false,
   adopted: false,
   waitingAuthor: false,
   patch: null,
+  reviewed: null,
   alreadyDone: null,
   checks: 'none',
   verdict: null,
@@ -100,6 +104,7 @@ const runs: Reducer = (state, event) => {
     case 'run.started':
       return { ...state, run: event.data, note: null }
     case 'run.failed':
+    case 'run.expired':
       return { ...endRun(state, event.data.runId), failedRuns: state.failedRuns + 1 }
     case 'run.released':
       return endRun(state, event.data.runId)
@@ -114,6 +119,8 @@ const owner: Reducer = (state, event) => {
       return { ...state, note: event.data.note }
     case 'ticket.closed':
       return { ...state, closed: event.data.reason }
+    case 'ticket.restored':
+      return state.closed === 'archived' ? { ...state, closed: null, card: null, run: null, failedRuns: 0 } : state
     case 'ticket.done-elsewhere':
       return enter(state, 'done')
     default:
@@ -121,14 +128,25 @@ const owner: Reducer = (state, event) => {
   }
 }
 
+const backToBrief = (state: State, note: string): State => ({
+  ...enter(state, 'brief'),
+  brief: 'submitted',
+  returned: true,
+  card: null,
+  run: null,
+  verifyRounds: 0,
+  extraRounds: 0,
+  note,
+})
+
 const brief: Reducer = (state, event) => {
   switch (event.type) {
     case 'brief.submitted':
       return { ...submitted(state, event.data.runId), brief: 'submitted' }
     case 'brief.approved':
-      return { ...enter(state, state.adopted ? 'verify' : 'build'), brief: 'approved' }
+      return { ...enter(state, state.adopted ? 'verify' : 'build'), brief: 'approved', returned: false }
     case 'brief.changes-requested':
-      return { ...state, note: event.data.note }
+      return state.brief === 'approved' ? backToBrief(state, event.data.note) : { ...state, note: event.data.note }
     case 'brief.discarded':
       return { ...state, closed: 'discarded' }
     default:
@@ -143,6 +161,7 @@ const adopt = (state: State, data: EventOf<'pull.adopted'>['data'], options: Fol
     adopted: true,
     waitingAuthor: false,
     patch: { id: data.patchId, pr: data.pr, headSha: data.headSha },
+    reviewed: null,
     checks: options.requiredChecks === false ? 'none' : 'pending',
     verdict: null,
     accepted: false,
@@ -166,7 +185,7 @@ const patch: Reducer = (state, event, options) => {
       }
       const latest = { id: event.data.patchId, pr: event.data.pr, headSha: event.data.headSha }
       const checks = options.requiredChecks === false ? 'none' : 'pending'
-      return { ...enter(fresh, 'verify'), patch: latest, checks, verdict: null }
+      return { ...enter(fresh, 'verify'), patch: latest, reviewed: null, checks, verdict: null }
     }
     case 'build.already-done': {
       const { by, evidence } = event.data
@@ -186,6 +205,8 @@ const verdictOf = (data: Verdict): Verdict => ({ patchId: data.patchId, headSha:
 
 const verify: Reducer = (state, event) => {
   switch (event.type) {
+    case 'review.submitted':
+      return { ...submitted(state, event.data.runId), reviewed: event.data.patchId }
     case 'verify.passed':
       return {
         ...enter(submitted(state, event.data.runId), 'ship'),

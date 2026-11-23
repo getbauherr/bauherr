@@ -4,10 +4,10 @@ import { runEffects } from './effects'
 import type { Stage } from './events'
 import { advance, type AdvanceDeps } from './engine'
 import { fold } from './fold'
-import { gate } from './gate'
+import { gate, reviewGate, type GateFacts, type GateOutcome } from './gate'
 import { loadGateFacts } from './gate-facts'
-import { foldOptions } from './lifecycle'
-import type { Effect, LifecycleModule, Modules, Problem } from './module'
+import { foldOptions, type Role } from './lifecycle'
+import { moduleKey, type Effect, type LifecycleModule, type Modules, type Problem } from './module'
 import {
   CriteriaEditNotAllowed,
   FieldNotWritable,
@@ -15,15 +15,18 @@ import {
   ProofRequired,
   StatusChangeNotAllowed,
 } from './record/errors'
+import type { TicketRecord } from './record/schema'
 import { appendEvent, patchRecord, readEvents, readRecord } from './record/store'
+import { reviewResultSchema } from './review-result'
 import { verifyResultSchema } from './verify-result'
 import { ModuleMissing, RecordClosed } from './run/errors'
-import { authorize, expire, release, type Expired } from './run/leases'
-import type { Run } from './run/schema'
+import { authorize, EXPIRY_REASON, expire, release, type Expired } from './run/leases'
+import type { Run, Tier } from './run/schema'
 import { finishRun, markRefused, readRun } from './run/store'
 
-export type SkillLoader = (stage: Stage) => Promise<string | null>
-export type SubmitDeps = AdvanceDeps & { modules: Modules; skills?: SkillLoader }
+export type TierLoader = (role: Role) => Promise<Tier>
+export type SkillLoader = (stage: Stage, role: Role) => Promise<string | null>
+export type SubmitDeps = AdvanceDeps & { modules: Modules; skills?: SkillLoader; tiers?: TierLoader }
 export type SubmitResult = { status: 'accepted' } | { status: 'retry' | 'failed'; problems: Problem[] }
 type Accepted = { status: 'accepted'; effects: Effect[] }
 type Refused = Exclude<SubmitResult, { status: 'accepted' }>
@@ -58,6 +61,13 @@ const released = (conn: Conn, run: { id: number; recordId: number; stage: Run['s
     actor: 'factory',
   })
 
+const expiredEvent = (conn: Conn, run: { runId: number; recordId: number; stage: Run['stage'] }) =>
+  appendEvent(conn, run.recordId, {
+    type: 'run.expired',
+    data: { stage: run.stage, runId: String(run.runId), reason: EXPIRY_REASON },
+    actor: 'factory',
+  })
+
 const refuse = async (tx: Conn, run: Run, problems: Problem[], now: Date): Promise<Refused> => {
   if (run.attempt === 0) {
     await markRefused(tx, run.id)
@@ -72,6 +82,11 @@ const refuse = async (tx: Conn, run: Run, problems: Problem[], now: Date): Promi
   return { status: 'failed', problems }
 }
 
+const gated = (module: LifecycleModule, data: unknown, record: TicketRecord, facts: GateFacts): GateOutcome =>
+  module.role === 'reviewer'
+    ? reviewGate({ result: reviewResultSchema.parse(data), facts })
+    : gate({ result: verifyResultSchema.parse(data), record, facts })
+
 type Written = { problems: Problem[] } | { effects: Effect[] }
 
 const write = async (
@@ -83,9 +98,10 @@ const write = async (
 ): Promise<Written> => {
   const stored = await readRecord(tx, run.recordId)
   const config = await deps.configFor(run.recordId)
+  const missing = (await module.check?.(tx, run, data)) ?? []
+  if (missing.length > 0) return { problems: missing }
   if (module.gated) {
-    const facts = await loadGateFacts(tx, stored, run, config)
-    const outcome = gate({ result: verifyResultSchema.parse(data), record: stored.record, facts })
+    const outcome = gated(module, data, stored.record, await loadGateFacts(tx, stored, run, config))
     if (!outcome.accepted) return { problems: outcome.refusals }
   }
   try {
@@ -109,7 +125,7 @@ const submitLocked = async (tx: Conn, run: Run, token: string, rawResult: unknow
   if (state.closed !== null || state.stage === 'done') {
     throw new RecordClosed(`Record ${current.recordId} is closed: stop working on run ${current.id}.`)
   }
-  const module = deps.modules[current.stage]
+  const module = deps.modules[moduleKey(current.stage, current.role)]
   if (!module) throw new ModuleMissing(`No module is registered for stage ${current.stage}: register one.`)
   const parsed = module.resultSchema.safeParse(rawResult)
   if (!parsed.success) return refuse(tx, current, problemsOf(parsed.error), deps.now)
@@ -158,7 +174,7 @@ export const failRun = async (runId: number, token: string, reason: string, deps
 export const expireRuns = async (deps: AdvanceDeps): Promise<Expired[]> => {
   const expired = await expire(deps.payload, deps.now)
   for (const run of expired) {
-    await released(deps.payload, { id: run.runId, recordId: run.recordId, stage: run.stage })
+    await expiredEvent(deps.payload, run)
   }
   for (const recordId of new Set(expired.map((run) => run.recordId))) await advance(recordId, deps)
   return expired

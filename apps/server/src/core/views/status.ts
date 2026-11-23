@@ -21,6 +21,7 @@ export const STATUSES = [
   'triaging',
   'drafting-brief',
   'building',
+  'reviewing',
   'verifying',
   'queued',
   'waiting-for-checks',
@@ -47,6 +48,7 @@ export type StatusInput = {
   card: StoredCard | null
   parked: string | null
   hasRun: boolean
+  reviewer: boolean
   claimed: boolean
   questionDrafted: boolean
   ended: 'accepted' | 'closed' | null
@@ -76,6 +78,7 @@ const RULES: Rule[] = [
   (i) => (i.card === null ? null : OPEN_CARD[i.card.card]),
   (i) => (i.waitingOn === 'reporter' ? (i.questionDrafted ? 'question-drafted' : 'reporter-asked') : null),
   (i) => (i.waitingOn === 'author' ? 'waiting-on-author' : null),
+  (i) => (i.stage === 'verify' && i.reviewer ? 'reviewing' : null),
   (i) => (i.hasRun && !i.claimed ? 'queued' : null),
   (i) => (i.stage === 'verify' && !i.hasRun ? 'waiting-for-checks' : null),
   (i) => (i.stage === 'ship' && !i.hasRun ? 'waiting-for-deploy' : null),

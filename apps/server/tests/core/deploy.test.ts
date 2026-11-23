@@ -37,6 +37,7 @@ const input = (deploy: DeployWait | null): ReactInput => ({
   comments: [],
   checks: [],
   deploy,
+  closeWritten: false,
 })
 
 const deployed: AppEvent = { type: 'ship.deployed', data: {} }

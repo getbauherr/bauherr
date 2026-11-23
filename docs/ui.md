@@ -7,7 +7,7 @@ The Bauherr UI is served at `/`. Everything an Admin configures is a page here, 
 Every signed-in page has the same frame.
 
 - **Sidebar**: Inbox, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
-- **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page, finds Tickets by number or title and runs actions such as Toggle theme.
+- **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page and finds Tickets.
 - **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause. It names queued work that cannot run, and only while runs wait: "No builder session is connected: 2 runs wait (Build 2)" with a Connect a session link, one line per role of a session Product with no session of that role seen for 10 minutes; "The Runner has not picked up a run for 10 minutes" when a Runner Product's run waits that long. A Runner Product never asks for a session. With no queued runs neither line shows, even when no session is connected.
 - **Ask button**: opens the [chat](#chat) dock on `Ctrl/Cmd+J`.
 - **Workspace switcher**: appears with two or more Workspaces.
@@ -47,17 +47,24 @@ The `/` page shows the workflow of your factory file. Tickets are listed by stag
 
 Every Ticket has one status. The labels are Done, Split, In progress, Queued, Waiting for you, Waiting for CI, Blocked and Failed. The first matching label wins, and the list, the graph, the chat and the Ticket page show it the same way.
 
+## Someday
+
+Label an issue `bauherr:someday` to park an idea: no Intake Run, no Inbox item. It is excluded by default (Product settings, Intake). The Factory view shows `Someday: N`, linked to those issues. Remove the label and the next sync takes it into Intake.
+
 ## Ticket page
 
 The page has two halves. On the left is the conversation with the factory, which ends in a comment box. On the right is the Now pane with four tabs: Now, Plan, Proof and History.
 
-The action bar at the top of the Now pane holds the single next step. It shows one sentence and one primary button. The button names the step, for example Approve plan, Accept on staging or Re-run Build.
+The action bar atop the Now pane holds the next step: one sentence and one primary button naming it, such as Approve plan or Re-run Build.
 
 - **Approve plan** is refused while critical decisions are unanswered.
 - **Send back** asks for a note and returns the Ticket to Build or the Backlog.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
 - **Round cap**: when review reaches its cap you grant one more round or stop.
-- **Close as done** card: when a Build Run reports that another pull request or Ticket already covers the work, the card asks "Close #n as done by #m?". Close as done posts a comment naming #m and its evidence, closes the forge issue as completed whatever the Product's auto-close setting, and moves the Ticket to done. Re-run build queues a fresh Build Run.
+- **Close as done**: when Build reports another pull request or Ticket covers the work, the card asks "Close #n as done by #m?". Close comments with the evidence, closes the issue as completed and moves the Ticket to done; Re-run build queues Build again.
+
+- **Archive** (before Ship, after a dialog): releases the Run, hides the Ticket, closes the issue as not planned.
+- **Restore** reopens the issue and reruns the stage; so does reopening it on the forge.
 
 ### Decision card
 
@@ -73,13 +80,13 @@ Every human checkpoint uses one card. It has the ask in one sentence, a recommen
 - Several problems in one message become several Tickets.
 - File request is enabled when the card is complete or the question limit is reached.
 
-After filing, the conversation is read-only history. Details of the conversation engine are in chat.
+After filing, the conversation is read-only history.
 
 ## Run page
 
-`/runs/<id>` shows one attempt of a stage. The header gives a status such as Working, Stuck or Session gone. The page shows the timeline of Steps, the proof, the links to the merge request and the times.
+`/runs/<id>` shows one attempt of a stage. The header gives a status such as Working, Stuck or Session gone. It shows the Steps, the proof, the merge request links and the times.
 
-A Run offers at most one primary action. It is Connect an agent, Re-run the stage or Open ticket. An Admin can release the lock on a stuck Run.
+A Run offers one primary action: Connect an agent, Re-run the stage or Open ticket. An Admin can release the lock on a stuck Run.
 
 ## Agent team
 
@@ -100,11 +107,13 @@ One assistant is docked on every page. It answers questions about the factory an
 - Rate answers with thumbs. Admins read the ratings at `/settings/chat-feedback`.
 - Slash commands: `/context`, `/new`, `/request`, `/help`. On a Ticket thread, `/comment <text>` posts to the issue.
 
-More in chat.
-
 ## Settings
 
 Settings are grouped by scope. Account is for everyone, with Profile and API keys. Factory has Workflow, Templates, Models and budget, and AI usage. Workspace has General, Products, Connections, People and Knowledge. Admin has Audit and Health.
+
+API keys lists each session with its live Runs and slots, for example "2 of 3 working": a session connected with a capacity of 1 to 4 holds that many Runs at once, one subagent each.
+
+Product settings list each Statement's Runs and failed Verifies. Unused 60 days: removable; back three times: flagged as a check.
 
 Only an Admin edits, except Profile and API keys. Members read the rest. The sidebar's Settings item opens Profile, and the command palette lists every page you may open.
 

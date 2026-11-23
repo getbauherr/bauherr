@@ -1,7 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import type { Conn } from './conn'
-import { isRemembered } from './decisions'
+import { isRemembered, OWN_ANSWER } from './decisions'
 import type { Card } from './fold'
 
 export const STATEMENT_MAX = 1000
@@ -18,7 +18,14 @@ const clip = (text: string): string => text.slice(0, STATEMENT_MAX)
 const NOTE_KINDS: Record<string, StatementKind> = {
   'brief/request-changes': 'brief-change',
   'result/send-back': 'send-back',
+  'question:agent/back-to-brief': 'brief-change',
+  'working/back-to-brief': 'brief-change',
   'question:failed-runs/retry-with-guidance': 'guidance',
+}
+
+const answerText = (choice: string, note: string): string => {
+  if (choice === OWN_ANSWER) return note
+  return note === '' ? choice : `${choice}. ${note}`
 }
 
 export const statementOf = ({ asked, choice, note, card }: Given): Statement | null => {
@@ -27,7 +34,7 @@ export const statementOf = ({ asked, choice, note, card }: Given): Statement | n
   if (asked?.startsWith('question:')) {
     if (!isRemembered(asked.slice('question:'.length))) return null
     const question = card?.text ?? asked.slice('question:'.length)
-    return { kind: 'answer', text: clip(note === '' ? `${question}: ${choice}` : `${question}: ${choice}. ${note}`) }
+    return { kind: 'answer', text: clip(`${question}: ${answerText(choice, note)}`) }
   }
   return note === '' ? null : { kind: 'guidance', text: clip(note) }
 }
@@ -61,4 +68,12 @@ export const statementsFor = async (tx: Conn, product: number, limit: number): P
     const createdAt = parsed.created_at.toISOString()
     return { id: parsed.id, record: parsed.record_id, kind: parsed.kind, text: parsed.text, createdAt }
   })
+}
+
+export const deleteStatement = async (tx: Conn, f: { workspace: number; product: number; id: number }) => {
+  const deleted = await tx.db.drizzle.execute(sql`
+    DELETE FROM "statements"
+    WHERE "id" = ${f.id} AND "product_id" = ${f.product} AND "workspace_id" = ${f.workspace}
+    RETURNING "id"`)
+  if (!deleted.rows[0]) throw new Error('That Statement is not in this Product.')
 }

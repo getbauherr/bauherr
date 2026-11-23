@@ -8,7 +8,10 @@ const handoffText = (run: RunPage): string | null => {
   if (run.status === 'claimed') return 'Not written yet. The run is still working.'
   if (run.status === 'queued') return 'Not written yet. The run has not started.'
   if (run.handoff !== null) return null
-  return run.status === 'failed' ? `The run failed: ${run.error ?? 'no reason given'}` : 'This run wrote no handoff.'
+  if (run.status === 'failed' || run.status === 'expired') {
+    return `The run ${run.status}: ${run.error ?? 'no reason given'}`
+  }
+  return 'This run wrote no handoff.'
 }
 
 const stepsEmpty = (run: RunPage): string =>

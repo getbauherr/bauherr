@@ -60,6 +60,7 @@ export const SAMPLES: Record<EventType, unknown> = {
   'run.started': { stage: 'build', runId: 'r1', fingerprint: 'fp' },
   'run.failed': { stage: 'build', runId: 'r1', reason: 'no result' },
   'run.released': { stage: 'build', runId: 'r1' },
+  'run.expired': { stage: 'build', runId: 'r1', reason: 'no heartbeat for 30 minutes' },
   'brief.submitted': { runId: 'r1' },
   'brief.approved': { by: 'rule' },
   'brief.changes-requested': { note: 'shorter' },
@@ -69,6 +70,7 @@ export const SAMPLES: Record<EventType, unknown> = {
   'ticket.done-elsewhere': {},
   'pull.adopted': { pr: 12, headSha: 'h1', patchId: 'adopted:h1' },
   'checks.finished': { patchId: 'p1', passed: true },
+  'review.submitted': { runId: 'r1', patchId: 'p1', headSha: 'h1', findings: 0 },
   'verify.passed': { runId: 'r2', patchId: 'p1', headSha: 'h1' },
   'verify.changes': { runId: 'r2', patchId: 'p1' },
   'ship.merged': { sha: 'abc123' },
@@ -80,6 +82,7 @@ export const SAMPLES: Record<EventType, unknown> = {
   'production.held': {},
   'owner.note': { note: 'try the other way' },
   'ticket.closed': { reason: 'discarded' },
+  'ticket.restored': {},
   'verify.overridden': { patchId: 'p1', headSha: 'h1' },
   'question.asked': { reason: 'failed-runs', options: ['retry', 'discard'] },
   'question.answered': { option: 'retry' },
@@ -114,8 +117,10 @@ export const inBrief = [ev('intake.accepted')]
 export const briefWritten = [...inBrief, start('brief'), ev('brief.submitted')]
 export const inBuild = [...briefWritten, ev('brief.approved', { by: 'owner' })]
 export const inVerify = [...inBuild, start('build'), ev('build.submitted')]
+export const reviewed = ev('review.submitted')
 export const inShip = [
   ...inVerify,
+  reviewed,
   ev('checks.finished', { passed: true }),
   start('verify', 'r2'),
   ev('verify.passed'),

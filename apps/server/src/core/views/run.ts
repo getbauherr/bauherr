@@ -6,6 +6,7 @@ import { RunNotFound } from '../run/errors'
 import { contextSchema, ROLES, type RunStep, type StoredContext } from '../run/schema'
 import { readRecord } from '../record/store'
 import type { TicketRecord } from '../record/schema'
+import { loadRunAttachments, type AttachmentView } from './attachments'
 import { loadItem } from './ticket-parts'
 
 const count = z.coerce.number()
@@ -42,6 +43,7 @@ export type RunPage = {
   handoff: string | null
   parts: RunPart[]
   costUsd: number | null
+  attachments: AttachmentView[]
 }
 
 export type RunFilter = { workspace: number; runId: number; withCost: boolean }
@@ -74,7 +76,7 @@ const partsOf = (
 ]
 
 const handoffOf = (run: { stage: Stage; status: string }, record: Pick<TicketRecord, 'handoff'>): string | null => {
-  const ended = run.status === 'submitted' || run.status === 'failed'
+  const ended = ['submitted', 'failed', 'expired'].includes(run.status)
   return ended && run.stage === 'build' && record.handoff !== '' ? record.handoff : null
 }
 
@@ -103,5 +105,6 @@ export const runPage = async (payload: Payload, filter: RunFilter): Promise<RunP
     handoff: handoffOf(run, stored.record),
     parts: partsOf(run.stage, stored.record, run.context),
     costUsd: filter.withCost ? run.cost_usd : null,
+    attachments: await loadRunAttachments(payload, run.id),
   }
 }

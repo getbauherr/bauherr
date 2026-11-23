@@ -8,11 +8,18 @@ const WRITES: Record<EventOf<'forge.write.done'>['data']['kind'], string> = {
   question: 'a question comment',
   merge: 'the merge',
   close: 'closing the issue',
+  reopen: 'reopening the issue',
   'pull-request': 'opening the pull request',
   review: 'a review comment',
 }
 
 const article = (word: string): string => (/^[aeiou]/.test(word) ? 'An' : 'A')
+
+const CLOSED_LABELS = {
+  discarded: 'The owner discarded the ticket',
+  'closed-on-forge': 'The issue was closed on the forge',
+  archived: 'The ticket was archived',
+}
 
 const LABELS: Labels = {
   'intake.accepted': () => 'The issue was accepted and goes to a Brief',
@@ -24,6 +31,7 @@ const LABELS: Labels = {
   'intake.disputed': () => 'The agent disputes that this is a change to make',
   'run.started': (e) => `${article(e.data.stage)} ${e.data.stage} run was queued`,
   'run.failed': (e) => `${article(e.data.stage)} ${e.data.stage} run failed: ${e.data.reason}`,
+  'run.expired': (e) => `${article(e.data.stage)} ${e.data.stage} run expired: ${e.data.reason}`,
   'run.released': (e) => `${article(e.data.stage)} ${e.data.stage} run was released`,
   'brief.submitted': () => 'A Brief was submitted',
   'brief.approved': (e) => (e.data.by === 'owner' ? 'The owner approved the Brief' : 'The Brief was approved by rule'),
@@ -34,6 +42,10 @@ const LABELS: Labels = {
   'ticket.done-elsewhere': () => 'The owner closed the ticket as done by other work',
   'pull.adopted': (e) => `Pull request #${e.data.pr} was adopted at ${e.data.headSha.slice(0, 7)}`,
   'checks.finished': (e) => (e.data.passed ? 'The checks passed' : 'The checks failed'),
+  'review.submitted': (e) =>
+    e.data.findings === 0
+      ? 'The reviewer found nothing'
+      : `The reviewer found ${e.data.findings} ${e.data.findings === 1 ? 'finding' : 'findings'}`,
   'verify.passed': () => 'Verification passed',
   'verify.changes': () => 'Verification asked for changes',
   'ship.merged': (e) => `The pull request was merged (${e.data.sha.slice(0, 7)})`,
@@ -47,8 +59,8 @@ const LABELS: Labels = {
   'production.approved': () => 'The owner approved production',
   'production.held': () => 'The owner holds production',
   'owner.note': (e) => `The owner left a note: ${e.data.note}`,
-  'ticket.closed': (e) =>
-    e.data.reason === 'discarded' ? 'The owner discarded the ticket' : 'The issue was closed on the forge',
+  'ticket.closed': (e) => CLOSED_LABELS[e.data.reason],
+  'ticket.restored': () => 'The ticket was restored and its stage runs again',
   'verify.overridden': () => 'The owner accepted the patch without a passing verification',
   'question.asked': (e) => `The factory asked the owner a question (${e.data.reason.replace(/-/g, ' ')})`,
   'question.answered': (e) => `The owner answered: ${e.data.option.replace(/-/g, ' ')}`,

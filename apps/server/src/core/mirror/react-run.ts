@@ -25,7 +25,7 @@ const reactLocked = async (deps: AdvanceDeps, recordId: number, config: Config):
     const stored = await readRecord(tx, recordId)
     const events = await readEvents(tx, recordId)
     const state = fold(events, foldOptions(config))
-    if (state.closed !== null || state.stage === 'done') return 0
+    if ((state.closed !== null && state.closed !== 'archived') || state.stage === 'done') return 0
     const input = await loadReactInput(tx, stored, state, events, config, deps.now)
     const derived = input ? react(input) : []
     for (const event of derived) await appendEvent(tx, recordId, { ...event, actor: actorOf(event) })

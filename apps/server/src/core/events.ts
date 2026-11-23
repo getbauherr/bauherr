@@ -22,6 +22,7 @@ export const WRITE_KINDS = [
   'close',
   'pull-request',
   'review',
+  'reopen',
 ] as const
 const target = z.object({ repo: id, number: z.number().int().positive() })
 const write = { kind: z.enum(WRITE_KINDS), target }
@@ -44,6 +45,7 @@ const eventSchema = z.discriminatedUnion('type', [
   event('run.started', z.object({ ...run, fingerprint: id })),
   event('run.failed', z.object({ ...run, reason: id })),
   event('run.released', z.object(run)),
+  event('run.expired', z.object({ ...run, reason: id })),
   event('brief.submitted', z.object({ runId: id })),
   event('brief.approved', z.object({ by: z.enum(['owner', 'rule']) })),
   event('brief.changes-requested', z.object({ note: id })),
@@ -53,6 +55,7 @@ const eventSchema = z.discriminatedUnion('type', [
   event('ticket.done-elsewhere', none),
   event('pull.adopted', z.object({ pr: z.number().int().positive(), headSha: id, patchId: id })),
   event('checks.finished', z.object({ patchId: id, passed: z.boolean() })),
+  event('review.submitted', z.object({ runId: id, patchId: id, headSha: id, findings: z.number().int().min(0) })),
   event('verify.passed', z.object({ runId: id, patchId: id, headSha: id })),
   event('verify.changes', z.object({ runId: id, patchId: id })),
   event('ship.merged', z.object({ sha: id })),
@@ -63,7 +66,8 @@ const eventSchema = z.discriminatedUnion('type', [
   event('production.approved', none),
   event('production.held', none),
   event('owner.note', z.object({ note: id })),
-  event('ticket.closed', z.object({ reason: z.enum(['discarded', 'closed-on-forge']) })),
+  event('ticket.closed', z.object({ reason: z.enum(['discarded', 'closed-on-forge', 'archived']) })),
+  event('ticket.restored', none),
   event('verify.overridden', z.object({ patchId: id, headSha: id })),
   event(
     'question.asked',

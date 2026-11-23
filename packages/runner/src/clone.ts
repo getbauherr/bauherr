@@ -110,8 +110,14 @@ export async function commitAll(c: Clone, env: NodeJS.ProcessEnv, message: strin
   return (await git(c.dir, env, 'rev-parse', 'HEAD')) !== c.baseSha;
 }
 
-export async function commitAndPush(c: Clone, env: NodeJS.ProcessEnv, message: string): Promise<boolean> {
+export async function commitAndPush(
+  c: Clone,
+  env: NodeJS.ProcessEnv,
+  message: string,
+  options: { onlyIfHeadStillAtStart?: boolean } = {},
+): Promise<boolean> {
   if (!(await commitAll(c, env, message))) return false;
-  await git(c.dir, env, 'push', 'origin', `HEAD:refs/heads/${c.branch}`);
+  const guard = options.onlyIfHeadStillAtStart ? [`--force-with-lease=refs/heads/${c.branch}:${c.baseSha}`] : [];
+  await git(c.dir, env, 'push', ...guard, 'origin', `HEAD:refs/heads/${c.branch}`);
   return true;
 }

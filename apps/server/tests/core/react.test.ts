@@ -10,7 +10,7 @@ import {
   type ReactInput,
   type ReactItem,
 } from '../../src/core/mirror/react'
-import { briefed, ev, inBrief, inShip, inVerify, start } from './fixtures'
+import { briefed, ev, inBrief, inBuild, inShip, inVerify, start } from './fixtures'
 
 const open: ReactItem = { state: 'open', headSha: null, mergeSha: null }
 const pull = (extra: Partial<ReactItem> = {}): ReactItem => ({ ...open, headSha: 'h1', ...extra })
@@ -26,6 +26,7 @@ const input = (events: ReturnType<typeof ev>[], extra: Partial<ReactInput> = {})
   comments: [],
   checks: [],
   deploy: null,
+  closeWritten: false,
   ...extra,
 })
 
@@ -138,6 +139,24 @@ describe('issueClosed', () => {
     const closedByUs = input([...inBrief, ev('intake.closed', { reason: 'duplicate' })], { issue: closedIssue })
     expect(issueClosed(closedByUs)).toEqual([])
     expect(issueClosed(input(inShip, { issue: closedIssue }))).toEqual([])
+  })
+})
+
+describe('issueReopened', () => {
+  const archived = [...inBuild, ev('ticket.closed', { reason: 'archived' })]
+
+  it('restores an archived ticket whose closed issue is open again', () => {
+    expect(react(input(archived, { closeWritten: true }))).toEqual([{ type: 'ticket.restored', data: {} }])
+  })
+
+  it('leaves an archived ticket alone while the issue is closed or the factory wrote no close', () => {
+    expect(react(input(archived, { closeWritten: true, issue: closedIssue }))).toEqual([])
+    expect(react(input(archived))).toEqual([])
+  })
+
+  it('reacts to nothing else on an archived ticket', () => {
+    const merged = pull({ state: 'merged', mergeSha: 'm1' })
+    expect(react(input(archived, { closeWritten: true, issue: closedIssue, pull: merged }))).toEqual([])
   })
 })
 

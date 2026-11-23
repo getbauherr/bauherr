@@ -6,8 +6,11 @@ import { readRecord } from '../src/core/record/store'
 import { coreDbOn } from '../tests/core/db'
 import { engineOn } from '../tests/core/harness'
 import { begin, seedScenario, type ScenarioNames } from '../tests/core/scenario'
+import { seedMockupTicket } from '../tests/core/mockup-scenario'
 import { seedTickets } from '../tests/core/ticket-scenario'
 import { seedConnect } from './seed-connect'
+import { seedSomeday } from './seed-someday'
+import { seedStatements } from './seed-statements'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -38,6 +41,7 @@ const FACTORY_TITLES: Record<keyof ScenarioNames, string> = {
   building: 'Rename report columns',
   verifyRounds: 'Tag filter keeps failing',
   waitingChecks: 'Speed up measure search',
+  reviewing: 'Review of the export patch',
   verifying: 'Review of the date filter',
   resultCard: 'Add target-year check',
   accepted: 'Fix date format',
@@ -166,15 +170,17 @@ const inTickets = { workspace: { equals: ticketsWs } }
 const ticketsSeeded = await payload.find({ collection: 'records', where: inTickets, limit: 1, depth: 0, ...o })
 if (!ticketsSeeded.docs.length) {
   const ids = { workspace: ticketsWs, otherWorkspace: Number(workspace), product: ticketsProduct }
-  await seedTickets(
-    engineOn(
-      coreDbOn(payload, ids, async () => {}),
-      undefined,
-      new Date(),
-    ),
+  const ticketsEngine = engineOn(
+    coreDbOn(payload, ids, async () => {}),
+    undefined,
+    new Date(),
   )
+  await seedTickets(ticketsEngine)
+  await seedMockupTicket(ticketsEngine)
 }
 await seedConnect(payload)
+await seedSomeday(payload)
+await seedStatements(payload)
 
 await ensure(
   'human_touches',

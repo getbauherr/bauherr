@@ -8,7 +8,15 @@ import { commentRow, errorText, itemFromPull } from '../mirror/map'
 import { upsertComments, upsertItem } from '../mirror/store'
 import { disclosed, hashBody, planStageLabels } from './disclosure'
 import { HeadMoved, ProductObserving, WrongItemKind } from './errors'
-import { loadWriteRow, saveClosed, saveLabels, saveStatusComment, type Target, type WriteRow } from './write-store'
+import {
+  loadWriteRow,
+  saveClosed,
+  saveLabels,
+  saveReopened,
+  saveStatusComment,
+  type Target,
+  type WriteRow,
+} from './write-store'
 
 export type WriteKind = (typeof WRITE_KINDS)[number]
 export type WriterDeps = { backend: (connection: number) => Promise<Backend>; now: () => Date }
@@ -138,6 +146,14 @@ const closeIssue = async (ctx: Ctx, target: Target, reason: CloseReason): Promis
   })
 }
 
+const reopenIssue = async (ctx: Ctx, target: Target): Promise<void> => {
+  const session = await open(ctx, target, 'issue')
+  await perform(ctx, target, 'reopen', session, {
+    call: ({ tickets, row }) => tickets.reopen(ticketId(row)),
+    mirror: () => saveReopened(ctx.payload, target.itemId),
+  })
+}
+
 export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(payload)) => {
   const ctx: Ctx = { payload, deps }
   return {
@@ -148,6 +164,7 @@ export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(pa
     openPullRequest: (target: Target, input: NewPullRequest) => openPullRequest(ctx, target, input),
     reviewPullRequest: (target: Target, body: string) => reviewPullRequest(ctx, target, body),
     closeIssue: (target: Target, reason: CloseReason) => closeIssue(ctx, target, reason),
+    reopenIssue: (target: Target) => reopenIssue(ctx, target),
   }
 }
 
