@@ -4,10 +4,10 @@ Implemented in #119: `packages/adapters/src/gitlab.ts`; writes are fixture-autho
 
 Scope: one driver = `Forge` + `TicketSource` over one Connection (#6). Probed 2026-10-29 on gitlab.com 19.6.0-pre
 (`GET /metadata` 200) with a **read-only** token (the owner's user, Owner of the group, Free plan,
-project `klima-portal`). No write token exists: every write is "?" = unverified (endpoint, role/scope and docs tier given).
+project `sample-app`). No write token exists: every write is "?" = unverified (endpoint, role/scope and docs tier given).
 "V" = verified live; "D" = docs only; "?" = unverified. Docs base: https://docs.gitlab.com.
-Caveat V: klima-portal has **0 issues** (`/issues?scope=all&state=all` -> `x-total: 0`, 200), so issue-level read probes ran on public
-`gitlab-org/gitlab` issue 628976 (token used, read-only). MR/pipeline/job probes ran on klima-portal MR !196.
+Caveat V: sample-app has **0 issues** (`/issues?scope=all&state=all` -> `x-total: 0`, 200), so issue-level read probes ran on public
+`gitlab-org/gitlab` issue 628976 (token used, read-only). MR/pipeline/job probes ran on sample-app MR !196.
 
 ## 1. Auth
 
@@ -46,7 +46,7 @@ Self-managed: authenticated/unauthenticated throttles **off by default**, when o
 | Capability | Free? | Evidence |
 |---|---|---|
 | Read issues/labels/MRs/pipelines/jobs/events/members | yes | V, all 200 (section 6) |
-| `relates_to` link create: `POST /projects/:id/issues/:iid/links?target_project_id&target_issue_iid&link_type=relates_to` | **yes (D)**, write ?| [related issues](https://docs.gitlab.com/user/project/issues/related_issues/): "relates to" Free+; `GET .../links` exists V (200 on gitlab-org issue; 404 on nonexistent klima-portal issue 1). Role: update on both issues (Developer+) |
+| `relates_to` link create: `POST /projects/:id/issues/:iid/links?target_project_id&target_issue_iid&link_type=relates_to` | **yes (D)**, write ?| [related issues](https://docs.gitlab.com/user/project/issues/related_issues/): "relates to" Free+; `GET .../links` exists V (200 on gitlab-org issue; 404 on nonexistent sample-app issue 1). Role: update on both issues (Developer+) |
 | `blocks` / `is_blocked_by` create (same endpoint, `link_type=blocks`) | **no (D)** | same page: blocking links "Premium, Ultimate". API page lists the values for all tiers and documents no error ([doc](https://docs.gitlab.com/api/issue_links/)); expected failure mode (403/4xx) unverified. Driver: probe once per Connection by creating+deleting a link in a scratch issue; else `nativeBlocking=false`, body convention |
 | Sub-ticket (issue under issue) | **no** | V GraphQL `project.workItemTypes` = Incident, Issue, Task, Ticket (no Epic). `Issue` HIERARCHY `allowedChildTypes=[Task]`, `allowedParentTypes=[]`; `Task` parents = Incident/Issue/Ticket. Task and parent must be in the same project ([tasks](https://docs.gitlab.com/user/tasks/)). -> `nativeSubTickets=false`: body convention + `relates_to` mirror |
 | Uploads `POST /projects/:id/uploads` (multipart `file`) | **yes (D)**, write ? | [doc](https://docs.gitlab.com/api/project_markdown_uploads/) tier Free+; response `{id,alt,url,full_path,markdown}`; role Developer+ in practice (?). `GET /projects/:id/uploads` Maintainer/Owner V 200 `[]`. Embed `markdown` in a comment. Private project: link only resolves for members (D, not stated; expected) |
@@ -72,7 +72,7 @@ blocks-link scratch probe. gitlab.com `plan` field is `null` for this token, so 
 - **Derived events** (diff against stored pointer is primary; these give actor/time):
   `GET .../issues/:iid/resource_label_events` V 200 (paginated, `user` = actor);
   `.../resource_state_events` V 200; `.../resource_assignee_events` **404** (no such endpoint; diff assignees from the issue or read system notes).
-  MR: `resource_state_events` V 200 (klima-portal !196), `resource_label_events` V 200.
+  MR: `resource_state_events` V 200 (sample-app !196), `resource_label_events` V 200.
 - **Relation changes:** unknown whether `links` changes bump `issue.updated_at` (? not probed: needs write). Assume not (GitHub precedent): refresh `/links` for each moved Ticket + slow reconciliation.
 - **MR pipelines + jobs:** `GET /projects/:id/merge_requests/:iid/pipelines` V 200 (`source:"merge_request_event"`, `ref:"refs/merge-requests/196/head"`, `status:"manual"`);
   `GET /projects/:id/pipelines/:pid/jobs?per_page=100` V 200 (12 jobs, 6 pages at per_page=2; fields `name,stage,status,allow_failure,started_at,finished_at`); `.../pipelines/:pid/bridges` V 200 `[]`.
@@ -105,7 +105,7 @@ Boards: a board list is a label list (project boards `GET /projects/:id/boards` 
 | GraphQL | `/api/graphql`, work-item types V | same; some work-item/hierarchy fields behind feature flags on older versions (D) -> REST first, GraphQL only to probe `workItemTypes` |
 | Uploads | `/uploads/<hash>/<file>` relative URLs resolve against the project | same; admin max attachment size setting applies (?) |
 
-## 6. Probe log (read-only, klima-portal unless noted; all with the RO token, `--max-time 30`)
+## 6. Probe log (read-only, sample-app unless noted; all with the RO token, `--max-time 30`)
 
 | Request | Status | Note |
 |---|---|---|
@@ -121,7 +121,7 @@ Boards: a board list is a label list (project boards `GET /projects/:id/boards` 
 | `GET .../merge_requests/196/{pipelines,notes?updated_after,resource_state_events,resource_label_events,approvals,approval_state,diffs,changes,discussions}` | 200 | pipelines: 1 (`merge_request_event`, `manual`) |
 | `GET .../pipelines/2994845015/{jobs,bridges}` | 200 | jobs total 12; bridges `[]` |
 | `GET .../pipelines?per_page=1` | 200 | 1243 pipelines; latest `main` scheduled `failed` |
-| `GET .../issues/1`, `.../issues/1/links` (klima-portal) | 404 | issue absent |
+| `GET .../issues/1`, `.../issues/1/links` (sample-app) | 404 | issue absent |
 | `GET gitlab-org%2Fgitlab/issues/628976/{links,notes?updated_after,resource_label_events,resource_state_events}` | 200 | `resource_assignee_events` -> 404 |
 | `GET .../uploads`, `/hooks`, `/boards`, `/access_tokens`, `/approvals`, `/approval_rules`, `/events`, `/invited_groups`, `/protected_branches` | 200 | uploads/hooks/boards/tokens `[]`; `main` protected |
 | `GET /projects/:id/members/all`, `/users`, `/groups/acme/members` | 200 | 3 humans, no bots |
