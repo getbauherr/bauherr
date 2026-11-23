@@ -84,6 +84,8 @@ const write = async (
 ): Promise<Written> => {
   const stored = await readRecord(tx, run.recordId)
   const config = await deps.configFor(run.recordId)
+  const missing = (await module.check?.(tx, run, data)) ?? []
+  if (missing.length > 0) return { problems: missing }
   if (module.gated) {
     const facts = await loadGateFacts(tx, stored, run, config)
     const outcome = gate({ result: verifyResultSchema.parse(data), record: stored.record, facts })
