@@ -119,8 +119,6 @@ Only an Admin edits, except Profile and API keys. Members read the rest. The sid
 
 `/memory` lists one Product's memory and marks what Learn wrote as New. A memory page edits, switches off or deletes it. The run page lists the memory a run got.
 
-A memory that came back on three tickets shows Wants a check (filter of the same name). Make it a check on its page opens one issue in the Product's repository; its Brief always comes to the owner. The memory reads Check being built, then Check since once that ticket is accepted: from then on runs no longer get it. A discarded check leaves the memory Active again and unflagged.
-
 ## Not in the UI, by design
 
 - `return_to_build`: the agent repair for a dead Ticket. People use Back to Build.
