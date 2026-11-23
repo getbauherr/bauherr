@@ -57,8 +57,9 @@ const readMergeability = async (
 ): Promise<void> => {
   const read = await forge.getPullRequest(context.repo, pull.number)
   const check = read.mergeable === undefined ? null : mergeCheckOf(read.headSha, baseSha)
-  await saveMergeability(payload, pull.itemId, check, read.mergeable === false ? read.headSha : null)
-  context.touched?.add(pull.itemId)
+  const conflicts = read.mergeable === false
+  await saveMergeability(payload, pull.itemId, check, conflicts ? read.headSha : null)
+  if (conflicts) context.touched?.add(pull.itemId)
 }
 
 export const syncMergeability = async (payload: Payload, context: PullContext, forge: ReadForge): Promise<void> => {
