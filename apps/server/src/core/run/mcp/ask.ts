@@ -5,9 +5,8 @@ import { defineTool, leaseToken, ownRun, runId } from './tool'
 export const ask = defineTool({
   name: 'ask',
   description:
-    'Raises a question to the owner with 2 to 4 options and ends your run. Returns once the question is open. ' +
-    'An answer runs your stage again with the answer as a note; it cannot change the stage, ' +
-    'so offer only options your stage can carry out. The owner can also send the ticket back to Brief.',
+    'Raises a question to the owner with 2 to 4 options and ends your run. ' +
+    'Returns once the question is open; an answer runs your stage again with the answer as a note.',
   access: 'agent',
   input: z.strictObject({
     runId,
