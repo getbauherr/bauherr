@@ -17,6 +17,7 @@ export type ReactInput = {
   comments: ReactComment[]
   checks: ReactCheck[]
   deploy: DeployWait | null
+  closeWritten: boolean
 }
 
 export type Reaction = (input: ReactInput) => AppEvent[]
@@ -69,6 +70,9 @@ export const issueClosed: Reaction = ({ state, issue, pull }) => {
 export const pullClosed: Reaction = ({ state, pull }) =>
   state.adopted && pull?.state === 'closed' ? [{ type: 'ticket.closed', data: { reason: 'closed-on-forge' } }] : []
 
+export const issueReopened: Reaction = ({ state, issue, closeWritten }) =>
+  state.closed === 'archived' && closeWritten && issue.state === 'open' ? [{ type: 'ticket.restored', data: {} }] : []
+
 export const headMoved: Reaction = ({ state, pull }) => {
   const patch = state.patch
   if (!state.adopted || patch === null || pull?.state !== 'open') return []
@@ -100,6 +104,7 @@ export const deployFinished: Reaction = ({ deploy }) => {
 const REACTIONS: Reaction[] = [reporterReplied, checksFinished, pullMerged, headMoved, deployFinished]
 
 export const react = (input: ReactInput): AppEvent[] => {
+  if (input.state.closed === 'archived') return issueReopened(input)
   const closed = [...pullClosed(input), ...issueClosed(input)]
   if (closed.length > 0) return closed.slice(0, 1)
   return REACTIONS.flatMap((reaction) => reaction(input))

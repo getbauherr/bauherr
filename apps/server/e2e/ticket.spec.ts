@@ -186,6 +186,33 @@ test('an agent question in Build can send the ticket back to Brief with a note',
   await expect(page.getByText(note)).toBeVisible()
 })
 
+test('archiving a ticket asks in a dialog and removes it from the Inbox, and Restore brings it back', async ({
+  page,
+}) => {
+  const path = await enterOpen(page, 'Brief to archive')
+  const title = await page.getByRole('heading', { level: 1 }).innerText()
+  const dialogs: string[] = []
+  page.on('dialog', (dialog) => {
+    dialogs.push(dialog.type())
+    void dialog.dismiss()
+  })
+  await page.getByRole('button', { name: 'Archive', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('The issue is closed as not planned')
+  await dialog.getByRole('button', { name: 'Archive ticket' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByText('Archived. The ticket is out of the lists')).toBeVisible()
+  expect(dialogs).toEqual([])
+  await page.goto('/inbox')
+  await expect(page.getByRole('link', { name: title })).toHaveCount(0)
+  await page.goto(path)
+  await page.getByRole('button', { name: 'Restore' }).click()
+  await expect(page.getByRole('button', { name: 'Restore' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Archive', exact: true })).toBeVisible()
+  await page.goto('/inbox')
+  await expect(page.getByRole('link', { name: title })).toBeVisible()
+})
+
 test('a free answer and an empty change request use the comment field', async ({ page }) => {
   const path = await enterOpen(page, 'Question to answer in own words')
   await expect(page.getByLabel('Comment')).toHaveCount(0)

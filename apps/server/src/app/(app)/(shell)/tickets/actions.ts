@@ -6,6 +6,7 @@ import { decide, DecisionError, StaleDecision, type Decision } from '../../../..
 import { RecordNotFound } from '../../../../core/record/errors'
 import { engineDeps } from '../../../../jobs/engine-deps'
 import { STALE_SENTENCE } from '../../lib/ticket-words'
+import { personOf } from '../../../../lib/person'
 import { currentWorkspace, payloadClient } from '../../lib/session'
 
 const input = z.object({
@@ -31,7 +32,7 @@ export async function decideTicket(raw: unknown): Promise<DecisionResult> {
   const { user, workspace } = await currentWorkspace()
   const parsed = input.safeParse(raw)
   if (!workspace || !parsed.success) return notFound()
-  const person = { id: String(user.id), role: user.role, workspaceIds: [workspace.id] }
+  const person = { id: String(user.id), role: user.role, workspaceIds: [workspace.id], name: personOf(user) }
   try {
     await decide(parsed.data.recordId, person, decisionOf(parsed.data), engineDeps(await payloadClient()))
   } catch (error) {

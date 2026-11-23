@@ -29,6 +29,7 @@ export const POOL_SIZE = 3
 
 export const POOL_TITLES = {
   briefApprove: 'Brief with a decision to approve',
+  briefArchive: 'Brief to archive',
   resultSendBack: 'Result to send back',
   resultAccept: 'Result to accept',
   resultStale: 'Result decided twice',
@@ -277,6 +278,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     briefTitle: await open(TICKET_TITLES.briefTitle),
     briefAnswers: await open(TICKET_TITLES.briefAnswers),
     briefApprove: await pooled((n) => open(`${POOL_TITLES.briefApprove} ${n}`)),
+    briefArchive: await pooled((n) => open(`${POOL_TITLES.briefArchive} ${n}`)),
     resultReadonly: await result(TICKET_TITLES.resultReadonly, ++pr),
     resultSendBack: await pooled((n) => result(`${POOL_TITLES.resultSendBack} ${n}`, ++pr)),
     resultAccept: await pooled((n) => result(`${POOL_TITLES.resultAccept} ${n}`, ++pr)),

@@ -13,11 +13,17 @@ import { appendEvent, readEvents, readRecord, type StoredRecord } from './record
 
 export type ForgePort = Pick<
   ForgeWriter,
-  'setStageLabel' | 'upsertStatusComment' | 'postQuestion' | 'closeIssue' | 'reviewPullRequest'
+  'setStageLabel' | 'upsertStatusComment' | 'postQuestion' | 'closeIssue' | 'reopenIssue' | 'reviewPullRequest'
 >
 
 const REFUSALS = [ProductObserving, TargetNotFound, WrongItemKind]
-const KINDS = { question: 'question', close: 'close', status: 'status-comment', review: 'review' } as const
+const KINDS = {
+  question: 'question',
+  close: 'close',
+  reopen: 'reopen',
+  status: 'status-comment',
+  review: 'review',
+} as const
 
 const idRow = z.object({ id: z.coerce.number() })
 
@@ -59,6 +65,8 @@ const perform = async (deps: AdvanceDeps, stored: StoredRecord, target: Target, 
       return writer.postQuestion(target, effect.body)
     case 'close':
       return writer.closeIssue(target, effect.reason)
+    case 'reopen':
+      return writer.reopenIssue(target)
     case 'status':
       return statusOf(deps, stored, target, writer)
     case 'review':
@@ -75,6 +83,7 @@ const deferral = (effect: Effect, target: Deferred['target']): Deferred | null =
     case 'review':
       return { kind: 'review', target: { ...target, number: effect.pr }, body: effect.body }
     case 'status':
+    case 'reopen':
       return null
   }
 }

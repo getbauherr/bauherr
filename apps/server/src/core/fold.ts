@@ -117,6 +117,8 @@ const owner: Reducer = (state, event) => {
       return { ...state, note: event.data.note }
     case 'ticket.closed':
       return { ...state, closed: event.data.reason }
+    case 'ticket.restored':
+      return state.closed === 'archived' ? { ...state, closed: null, card: null, run: null, failedRuns: 0 } : state
     case 'ticket.done-elsewhere':
       return enter(state, 'done')
     default:
