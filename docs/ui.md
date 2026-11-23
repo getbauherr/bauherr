@@ -8,7 +8,7 @@ Every signed-in page has the same frame.
 
 - **Sidebar**: Inbox, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
 - **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page, finds Tickets by number or title and runs actions such as Toggle theme.
-- **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause.
+- **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause. It names queued work that cannot run, and only while runs wait: "No builder session is connected: 2 runs wait (Build 2)" with a Connect a session link, one line per role of a session Product with no session of that role seen for 10 minutes; "The Runner has not picked up a run for 10 minutes" when a Runner Product's run waits that long. A Runner Product never asks for a session. With no queued runs neither line shows, even when no session is connected.
 - **Ask button**: opens the [chat](#chat) dock on `Ctrl/Cmd+J`.
 - **Workspace switcher**: appears with two or more Workspaces.
 

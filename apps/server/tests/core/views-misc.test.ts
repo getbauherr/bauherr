@@ -62,6 +62,16 @@ describe('holds', () => {
     expect((await queued(new Date())).map((h) => h.kind === 'no-agent-connected' && h.role)).toEqual(['verifier'])
   })
 
+  it('shows no cannot-run line when no run is queued, even with no session connected', async () => {
+    const cleared = await run(sql`UPDATE "stage_runs" SET "status" = 'done' WHERE "status" = 'queued' RETURNING "id"`)
+    const ids = cleared.rows.map((row) => Number(row.id))
+    const kinds = (await find()).map((h) => h.kind)
+    expect(kinds).not.toContain('no-agent-connected')
+    expect(kinds).not.toContain('runner-idle')
+    const list = sql.join(ids.map((id) => sql`${id}`), sql`, `)
+    await run(sql`UPDATE "stage_runs" SET "status" = 'queued' WHERE "id" IN (${list})`)
+  })
+
   it('asks for a session only for session Products; a Runner Product holds when its run waits', async () => {
     await run(sql`UPDATE "products" SET "executor" = 'runner'`)
     const kinds = async () => (await find()).map((h) => h.kind)
