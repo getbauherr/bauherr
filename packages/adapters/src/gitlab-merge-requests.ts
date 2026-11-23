@@ -63,6 +63,11 @@ export class GitlabMergeRequests extends GitlabForgeBase {
     const source = num(w.source_project_id);
     return w.source_project_id === w.target_project_id ? repo : this.pathOf(source);
   }
+  private mergeable(w: Record<string, unknown>): Pick<PullRequest, 'mergeable'> {
+    if (w.has_conflicts === true) return { mergeable: false };
+    const unsettled = w.detailed_merge_status === 'checking' || w.detailed_merge_status === 'unchecked';
+    return w.has_conflicts === false && !unsettled ? { mergeable: true } : {};
+  }
   protected async pr(repo: RepoRef, m: unknown): Promise<PullRequest> {
     const w = wire(m);
     const merged = w.state === 'merged';
@@ -83,6 +88,7 @@ export class GitlabMergeRequests extends GitlabForgeBase {
       draft: !!(w.draft ?? w.work_in_progress),
       ...gitlabMergeRequestFields(m),
       authorTrusted: await this.h.trusted(repo, gitlabAuthorId(m)),
+      ...this.mergeable(w),
       ...(w.detailed_merge_status === 'need_rebase' ? { behind: true } : {}),
       ...(mergeSha ? { mergeSha } : {}),
     };

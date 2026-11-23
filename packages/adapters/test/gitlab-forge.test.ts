@@ -205,3 +205,16 @@ void describe('gitlab forge: repositories, files and merge requests', () => {
     assert.equal(calls[0]!.path, `${P}/repository/compare?from=abc&to=def`);
   });
 });
+
+void describe('gitlab merge request mergeable', () => {
+  const get = async (extra: object) => {
+    const { forge } = setup(() => ({ ...(fx('mr') as object), ...extra }));
+    return (await forge.getPullRequest('g/p', 196)).mergeable;
+  };
+  void it('maps has_conflicts to mergeable and leaves a merge status that is still being checked unknown', async () => {
+    assert.equal(await get({ has_conflicts: true }), false);
+    assert.equal(await get({ has_conflicts: false, detailed_merge_status: 'mergeable' }), true);
+    assert.equal(await get({ has_conflicts: false, detailed_merge_status: 'checking' }), undefined);
+    assert.equal(await get({ has_conflicts: undefined, detailed_merge_status: 'unchecked' }), undefined);
+  });
+});
