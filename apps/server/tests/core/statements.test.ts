@@ -8,7 +8,7 @@ import { statementOf, statementsFor, STATEMENT_MAX } from '../../src/core/statem
 import { openEngine, type Engine } from './harness'
 
 describe('which answers are remembered', () => {
-  const OPTIONS = Object.entries(DECISIONS).filter(([ask]) => ask.startsWith('question:'))
+  const OPTIONS = Object.entries(DECISIONS).filter(([ask]) => ask.startsWith('question:') && ask !== 'question:agent')
 
   it('lists every question reason of the decision table, and nothing else', () => {
     const reasons = OPTIONS.map(([ask]) => ask.slice('question:'.length))
@@ -36,6 +36,13 @@ describe('which answers are remembered', () => {
   it('stores the note of retry-with-guidance as guidance although the reason is not remembered', () => {
     const given = { asked: 'question:failed-runs', choice: 'retry-with-guidance', note: 'try X', card: null }
     expect(statementOf(given)).toEqual({ kind: 'guidance', text: 'try X' })
+  })
+
+  it('stores the note of back-to-brief like a request for changes, on a card and without one', () => {
+    for (const asked of ['question:agent', 'working']) {
+      const given = { asked, choice: 'back-to-brief', note: 'redo it', card: null }
+      expect(statementOf(given)).toEqual({ kind: 'brief-change', text: 'redo it' })
+    }
   })
 
   it('remembers the question an agent asked, with its text', () => {

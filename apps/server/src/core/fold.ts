@@ -14,6 +14,7 @@ export type State = {
   extraRounds: number
   failedRuns: number
   brief: 'none' | 'submitted' | 'approved'
+  returned: boolean
   adopted: boolean
   waitingAuthor: boolean
   patch: { id: string; pr: number; headSha: string } | null
@@ -44,6 +45,7 @@ export const initialState = (): State => ({
   extraRounds: 0,
   failedRuns: 0,
   brief: 'none',
+  returned: false,
   adopted: false,
   waitingAuthor: false,
   patch: null,
@@ -121,14 +123,25 @@ const owner: Reducer = (state, event) => {
   }
 }
 
+const backToBrief = (state: State, note: string): State => ({
+  ...enter(state, 'brief'),
+  brief: 'submitted',
+  returned: true,
+  card: null,
+  run: null,
+  verifyRounds: 0,
+  extraRounds: 0,
+  note,
+})
+
 const brief: Reducer = (state, event) => {
   switch (event.type) {
     case 'brief.submitted':
       return { ...submitted(state, event.data.runId), brief: 'submitted' }
     case 'brief.approved':
-      return { ...enter(state, state.adopted ? 'verify' : 'build'), brief: 'approved' }
+      return { ...enter(state, state.adopted ? 'verify' : 'build'), brief: 'approved', returned: false }
     case 'brief.changes-requested':
-      return { ...state, note: event.data.note }
+      return state.brief === 'approved' ? backToBrief(state, event.data.note) : { ...state, note: event.data.note }
     case 'brief.discarded':
       return { ...state, closed: 'discarded' }
     default:

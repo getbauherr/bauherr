@@ -26,7 +26,7 @@ export type Config = {
 
 export type Role = 'builder' | 'reviewer' | 'verifier'
 export type WaitOn = 'reporter' | 'run' | 'checks' | 'deploy' | 'owner' | 'author'
-export type BriefReason = 'open-decision' | 'one-way-door' | 'risk-area' | 'backlog' | 'external-request'
+export type BriefReason = 'open-decision' | 'one-way-door' | 'risk-area' | 'backlog' | 'external-request' | 'sent-back'
 export type Step =
   | { kind: 'run'; stage: Stage; role: Role }
   | { kind: 'card'; card: 'brief' | 'result' | 'question'; reason: string; options: string[] }
@@ -64,6 +64,9 @@ const GATES: { reason: BriefReason; applies: (record: TicketRecord, riskAreas: s
 export const briefGate = (record: TicketRecord, config: Pick<Config, 'riskAreas'>): BriefReason | null =>
   GATES.find((gate) => gate.applies(record, config.riskAreas))?.reason ?? null
 
+export const canGoBack = (state: State): boolean =>
+  (state.stage === 'build' || state.stage === 'verify') && !state.merged && state.closed === null
+
 const run = (stage: Stage, role: Role): Step => ({ kind: 'run', stage, role })
 const wait = (on: WaitOn): Step => ({ kind: 'wait', on })
 const question = (reason: string, options: string[]): Step => ({ kind: 'card', card: 'question', reason, options })
@@ -91,7 +94,7 @@ const approvedByRule: EventOf<'brief.approved'> = { type: 'brief.approved', data
 const brief: Rule = (record, state, config) => {
   if (state.stage !== 'brief') return null
   if (state.brief === 'none' || state.note !== null) return run('brief', 'builder')
-  const reason = briefGate(record, config)
+  const reason = briefGate(record, config) ?? (state.returned ? 'sent-back' : null)
   if (reason === null) return { kind: 'emit', event: approvedByRule }
   return { kind: 'card', card: 'brief', reason, options: [] }
 }
