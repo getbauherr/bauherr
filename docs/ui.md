@@ -105,6 +105,8 @@ More in chat.
 
 Settings are grouped by scope. Account is for everyone, with Profile and API keys. Factory has Workflow, Templates, Models and budget, and AI usage. Workspace has General, Products, Connections, People and Knowledge. Admin has Audit and Health.
 
+API keys lists each session with its live Runs and slots, for example "2 of 3 working": a session connected with a capacity of 1 to 4 holds that many Runs at once, one subagent each.
+
 Only an Admin edits, except Profile and API keys. Members read the rest. The sidebar's Settings item opens Profile, and the command palette lists every page you may open.
 
 ## Not in the UI, by design
