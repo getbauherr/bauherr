@@ -6,6 +6,8 @@ import { GithubError } from './github-error.js';
 import { githubRepository } from './github-mappers.js';
 import { field, get, list, text, wire } from './wire.js';
 
+const RULES_NOT_IN_PLAN = /Upgrade to GitHub/;
+
 const enc = encodeURIComponent;
 export const encodePath = (path: string): string => path.split('/').map(enc).join('/');
 
@@ -90,7 +92,13 @@ export class GithubForgeBase {
     return wire(b).protected === true;
   }
   async requiredChecks(repo: RepoRef, branch: string) {
-    const rules = await this.h.json('GET', `/repos/${repo}/rules/branches/${encodePath(branch)}`);
+    let rules: unknown;
+    try {
+      rules = await this.h.json('GET', `/repos/${repo}/rules/branches/${encodePath(branch)}`);
+    } catch (e) {
+      if (e instanceof GithubError && e.status === 403 && RULES_NOT_IN_PLAN.test(e.message)) return [];
+      throw e;
+    }
     return list(rules)
       .filter((r) => wire(r).type === 'required_status_checks')
       .flatMap((r) => list(get(r, 'parameters', 'required_status_checks')).map((c) => field(c, 'context')));
