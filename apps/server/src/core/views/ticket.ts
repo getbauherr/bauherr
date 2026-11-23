@@ -22,9 +22,12 @@ import { activityOf, type EventView } from './activity'
 import { loadMockups, type AttachmentView } from './attachments'
 import { keptMemories } from './statement-records'
 import { statementsUsed, type StatementsUsed } from './statements-used'
+import { costOf, type TicketCost } from './cost-view'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
 import { STAGE_ENTRY, TERMINAL_EVENTS } from './sql'
 import { statusOf, type TicketStatus } from './status'
+import { loadTickets } from './time-load'
+import type { TicketTime } from './time-split'
 import {
   loadChecks,
   loadItem,
@@ -87,6 +90,7 @@ export type TicketView = {
   canGoBack: boolean
   canArchive: boolean
   archived: boolean
+  timing: { time: TicketTime; cost: TicketCost }
 }
 
 export type TicketFilter = { workspace: number; recordId: number }
@@ -161,6 +165,12 @@ const withKept = async (payload: Payload, recordId: number, views: EventView[]):
   return views.map((view) => (view.type === 'learn.submitted' ? { ...view, memories } : view))
 }
 
+const timingOf = async (payload: Payload, recordId: number): Promise<TicketView['timing']> => {
+  const [data] = await loadTickets(payload, [recordId], new Date())
+  if (!data) throw new RecordNotFound(`Record ${recordId} does not exist: check the id.`)
+  return { time: data.time, cost: costOf(data.runs) }
+}
+
 export const ticket = async (payload: Payload, filter: TicketFilter): Promise<TicketView> => {
   const stored = await readRecord(payload, filter.recordId)
   if (stored.workspace !== filter.workspace) {
@@ -204,6 +214,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     canGoBack: canGoBack(folded),
     canArchive: canArchive(folded),
     archived: folded.closed === 'archived',
+    timing: await timingOf(payload, stored.id),
     similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT, 'issue') : [],
   }
 }

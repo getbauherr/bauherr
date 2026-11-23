@@ -7,6 +7,7 @@ import { WordBadge } from '../WordBadge'
 import { CARD } from './Section'
 import { ForgeLink } from './ForgeLink'
 import { RunLink } from './RunLink'
+import { TimeCost } from './TimeCost'
 
 function Aside({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
   return (
@@ -146,6 +147,7 @@ export function SideColumn({ view }: { view: TicketView }) {
   return (
     <div className="grid content-start gap-4">
       <Source view={view} />
+      <TimeCost timing={view.timing} />
       <AnswersUsed view={view} />
       <Verdict view={view} />
       <Findings view={view} />
