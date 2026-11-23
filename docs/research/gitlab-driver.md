@@ -18,8 +18,8 @@ Caveat V: klima-portal has **0 issues** (`/issues?scope=all&state=all` -> `x-tot
 | **OAuth app** (group- or instance-owned) | Free (D); acts **as the authorising human** | Free (D) | none: it is the human | access token **2 h**, refresh token mandatory ([doc](https://docs.gitlab.com/integration/oauth_provider/)) (D) |
 | **Personal access token** (human or machine-user) | Free (D) | Free (D) | the human (or a paid-seat machine user) | max 365 d, rotate in UI |
 
-Probes V: `GET /groups/einsfuenf.de/access_tokens` 200 `[]`, `GET /projects/:id/access_tokens` 200 `[]` (listing works; creation tier-gated by docs, not provable read-only);
-`GET /groups/einsfuenf.de/service_accounts` 200 `[]` (endpoint exists on this Free group); `GET /applications` 403 (instance admin only).
+Probes V: `GET /groups/acme/access_tokens` 200 `[]`, `GET /projects/:id/access_tokens` 200 `[]` (listing works; creation tier-gated by docs, not provable read-only);
+`GET /groups/acme/service_accounts` 200 `[]` (endpoint exists on this Free group); `GET /applications` 403 (instance admin only).
 
 Writes (?): `POST /groups/:id/service_accounts` `{name,username}` (Owner, Free per [API doc](https://docs.gitlab.com/api/service_accounts/));
 `POST /groups/:id/service_accounts/:user_id/personal_access_tokens` `{name,scopes:["api"],expires_at}`; then
@@ -111,11 +111,11 @@ Boards: a board list is a label list (project boards `GET /projects/:id/boards` 
 |---|---|---|
 | `GET /version`, `/metadata` | 200 | 19.6.0-pre, `enterprise:true`, `plan:null` |
 | `GET /user` | 200 | `ratelimit-name: burst_traffic_per_user_free_plan`, limit 100 |
-| `GET /projects/:id`, `/groups/einsfuenf.de` | 200 | `permissions.group_access.access_level: 50` (Owner); `issues_enabled:true`, `open_issues_count:0` |
+| `GET /projects/:id`, `/groups/acme` | 200 | `permissions.group_access.access_level: 50` (Owner); `issues_enabled:true`, `open_issues_count:0` |
 | `GET /projects/:id/issues?updated_after=2026-10-01T00:00:00Z&order_by=updated_at&sort=asc&per_page=2&state=all` | 200 | `[]`, `x-total: 0` (project has no issues) |
 | same, `pagination=keyset` | 200 | `[]` |
 | same on `gitlab-org%2Fgitlab`, offset and keyset | 200 | offset: `x-total: 391`, `x-next-page: 2`; keyset: `Link` with `cursor=` |
-| `GET /projects/:id/labels`, `/groups/einsfuenf.de/labels` | 200 | `[]` |
+| `GET /projects/:id/labels`, `/groups/acme/labels` | 200 | `[]` |
 | `GET /projects/:id/merge_requests?state=all&per_page=1` | 200 | `x-total: 196` |
 | `GET .../merge_requests?updated_after=2026-10-27T00:00:00Z&order_by=updated_at&sort=asc` | 200 | 2 MRs |
 | `GET .../merge_requests/196/{pipelines,notes?updated_after,resource_state_events,resource_label_events,approvals,approval_state,diffs,changes,discussions}` | 200 | pipelines: 1 (`merge_request_event`, `manual`) |
@@ -124,13 +124,13 @@ Boards: a board list is a label list (project boards `GET /projects/:id/boards` 
 | `GET .../issues/1`, `.../issues/1/links` (klima-portal) | 404 | issue absent |
 | `GET gitlab-org%2Fgitlab/issues/628976/{links,notes?updated_after,resource_label_events,resource_state_events}` | 200 | `resource_assignee_events` -> 404 |
 | `GET .../uploads`, `/hooks`, `/boards`, `/access_tokens`, `/approvals`, `/approval_rules`, `/events`, `/invited_groups`, `/protected_branches` | 200 | uploads/hooks/boards/tokens `[]`; `main` protected |
-| `GET /projects/:id/members/all`, `/users`, `/groups/einsfuenf.de/members` | 200 | 3 humans, no bots |
-| `GET /groups/einsfuenf.de/{access_tokens,service_accounts}` | 200 | `[]` |
+| `GET /projects/:id/members/all`, `/users`, `/groups/acme/members` | 200 | 3 humans, no bots |
+| `GET /groups/acme/{access_tokens,service_accounts}` | 200 | `[]` |
 | `GET /applications`, `/application/settings` | 403 | admin only |
 | GraphQL `project.workItemTypes{widgetDefinitions}` | 200 | Incident, Issue, Task, Ticket; Issue children = Task only |
 | unauthenticated `POST .../issues/:iid/links` on gitlab-org | 401 | sanity only, nothing written |
 
-## 7. Open risks (all need a write token on a sandbox project, e.g. `einsfuenf.de/bauherr-sandbox`)
+## 7. Open risks (all need a write token on a sandbox project, e.g. `acme/bauherr-sandbox`)
 
 1. Service account created on this Free group works end to end (creation, PAT, 100-limit, identity verification step) and **can be assigned** via `assignee_ids` (Claim).
 2. `blocks` link on Free: exact failure status/body; whether `relates_to` create and `DELETE /links/:id` work.

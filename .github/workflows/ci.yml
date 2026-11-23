@@ -33,6 +33,8 @@ jobs:
       - name: Every page route is scanned by e2e/a11y.spec.ts
         run: pnpm --filter server a11y:coverage
       - run: pnpm --filter server test --shard=1/3
+        env:
+          BAUHERR_FORBIDDEN_NAMES: ${{ vars.BAUHERR_FORBIDDEN_NAMES }}
 
   # The server suite is CPU-bound (one Payload per file): `check` runs shard 1, these run shards 2 and 3 (shard 3 also runs the package tests), each with its own Postgres.
   test:
@@ -56,6 +58,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:packages
       - run: pnpm --filter server test --shard=${{ matrix.shard }}/3
+        env:
+          BAUHERR_FORBIDDEN_NAMES: ${{ vars.BAUHERR_FORBIDDEN_NAMES }}
       - if: matrix.shard == 3
         run: pnpm --filter './packages/*' test
 

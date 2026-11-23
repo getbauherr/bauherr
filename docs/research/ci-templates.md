@@ -131,7 +131,7 @@ on:
     inputs:
       repo-kind:        {type: string,  required: true}          # product | knowledge
       bauherr-version:  {type: string,  default: "1.0.0"}        # npx bauherr@<ver>
-      gateway-url:      {type: string,  default: "https://ai.einsfuenf.de"}
+      gateway-url:      {type: string,  default: "https://ai.example.com"}
       test-command:     {type: string,  default: ""}             # empty = no test job
       eval-model:       {type: string,  default: "cheap-default"}   # judge-model, max-usd likewise
     secrets:
