@@ -64,6 +64,10 @@ _Avoid_: Tracker, backend, board
 
 ### Knowledge
 
+**Memory**:
+One sentence the factory hands to an agent before a run: an answer or note of the owner, or one he wrote himself. It applies to every ticket of a Product, to an area of the code, to tickets that fit, or to one ticket, is handed to chosen stages (Brief, Build, Review, Verify), and can be switched off. It is reference data for the agent and never changes what the factory itself does. In code the table, the collection and the files are still named `statements`.
+_Avoid_: Statement (on screen), lesson, rule
+
 **Knowledge source**:
 A place agents read knowledge from, reached through a Connection; every one can be read and searched, some can also be written to or are copied into the factory's index.
 _Avoid_: Context pack, data source, knowledge base

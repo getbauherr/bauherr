@@ -7,6 +7,7 @@ describe('the read-only forge view', () => {
     expectTypeOf<keyof ReadForge>().toEqualTypeOf<
       | 'listOpenPullRequests'
       | 'getPullRequest'
+      | 'getBranch'
       | 'listChecks'
       | 'getRepository'
       | 'requiredChecks'

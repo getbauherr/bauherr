@@ -11,6 +11,9 @@ export const PO_PAGES: Record<string, string> = {
 }
 export const BAUHERR_PAGES = [
   'inbox',
+  'memory',
+  'memory/[id]',
+  'memory/new',
   'runs/[id]',
   'tickets/[id]',
   'settings/api-key',
@@ -50,6 +53,10 @@ export const BAUHERR_ACTIONS = [
   '(shell)/tickets/actions.ts#decideTicket',
   '(shell)/tickets/archive-actions.ts#archiveTicket',
   '(shell)/tickets/archive-actions.ts#restoreTicket',
+  '(shell)/memory/actions.ts#addMemoryAction',
+  '(shell)/memory/actions.ts#saveMemoryAction',
+  '(shell)/memory/actions.ts#switchMemoryAction',
+  '(shell)/memory/actions.ts#deleteMemoryAction',
   '(shell)/settings/state-action.ts#setProductState',
   '(shell)/settings/webhook-action.ts#createWebhookSecret',
 ].concat(
@@ -88,7 +95,6 @@ const PRODUCT_SECTION_ACTIONS = [
   'saveGates',
   'saveProof',
   'copyForgeChecks',
-  'removeStatement',
 ]
 BAUHERR_ACTIONS.push(...PRODUCT_SECTION_ACTIONS.map((n) => `(shell)/settings/products/[id]/actions.ts#${n}`))
 export const PO_COLLECTIONS: Record<string, Record<string, string>> = {

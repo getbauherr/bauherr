@@ -1,3 +1,4 @@
+import { conflictNote } from './conflict-note'
 import type { AppEvent, EventOf, EventType, Stage } from './events'
 
 export type Card = { card: 'question'; reason: string; options: string[]; text?: string }
@@ -19,6 +20,7 @@ export type State = {
   waitingAuthor: boolean
   patch: { id: string; pr: number; headSha: string } | null
   reviewed: string | null
+  conflict: { patchId: string; base: string } | null
   alreadyDone: { by: string; evidence: string } | null
   checks: 'none' | 'pending' | 'passed' | 'failed'
   verdict: Verdict | null
@@ -51,6 +53,7 @@ export const initialState = (): State => ({
   waitingAuthor: false,
   patch: null,
   reviewed: null,
+  conflict: null,
   alreadyDone: null,
   checks: 'none',
   verdict: null,
@@ -162,12 +165,20 @@ const adopt = (state: State, data: EventOf<'pull.adopted'>['data'], options: Fol
     waitingAuthor: false,
     patch: { id: data.patchId, pr: data.pr, headSha: data.headSha },
     reviewed: null,
+    conflict: null,
     checks: options.requiredChecks === false ? 'none' : 'pending',
     verdict: null,
     accepted: false,
     overridden: false,
     productionHeld: false,
   }
+}
+
+const conflicted = (state: State, data: EventOf<'pull.conflicted'>['data']): State => {
+  if (state.patch?.id !== data.patchId) return state
+  const stale = { ...state, conflict: data, reviewed: null, verdict: null, accepted: false }
+  if (state.adopted) return { ...enter(stale, 'verify'), waitingAuthor: true }
+  return { ...enter(stale, 'build'), note: conflictNote(data.base) }
 }
 
 const patch: Reducer = (state, event, options) => {
@@ -185,7 +196,7 @@ const patch: Reducer = (state, event, options) => {
       }
       const latest = { id: event.data.patchId, pr: event.data.pr, headSha: event.data.headSha }
       const checks = options.requiredChecks === false ? 'none' : 'pending'
-      return { ...enter(fresh, 'verify'), patch: latest, reviewed: null, checks, verdict: null }
+      return { ...enter(fresh, 'verify'), patch: latest, reviewed: null, conflict: null, checks, verdict: null }
     }
     case 'build.already-done': {
       const { by, evidence } = event.data
@@ -193,6 +204,8 @@ const patch: Reducer = (state, event, options) => {
     }
     case 'pull.adopted':
       return adopt(state, event.data, options)
+    case 'pull.conflicted':
+      return conflicted(state, event.data)
     case 'checks.finished':
       if (state.patch?.id !== event.data.patchId) return state
       return { ...state, checks: event.data.passed ? 'passed' : 'failed' }
