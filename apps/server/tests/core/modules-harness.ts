@@ -1,6 +1,7 @@
 import { FakeBackend } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
+import type { Role } from '../../src/core/lifecycle'
 import { enterIssues } from '../../src/core/intake/enter'
 import { createWriter } from '../../src/core/forge/writer'
 import { readEvents, readRecord } from '../../src/core/record/store'
@@ -30,6 +31,7 @@ export const BRIEF = {
     { text: 'The page looks right', verify: { kind: 'screenshot', how: 'open the page' } },
   ],
   outOfScope: ['export'],
+  visible: false,
   risk: { door: 'two-way', areas: [], rollback: 'revert' },
   decisions: [],
   plan: ['fix the query'],
@@ -51,6 +53,8 @@ export const finding = (status: string) => ({
   evidence: { kind: 'repro', pointer: 'open the list with three rows' },
   status,
 })
+
+const reviewTarget = z.object({ patchId: z.string(), headSha: z.string() })
 
 export const flowHarness = (suite: string) => {
   const ih = intakeHarness(suite)
@@ -105,7 +109,7 @@ export const flowHarness = (suite: string) => {
     return { repo, id, pr: pull.number, headSha, sync: () => h.sync(readers, ih.reacting) }
   }
 
-  const claimRun = async (recordId: number, role: 'builder' | 'verifier', by = `exec-${role}`) => {
+  const claimRun = async (recordId: number, role: Role, by = `exec-${role}`) => {
     const claimed = await claim(h.payload(), { workspace: h.ids.workspace, role, by, now: ih.clock.now })
     if (!claimed || claimed.run.recordId !== recordId) throw new Error(`no ${role} run for record ${recordId}`)
     return claimed
@@ -114,8 +118,20 @@ export const flowHarness = (suite: string) => {
   const submitTo = (claimed: Awaited<ReturnType<typeof claimRun>>, result: unknown) =>
     submit(claimed.run.id, claimed.token, result, subDeps())
 
-  const work = async (recordId: number, role: 'builder' | 'verifier', result: unknown, by = `exec-${role}`) =>
-    submitTo(await claimRun(recordId, role, by), result)
+  const queuedRole = async (recordId: number): Promise<string | null> => {
+    const found = await h.payload().db.drizzle.execute(
+      sql`SELECT "role" FROM "stage_runs" WHERE "record_id" = ${recordId} AND "status" = 'queued'`,
+    )
+    return found.rows[0] ? z.object({ role: z.string() }).parse(found.rows[0]).role : null
+  }
+
+  const work = async (recordId: number, role: Role, result: unknown, by = `exec-${role}`) => {
+    const target = reviewTarget.safeParse(result)
+    if (role === 'verifier' && target.success && (await queuedRole(recordId)) === 'reviewer') {
+      await submitTo(await claimRun(recordId, 'reviewer'), { ...target.data, findings: [] })
+    }
+    return submitTo(await claimRun(recordId, role, by), result)
+  }
 
   const proof = async (recordId: number, criterion: string): Promise<string> => {
     const inserted = await h.payload().db.drizzle.execute(sql`

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fold } from '../../src/core/lifecycle'
+import { canArchive, fold } from '../../src/core/lifecycle'
 import { ev, fail, inBrief, inBuild, inShip, inVerify, merged, start } from './fixtures'
 
 describe('fold', () => {
@@ -177,6 +177,27 @@ describe('fold', () => {
 
   it('closes the ticket when the owner discards it', () => {
     expect(fold([...inBuild, ev('ticket.closed')]).closed).toBe('discarded')
+  })
+
+  it('keeps the stage of an archived ticket and runs it again once restored', () => {
+    const archived = fold([...inBuild, start('build', 'r3'), ev('ticket.closed', { reason: 'archived' })])
+    expect(archived).toMatchObject({ stage: 'build', closed: 'archived' })
+    expect(fold([...inBuild, ev('ticket.closed', { reason: 'archived' }), ev('ticket.restored')])).toMatchObject({
+      stage: 'build',
+      closed: null,
+      run: null,
+    })
+  })
+
+  it('lets a ticket be archived from every stage before Ship and from no later one', () => {
+    expect([inBrief, inBuild, inVerify].map((events) => canArchive(fold(events)))).toEqual([true, true, true])
+    expect(canArchive(fold(inShip))).toBe(false)
+    expect(canArchive(fold(merged))).toBe(false)
+    expect(canArchive(fold([...inBuild, ev('ticket.closed', { reason: 'archived' })]))).toBe(false)
+  })
+
+  it('does not restore a ticket that was closed another way', () => {
+    expect(fold([...inBuild, ev('ticket.closed'), ev('ticket.restored')]).closed).toBe('discarded')
   })
 
   it('treats an override of the latest patch like a passed verify for the stage change', () => {

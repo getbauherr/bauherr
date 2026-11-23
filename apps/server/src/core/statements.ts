@@ -1,49 +1,77 @@
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import type { Conn } from './conn'
-import { isRemembered } from './decisions'
+import { isRemembered, OWN_ANSWER } from './decisions'
 import type { Card } from './fold'
+import { STATEMENT_SCOPES, type NoteScope, type StatementScope } from './statement-scope'
 
 export const STATEMENT_MAX = 1000
-export const STATEMENT_KINDS = ['answer', 'send-back', 'brief-change', 'guidance'] as const
+export const STATEMENT_KINDS = ['answer', 'send-back', 'brief-change', 'guidance', 'written', 'learned'] as const
 
 export type StatementKind = (typeof STATEMENT_KINDS)[number]
-export type Statement = { kind: StatementKind; text: string }
-export type StoredStatement = Statement & { id: number; record: number; createdAt: string }
+export type Statement = { kind: StatementKind; text: string; scope: StatementScope }
+export type StoredStatement = Statement & { id: number; record: number | null; createdAt: string }
 
-type Given = { asked: string | null; choice: string; note: string; card: Card | null }
+type Given = {
+  asked: string | null
+  choice: string
+  note: string
+  card: Card | null
+  scope?: NoteScope | undefined
+}
+
+export const DEFAULT_SCOPE: Record<StatementKind, StatementScope> = {
+  answer: 'product',
+  'send-back': 'ticket',
+  'brief-change': 'ticket',
+  guidance: 'ticket',
+  written: 'product',
+  learned: 'product',
+}
 
 const clip = (text: string): string => text.slice(0, STATEMENT_MAX)
 
 const NOTE_KINDS: Record<string, StatementKind> = {
   'brief/request-changes': 'brief-change',
   'result/send-back': 'send-back',
+  'question:agent/back-to-brief': 'brief-change',
+  'working/back-to-brief': 'brief-change',
   'question:failed-runs/retry-with-guidance': 'guidance',
 }
 
-export const statementOf = ({ asked, choice, note, card }: Given): Statement | null => {
+const answerText = (choice: string, note: string): string => {
+  if (choice === OWN_ANSWER) return note
+  return note === '' ? choice : `${choice}. ${note}`
+}
+
+const made = (kind: StatementKind, text: string, scope: NoteScope | undefined): Statement | null =>
+  scope === 'none' ? null : { kind, text: clip(text), scope: scope ?? DEFAULT_SCOPE[kind] }
+
+export const statementOf = ({ asked, choice, note, card, scope }: Given): Statement | null => {
   const kind = NOTE_KINDS[`${asked}/${choice}`]
-  if (kind) return { kind, text: clip(note) }
+  if (kind) return made(kind, note, scope)
   if (asked?.startsWith('question:')) {
     if (!isRemembered(asked.slice('question:'.length))) return null
     const question = card?.text ?? asked.slice('question:'.length)
-    return { kind: 'answer', text: clip(note === '' ? `${question}: ${choice}` : `${question}: ${choice}. ${note}`) }
+    return made('answer', `${question}: ${answerText(choice, note)}`, scope)
   }
-  return note === '' ? null : { kind: 'guidance', text: clip(note) }
+  return note === '' ? null : made('guidance', note, scope)
 }
 
 const rowSchema = z.object({
   id: z.coerce.number(),
-  record_id: z.coerce.number(),
+  record_id: z.number().nullable(),
   kind: z.enum(STATEMENT_KINDS),
+  scope: z.enum(STATEMENT_SCOPES),
   text: z.string(),
   created_at: z.coerce.date(),
 })
 
 export const storeStatement = async (tx: Conn, recordId: number, statement: Statement): Promise<void> => {
   await tx.db.drizzle.execute(sql`
-    INSERT INTO "statements" ("workspace_id", "product_id", "record_id", "kind", "text", "updated_at", "created_at")
-    SELECT "workspace_id", "product_id", "id", ${statement.kind}, ${statement.text}, now(), now()
+    INSERT INTO "statements" ("workspace_id", "product_id", "record_id", "kind", "scope", "text",
+      "updated_at", "created_at")
+    SELECT "workspace_id", "product_id", "id", ${statement.kind}, ${statement.scope}, ${statement.text}, now(), now()
     FROM "records" WHERE "id" = ${recordId}`)
 }
 
@@ -54,11 +82,12 @@ export const storeGiven = async (tx: Conn, recordId: number, given: Given): Prom
 
 export const statementsFor = async (tx: Conn, product: number, limit: number): Promise<StoredStatement[]> => {
   const found = await tx.db.drizzle.execute(sql`
-    SELECT "id", "record_id", "kind", "text", "created_at" FROM "statements"
+    SELECT "id", "record_id", "kind", "scope", "text", "created_at" FROM "statements"
     WHERE "product_id" = ${product} ORDER BY "id" DESC LIMIT ${limit}`)
   return found.rows.map((row) => {
     const parsed = rowSchema.parse(row)
     const createdAt = parsed.created_at.toISOString()
-    return { id: parsed.id, record: parsed.record_id, kind: parsed.kind, text: parsed.text, createdAt }
+    const { id, kind, scope, text } = parsed
+    return { id, record: parsed.record_id, kind, scope, text, createdAt }
   })
 }

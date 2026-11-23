@@ -5,14 +5,14 @@ import { DISCLOSURE } from '../../src/core/forge/disclosure'
 import { questionsBody } from '../../src/core/intake/questions'
 import type { Criterion, Decision, Finding, TicketRecord } from '../../src/core/record/schema'
 import { advance } from '../../src/core/engine'
-import { appendEvent, createRecord, patchRecord, readRecord, setRank } from '../../src/core/record/store'
+import { appendEvent, createRecord, readRecord, setRank } from '../../src/core/record/store'
 import { claim, heartbeat } from '../../src/core/run/leases'
 import { rememberContext } from '../../src/core/run/context'
 import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
 import { source } from './fixtures'
-import { LONG_HANDOFF, OPEN_FINDING } from './verify-rounds-fixtures'
-import { asked, begin, mirrorSource, patch, toBrief, workOn } from './scenario'
+import { verifyRoundsTicket } from './verify-rounds-fixtures'
+import { asked, begin, edit, mirrorSource, patch, toBrief, workOn } from './scenario'
 
 export const TICKET_TITLES = {
   briefTitle: 'Brief with a decision for the tabs',
@@ -31,10 +31,14 @@ export const POOL_SIZE = 3
 
 export const POOL_TITLES = {
   briefApprove: 'Brief with a decision to approve',
+  briefArchive: 'Brief to archive',
   resultSendBack: 'Result to send back',
   resultAccept: 'Result to accept',
   resultStale: 'Result decided twice',
   question: 'Question from the agent',
+  questionBack: 'Question to send back to Brief',
+  questionOwn: 'Question to answer in own words',
+  briefComment: 'Brief to comment on',
 } as const
 
 export type TicketNames = Record<keyof typeof TICKET_TITLES, number> &
@@ -80,13 +84,6 @@ const FINDINGS: Finding[] = [
     status: 'invalid',
   },
 ]
-
-const edit = async (e: Engine, id: number, stage: 'brief' | 'build' | 'verify', patchOf: Partial<TicketRecord>) => {
-  const { version } = await readRecord(e.db.payload, id)
-  const writes = Object.keys(patchOf) as (keyof TicketRecord)[]
-  const by = { stage, runId: 'seed' }
-  await patchRecord(e.db.payload, id, { expectedVersion: version, writes, patch: patchOf, by })
-}
 
 const proofRow = z.object({ id: z.coerce.number() })
 
@@ -161,18 +158,6 @@ const deployStalledTicket = async (e: Engine, pr: number): Promise<number> => {
   return id
 }
 
-const verifyRoundsTicket = async (e: Engine, pr: number): Promise<number> => {
-  const id = await toBrief(e, false)
-  await edit(e, id, 'brief', briefFields([SETTLED]))
-  for (const n of [501, pr]) {
-    await patch(e, id, n)
-    await workOn(e, id, 'verifier', { passed: false, patchId: `p${n}`, headSha: `h${n}` })
-  }
-  await edit(e, id, 'build', { handoff: LONG_HANDOFF })
-  await edit(e, id, 'verify', { findings: [OPEN_FINDING] })
-  return id
-}
-
 const ADOPTED_AUTHOR = 'dev-sam'
 const ADOPTED_FIRST = 70
 
@@ -244,7 +229,7 @@ const EARLIER_ANSWERS = [
 const RESULT_ANSWERS = ['Run the old export tests before the new ones.', EARLIER_ANSWERS[1] ?? '']
 
 const answered = async (e: Engine, id: number, stages: string[], from: number, texts: string[]) => {
-  for (const text of texts) await storeStatement(e.db.payload, from, { kind: 'answer', text })
+  for (const text of texts) await storeStatement(e.db.payload, from, { kind: 'answer', scope: 'product', text })
   const db = e.db.payload.db.drizzle
   const found = await db.execute(sql`SELECT "id" FROM "statements" WHERE "record_id" = ${from} ORDER BY "id"`)
   const statements = found.rows.map((row) => proofRow.parse(row).id)
@@ -288,6 +273,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     briefTitle: await open(TICKET_TITLES.briefTitle),
     briefAnswers: await open(TICKET_TITLES.briefAnswers),
     briefApprove: await pooled((n) => open(`${POOL_TITLES.briefApprove} ${n}`)),
+    briefArchive: await pooled((n) => open(`${POOL_TITLES.briefArchive} ${n}`)),
     resultReadonly: await result(TICKET_TITLES.resultReadonly, ++pr),
     resultSendBack: await pooled((n) => result(`${POOL_TITLES.resultSendBack} ${n}`, ++pr)),
     resultAccept: await pooled((n) => result(`${POOL_TITLES.resultAccept} ${n}`, ++pr)),
@@ -298,9 +284,9 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   }
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
   const deployStalled = await deployStalledTicket(e, ++pr)
-  titled.push([deployStalled, TICKET_TITLES.deployStalled])
-  const verifyRounds = await verifyRoundsTicket(e, ++pr)
-  titled.push([verifyRounds, TICKET_TITLES.verifyRounds])
+  const verifyRounds = await verifyRoundsTicket(e, ++pr, briefFields([SETTLED]))
+  titled.push([deployStalled, TICKET_TITLES.deployStalled], [verifyRounds, TICKET_TITLES.verifyRounds])
+  const briefComment = await pooled((n) => open(`${POOL_TITLES.briefComment} ${n}`))
   const adoptedWaiting = await adoptedTicket(e, ADOPTED_FIRST, false)
   const adoptedResult = await adoptedTicket(e, ADOPTED_FIRST + 1, true)
   titled.push([adoptedWaiting, TICKET_TITLES.adoptedWaiting], [adoptedResult, TICKET_TITLES.adoptedResult])
@@ -321,5 +307,12 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   const other = { kind: 'pr', head: 'h72', title: 'Another take on the fix', author: 'dev-lee', closes } as const
   await mirror.item(ADOPTED_FIRST + 2, { ...other, closes })
   const intake = await intakeTicket(e, mirror.item)
-  return { ...names, adoptedWaiting, adoptedResult, deployStalled, verifyRounds, intake }
+  const questionBack = await pooled((n) => asking(`${POOL_TITLES.questionBack} ${n}`))
+  const questionOwn = await pooled((n) => asking(`${POOL_TITLES.questionOwn} ${n}`))
+  for (const id of [...questionBack, ...questionOwn]) {
+    const { source } = (await readRecord(e.db.payload, id)).record
+    await mirror.item(source.number, { title: titled.find(([found]) => found === id)?.[1] ?? '' })
+  }
+  const waiting = { adoptedWaiting, adoptedResult, deployStalled, verifyRounds, intake }
+  return { ...names, questionBack, questionOwn, briefComment, ...waiting }
 }

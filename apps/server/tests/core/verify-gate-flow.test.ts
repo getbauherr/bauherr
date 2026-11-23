@@ -27,6 +27,9 @@ const body = async (s: Verifying, change: object) => {
 const verdict = async (s: Verifying, change: object, by = 'exec-verifier') =>
   result.parse(await f.work(s.id, 'verifier', await body(s, change), by))
 
+const reviewed = async (s: Verifying) =>
+  f.work(s.id, 'reviewer', { headSha: s.pull.headSha, patchId: 'p1', findings: [] })
+
 const refusedBy = (outcome: z.infer<typeof result>, rule: string) => {
   expect(outcome.status).toBe('retry')
   expect(outcome.problems?.map((p) => p.message).join(' ')).toContain(`Gate ${rule}`)
@@ -48,6 +51,7 @@ describe('the gate in the flow', () => {
 
   it('refuses a stale patch id', async () => {
     const s = await f.toVerify()
+    await reviewed(s)
     refusedBy(await verdict(s, { patchId: 'p0' }), 'stale-patch')
   })
 
@@ -63,6 +67,7 @@ describe('the gate in the flow', () => {
 
   it('fails the run after the fix turn, and records the failure', async () => {
     const s = await f.toVerify()
+    await reviewed(s)
     const claimed = await f.claimRun(s.id, 'verifier')
     const wrong = await body(s, { patchId: 'p0' })
     refusedBy(result.parse(await f.submitTo(claimed, wrong)), 'stale-patch')

@@ -1,8 +1,9 @@
+import { OWN_ANSWER } from '../../../../core/decisions'
 import type { StoredCard } from '../../../../core/record/store'
 import type { TicketView } from '../../../../core/views/ticket'
-import { ANSWER_ACTION } from '../../lib/decision-actions'
+import { ANSWER_ACTION, BACK_ACTION } from '../../lib/decision-actions'
 import { questionFacts, recommendedOption } from '../../lib/question-facts'
-import { CHOICE_WORDS, NOTE_PROMPTS, REASON_WORDS } from '../../lib/ticket-words'
+import { CHOICE_WORDS, NOTE_PROMPTS, NOTE_SAYS, REASON_WORDS } from '../../lib/ticket-words'
 import { DecisionForm } from './DecisionForm'
 import { Positions } from './Positions'
 import { Card, Section } from './Section'
@@ -18,6 +19,15 @@ const askOf = (reason: string): string => (reason === 'production-held' ? reason
 const textOf = (card: StoredCard): string =>
   card.reason === 'agent' && card.text ? card.text : (REASON_WORDS[card.reason as keyof typeof REASON_WORDS] ?? '')
 
+const optionsOf = (card: StoredCard, ask: string, canGoBack: boolean) => {
+  const agent = card.reason === 'agent'
+  const options = [...card.options, ...(agent ? [OWN_ANSWER] : [])]
+  return {
+    choices: options.map((option) => ({ option, label: CHOICE_WORDS[ask]?.[option] ?? option })),
+    actions: canGoBack && agent ? [BACK_ACTION, ANSWER_ACTION] : [ANSWER_ACTION],
+  }
+}
+
 type Props = { view: TicketView; card: StoredCard; may: boolean }
 
 export function QuestionCard({ view, card, may }: Props) {
@@ -26,6 +36,7 @@ export function QuestionCard({ view, card, may }: Props) {
   const remembered = view.answerRemembered ? 'Your answer is remembered for similar tickets.' : undefined
   const recommended = recommendedOption(view, card.reason)
   const compact = view.positions !== null
+  const { choices, actions } = optionsOf(card, ask, view.canGoBack)
   return (
     <Card bare>
       <DecisionForm
@@ -34,7 +45,7 @@ export function QuestionCard({ view, card, may }: Props) {
         seq={card.seq}
         pick
         sentence={may ? remembered : 'A Bauherr of this Workspace answers.'}
-        actions={may ? [ANSWER_ACTION] : []}
+        actions={may ? actions : []}
       >
         <div className={compact ? 'grid gap-3 p-4' : 'grid gap-5 p-6'}>
           <p>{textOf(card)}</p>
@@ -53,23 +64,21 @@ export function QuestionCard({ view, card, may }: Props) {
           )}
           <fieldset className="m-0 grid gap-2 border-0 p-0">
             <legend className="sr-only">Answer</legend>
-            {card.options.map((option) => {
-              const label = CHOICE_WORDS[ask]?.[option] ?? option
-              return (
-                <label key={option} className={`${OPTION} ${compact ? 'py-1.5' : 'py-2'}`}>
-                  <input
-                    type="radio"
-                    name="choice"
-                    value={option}
-                    data-label={label}
-                    data-prompt={NOTE_PROMPTS[`${ask}/${option}`]}
-                    className="accent-primary"
-                  />
-                  <span className="font-medium">{label}</span>
-                  {option === recommended && <span className="small text-muted-foreground">recommended</span>}
-                </label>
-              )
-            })}
+            {choices.map(({ option, label }) => (
+              <label key={option} className={`${OPTION} ${compact ? 'py-1.5' : 'py-2'}`}>
+                <input
+                  type="radio"
+                  name="choice"
+                  value={option}
+                  data-label={label}
+                  data-prompt={NOTE_PROMPTS[`${ask}/${option}`]}
+                  data-say={NOTE_SAYS[`${ask}/${option}`]}
+                  className="accent-primary"
+                />
+                <span className="font-medium">{label}</span>
+                {option === recommended && <span className="small text-muted-foreground">recommended</span>}
+              </label>
+            ))}
           </fieldset>
         </div>
       </DecisionForm>

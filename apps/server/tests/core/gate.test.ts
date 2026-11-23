@@ -25,6 +25,11 @@ describe('briefGate', () => {
     expect(briefGate(briefed({ risk: risk('two-way', ['security']) }), { riskAreas: [] })).toBeNull()
   })
 
+  it('flags a change a user will see, whatever the risk says', () => {
+    expect(briefGate(briefed({ visible: true }), config)).toBe('visible-change')
+    expect(briefGate(briefed({ visible: false }), config)).toBeNull()
+  })
+
   it('flags a backlog issue', () => {
     expect(briefGate(briefed({ source: { ...source, backlog: true } }), config)).toBe('backlog')
   })
@@ -47,6 +52,7 @@ describe('briefGate', () => {
     expect(briefGate(all, config)).toBe('open-decision')
     expect(briefGate({ ...all, decisions: [] }, config)).toBe('one-way-door')
     expect(briefGate({ ...all, decisions: [], risk: risk('two-way', ['security']) }, config)).toBe('risk-area')
+    expect(briefGate({ ...all, decisions: [], risk: risk('two-way'), visible: true }, config)).toBe('visible-change')
     expect(briefGate({ ...all, decisions: [], risk: risk('two-way') }, config)).toBe('backlog')
     const onlyExternal = { ...all, decisions: [], risk: risk('two-way'), source: { ...source, external: true } }
     expect(briefGate(onlyExternal, config)).toBe('external-request')

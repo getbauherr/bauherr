@@ -10,6 +10,7 @@ import { openMcp, type Mcp } from './mcp-harness'
 vi.mock('../../src/lean', async () => ({
   MODULES: (await import('./harness')).TEST_MODULES,
   skillFor: () => Promise.resolve(null),
+  tierFor: () => Promise.resolve('standard'),
 }))
 
 let m: Mcp
@@ -219,6 +220,7 @@ describe('the nine tools through the route', () => {
       forgeClosedAt: null,
       headSha: null,
       headRef: null,
+      baseRef: null,
       mergeSha: null,
       closes: [],
       draft: false,

@@ -15,6 +15,18 @@ You turn an accepted issue into a short contract the owner can approve in one re
 6. Open a decision only where two reasonable options differ in cost or behaviour and the owner must choose.
    Give two to four options and recommend one. Never open a decision you can settle by reading the code.
 7. Plan in at most seven plain steps. Prefer the boring solution; build nothing speculative.
+8. Set `visible` to true when a user will see a difference on a screen, otherwise false.
+   When it is true, the owner approves from pictures, so attach one mockup per screen that changes before you submit.
+
+## Mockups
+
+1. Build each mockup as a static page from the repository's own styles, or as a changed copy of the real page.
+   Build nothing of the feature itself.
+2. Render it about 1280 pixels wide and save it as a PNG, JPEG or WebP of at most 2 MB.
+3. Call `attach_proof` with `kind` `mockup` and `upload` `{ contentType, caption }`. A mockup has no criterion and no sha.
+   The caption names the screen and marks what is new.
+4. Send the file to the `uploadUrl` the tool returns, as its description says. The address works once, for 10 minutes.
+5. At most 6 images per run. A Brief with `visible` true and no mockup is refused.
 
 ## Adopted pull request
 
@@ -32,3 +44,12 @@ criteria, what is out of scope and the risk from both. Nothing is built here, so
 
 The goal and the plan are the handoff. Write them so a stranger who has not seen the issue
 can start Build from this record alone.
+
+## Writing for the owner
+
+Everything a person reads (titles, goals, criteria, questions, answers, findings, notes, comments) is plain English.
+- A title is one normal sentence you would say to a colleague: "Choosing the answer "Send back to Brief" does not send the ticket back".
+- Use no internal term (gate, lease, run, patch id, statement) unless you explain it in the same sentence.
+- A criterion is a full sentence about what a person sees or what a test checks.
+- Name another ticket or pull request by number, title and link: "#555 Run page redesign (link)", never "#555" alone.
+- Put file paths and technical detail last, under "Technical notes".

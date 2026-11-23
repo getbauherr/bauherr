@@ -1,5 +1,6 @@
 import { defineModule } from '../../core/module'
-import type { Criterion, Finding, TicketRecord } from '../../core/record/schema'
+import { mergeFindings } from '../../core/record/findings'
+import type { Criterion, TicketRecord } from '../../core/record/schema'
 import { reviewText } from '../../core/forge/review-text'
 import { verifyResultSchema, type VerifyResult } from '../../core/verify-result'
 
@@ -8,12 +9,6 @@ const criteriaOf = (record: TicketRecord, result: VerifyResult): Criterion[] =>
     const verified = result.criteria.find((entry) => entry.id === criterion.id)
     return verified ? { ...criterion, status: verified.status, proof: verified.proof } : criterion
   })
-
-const findingsOf = (record: TicketRecord, result: VerifyResult): Finding[] => {
-  const updated = new Map(result.findings.map((finding) => [finding.id, finding]))
-  const kept = record.findings.map((finding) => updated.get(finding.id) ?? finding)
-  return [...kept, ...result.findings.filter((finding) => !record.findings.some((f) => f.id === finding.id))]
-}
 
 export const verify = defineModule({
   stage: 'verify',
@@ -30,7 +25,7 @@ export const verify = defineModule({
         : ({ type: 'verify.changes', data: { runId, patchId } } as const)
     const cost = record.result?.cost ?? { usd: 0, runs: 0, minutes: 0 }
     const criteria = criteriaOf(record, result)
-    const findings = findingsOf(record, result)
+    const findings = mergeFindings(record, result.findings)
     const review = state.adopted && state.patch !== null && result.verdict === 'changes'
     const body = review ? reviewText(headSha, findings, criteria) : null
     return {

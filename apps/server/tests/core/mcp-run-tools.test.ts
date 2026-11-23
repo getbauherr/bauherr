@@ -158,6 +158,8 @@ describe('attach_proof', () => {
         m.call('attach_proof', { ...ids, criterion: 'c1', kind: 'output', sha: 'abc', ...extra }, m.agent(m.alpha)),
       ).rejects.toThrow(z.ZodError)
     }
+    const both = { ...ids, criterion: 'c1', kind: 'output', sha: 'abc', body: 'x', url: 'https://a.example' }
+    await expect(m.call('attach_proof', both, m.agent(m.alpha))).rejects.toThrow(/give exactly one of body, url/)
     expect(await rows(sql`SELECT 1 FROM "proofs" WHERE "record_id" = ${run.record}`)).toHaveLength(2)
     await m.e.drain()
   })
@@ -204,6 +206,75 @@ describe('ask', () => {
     const again = await m.claimed(m.alpha)
     expect(again.runId).not.toBe(run.runId)
     expect(again.context.note).toBe('Question: Which API?\nAnswer: v2')
+    await m.e.drain()
+  })
+})
+
+describe('session capacity', () => {
+  const connectWith = async (extra: Record<string, unknown> = {}) =>
+    z
+      .object({ session: z.string(), capacity: z.number() })
+      .parse(await m.call('connect', { role: 'builder', ...extra }, m.agent(m.alpha)))
+  const nextWork = (session: string) => m.call('next_work', { session }, m.agent(m.alpha))
+  const work = z.object({ status: z.literal('work'), runId: z.number(), leaseToken: z.string() })
+  const atCapacity = z.object({ status: z.literal('at_capacity'), holding: z.array(z.number()) })
+
+  it('gives a session of capacity 3 three runs, then answers at capacity until a slot frees', async () => {
+    await m.e.drain()
+    for (let i = 0; i < 4; i++) await m.begin()
+    const { session, capacity } = await connectWith({ capacity: 3 })
+    expect(capacity).toBe(3)
+    const runs = []
+    for (let i = 0; i < 3; i++) runs.push(work.parse(await nextWork(session)))
+    expect(new Set(runs.map((r) => r.leaseToken)).size).toBe(3)
+    expect(new Set(runs.map((r) => r.runId)).size).toBe(3)
+    const full = atCapacity.parse(await nextWork(session))
+    expect(full.holding).toEqual(runs.map((r) => r.runId).sort((a, b) => a - b))
+    const first = runs[0]
+    await m.call('release', { runId: first?.runId, leaseToken: first?.leaseToken }, m.agent(m.alpha))
+    expect(work.parse(await nextWork(session)).status).toBe('work')
+    expect(atCapacity.parse(await nextWork(session)).holding).toHaveLength(3)
+    const second = runs[1]
+    const submitted = { runId: second?.runId, leaseToken: second?.leaseToken, result: { verdict: 'accept' } }
+    expect(await m.call('submit', submitted, m.agent(m.alpha))).toEqual({ status: 'accepted' })
+    expect(work.parse(await nextWork(session)).status).toBe('work')
+    expect(atCapacity.parse(await nextWork(session)).holding).toHaveLength(3)
+    await m.e.drain()
+  })
+
+  it('lets a session without capacity hold one run and names it', async () => {
+    await m.e.drain()
+    await m.begin()
+    await m.begin()
+    const { session, capacity } = await connectWith()
+    expect(capacity).toBe(1)
+    const held = work.parse(await nextWork(session))
+    expect(atCapacity.parse(await nextWork(session)).holding).toEqual([held.runId])
+    await m.e.drain()
+  })
+
+  it('gives two instances of one key a slot each', async () => {
+    await m.e.drain()
+    await m.begin()
+    await m.begin()
+    const a = await connectWith({ instance: 'proc-a' })
+    const b = await connectWith({ instance: 'proc-b' })
+    expect(a.session).not.toBe(b.session)
+    expect(work.parse(await nextWork(a.session)).status).toBe('work')
+    expect(work.parse(await nextWork(b.session)).status).toBe('work')
+    await m.e.drain()
+  })
+
+  it('clamps capacity to 1..4 and updates it on reconnect', async () => {
+    await m.e.drain()
+    for (let i = 0; i < 3; i++) await m.begin()
+    expect((await connectWith({ capacity: 9 })).capacity).toBe(4)
+    expect((await connectWith({ capacity: 0 })).capacity).toBe(1)
+    const { session, capacity } = await connectWith({ capacity: 2 })
+    expect(capacity).toBe(2)
+    work.parse(await nextWork(session))
+    work.parse(await nextWork(session))
+    expect(atCapacity.parse(await nextWork(session)).holding).toHaveLength(2)
     await m.e.drain()
   })
 })
