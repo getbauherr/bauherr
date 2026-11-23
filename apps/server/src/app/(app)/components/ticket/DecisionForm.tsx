@@ -11,6 +11,7 @@ export type DecisionAction = {
   label: string
   variant: 'default' | 'outline' | 'danger'
   prompt?: string
+  fixed?: boolean
 }
 
 type Props = {
@@ -128,8 +129,10 @@ export function DecisionForm({ recordId, ask, seq, sentence, actions, pick, chil
     })
 
   const press = (action: DecisionAction) => {
-    const picked = pick ? (form.current?.querySelector<HTMLInputElement>('input[name="choice"]:checked') ?? null) : null
-    if (pick && !picked) return setError('Choose an answer first.')
+    const picking = pick && !action.fixed
+    const checked = form.current?.querySelector<HTMLInputElement>('input[name="choice"]:checked') ?? null
+    const picked = picking ? checked : null
+    if (picking && !picked) return setError('Choose an answer first.')
     const chosen = resolve(action, picked)
     setError(null)
     if (chosen.prompt) return setNoteFor(chosen)

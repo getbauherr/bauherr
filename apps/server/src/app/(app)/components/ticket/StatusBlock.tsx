@@ -1,7 +1,9 @@
 import type { RunView } from '../../../../core/views/ticket-parts'
 import type { TicketView } from '../../../../core/views/ticket'
+import { BACK_ACTION } from '../../lib/decision-actions'
 import { CLOSED_WORDS } from '../../lib/status-words'
 import { ROLE_WORDS } from '../../lib/ticket'
+import { DecisionForm } from './DecisionForm'
 import { RunLink } from './RunLink'
 import { Card, Facts } from './Section'
 
@@ -26,11 +28,11 @@ const sentenceOf = (view: TicketView, run: RunView | undefined): string => {
   return WAITING[view.status] ?? 'The factory has the turn. Nothing to do.'
 }
 
-export function StatusBlock({ view }: { view: TicketView }) {
+function StatusBody({ view }: { view: TicketView }) {
   const run = liveRun(view)
   const step = run?.steps.at(-1)
   return (
-    <Card>
+    <>
       <p role="status">{sentenceOf(view, run)}</p>
       {run && (
         <Facts
@@ -40,6 +42,32 @@ export function StatusBlock({ view }: { view: TicketView }) {
           ]}
         />
       )}
+    </>
+  )
+}
+
+export function StatusBlock({ view }: { view: TicketView }) {
+  return (
+    <Card>
+      <StatusBody view={view} />
+    </Card>
+  )
+}
+
+export function WorkingCard({ view }: { view: TicketView }) {
+  return (
+    <Card bare>
+      <DecisionForm
+        recordId={view.recordId}
+        ask="working"
+        seq={0}
+        sentence="Send the ticket back to Brief when the Brief is wrong. The pull request stays open."
+        actions={[BACK_ACTION]}
+      >
+        <div className="grid gap-5 p-6">
+          <StatusBody view={view} />
+        </div>
+      </DecisionForm>
     </Card>
   )
 }
