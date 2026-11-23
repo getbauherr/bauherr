@@ -76,6 +76,16 @@ const inboxAt = (width: number) => async (page: Page) => {
   return inFactory('/inbox')(page)
 }
 
+const paneOf = (title: string, width: number) => async (page: Page) => {
+  await page.setViewportSize({ width, height: 800 })
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url: base }])
+  await page.goto('/inbox')
+  const href = await page.getByRole('link', { name: new RegExp(title) }).first().getAttribute('href')
+  expect(href, `a waiting ticket titled ${title}`).toMatch(/^\/inbox\?t=\d+$/)
+  return href!
+}
+
 const inTickets =
   (title: string, query = '') =>
   async (page: Page) => {
@@ -87,7 +97,7 @@ const inTickets =
       .first()
       .getAttribute('href')
     expect(href, `a ticket titled ${title}`).toBeTruthy()
-    return `${href}${query}`
+    return `${href!.replace('/inbox?t=', '/tickets/')}${query}`
   }
 
 const runOf = (title: string) => async (page: Page) => {
@@ -117,7 +127,12 @@ type Target = string | ((page: Page) => Promise<string>)
 
 const routes: Record<string, Target | Record<string, Target>> = {
   '/': inFactory('/'),
-  '/inbox': { desktop: inboxAt(1280), 'at 390 px': inboxAt(390) },
+  '/inbox': {
+    desktop: inboxAt(1280),
+    'at 390 px': inboxAt(390),
+    'with a Brief in the pane': paneOf('Brief with a decision for the tabs', 1280),
+    'with a Brief in the pane at 390 px': paneOf('Brief with a decision for the tabs', 390),
+  },
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
     'Brief card with earlier answers': inTickets('Large export needs earlier answers'),
