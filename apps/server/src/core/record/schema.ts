@@ -14,6 +14,7 @@ const source = z.object({
   external: z.boolean(),
   backlog: z.boolean(),
   adopted: z.object({ pr: z.number().int().positive() }).optional(),
+  memory: z.number().int().positive().optional(),
 })
 
 export const criterionSchema = z.object({
