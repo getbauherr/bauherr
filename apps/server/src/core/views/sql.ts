@@ -13,6 +13,7 @@ export const STAGE_ENTRY: Partial<Record<EventType, Stage>> = {
   'result.accepted': 'done',
   'production.approved': 'done',
   'ticket.closed': 'done',
+  'ticket.done-elsewhere': 'done',
   'intake.closed': 'done',
   'brief.discarded': 'done',
 }
@@ -21,6 +22,7 @@ export const TERMINAL_EVENTS: EventType[] = [
   'result.accepted',
   'production.approved',
   'ticket.closed',
+  'ticket.done-elsewhere',
   'intake.closed',
   'brief.discarded',
 ]

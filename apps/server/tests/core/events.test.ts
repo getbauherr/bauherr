@@ -19,6 +19,7 @@ const BAD: [EventType, unknown][] = [
   ['question.answered', {}],
   ['owner.note', { note: ' ' }],
   ['ticket.closed', { reason: 'duplicate' }],
+  ['build.already-done', { runId: 'r1', by: '#9' }],
   ['verify.overridden', {}],
   ['verify.overridden', { patchId: 'p1', headSha: ' ' }],
   ['verify.passed', { runId: 'r2', patchId: 'p1' }],
@@ -33,7 +34,7 @@ const BAD: [EventType, unknown][] = [
 
 describe('parseEvent', () => {
   it('has a sample for every event type, and parses each', () => {
-    expect(Object.keys(SAMPLES)).toHaveLength(35)
+    expect(Object.keys(SAMPLES)).toHaveLength(37)
     for (const [type, data] of Object.entries(SAMPLES)) {
       expect(parseEvent({ type, data })).toEqual({ type, data })
     }
