@@ -42,6 +42,15 @@ describe('the tool set', () => {
     await expect(m.call('nope', {}, m.agent(m.alpha))).rejects.toThrow(UnknownTool)
   })
 
+  it('tells agents before the call to pass a stable random instance id once per process', () => {
+    const tool = TOOLS.find((t) => t.name === 'connect')
+    const schema = z.object({ properties: z.record(z.string(), z.object({ description: z.string().optional() })) })
+    const fields = schema.parse(z.toJSONSchema(tool?.input ?? z.object({}), { io: 'input' })).properties
+    expect(tool?.description).toContain('once per process with a stable random instance id')
+    expect(fields.instance?.description).toContain('generate it once per process')
+    expect(fields.instance?.description).toContain('same value on every reconnect')
+  })
+
   it('tells agents before the call that attach_proof takes body or url, not both', () => {
     const tool = TOOLS.find((t) => t.name === 'attach_proof')
     const schema = z.object({ properties: z.record(z.string(), z.object({ description: z.string().optional() })) })
@@ -82,6 +91,28 @@ describe('sessions and next_work', () => {
     const b = z.object({ session: z.string() }).parse(await m.call('connect', { role: 'verifier' }, m.agent(m.alpha)))
     expect(b.session).toBe(a.session)
     expect(await m.call('next_work', { session: a.session }, m.agent(m.alpha))).toEqual({ status: 'idle' })
+  })
+
+  it('gives each instance id its own session and refreshes label and capacity on the same one', async () => {
+    const connect = async (extra: Record<string, unknown>) =>
+      z
+        .object({ session: z.string(), capacity: z.number() })
+        .parse(await m.call('connect', { role: 'reviewer', ...extra }, m.agent(m.alpha)))
+    const a = await connect({ instance: 'proc-a', capacity: 1, label: 'one' })
+    const b = await connect({ instance: 'proc-b' })
+    expect(b.session).not.toBe(a.session)
+    const again = await connect({ instance: 'proc-a', capacity: 3, label: 'two' })
+    expect(again).toEqual({ session: a.session, capacity: 3 })
+    const found = await rows(
+      sql`SELECT "label", "capacity", "client_key" FROM "agent_sessions" WHERE "public_id" = ${a.session}`,
+    )
+    expect(found).toHaveLength(1)
+    expect(found[0]).toMatchObject({ label: 'two', capacity: '3' })
+    expect(found[0]?.client_key).toMatch(/^key-\d+:reviewer:proc-a$/)
+    const plain = await connect({})
+    expect((await connect({})).session).toBe(plain.session)
+    const key = await rows(sql`SELECT "client_key" FROM "agent_sessions" WHERE "public_id" = ${plain.session}`)
+    expect(key[0]?.client_key).toMatch(/^key-\d+:reviewer$/)
   })
 
   it('refuses an unknown session and the session of another key', async () => {
