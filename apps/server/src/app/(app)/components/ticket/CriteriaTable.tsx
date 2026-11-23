@@ -3,6 +3,7 @@ import type { Criterion } from '../../../../core/record/schema'
 import type { ProofGroup } from '../../../../core/views/ticket-parts'
 import { CRITERION_WORDS, PROOF_WORDS, ticketHref, VERIFY_WORDS, type Tab } from '../../lib/ticket'
 import { WordBadge } from '../WordBadge'
+import { ImageThumb } from './ImageThumb'
 
 const TABLE = 'w-full border-collapse overflow-hidden rounded-md border border-border'
 const TH = 'label border-b border-border bg-secondary px-3 py-2 text-left font-medium text-muted-foreground'
@@ -14,10 +15,12 @@ type Props = { criteria: Criterion[] } & ({ mode: 'brief' } | ({ mode: 'result' 
 
 function ProofLinks({ criterion, ...linking }: { criterion: Criterion } & ProofLinking) {
   const { proofs, recordId, tab, selected } = linking
-  const kinds = proofs.find((group) => group.criterion === criterion.id)?.proofs.map((proof) => proof.kind) ?? []
-  if (kinds.length === 0) return <span className="text-muted-foreground">None</span>
-  const words = [...new Set(kinds)].map((kind) => PROOF_WORDS[kind] ?? kind).join(', ')
+  const given = proofs.find((group) => group.criterion === criterion.id)?.proofs ?? []
+  if (given.length === 0) return <span className="text-muted-foreground">None</span>
+  const words = [...new Set(given.map((proof) => proof.kind))].map((kind) => PROOF_WORDS[kind] ?? kind).join(', ')
+  const images = given.flatMap((proof) => (proof.attachment === null ? [] : [proof.attachment]))
   return (
+    <div className="grid justify-items-start gap-2">
     <Link
       href={ticketHref(recordId, tab, criterion.id)}
       aria-current={selected === criterion.id ? 'true' : undefined}
@@ -26,6 +29,8 @@ function ProofLinks({ criterion, ...linking }: { criterion: Criterion } & ProofL
       {words}
       <span className="sr-only"> for criterion {criterion.id.slice(1)}</span>
     </Link>
+    {images.map((image) => <ImageThumb key={image.id} image={image} />)}
+    </div>
   )
 }
 

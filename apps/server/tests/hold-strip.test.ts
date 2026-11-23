@@ -1,0 +1,43 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import { HoldStrip } from '../src/app/(app)/components/factory/HoldStrip'
+
+describe('HoldStrip', () => {
+  it('renders nothing without holds', () => {
+    expect(renderToStaticMarkup(createElement(HoldStrip, { holds: [] }))).toBe('')
+  })
+
+  it('names the missing role, the queued runs by stage and links to Connect', () => {
+    const html = renderToStaticMarkup(
+      createElement(HoldStrip, {
+        holds: [
+          {
+            kind: 'no-agent-connected',
+            role: 'builder',
+            queued: 2,
+            byStage: [{ stage: 'build', queued: 2 }],
+          },
+        ],
+      }),
+    )
+    expect(html).toContain('No builder session is connected: 2 runs wait (Build 2).')
+    expect(html).toMatch(/<a [^>]*href="\/settings\/api-key"[^>]*>Connect a session<\/a>/)
+  })
+
+  it('names a queued Learn run as Learn', () => {
+    const hold = {
+      kind: 'no-agent-connected' as const,
+      role: 'reviewer',
+      queued: 1,
+      byStage: [{ stage: 'done' as const, queued: 1 }],
+    }
+    const html = renderToStaticMarkup(createElement(HoldStrip, { holds: [hold] }))
+    expect(html).toContain('No reviewer session is connected: 1 run waits (Learn 1).')
+  })
+
+  it('names the idle Runner in text', () => {
+    const html = renderToStaticMarkup(createElement(HoldStrip, { holds: [{ kind: 'runner-idle', queued: 1 }] }))
+    expect(html).toContain('The Runner has not picked up a run for 10 minutes: 1 run waits.')
+  })
+})

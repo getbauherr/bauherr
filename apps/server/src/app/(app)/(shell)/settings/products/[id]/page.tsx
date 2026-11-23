@@ -74,6 +74,13 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
           <ProofSection product={product} forgeChecks={await forgeCheckNames(payload, filter)} admin={admin} />
         </div>
       </div>
+      <p className="small text-muted-foreground">
+        What the factory remembers for this Product is on the{' '}
+        <Link href={`/memory?product=${product.id}`} className="text-primary hover:underline">
+          Memory page
+        </Link>
+        .
+      </p>
       {admin && <DangerZone product={product.id} />}
     </div>
   )

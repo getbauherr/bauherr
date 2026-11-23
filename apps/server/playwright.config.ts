@@ -10,6 +10,7 @@ const signInSpecs = [
   'a11y',
   'admin-pages',
   'gateway',
+  'memory',
   'people',
   'perf',
   'product-settings',

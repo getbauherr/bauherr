@@ -30,7 +30,12 @@ export type BoardCard = {
 
 export type Board = { stages: Record<Stage, BoardCard[]>; held: HeldItem[]; parked: BoardCard[] }
 
+const parkedOf = (row: TicketRow): string | null =>
+  row.card?.reason === 'parked' ? `Parked: ${row.card.text ?? ''} (${row.stage})` : null
+
 const detailOf = (row: TicketRow): string | null => {
+  const parked = parkedOf(row)
+  if (parked !== null) return parked
   if (row.run?.step) return row.run.step
   if (row.waitingOn === 'reporter' && row.reporterRound !== null) return `Question round ${row.reporterRound}`
   if (row.verifyRounds > 0 && (row.stage === 'build' || row.stage === 'verify')) {
@@ -58,6 +63,7 @@ export const toCard = (row: TicketRow): BoardCard => {
       card,
       parked,
       hasRun,
+      reviewer: row.run?.role === 'reviewer',
       claimed: row.run?.leasedBy != null,
       questionDrafted: row.questionDrafted,
       ended,

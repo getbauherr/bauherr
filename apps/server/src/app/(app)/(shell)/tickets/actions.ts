@@ -3,9 +3,11 @@ import { revalidatePath } from 'next/cache'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { decide, DecisionError, StaleDecision, type Decision } from '../../../../core/decide'
+import { NOTE_SCOPES } from '../../../../core/statement-scope'
 import { RecordNotFound } from '../../../../core/record/errors'
 import { engineDeps } from '../../../../jobs/engine-deps'
 import { STALE_SENTENCE } from '../../lib/ticket-words'
+import { personOf } from '../../../../lib/person'
 import { currentWorkspace, payloadClient } from '../../lib/session'
 
 const input = z.object({
@@ -14,6 +16,7 @@ const input = z.object({
   choice: z.string().min(1),
   seq: z.number().int().min(0),
   note: z.string().optional(),
+  scope: z.enum(NOTE_SCOPES).optional(),
   answers: z.record(z.string(), z.string()).optional(),
 })
 
@@ -24,6 +27,7 @@ const decisionOf = (given: z.infer<typeof input>): Decision => ({
   choice: given.choice,
   seq: given.seq,
   ...(given.note === undefined ? {} : { note: given.note }),
+  ...(given.scope === undefined ? {} : { scope: given.scope }),
   ...(given.answers === undefined ? {} : { answers: given.answers }),
 })
 
@@ -31,7 +35,7 @@ export async function decideTicket(raw: unknown): Promise<DecisionResult> {
   const { user, workspace } = await currentWorkspace()
   const parsed = input.safeParse(raw)
   if (!workspace || !parsed.success) return notFound()
-  const person = { id: String(user.id), role: user.role, workspaceIds: [workspace.id] }
+  const person = { id: String(user.id), role: user.role, workspaceIds: [workspace.id], name: personOf(user) }
   try {
     await decide(parsed.data.recordId, person, decisionOf(parsed.data), engineDeps(await payloadClient()))
   } catch (error) {

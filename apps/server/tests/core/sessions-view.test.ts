@@ -1,6 +1,9 @@
 import { sql } from '@payloadcms/db-postgres'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { SessionsTable } from '../../src/app/(app)/components/connect/SessionsTable'
 import { agentSessions, IDLE_WINDOW_MS } from '../../src/core/views/sessions'
 import { openMcp, type Mcp } from './mcp-harness'
 
@@ -41,8 +44,8 @@ describe('agentSessions', () => {
       ['verifier', 'closed'],
       ['reviewer', 'idle'],
     ])
-    expect(rows[0]?.ticket?.number).toBe(expected.source_number)
-    expect(rows[2]).toMatchObject({ label: 'laptop', keyLabel: 'agent', ticket: null })
+    expect(rows[0]?.tickets.map((t) => t.number)).toEqual([expected.source_number])
+    expect(rows[2]).toMatchObject({ label: 'laptop', keyLabel: 'agent', tickets: [] })
 
     const later = new Date(m.e.clock.now.getTime() + IDLE_WINDOW_MS + 1000)
     const silent = await list(m.alpha.id, m.e.db.workspace, later)
@@ -57,5 +60,25 @@ describe('agentSessions', () => {
     expect(await list(m.beta.id)).toHaveLength(0)
     expect(await list(m.alpha.id, m.e.db.otherWorkspace)).toHaveLength(0)
     expect(await list(m.beta.id, m.e.db.otherWorkspace)).toHaveLength(1)
+  })
+})
+
+describe('a session with several runs', () => {
+  it('lists every live run with its capacity and renders the slots', async () => {
+    await m.e.drain()
+    const { session } = z
+      .object({ session: z.string() })
+      .parse(await m.call('connect', { role: 'builder', label: 'multi', capacity: 3 }, m.agent(m.alpha)))
+    await m.begin()
+    await m.begin()
+    await m.call('next_work', { session }, m.agent(m.alpha))
+    await m.call('next_work', { session }, m.agent(m.alpha))
+    const row = (await list(m.alpha.id)).find((r) => r.label === 'multi')
+    expect(row).toMatchObject({ capacity: 3, state: 'working' })
+    expect(row?.tickets).toHaveLength(2)
+    const html = renderToStaticMarkup(createElement(SessionsTable, { sessions: row ? [row] : [] }))
+    expect(html).toContain('2 of 3 working')
+    for (const ticket of row?.tickets ?? []) expect(html).toContain(`/tickets/${ticket.recordId}`)
+    await m.e.drain()
   })
 })

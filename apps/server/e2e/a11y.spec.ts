@@ -64,6 +64,35 @@ const inFactory = (url: string) => async (page: Page) => {
   return url
 }
 
+const inRecord = (url: string) => async (page: Page) => {
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'record', url: base }])
+  return url
+}
+
+const memoryOne = async (page: Page) => {
+  await inRecord('/memory')(page)
+  return linkOn('/memory', /^\/memory\/\d+$/)(page)
+}
+
+const memoryRun = async (page: Page) => {
+  await inRecord('/memory')(page)
+  await page.goto('/memory')
+  await page.getByRole('link', { name: 'Say what changed in the handoff.' }).click()
+  const href = await page.locator('main a[href^="/runs/"]').first().getAttribute('href')
+  expect(href, 'a run link on the memory').toBeTruthy()
+  return href!
+}
+
+const withHoldStrip = (url: string) => async (page: Page) => {
+  await inFactory(url)(page)
+  await page.goto(url)
+  const strip = page.getByRole('region', { name: 'Holding up work' })
+  await expect(strip).toContainText('session is connected')
+  await expect(strip.getByRole('link', { name: 'Connect a session' }).first()).toBeVisible()
+  return url
+}
+
 const inHooks = (url: string) => async (page: Page) => {
   const base = process.env.BASE_URL ?? 'http://localhost:3000'
   await page.context().addCookies([{ name: 'bauherr-ws', value: 'hooks', url: base }])
@@ -116,8 +145,14 @@ const connectOf =
 type Target = string | ((page: Page) => Promise<string>)
 
 const routes: Record<string, Target | Record<string, Target>> = {
-  '/': inFactory('/'),
+  '/': {
+    Factory: inFactory('/'),
+    'cannot-run line': withHoldStrip('/'),
+  },
   '/inbox': { desktop: inboxAt(1280), 'at 390 px': inboxAt(390) },
+  '/memory': inRecord('/memory'),
+  '/memory/new': inRecord('/memory/new'),
+  '/memory/[id]': memoryOne,
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
     'Brief card with earlier answers': inTickets('Large export needs earlier answers'),
@@ -125,12 +160,16 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'Result tab': inTickets('Result to read', '?tab=result'),
     'Activity tab': inTickets('Result to read', '?tab=activity'),
     'question card': inTickets('Question to read'),
+    'build in progress with the way back': inTickets('Build with reported steps'),
     'deploy that did not finish': inTickets('Deploy that did not finish'),
     Intake: inTickets('Intake waiting for the reporter'),
     'adopted, waiting on the author': inTickets('Adopted pull request waiting on its author'),
     'adopted, Result card': inTickets('Adopted pull request with a result'),
   },
-  '/runs/[id]': runOf('Build with reported steps'),
+  '/runs/[id]': {
+    'run with steps': runOf('Build with reported steps'),
+    'run with memory': memoryRun,
+  },
   '/settings': '/settings',
   '/settings/api-key': '/settings/api-key',
   '/settings/audit': '/settings/audit',

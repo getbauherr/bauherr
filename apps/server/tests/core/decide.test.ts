@@ -3,12 +3,12 @@ import {
   decide,
   InvalidDecision,
   mayDecide,
-  NOTE_MAX,
   NotAllowedToDecide,
   StaleDecision,
   type Decision,
 } from '../../src/core/decide'
 import { DECISIONS } from '../../src/core/decisions'
+import { NOTE_MAX } from '../../src/core/limits'
 import { advance } from '../../src/core/engine'
 import { readEvents, readRecord } from '../../src/core/record/store'
 import { statementsFor } from '../../src/core/statements'
@@ -25,6 +25,8 @@ const ROWS: Row[] = [
   ['question:failed-runs', 'retry', ['question.answered']],
   ['question:failed-runs', 'retry-with-guidance', ['question.answered', 'owner.note']],
   ['question:failed-runs', 'discard', ['question.answered', 'ticket.closed']],
+  ['question:parked', 'resume', ['question.answered']],
+  ['question:parked', 'discard', ['question.answered', 'ticket.closed']],
   ['question:reporter-silent', 'close', ['question.answered', 'intake.closed']],
   ['question:reporter-silent', 'ask-again', ['question.answered']],
   ['question:reporter-silent', 'accept', ['question.answered', 'intake.accepted']],
@@ -34,11 +36,16 @@ const ROWS: Row[] = [
   ['question:verify-rounds', 'one-more-round', ['question.answered']],
   ['question:verify-rounds', 'accept-as-is', ['question.answered', 'verify.overridden']],
   ['question:verify-rounds', 'discard', ['question.answered', 'ticket.closed']],
+  ['question:already-done', 'close-as-done', ['question.answered', 'ticket.done-elsewhere']],
+  ['question:already-done', 're-run-build', ['question.answered']],
   ['question:deploy-stalled', 'check-again', ['question.answered']],
   ['question:deploy-stalled', 'continue', ['question.answered', 'ship.deployed']],
   ['question:production', 'approve', ['question.answered', 'production.approved']],
   ['question:production', 'hold', ['question.answered', 'production.held']],
   ['production-held', 'approve-production', ['production.approved']],
+  ['question:agent', 'back-to-brief', ['question.answered', 'brief.changes-requested']],
+  ['question:agent', 'own-answer', ['question.answered', 'owner.note']],
+  ['working', 'back-to-brief', ['brief.changes-requested']],
 ]
 
 describe('the decision table', () => {
@@ -48,13 +55,14 @@ describe('the decision table', () => {
   })
 
   it.each(ROWS)('%s %s appends the specified events', (ask, choice, types) => {
-    const events = DECISIONS[ask]?.[choice]?.events({ note: 'because', patchId: 'p1', headSha: 'h1' }) ?? []
+    const input = { note: 'because', patchId: 'p1', headSha: 'h1', question: 'Q' }
+    const events = DECISIONS[ask]?.[choice]?.events(input) ?? []
     expect(events.map((e) => e.type)).toEqual(types)
   })
 
   it('carries the note and the latest patch where the specification says so', () => {
-    const note = (ask: string, choice: string) =>
-      DECISIONS[ask]?.[choice]?.events({ note: 'because', patchId: 'p9', headSha: 'h9' }).map((e) => e.data)
+    const input = { note: 'because', patchId: 'p9', headSha: 'h9', question: 'Q' }
+    const note = (ask: string, choice: string) => DECISIONS[ask]?.[choice]?.events(input).map((e) => e.data)
     expect(note('brief', 'request-changes')).toEqual([{ note: 'because' }])
     expect(note('result', 'send-back')).toEqual([{ note: 'because' }])
     expect(note('question:failed-runs', 'retry-with-guidance')?.[1]).toEqual({ note: 'because' })

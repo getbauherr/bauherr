@@ -3,7 +3,7 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { AdvanceDeps } from './engine'
 import type { Deferred } from './events'
-import { fold } from './fold'
+import { fold, type State } from './fold'
 import { ProductObserving, TargetNotFound, WrongItemKind } from './forge/errors'
 import { renderStatus } from './forge/status'
 import type { ForgeWriter, Target } from './forge/writer'
@@ -13,11 +13,17 @@ import { appendEvent, readEvents, readRecord, type StoredRecord } from './record
 
 export type ForgePort = Pick<
   ForgeWriter,
-  'setStageLabel' | 'upsertStatusComment' | 'postQuestion' | 'closeIssue' | 'reviewPullRequest'
+  'setStageLabel' | 'upsertStatusComment' | 'postQuestion' | 'closeIssue' | 'reopenIssue' | 'reviewPullRequest'
 >
 
 const REFUSALS = [ProductObserving, TargetNotFound, WrongItemKind]
-const KINDS = { question: 'question', close: 'close', status: 'status-comment', review: 'review' } as const
+const KINDS = {
+  question: 'question',
+  close: 'close',
+  reopen: 'reopen',
+  status: 'status-comment',
+  review: 'review',
+} as const
 
 const idRow = z.object({ id: z.coerce.number() })
 
@@ -39,6 +45,9 @@ const itemOf = (payload: Payload, stored: StoredRecord, effect: Effect): Promise
     ? mirrorItem(payload, stored, 'pr', effect.pr)
     : mirrorItem(payload, stored, 'issue', stored.record.source.number)
 
+const waitingOnConflict = (state: State): string | null =>
+  state.adopted && state.conflict !== null && state.conflict.patchId === state.patch?.id ? state.conflict.base : null
+
 const statusOf = async (deps: AdvanceDeps, stored: StoredRecord, target: Target, writer: ForgePort) => {
   const events = await readEvents(deps.payload, stored.id)
   const state = fold(events, foldOptions(await deps.configFor(stored.id)))
@@ -48,6 +57,7 @@ const statusOf = async (deps: AdvanceDeps, stored: StoredRecord, target: Target,
     stage: state.stage,
     pr: state.patch?.pr ?? null,
     changedAt: changed?.createdAt ?? null,
+    conflict: waitingOnConflict(state),
   })
   await writer.setStageLabel(target, state.stage)
   await writer.upsertStatusComment(target, body)
@@ -59,6 +69,8 @@ const perform = async (deps: AdvanceDeps, stored: StoredRecord, target: Target, 
       return writer.postQuestion(target, effect.body)
     case 'close':
       return writer.closeIssue(target, effect.reason)
+    case 'reopen':
+      return writer.reopenIssue(target)
     case 'status':
       return statusOf(deps, stored, target, writer)
     case 'review':
@@ -75,6 +87,7 @@ const deferral = (effect: Effect, target: Deferred['target']): Deferred | null =
     case 'review':
       return { kind: 'review', target: { ...target, number: effect.pr }, body: effect.body }
     case 'status':
+    case 'reopen':
       return null
   }
 }

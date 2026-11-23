@@ -6,9 +6,9 @@ The Bauherr UI is served at `/`. Everything an Admin configures is a page here, 
 
 Every signed-in page has the same frame.
 
-- **Sidebar**: Inbox, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
-- **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page, finds Tickets by number or title and runs actions such as Toggle theme.
-- **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause.
+- **Sidebar**: Inbox, Memory, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
+- **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page and finds Tickets.
+- **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause, only while runs wait: "No builder session is connected: 2 runs wait (Build 2)" with a Connect a session link; "The Runner has not picked up a run for 10 minutes" when a Runner Product's run waits that long.
 - **Ask button**: opens the [chat](#chat) dock on `Ctrl/Cmd+J`.
 - **Workspace switcher**: appears with two or more Workspaces.
 
@@ -29,7 +29,7 @@ Only acceptance on staging closes a Ticket.
 
 | Path | What you do |
 |---|---|
-| `/inbox` | Decide what waits for you, in four groups with Waiting on you first. Keys: `j`/`ArrowDown` and `k`/`ArrowUp` move the focus, `o` or `Enter` opens the row, `Esc` clears the focus, `?` lists the keys. The list refreshes every 5 seconds and keeps the focused Ticket. |
+| `/inbox` | Decide what waits for you, Waiting on you first. `j`/`k` or the arrow keys move the focus, `o` or `Enter` opens, `Esc` clears, `?` lists the keys. Refreshes every 5 s and keeps the focus. |
 | `/` | See the workflow as a graph and the open Tickets by stage. Tabs Workflow, Graph and Epics. |
 | `/workflow/<stage>` | See the Jobs of one stage and the Tickets in each. |
 | `/requests` | Follow your requests in four sections, starting with Needs you. |
@@ -45,22 +45,30 @@ Only acceptance on staging closes a Ticket.
 
 The `/` page shows the workflow of your factory file. Tickets are listed by stage, with "Needs you" first. The Graph tab orders Tickets by blockers. A Ticket with sub-tickets is an epic and shows its progress on the Epics tab.
 
-Every Ticket has one status. The labels are Done, Split, In progress, Queued, Waiting for you, Waiting for CI, Blocked and Failed. The first matching label wins, and the list, the graph, the chat and the Ticket page show it the same way.
+Every Ticket has one status. The labels are Done, Split, In progress, Queued, Waiting for you, Waiting for CI, Blocked and Failed. The first matching label wins, and every page shows it the same way.
+
+## Someday
+
+Label an issue `bauherr:someday` to park an idea: no Intake Run, no Inbox item. It is excluded by default (Product settings, Intake). The Factory view shows `Someday: N`, linked to those issues.
 
 ## Ticket page
 
 The page has two halves. On the left is the conversation with the factory, which ends in a comment box. On the right is the Now pane with four tabs: Now, Plan, Proof and History.
 
-The action bar at the top of the Now pane holds the single next step. It shows one sentence and one primary button. The button names the step, for example Approve plan, Accept on staging or Re-run Build.
+The action bar atop the Now pane holds the next step: one sentence and one primary button naming it, such as Approve plan or Re-run Build.
 
 - **Approve plan** is refused while critical decisions are unanswered.
-- **Send back** asks for a note and returns the Ticket to Build or the Backlog.
+- **Send back** asks for a note and returns the Ticket to Build or the Backlog. Every comment has an Applies to choice: This ticket (the default), This product or Do not remember. The Ticket page lists each used memory with its scope.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
 - **Round cap**: when review reaches its cap you grant one more round or stop.
+- **Close as done**: when Build reports another pull request or Ticket covers the work, the card asks "Close #n as done by #m?". Close comments with the evidence and moves the Ticket to done; Re-run build queues Build again.
+
+- **Archive** (before Ship, after a dialog): releases the Run, hides the Ticket, closes the issue as not planned.
+- **Restore** reopens the issue and reruns the stage; so does reopening it on the forge.
 
 ### Decision card
 
-Every human checkpoint uses one card. It has the ask in one sentence, a recommendation, at most three reasons, the options and a collapsed details section. The Inbox and the Ticket page show the same card. Each option is an existing action, and a decided card does not come back.
+Every human checkpoint uses one card. It has the ask in one sentence, a recommendation, at most three reasons, the options and a collapsed details section. The Inbox and the Ticket page show the same card. A decided card does not come back.
 
 ## Request conversation
 
@@ -72,13 +80,17 @@ Every human checkpoint uses one card. It has the ask in one sentence, a recommen
 - Several problems in one message become several Tickets.
 - File request is enabled when the card is complete or the question limit is reached.
 
-After filing, the conversation is read-only history. Details of the conversation engine are in chat.
+After filing, the conversation is read-only history.
+
+## Parked Tickets
+
+A Run missing a prerequisite only the owner can supply releases with that need. The Inbox and Ticket page show `Parked: <need>` with the stage. Resume queues the stage again; Discard closes the Ticket. Not Stuck, no Re-run.
 
 ## Run page
 
-`/runs/<id>` shows one attempt of a stage. The header gives a status such as Working, Stuck or Session gone. The page shows the timeline of Steps, the proof, the links to the merge request and the times.
+`/runs/<id>` shows one attempt of a stage. The header gives a status such as Working, Stuck or Session gone. It shows the Steps, the proof, the merge request links and the times.
 
-A Run offers at most one primary action. It is Connect an agent, Re-run the stage or Open ticket. An Admin can release the lock on a stuck Run.
+A Run offers one primary action: Connect an agent, Re-run the stage or Open ticket. An Admin can release the lock on a stuck Run.
 
 ## Agent team
 
@@ -99,13 +111,17 @@ One assistant is docked on every page. It answers questions about the factory an
 - Rate answers with thumbs. Admins read the ratings at `/settings/chat-feedback`.
 - Slash commands: `/context`, `/new`, `/request`, `/help`. On a Ticket thread, `/comment <text>` posts to the issue.
 
-More in chat.
-
 ## Settings
 
 Settings are grouped by scope. Account is for everyone, with Profile and API keys. Factory has Workflow, Templates, Models and budget, and AI usage. Workspace has General, Products, Connections, People and Knowledge. Admin has Audit and Health.
 
+API keys lists each session with its live Runs and slots, for example "2 of 3 working": a session connected with a capacity of 1 to 4 holds that many Runs at once, one subagent each.
+
 Only an Admin edits, except Profile and API keys. Members read the rest. The sidebar's Settings item opens Profile, and the command palette lists every page you may open.
+
+## Memory
+
+`/memory` lists one Product's memory and marks what Learn wrote as New. A memory page edits, switches off or deletes it. The run page lists the memory a run got.
 
 ## Not in the UI, by design
 

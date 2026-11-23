@@ -88,6 +88,12 @@ export const saveClosed = async (
     WHERE "id" = ${itemId}`)
 }
 
+export const saveReopened = async (payload: Payload, itemId: number): Promise<void> => {
+  await payload.db.drizzle.execute(sql`
+    UPDATE "mirror_items" SET "state" = 'open', "forge_closed_at" = NULL, "updated_at" = now()
+    WHERE "id" = ${itemId}`)
+}
+
 export const saveStatusComment = async (
   payload: Payload,
   recordId: number,

@@ -1,7 +1,7 @@
 import { cloneRepo } from '@bauherr/runner'
 import { fold } from '../../core/fold'
 import { foldOptions } from '../../core/lifecycle'
-import { ModuleMissing } from '../../core/run/errors'
+import { LeaseLost, ModuleMissing } from '../../core/run/errors'
 import { heartbeat, type Claimed } from '../../core/run/leases'
 import { contextPack, type ContextPack } from '../../core/run/pack'
 import { addCost, readRun } from '../../core/run/store'
@@ -12,7 +12,7 @@ import { keepAlive } from './heartbeat'
 import type { AgentOutcome, Ended, RunnerDeps } from './types'
 import { FIX_PROMPT, PROMPT, readResult, writeContext, writeProblems } from './workdir'
 
-const READ_ONLY = new Set(['intake', 'brief'])
+const READ_ONLY = new Set(['intake', 'brief', 'done'])
 
 type Working = { claimed: Claimed; deps: RunnerDeps; checkout: Checkout; workspace: number; model: string }
 
@@ -106,6 +106,7 @@ export const workRun = async (claimed: Claimed, deps: RunnerDeps): Promise<Ended
       await releaseRun(claimed.run.id, claimed.token, deps.engine())
       return 'released'
     }
+    if (error instanceof LeaseLost) return 'expired'
     const current = await readRun(deps.engine().payload, claimed.run.id)
     if (current.status !== 'claimed') throw error
     return fail(claimed, deps, messageOf(error))

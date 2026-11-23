@@ -1,5 +1,5 @@
 name: cut-rc
-# Tags the next release candidate on main HEAD and starts release.yml for it (image :X.Y.Z-rc.N, npm tag next), then keeps the draft GitHub Release of X.Y.Z up to date.
+# Runs the Intake eval first; a failing eval stops the cut before any tag exists. Then tags the next release candidate on main HEAD and starts release.yml for it (image :X.Y.Z-rc.N, npm tag next), then keeps the draft GitHub Release of X.Y.Z up to date.
 on:
   workflow_dispatch:
     inputs:
@@ -14,7 +14,23 @@ concurrency:
   group: release-cut
   cancel-in-progress: false
 jobs:
+  eval-intake:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      BAUHERR_EVAL_GATEWAY_URL: ${{ secrets.BAUHERR_EVAL_GATEWAY_URL }}
+      BAUHERR_EVAL_GATEWAY_KEY: ${{ secrets.BAUHERR_EVAL_GATEWAY_KEY }}
+      BAUHERR_EVAL_MODEL: ${{ vars.BAUHERR_EVAL_MODEL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: corepack enable
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: 24, cache: pnpm}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:packages
+      - run: pnpm --filter server eval:intake
   cut:
+    needs: eval-intake
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

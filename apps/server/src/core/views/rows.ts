@@ -37,7 +37,7 @@ const rowSchema = z.object({
   adopted_by: z.string().nullable(),
 })
 
-export type ClosedAs = 'not-a-bug' | 'duplicate' | 'not-planned' | 'discarded' | 'closed-on-forge'
+export type ClosedAs = 'not-a-bug' | 'duplicate' | 'not-planned' | 'discarded' | 'closed-on-forge' | 'archived'
 
 export type TicketRow = {
   recordId: number
@@ -62,9 +62,9 @@ export type TicketRow = {
   run: { role: 'builder' | 'reviewer' | 'verifier'; leasedBy: string | null; step: string | null } | null
 }
 
-const ACCEPTED = ['result.accepted', 'production.approved']
+const ACCEPTED = ['result.accepted', 'production.approved', 'ticket.done-elsewhere']
 
-const CLOSED_AS: ClosedAs[] = ['not-a-bug', 'duplicate', 'not-planned', 'discarded', 'closed-on-forge']
+const CLOSED_AS: ClosedAs[] = ['not-a-bug', 'duplicate', 'not-planned', 'discarded', 'closed-on-forge', 'archived']
 
 export const closedAsOf = (type: string | null, reason: string | null): ClosedAs | null => {
   if (type === 'brief.discarded') return 'discarded'
@@ -80,12 +80,13 @@ const adoptedOf = (r: z.infer<typeof rowSchema>): TicketRow['adopted'] =>
 const toRow = (raw: unknown): TicketRow => {
   const r = rowSchema.parse(raw)
   const ended = endedOf(r.terminal_type)
+  const live = r.waiting_on !== 'nobody' || r.parked !== null
   return {
     recordId: r.id,
     product: { id: r.product_id, name: r.product_name },
     repo: r.source_repo,
     number: r.source_number,
-    stage: r.waiting_on === 'nobody' && r.parked === null ? 'done' : r.stage,
+    stage: live ? r.stage : 'done',
     waitingOn: r.waiting_on,
     rank: r.rank,
     card: r.card,
@@ -95,9 +96,9 @@ const toRow = (raw: unknown): TicketRow => {
     verifyRounds: r.verify_rounds,
     reporterRound: r.reporter_round,
     questionDrafted: r.question_drafted,
-    ended: r.waiting_on === 'nobody' && r.parked === null ? (ended ?? 'closed') : null,
+    ended: live ? null : (ended ?? 'closed'),
     endedAt: r.terminal_at,
-    closedAs: ended === 'closed' ? closedAsOf(r.terminal_type, r.terminal_reason) : null,
+    closedAs: !live && ended === 'closed' ? closedAsOf(r.terminal_type, r.terminal_reason) : null,
     criteria: { met: r.criteria_met, total: r.criteria_total },
     adopted: adoptedOf(r),
     run: r.role === null ? null : { role: r.role, leasedBy: r.leased_by, step: r.step },
@@ -136,7 +137,8 @@ export const loadRows = async (payload: Payload, filter: RowFilter): Promise<Tic
       FROM "events" e LEFT JOIN ${ENTRY_TABLE} ON m."type" = e."type" WHERE e."record_id" = r."id"
     ) ev ON true
     WHERE ${scope(filter.workspace, filter.product)}
-      AND (${LIVE_SQL} OR r."updated_at" >= ${ago(filter.now, 7)}::timestamptz)
+      AND (${LIVE_SQL} OR (r."updated_at" >= ${ago(filter.now, 7)}::timestamptz
+        AND ev."terminal_reason" IS DISTINCT FROM 'archived'))
     ORDER BY r."rank", ev."entered_at", r."id"`)
   return result.rows.map(toRow)
 }

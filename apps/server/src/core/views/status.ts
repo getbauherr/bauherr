@@ -21,6 +21,7 @@ export const STATUSES = [
   'triaging',
   'drafting-brief',
   'building',
+  'reviewing',
   'verifying',
   'queued',
   'waiting-for-checks',
@@ -35,6 +36,7 @@ export const STATUSES = [
   'verify-rounds',
   'reporter-silent',
   'parked',
+  'parked-on-need',
   'accepted',
   'closed',
 ] as const
@@ -47,6 +49,7 @@ export type StatusInput = {
   card: StoredCard | null
   parked: string | null
   hasRun: boolean
+  reviewer: boolean
   claimed: boolean
   questionDrafted: boolean
   ended: 'accepted' | 'closed' | null
@@ -72,10 +75,12 @@ type Rule = (input: StatusInput) => TicketStatus | null
 const RULES: Rule[] = [
   (i) => i.ended,
   (i) => (i.parked === null ? null : 'parked'),
+  (i) => (i.card?.card === 'question' && i.card.reason === 'parked' ? 'parked-on-need' : null),
   (i) => STUCK_REASONS.find((reason) => isStuck(i.card) && i.card?.reason === reason) ?? null,
   (i) => (i.card === null ? null : OPEN_CARD[i.card.card]),
   (i) => (i.waitingOn === 'reporter' ? (i.questionDrafted ? 'question-drafted' : 'reporter-asked') : null),
   (i) => (i.waitingOn === 'author' ? 'waiting-on-author' : null),
+  (i) => (i.stage === 'verify' && i.reviewer ? 'reviewing' : null),
   (i) => (i.hasRun && !i.claimed ? 'queued' : null),
   (i) => (i.stage === 'verify' && !i.hasRun ? 'waiting-for-checks' : null),
   (i) => (i.stage === 'ship' && !i.hasRun ? 'waiting-for-deploy' : null),

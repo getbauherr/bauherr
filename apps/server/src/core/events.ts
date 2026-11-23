@@ -8,6 +8,7 @@ export type Stage = z.infer<typeof stageSchema>
 export type Actor = (typeof ACTORS)[number]
 
 const id = z.string().trim().min(1)
+const count = z.number().int().min(0)
 const none = z.object({})
 const run = { stage: stageSchema, runId: id }
 
@@ -22,6 +23,7 @@ export const WRITE_KINDS = [
   'close',
   'pull-request',
   'review',
+  'reopen',
 ] as const
 const target = z.object({ repo: id, number: z.number().int().positive() })
 const write = { kind: z.enum(WRITE_KINDS), target }
@@ -44,13 +46,18 @@ const eventSchema = z.discriminatedUnion('type', [
   event('run.started', z.object({ ...run, fingerprint: id })),
   event('run.failed', z.object({ ...run, reason: id })),
   event('run.released', z.object(run)),
+  event('run.expired', z.object({ ...run, reason: id })),
   event('brief.submitted', z.object({ runId: id })),
   event('brief.approved', z.object({ by: z.enum(['owner', 'rule']) })),
   event('brief.changes-requested', z.object({ note: id })),
   event('brief.discarded', none),
   event('build.submitted', z.object({ runId: id, patchId: id, headSha: id, pr: z.number().int().positive() })),
+  event('build.already-done', z.object({ runId: id, by: id, evidence: id })),
+  event('ticket.done-elsewhere', none),
   event('pull.adopted', z.object({ pr: z.number().int().positive(), headSha: id, patchId: id })),
+  event('pull.conflicted', z.object({ patchId: id, base: id })),
   event('checks.finished', z.object({ patchId: id, passed: z.boolean() })),
+  event('review.submitted', z.object({ runId: id, patchId: id, headSha: id, findings: z.number().int().min(0) })),
   event('verify.passed', z.object({ runId: id, patchId: id, headSha: id })),
   event('verify.changes', z.object({ runId: id, patchId: id })),
   event('ship.merged', z.object({ sha: id })),
@@ -58,10 +65,13 @@ const eventSchema = z.discriminatedUnion('type', [
   event('ship.deploy-stalled', z.object({ reason: z.enum(['failed', 'overdue']), checks: z.array(id) })),
   event('result.accepted', none),
   event('result.sent-back', z.object({ note: id })),
+  event('learn.submitted', z.object({ runId: id, memories: count, cameBack: count })),
+  event('learn.skipped', z.object({ reason: id })),
   event('production.approved', none),
   event('production.held', none),
   event('owner.note', z.object({ note: id })),
-  event('ticket.closed', z.object({ reason: z.enum(['discarded', 'closed-on-forge']) })),
+  event('ticket.closed', z.object({ reason: z.enum(['discarded', 'closed-on-forge', 'archived']) })),
+  event('ticket.restored', none),
   event('verify.overridden', z.object({ patchId: id, headSha: id })),
   event(
     'question.asked',

@@ -44,6 +44,8 @@ const WAITING: Record<Extract<Step, { kind: 'wait' }>['on'], WaitingOn> = {
   author: 'author',
 }
 
+const holding = (ctx: Ctx, on: WaitingOn): WaitingOn => (ctx.state.stage === 'done' ? 'nobody' : on)
+
 const HELD: Raised = { card: 'question', reason: 'production-held', options: ['approve-production'] }
 
 const append = (ctx: Ctx, event: AppEvent) =>
@@ -58,7 +60,7 @@ const raised = (ctx: Ctx, card: Raised | null, seq: number): StoredCard | null =
 
 const project = async (ctx: Ctx, waitingOn: WaitingOn, card: Raised | null, stage: Stage = ctx.state.stage) => {
   await setProjection(ctx.deps.payload, ctx.stored.id, { stage, waitingOn })
-  if (stage !== ctx.stored.stage && ctx.state.brief === 'approved') {
+  if (stage !== ctx.stored.stage && (ctx.state.brief === 'approved' || ctx.state.returned)) {
     await runEffects(ctx.deps, ctx.stored.id, [{ kind: 'status' }])
   }
   await setCard(ctx.deps.payload, ctx.stored.id, raised(ctx, card, ctx.seq))
@@ -78,7 +80,7 @@ const runStep = async (step: Extract<Step, { kind: 'run' }>, ctx: Ctx): Promise<
   if (created) {
     await append(ctx, { type: 'run.started', data: { stage: step.stage, runId: String(run.id), fingerprint: print } })
   }
-  await project(ctx, 'agents', null, step.stage)
+  await project(ctx, holding(ctx, 'agents'), null, step.stage)
   return 'stop'
 }
 
@@ -107,7 +109,7 @@ const attemptMerge = async (ctx: Ctx): Promise<AppEvent> => {
 
 const waitStep = async (step: Extract<Step, { kind: 'wait' }>, ctx: Ctx): Promise<Outcome> => {
   const owner = step.on === 'owner'
-  await project(ctx, WAITING[step.on], owner ? (ctx.state.card ?? HELD) : null)
+  await project(ctx, holding(ctx, WAITING[step.on]), owner ? (ctx.state.card ?? HELD) : null)
   return 'stop'
 }
 

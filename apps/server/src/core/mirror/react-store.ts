@@ -16,6 +16,8 @@ const itemRow = z.object({
   state: z.enum(['open', 'closed', 'merged']),
   head_sha: z.string().nullable(),
   merge_sha: z.string().nullable(),
+  base_ref: z.string().nullable(),
+  conflict_sha: z.string().nullable(),
 })
 
 const commentRow = z.object({ author: z.string().nullable(), body: z.string().nullable(), at: z.coerce.date() })
@@ -31,11 +33,13 @@ type Found = { id: number; item: ReactItem }
 
 const findItem = async (conn: Conn, workspace: number, repo: string, number: number): Promise<Found | null> => {
   const result = await conn.db.drizzle.execute(sql`
-    SELECT "id", "state", "head_sha", "merge_sha" FROM "mirror_items"
+    SELECT "id", "state", "head_sha", "merge_sha", "base_ref", "conflict_sha" FROM "mirror_items"
     WHERE "workspace_id" = ${workspace} AND "repo" = ${repo} AND "number" = ${number} AND "gone_at" IS NULL`)
   const row = result.rows[0] ? itemRow.parse(result.rows[0]) : null
   if (!row) return null
-  return { id: row.id, item: { state: row.state, headSha: row.head_sha, mergeSha: row.merge_sha } }
+  const conflicts = row.conflict_sha !== null && row.conflict_sha === row.head_sha
+  const item = { state: row.state, headSha: row.head_sha, mergeSha: row.merge_sha, baseRef: row.base_ref, conflicts }
+  return { id: row.id, item }
 }
 
 const readComments = async (conn: Conn, item: number): Promise<ReactComment[]> => {
@@ -93,6 +97,13 @@ const loadDeployWait = async (
   return { names: config.deployNames, since, limitMinutes: config.deployWaitMinutes, now, checks }
 }
 
+const closeWritten = (events: StoredEvent[]): boolean => {
+  const archived = events.findLastIndex((event) => event.type === 'ticket.closed')
+  return events
+    .slice(archived + 1)
+    .some((event) => event.type === 'forge.write.done' && event.data.kind === 'close')
+}
+
 export const loadReactInput = async (
   conn: Conn,
   stored: StoredRecord,
@@ -114,6 +125,7 @@ export const loadReactInput = async (
     comments: await readComments(conn, issue.id),
     checks: pr && state.patch ? await readChecks(conn, pr.id, state.patch.headSha) : [],
     deploy: await loadDeployWait(conn, stored, state, events, config, now),
+    closeWritten: closeWritten(events),
   }
 }
 
@@ -131,7 +143,9 @@ export const recordsOfItems = async (conn: Conn, items: number[]): Promise<numbe
 
 export const openRecords = async (conn: Conn): Promise<number[]> => {
   const result = await conn.db.drizzle.execute(sql`
-    SELECT "id" FROM "records" WHERE "stage" <> 'done' AND ("waiting_on" <> 'nobody' OR "parked" IS NOT NULL)
+    SELECT "id" FROM "records" WHERE "stage" <> 'done' AND ("waiting_on" <> 'nobody' OR "parked" IS NOT NULL
+      OR (SELECT e."data"->>'reason' FROM "events" e WHERE e."record_id" = "records"."id"
+        AND e."type" IN ('ticket.closed', 'ticket.restored') ORDER BY e."id" DESC LIMIT 1) = 'archived')
     ORDER BY "id"`)
   return result.rows.map((row) => idRow.parse(row).id)
 }

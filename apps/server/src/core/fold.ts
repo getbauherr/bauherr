@@ -1,4 +1,6 @@
+import { conflictNote } from './conflict-note'
 import type { AppEvent, EventOf, EventType, Stage } from './events'
+import { withLearning } from './fold-learn'
 
 export type Card = { card: 'question'; reason: string; options: string[]; text?: string }
 export type Verdict = { patchId: string; headSha: string }
@@ -14,9 +16,13 @@ export type State = {
   extraRounds: number
   failedRuns: number
   brief: 'none' | 'submitted' | 'approved'
+  returned: boolean
   adopted: boolean
   waitingAuthor: boolean
   patch: { id: string; pr: number; headSha: string } | null
+  reviewed: string | null
+  conflict: { patchId: string; base: string } | null
+  alreadyDone: { by: string; evidence: string } | null
   checks: 'none' | 'pending' | 'passed' | 'failed'
   verdict: Verdict | null
   overridden: boolean
@@ -25,6 +31,7 @@ export type State = {
   deployed: boolean
   deployStalled: { reason: 'failed' | 'overdue'; checks: string[] } | null
   accepted: boolean
+  learn: { corrected: boolean; learned: boolean }
   productionApproved: boolean
   productionHeld: boolean
   note: string | null
@@ -43,9 +50,13 @@ export const initialState = (): State => ({
   extraRounds: 0,
   failedRuns: 0,
   brief: 'none',
+  returned: false,
   adopted: false,
   waitingAuthor: false,
   patch: null,
+  reviewed: null,
+  conflict: null,
+  alreadyDone: null,
   checks: 'none',
   verdict: null,
   overridden: false,
@@ -54,6 +65,7 @@ export const initialState = (): State => ({
   deployed: false,
   deployStalled: null,
   accepted: false,
+  learn: { corrected: false, learned: false },
   productionApproved: false,
   productionHeld: false,
   note: null,
@@ -98,6 +110,7 @@ const runs: Reducer = (state, event) => {
     case 'run.started':
       return { ...state, run: event.data, note: null }
     case 'run.failed':
+    case 'run.expired':
       return { ...endRun(state, event.data.runId), failedRuns: state.failedRuns + 1 }
     case 'run.released':
       return endRun(state, event.data.runId)
@@ -112,19 +125,34 @@ const owner: Reducer = (state, event) => {
       return { ...state, note: event.data.note }
     case 'ticket.closed':
       return { ...state, closed: event.data.reason }
+    case 'ticket.restored':
+      return state.closed === 'archived' ? { ...state, closed: null, card: null, run: null, failedRuns: 0 } : state
+    case 'ticket.done-elsewhere':
+      return enter(state, 'done')
     default:
       return null
   }
 }
+
+const backToBrief = (state: State, note: string): State => ({
+  ...enter(state, 'brief'),
+  brief: 'submitted',
+  returned: true,
+  card: null,
+  run: null,
+  verifyRounds: 0,
+  extraRounds: 0,
+  note,
+})
 
 const brief: Reducer = (state, event) => {
   switch (event.type) {
     case 'brief.submitted':
       return { ...submitted(state, event.data.runId), brief: 'submitted' }
     case 'brief.approved':
-      return { ...enter(state, state.adopted ? 'verify' : 'build'), brief: 'approved' }
+      return { ...enter(state, state.adopted ? 'verify' : 'build'), brief: 'approved', returned: false }
     case 'brief.changes-requested':
-      return { ...state, note: event.data.note }
+      return state.brief === 'approved' ? backToBrief(state, event.data.note) : { ...state, note: event.data.note }
     case 'brief.discarded':
       return { ...state, closed: 'discarded' }
     default:
@@ -139,12 +167,21 @@ const adopt = (state: State, data: EventOf<'pull.adopted'>['data'], options: Fol
     adopted: true,
     waitingAuthor: false,
     patch: { id: data.patchId, pr: data.pr, headSha: data.headSha },
+    reviewed: null,
+    conflict: null,
     checks: options.requiredChecks === false ? 'none' : 'pending',
     verdict: null,
     accepted: false,
     overridden: false,
     productionHeld: false,
   }
+}
+
+const conflicted = (state: State, data: EventOf<'pull.conflicted'>['data']): State => {
+  if (state.patch?.id !== data.patchId) return state
+  const stale = { ...state, conflict: data, reviewed: null, verdict: null, accepted: false }
+  if (state.adopted) return { ...enter(stale, 'verify'), waitingAuthor: true }
+  return { ...enter(stale, 'build'), note: conflictNote(data.base) }
 }
 
 const patch: Reducer = (state, event, options) => {
@@ -162,10 +199,16 @@ const patch: Reducer = (state, event, options) => {
       }
       const latest = { id: event.data.patchId, pr: event.data.pr, headSha: event.data.headSha }
       const checks = options.requiredChecks === false ? 'none' : 'pending'
-      return { ...enter(fresh, 'verify'), patch: latest, checks, verdict: null }
+      return { ...enter(fresh, 'verify'), patch: latest, reviewed: null, conflict: null, checks, verdict: null }
+    }
+    case 'build.already-done': {
+      const { by, evidence } = event.data
+      return { ...submitted(state, event.data.runId), alreadyDone: { by, evidence } }
     }
     case 'pull.adopted':
       return adopt(state, event.data, options)
+    case 'pull.conflicted':
+      return conflicted(state, event.data)
     case 'checks.finished':
       if (state.patch?.id !== event.data.patchId) return state
       return { ...state, checks: event.data.passed ? 'passed' : 'failed' }
@@ -178,6 +221,8 @@ const verdictOf = (data: Verdict): Verdict => ({ patchId: data.patchId, headSha:
 
 const verify: Reducer = (state, event) => {
   switch (event.type) {
+    case 'review.submitted':
+      return { ...submitted(state, event.data.runId), reviewed: event.data.patchId }
     case 'verify.passed':
       return {
         ...enter(submitted(state, event.data.runId), 'ship'),
@@ -260,6 +305,7 @@ const questions: Reducer = (state, event) => {
       return {
         ...state,
         card: null,
+        alreadyDone: null,
         deployStalled: null,
         failedRuns: 0,
         extraRounds: state.extraRounds + (event.data.option === 'one-more-round' ? 1 : 0),
@@ -273,11 +319,8 @@ const REDUCERS: Reducer[] = [intake, runs, owner, brief, patch, verify, ship, qu
 
 const reduce = (state: State, event: AppEvent, options: FoldOptions): State => {
   if (event.type.startsWith('forge.write.')) return state
-  for (const reducer of REDUCERS) {
-    const next = reducer(state, event, options)
-    if (next) return { ...next, last: event.type }
-  }
-  return { ...state, last: event.type }
+  const next = REDUCERS.reduce<State | null>((found, reducer) => found ?? reducer(state, event, options), null)
+  return { ...withLearning(next ?? state, event), last: event.type }
 }
 
 export const fold = (events: AppEvent[], options: FoldOptions = { productionGate: false }): State =>

@@ -24,7 +24,7 @@ Tags: [config] = read in the local gateway deployment repo; [docs] = agentgatewa
 
 Local deployment [config]: `agentgateway:v1.5.0`, **no `llm.policies.apiKey`** (README "Known limits" 2: no inbound auth), no budgets, `config.database` = SQLite
 `/data/data.db`, no tracing/OTLP, Prometheus only scrapes the vLLM router, not the gateway. So everything Bauherr needs (consumer keys, budgets, header
-fields) is documented but not deployed here. The production gateway (`ai.einsfuenf.de`, services repo) was not read. The docs page is "latest"; whether
+fields) is documented but not deployed here. The production gateway (`ai.example.com`, services repo) was not read. The docs page is "latest"; whether
 every field exists in v1.5.0 is unknown.
 
 Budget-exhaustion mapping for the runner: 429 with `code: budget_exceeded` must map to Run status `budget_exhausted` (not retried like a rate limit).

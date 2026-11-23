@@ -33,7 +33,7 @@ describe('holds', () => {
 
   it('names an observing Product with the tickets that wait behind it', async () => {
     expect((await find()).filter((h) => h.kind === 'product-observing')).toEqual([
-      { kind: 'product-observing', product: s.e.db.product, name: 'p', waiting: 13 },
+      { kind: 'product-observing', product: s.e.db.product, name: 'p', waiting: 14 },
     ])
     await run(sql`UPDATE "products" SET "state" = 'active'`)
     expect((await find()).filter((h) => h.kind === 'product-observing')).toEqual([])
@@ -53,13 +53,38 @@ describe('holds', () => {
         kind: 'no-agent-connected', role: 'builder', queued: 3,
         byStage: [{ stage: 'brief', queued: 1 }, { stage: 'build', queued: 1 }, { stage: 'intake', queued: 1 }],
       },
+      { kind: 'no-agent-connected', role: 'reviewer', queued: 1, byStage: [{ stage: 'verify', queued: 1 }] },
       { kind: 'no-agent-connected', role: 'verifier', queued: 1, byStage: [{ stage: 'verify', queued: 1 }] },
     ])
     await session('builder', new Date(Date.now() - 11 * MIN))
     await session('verifier', new Date(), true)
-    expect(await queued(new Date())).toHaveLength(2)
+    expect(await queued(new Date())).toHaveLength(3)
     await session('builder', new Date(Date.now() - 5 * MIN))
-    expect((await queued(new Date())).map((h) => h.kind === 'no-agent-connected' && h.role)).toEqual(['verifier'])
+    const silent = (await queued(new Date())).map((h) => h.kind === 'no-agent-connected' && h.role)
+    expect(silent).toEqual(['reviewer', 'verifier'])
+  })
+
+  it('shows no cannot-run line when no run is queued, even with no session connected', async () => {
+    const ws = s.e.db.workspace
+    const shift = (days: number) => run(sql`UPDATE "agent_sessions"
+      SET "last_seen_at" = "last_seen_at" + ${days} * interval '1 day' WHERE "workspace_id" = ${ws}`)
+    await shift(-1)
+    const cleared: number[] = []
+    try {
+      const roles = (await find()).flatMap((h) => (h.kind === 'no-agent-connected' ? [h.role] : []))
+      expect(roles).toEqual(['builder', 'reviewer', 'verifier'])
+      const done = await run(sql`UPDATE "stage_runs" SET "status" = 'done' WHERE "status" = 'queued' RETURNING "id"`)
+      cleared.push(...done.rows.map((row) => Number(row.id)))
+      const kinds = (await find()).map((h) => h.kind)
+      expect(kinds).not.toContain('no-agent-connected')
+      expect(kinds).not.toContain('runner-idle')
+    } finally {
+      if (cleared.length > 0) {
+        const list = sql.join(cleared.map((id) => sql`${id}`), sql`, `)
+        await run(sql`UPDATE "stage_runs" SET "status" = 'queued' WHERE "id" IN (${list})`)
+      }
+      await shift(1)
+    }
   })
 
   it('asks for a session only for session Products; a Runner Product holds when its run waits', async () => {
@@ -68,7 +93,7 @@ describe('holds', () => {
     expect(await kinds()).not.toContain('no-agent-connected')
     expect(await kinds()).not.toContain('runner-idle')
     await run(sql`UPDATE "stage_runs" SET "created_at" = now() - interval '11 minutes' WHERE "status" = 'queued'`)
-    expect((await find()).filter((h) => h.kind === 'runner-idle')).toEqual([{ kind: 'runner-idle', queued: 4 }])
+    expect((await find()).filter((h) => h.kind === 'runner-idle')).toEqual([{ kind: 'runner-idle', queued: 5 }])
     await run(sql`UPDATE "products" SET "executor" = 'session'`)
     expect(await kinds()).not.toContain('runner-idle')
   })
@@ -106,7 +131,8 @@ describe('ticket', () => {
     expect(t.events.map((e) => e.type)).toContain('build.submitted')
     expect(t.events.find((e) => e.type === 'build.submitted')?.label).toBe('A patch was submitted as pull request #1')
     expect(t.runs.map((r) => [r.stage, r.status])).toEqual([
-      ['intake', 'submitted'], ['brief', 'submitted'], ['build', 'submitted'], ['verify', 'queued'],
+      ['intake', 'submitted'], ['brief', 'submitted'], ['build', 'submitted'], ['verify', 'submitted'],
+      ['verify', 'queued'],
     ])
     expect(t.proofs.map((g) => [g.criterion, g.proofs.map((p) => p.kind)])).toEqual([
       ['c1', ['test', 'screenshot']], ['c2', ['test']],
@@ -210,12 +236,12 @@ describe('firstLook', () => {
   it('counts issues, pull requests and repository facts from the database', async () => {
     expect(await look()).toEqual({
       issues: {
-        open: 19, readyForBrief: 7, needingInformation: 1, closedAsDuplicate: 1, withoutActivityForAYear: 1,
+        open: 20, readyForBrief: 7, needingInformation: 1, closedAsDuplicate: 1, withoutActivityForAYear: 1,
         heldForOutsideAuthor: 1, assignedToPerson: 1,
       },
       pullRequests: { open: 2, closingAnIssue: 1, notClosingAnIssue: 1 },
       repository: {
-        requiredChecks: [], syncCompleted: false, issuesMirrored: 20, pullRequestsMirrored: 4,
+        requiredChecks: [], syncCompleted: false, issuesMirrored: 21, pullRequestsMirrored: 4,
         suggestForgeChecks: false,
         repositories: [{
           repo: 'acme/app', defaultBranch: null, branchProtected: null, requiredChecksOnForge: [],

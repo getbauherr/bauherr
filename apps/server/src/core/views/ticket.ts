@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 import { commitChecksUrl } from '../deploy'
 import { isRemembered } from '../decisions'
-import type { Actor, EventType } from '../events'
+import { canArchive, canGoBack, fold } from '../lifecycle'
 import { RecordNotFound } from '../record/errors'
 import {
   readEvents,
@@ -16,7 +16,9 @@ import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
 import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
-import { labelOf } from './labels'
+import { activityOf, type EventView } from './activity'
+import { loadMockups, type AttachmentView } from './attachments'
+import { keptMemories } from './statement-records'
 import { statementsUsed, type StatementsUsed } from './statements-used'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
 import { TERMINAL_EVENTS } from './sql'
@@ -35,7 +37,7 @@ import {
 
 export const SIMILAR_LIMIT = 3
 
-export type EventView = { id: number; type: EventType; actor: Actor; at: string; label: string }
+export type { EventView }
 
 export type PullView = {
   number: number
@@ -67,6 +69,8 @@ export type TicketView = {
   events: EventView[]
   runs: RunView[]
   proofs: ProofGroup[]
+  mockups: AttachmentView[]
+  noMockup: boolean
   pullRequest: PullView | null
   similarItems: ItemHit[]
   adopted: { pr: number; author: string } | null
@@ -74,6 +78,9 @@ export type TicketView = {
   statementsUsed: StatementsUsed
   deploy: DeployView | null
   answerRemembered: boolean
+  canGoBack: boolean
+  canArchive: boolean
+  archived: boolean
 }
 
 export type TicketFilter = { workspace: number; recordId: number }
@@ -132,7 +139,18 @@ const statusFor = (stored: StoredRecord, runs: RunView[], events: StoredEvent[],
   const { stage, waitingOn, card, parked } = stored
   const claimed = live?.status === 'claimed'
   const questionDrafted = questionPostedAt(events) === null
-  return statusOf({ stage, waitingOn, card, parked, hasRun: live !== undefined, claimed, questionDrafted, ended })
+  const reviewer = live?.role === 'reviewer'
+  const hasRun = live !== undefined
+  return statusOf({ stage, waitingOn, card, parked, hasRun, reviewer, claimed, questionDrafted, ended })
+}
+
+const lacksMockup = (record: TicketRecord, mockups: AttachmentView[]): boolean =>
+  record.visible && mockups.length === 0
+
+const withKept = async (payload: Payload, recordId: number, views: EventView[]): Promise<EventView[]> => {
+  if (!views.some((view) => view.type === 'learn.submitted')) return views
+  const memories = await keptMemories(payload, recordId)
+  return views.map((view) => (view.type === 'learn.submitted' ? { ...view, memories } : view))
 }
 
 export const ticket = async (payload: Payload, filter: TicketFilter): Promise<TicketView> => {
@@ -145,7 +163,9 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
   const issue = await loadItem(payload, { workspace: stored.workspace, repo, number })
   const runs = await loadRuns(payload, stored.id)
   const { ended, closedAs } = endOf(stored, events)
+  const folded = fold(events)
   const pulls = await pullsOf(payload, stored, events)
+  const mockups = await loadMockups(payload, stored.id)
   return {
     recordId: stored.id,
     number,
@@ -161,13 +181,18 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     card: stored.card,
     record: stored.record,
     source: issue && { repo, number, title: issue.title, body: issue.body, url: issue.url },
-    events: events.map((e) => ({ id: e.id, type: e.type, actor: e.actor, at: e.createdAt, label: labelOf(e) })),
+    events: await withKept(payload, stored.id, activityOf(events)),
     runs,
     proofs: await loadProofs(payload, stored.id),
+    mockups,
+    noMockup: lacksMockup(stored.record, mockups),
     ...pulls,
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),
     answerRemembered: stored.card?.card === 'question' && isRemembered(stored.card.reason),
+    canGoBack: canGoBack(folded),
+    canArchive: canArchive(folded),
+    archived: folded.closed === 'archived',
     similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT, 'issue') : [],
   }
 }

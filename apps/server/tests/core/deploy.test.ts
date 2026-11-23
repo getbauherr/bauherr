@@ -32,11 +32,12 @@ const input = (deploy: DeployWait | null): ReactInput => ({
   record: briefed(),
   state: fold(merged),
   postedAt: null,
-  issue: { state: 'open', headSha: null, mergeSha: null },
+  issue: { state: 'open', headSha: null, mergeSha: null, baseRef: null, conflicts: false },
   pull: null,
   comments: [],
   checks: [],
   deploy,
+  closeWritten: false,
 })
 
 const deployed: AppEvent = { type: 'ship.deployed', data: {} }
