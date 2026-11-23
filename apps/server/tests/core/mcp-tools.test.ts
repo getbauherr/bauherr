@@ -41,6 +41,16 @@ describe('the tool set', () => {
     await expect(m.call('connect', { role: 'builder', extra: 1 }, m.agent(m.alpha))).rejects.toThrow(z.ZodError)
     await expect(m.call('nope', {}, m.agent(m.alpha))).rejects.toThrow(UnknownTool)
   })
+
+  it('tells agents before the call that attach_proof takes body or url, not both', () => {
+    const tool = TOOLS.find((t) => t.name === 'attach_proof')
+    const schema = z.object({ properties: z.record(z.string(), z.object({ description: z.string().optional() })) })
+    const fields = schema.parse(z.toJSONSchema(tool?.input ?? z.object({}), { io: 'input' })).properties
+    for (const text of [tool?.description, fields.body?.description, fields.url?.description]) {
+      expect(text).toContain('not both')
+      expect(text).toContain('a link with an explanation goes into body')
+    }
+  })
 })
 
 describe('keys', () => {

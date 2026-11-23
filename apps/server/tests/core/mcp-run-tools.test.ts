@@ -158,6 +158,8 @@ describe('attach_proof', () => {
         m.call('attach_proof', { ...ids, criterion: 'c1', kind: 'output', sha: 'abc', ...extra }, m.agent(m.alpha)),
       ).rejects.toThrow(z.ZodError)
     }
+    const both = { ...ids, criterion: 'c1', kind: 'output', sha: 'abc', body: 'x', url: 'https://a.example' }
+    await expect(m.call('attach_proof', both, m.agent(m.alpha))).rejects.toThrow(/give exactly one of body, url/)
     expect(await rows(sql`SELECT 1 FROM "proofs" WHERE "record_id" = ${run.record}`)).toHaveLength(2)
     await m.e.drain()
   })

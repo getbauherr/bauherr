@@ -10,6 +10,7 @@ import { defineTool, type AgentContext, leaseToken, ownRun, runId } from './tool
 
 export const PROOF_KINDS = ['screenshot', 'recording', 'output', 'link', 'mockup'] as const
 export const BODY_MAX = 20_000
+export const ONE_FORM = 'give either body, url or upload, not both; a link with an explanation goes into body'
 
 const upload = z.strictObject({
   contentType: z.enum(IMAGE_TYPES),
@@ -23,8 +24,8 @@ const input = z
     criterion: z.string().trim().min(1).optional(),
     kind: z.enum(PROOF_KINDS),
     sha: z.string().trim().min(1).max(100).optional(),
-    body: z.string().min(1).max(BODY_MAX).optional(),
-    url: z.url().max(2000).optional(),
+    body: z.string().min(1).max(BODY_MAX).optional().describe(`Proof text: ${ONE_FORM}.`),
+    url: z.url().max(2000).optional().describe(`A bare link: ${ONE_FORM}.`),
     upload: upload.optional(),
   })
   .superRefine((value, ctx) => {
@@ -88,7 +89,7 @@ const storeProof = async (value: Input, context: AgentContext, run: Run, stored:
 export const attachProof = defineTool({
   name: 'attach_proof',
   description:
-    'Stores a proof for one criterion of the record of your run, as text or a URL, and returns the proof id. ' +
+    `Stores a proof for one criterion of the record of your run and returns the proof id: ${ONE_FORM}. ` +
     'With upload (a mockup or a screenshot, PNG, JPEG or WebP, at most 2 MB) it returns { uploadUrl, expiresAt }; ' +
     'then send the file yourself: curl -X PUT --data-binary @shot.png -H "Content-Type: image/png" "<uploadUrl>".',
   access: 'agent',
