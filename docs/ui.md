@@ -117,7 +117,7 @@ Only an Admin edits, except Profile and API keys. Members read the rest. The sid
 
 ## Memory
 
-`/memory` lists what the factory remembers for one Product. A memory page edits, switches off or deletes it. The run page lists the memory a run got.
+`/memory` lists what the factory remembers for one Product, filtered by All, New, You said, Agents found, Came back and Off. A memory Learn wrote shows as New until its page is opened; the sidebar counts them. A memory page edits, switches off or deletes it, quotes where it came from and lists how it fared: Came back, Clean or No verdict yet. Came back counts tickets that were corrected for the same thing although a run had the memory. The run page lists the memory a run got, and the Activity of a Ticket says what Learn kept.
 
 ## Not in the UI, by design
 
