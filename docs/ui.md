@@ -92,7 +92,7 @@ A Run missing a prerequisite only the owner can supply releases with that need. 
 
 One primary button at most: Connect an agent for a queued Run without a session, Open ticket for a failed or expired Run.
 
-Below: the steps with their time, the handoff, Links (pull request, Ticket, session), the cost for an Admin only, and the context the agent got.
+Below: timed steps, the handoff, Links (pull request, Ticket, session), Admin-only cost and the agent's context.
 
 ## Agent team
 
