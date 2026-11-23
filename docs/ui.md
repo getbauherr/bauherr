@@ -56,7 +56,7 @@ The action bar at the top of the Now pane holds the single next step. It shows o
 - **Approve plan** is refused while critical decisions are unanswered.
 - **Send back** asks for a note and returns the Ticket to Build or the Backlog.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
-- **Round cap**: when review reaches its cap you grant one more round or stop.
+- **Round cap**: when review reaches its cap you grant one more round or stop. The card shows the verifier's last open finding (up to 300 characters) beside the builder's last handoff (up to 600), both read from the Ticket record. A cut text ends in an ellipsis and links to the full finding or, for the handoff, to its Run page.
 
 ### Decision card
 

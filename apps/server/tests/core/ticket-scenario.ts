@@ -11,6 +11,7 @@ import { rememberContext } from '../../src/core/run/context'
 import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
 import { source } from './fixtures'
+import { LONG_HANDOFF, OPEN_FINDING } from './verify-rounds-fixtures'
 import { asked, begin, mirrorSource, patch, toBrief, workOn } from './scenario'
 
 export const TICKET_TITLES = {
@@ -23,6 +24,7 @@ export const TICKET_TITLES = {
   adoptedWaiting: 'Adopted pull request waiting on its author',
   adoptedResult: 'Adopted pull request with a result',
   deployStalled: 'Deploy that did not finish',
+  verifyRounds: 'Review rounds used up',
 } as const
 
 export const POOL_SIZE = 3
@@ -79,7 +81,7 @@ const FINDINGS: Finding[] = [
   },
 ]
 
-const edit = async (e: Engine, id: number, stage: 'brief' | 'verify', patchOf: Partial<TicketRecord>) => {
+const edit = async (e: Engine, id: number, stage: 'brief' | 'build' | 'verify', patchOf: Partial<TicketRecord>) => {
   const { version } = await readRecord(e.db.payload, id)
   const writes = Object.keys(patchOf) as (keyof TicketRecord)[]
   const by = { stage, runId: 'seed' }
@@ -156,6 +158,18 @@ const deployStalledTicket = async (e: Engine, pr: number): Promise<number> => {
   await appendEvent(e.db.payload, id, { type: 'ship.deploy-stalled', data, actor: 'factory' })
   await advance(id, e.deps())
   e.config = config
+  return id
+}
+
+const verifyRoundsTicket = async (e: Engine, pr: number): Promise<number> => {
+  const id = await toBrief(e, false)
+  await edit(e, id, 'brief', briefFields([SETTLED]))
+  for (const n of [501, pr]) {
+    await patch(e, id, n)
+    await workOn(e, id, 'verifier', { passed: false, patchId: `p${n}`, headSha: `h${n}` })
+  }
+  await edit(e, id, 'build', { handoff: LONG_HANDOFF })
+  await edit(e, id, 'verify', { findings: [OPEN_FINDING] })
   return id
 }
 
@@ -285,6 +299,8 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
   const deployStalled = await deployStalledTicket(e, ++pr)
   titled.push([deployStalled, TICKET_TITLES.deployStalled])
+  const verifyRounds = await verifyRoundsTicket(e, ++pr)
+  titled.push([verifyRounds, TICKET_TITLES.verifyRounds])
   const adoptedWaiting = await adoptedTicket(e, ADOPTED_FIRST, false)
   const adoptedResult = await adoptedTicket(e, ADOPTED_FIRST + 1, true)
   titled.push([adoptedWaiting, TICKET_TITLES.adoptedWaiting], [adoptedResult, TICKET_TITLES.adoptedResult])
@@ -304,5 +320,6 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   const closes = [3000 + ADOPTED_FIRST]
   const other = { kind: 'pr', head: 'h72', title: 'Another take on the fix', author: 'dev-lee', closes } as const
   await mirror.item(ADOPTED_FIRST + 2, { ...other, closes })
-  return { ...names, adoptedWaiting, adoptedResult, deployStalled, intake: await intakeTicket(e, mirror.item) }
+  const intake = await intakeTicket(e, mirror.item)
+  return { ...names, adoptedWaiting, adoptedResult, deployStalled, verifyRounds, intake }
 }

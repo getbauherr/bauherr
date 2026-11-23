@@ -4,10 +4,11 @@ import { ANSWER_ACTION } from '../../lib/decision-actions'
 import { questionFacts, recommendedOption } from '../../lib/question-facts'
 import { CHOICE_WORDS, NOTE_PROMPTS, REASON_WORDS } from '../../lib/ticket-words'
 import { DecisionForm } from './DecisionForm'
+import { Positions } from './Positions'
 import { Card, Section } from './Section'
 
 const OPTION = [
-  'flex cursor-pointer items-baseline gap-2 rounded-md border border-border px-3 py-2',
+  'flex cursor-pointer items-baseline gap-2 rounded-md border border-border px-3',
   'has-checked:border-primary has-checked:bg-accent',
   'has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring',
 ].join(' ')
@@ -24,6 +25,7 @@ export function QuestionCard({ view, card, may }: Props) {
   const facts = questionFacts(view, card.reason)
   const remembered = view.answerRemembered ? 'Your answer is remembered for similar tickets.' : undefined
   const recommended = recommendedOption(view, card.reason)
+  const compact = view.positions !== null
   return (
     <Card bare>
       <DecisionForm
@@ -34,13 +36,14 @@ export function QuestionCard({ view, card, may }: Props) {
         sentence={may ? remembered : 'A Bauherr of this Workspace answers.'}
         actions={may ? [ANSWER_ACTION] : []}
       >
-        <div className="grid gap-5 p-6">
+        <div className={compact ? 'grid gap-3 p-4' : 'grid gap-5 p-6'}>
           <p>{textOf(card)}</p>
           {facts.length > 0 && (
             <Section title="Facts">
               <ul className="m-0 grid gap-1 pl-5">{facts.map((fact) => <li key={fact}>{fact}</li>)}</ul>
             </Section>
           )}
+          {view.positions && <Positions view={view} positions={view.positions} />}
           {view.deploy && card.reason === 'deploy-stalled' && (
             <p>
               <a href={view.deploy.url} target="_blank" rel="noreferrer" className="underline">
@@ -53,7 +56,7 @@ export function QuestionCard({ view, card, may }: Props) {
             {card.options.map((option) => {
               const label = CHOICE_WORDS[ask]?.[option] ?? option
               return (
-                <label key={option} className={OPTION}>
+                <label key={option} className={`${OPTION} ${compact ? 'py-1.5' : 'py-2'}`}>
                   <input
                     type="radio"
                     name="choice"

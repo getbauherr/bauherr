@@ -17,6 +17,7 @@ import { loadIntakeFacts } from '../intake/facts-store'
 import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
 import { labelOf } from './labels'
+import { positionsOf, type Positions } from './positions'
 import { statementsUsed, type StatementsUsed } from './statements-used'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
 import { TERMINAL_EVENTS } from './sql'
@@ -74,6 +75,7 @@ export type TicketView = {
   statementsUsed: StatementsUsed
   deploy: DeployView | null
   answerRemembered: boolean
+  positions: Positions | null
 }
 
 export type TicketFilter = { workspace: number; recordId: number }
@@ -167,6 +169,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     ...pulls,
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),
+    positions: positionsOf({ card: stored.card, record: stored.record, runs, events }),
     answerRemembered: stored.card?.card === 'question' && isRemembered(stored.card.reason),
     similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT, 'issue') : [],
   }
