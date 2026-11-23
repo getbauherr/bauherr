@@ -113,7 +113,7 @@ Settings are grouped by scope. Account is for everyone, with Profile and API key
 
 API keys lists each session with its live Runs and slots, for example "2 of 3 working": a session connected with a capacity of 1 to 4 holds that many Runs at once, one subagent each.
 
-Product settings list each Statement with its Runs and the Verifies that still found problems. Unused for 60 days, it can be removed; back three times, it is flagged as a check.
+Product settings list each Statement's Runs and failed Verifies. Unused 60 days: removable; back three times: flagged as a check.
 
 Only an Admin edits, except Profile and API keys. Members read the rest. The sidebar's Settings item opens Profile, and the command palette lists every page you may open.
 
