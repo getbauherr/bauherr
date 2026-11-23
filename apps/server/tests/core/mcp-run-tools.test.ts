@@ -232,6 +232,11 @@ describe('session capacity', () => {
     await m.call('release', { runId: first?.runId, leaseToken: first?.leaseToken }, m.agent(m.alpha))
     expect(work.parse(await nextWork(session)).status).toBe('work')
     expect(atCapacity.parse(await nextWork(session)).holding).toHaveLength(3)
+    const second = runs[1]
+    const submitted = { runId: second?.runId, leaseToken: second?.leaseToken, result: { verdict: 'accept' } }
+    expect(await m.call('submit', submitted, m.agent(m.alpha))).toEqual({ status: 'accepted' })
+    expect(work.parse(await nextWork(session)).status).toBe('work')
+    expect(atCapacity.parse(await nextWork(session)).holding).toHaveLength(3)
     await m.e.drain()
   })
 
