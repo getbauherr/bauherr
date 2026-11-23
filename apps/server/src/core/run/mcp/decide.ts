@@ -6,8 +6,8 @@ import { defineTool } from './tool'
 export const decide = defineTool({
   name: 'decide',
   description:
-    'Records the owner decision on the card a ticket currently shows. ' +
-    'A note goes with any choice; choice own-answer on an agent question answers it in free text. ' +
+    'Records the owner decision on the card a ticket currently shows, with an optional note ' +
+    'and, on an agent question, the choice own-answer for a free-text answer. ' +
     'Returns once the decision is applied; a stale card is refused.',
   access: 'person',
   input: z.strictObject({

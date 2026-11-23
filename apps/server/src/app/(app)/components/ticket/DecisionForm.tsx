@@ -91,7 +91,7 @@ function Form({ recordId, ask, seq, sentence, actions, pick, children }: Props) 
 
   const send = (action: DecisionAction) =>
     start(async () => {
-      const answers = form.current ? answersOf(form.current) : {}
+      const answers = form.current && action.choice === 'approve' ? answersOf(form.current) : {}
       const note = comment.empty ? {} : { note: comment.note }
       const extra = { ...note, ...(Object.keys(answers).length > 0 ? { answers } : {}) }
       const result = await decideTicket({ recordId, ask, seq, choice: action.choice, ...extra })
