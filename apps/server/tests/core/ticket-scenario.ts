@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
-import { askOwner } from '../../src/core/ask'
+import { askOwner, parkOnNeed } from '../../src/core/ask'
 import { DISCLOSURE } from '../../src/core/forge/disclosure'
 import { questionsBody } from '../../src/core/intake/questions'
 import type { Criterion, Decision, Finding, TicketRecord } from '../../src/core/record/schema'
@@ -25,6 +25,7 @@ export const TICKET_TITLES = {
   adoptedResult: 'Adopted pull request with a result',
   deployStalled: 'Deploy that did not finish',
   verifyRounds: 'Review rounds used up',
+  parkedOnNeed: 'Build parked on a missing Connection',
 } as const
 
 export const POOL_SIZE = 3
@@ -207,6 +208,12 @@ const questionTicket = async (e: Engine, id: number) => {
   await askOwner(run.id, token, { text, options: ['Disk', 'Object storage'] }, e.deps())
 }
 
+const parkedTicket = async (e: Engine) => {
+  const id = await toBrief(e, false)
+  await claimed(e, id).then(({ run, token }) => parkOnNeed(run.id, token, 'AWS Connection', e.deps()))
+  return id
+}
+
 const intakeTicket = async (e: Engine, item: (number: number, fields?: { title: string }) => Promise<number>) => {
   const id = await begin(e)
   await asked(e, id, 1)
@@ -281,11 +288,13 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     question: await pooled((n) => asking(`${POOL_TITLES.question} ${n}`)),
     questionRead: await asking(TICKET_TITLES.questionRead),
     runSteps: await toBrief(e, false),
+    parkedOnNeed: await parkedTicket(e),
   }
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
   const deployStalled = await deployStalledTicket(e, ++pr)
   const verifyRounds = await verifyRoundsTicket(e, ++pr, briefFields([SETTLED]))
   titled.push([deployStalled, TICKET_TITLES.deployStalled], [verifyRounds, TICKET_TITLES.verifyRounds])
+  titled.push([names.parkedOnNeed, TICKET_TITLES.parkedOnNeed])
   const briefComment = await pooled((n) => open(`${POOL_TITLES.briefComment} ${n}`))
   const adoptedWaiting = await adoptedTicket(e, ADOPTED_FIRST, false)
   const adoptedResult = await adoptedTicket(e, ADOPTED_FIRST + 1, true)
