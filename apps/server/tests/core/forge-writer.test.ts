@@ -163,7 +163,9 @@ describe('openIssue', () => {
   it('opens one issue with the disclosure line on top and the reference at the end, and mirrors it', async () => {
     const s = await setup()
     const before = (await issuesOf(s)).length
+    const list = vi.spyOn(s.fake.tickets(s.repo), 'list')
     const issue = await s.writer.openIssue(at(), issueInput)
+    expect(list).not.toHaveBeenCalled()
     expect(issue.title).toBe('Prevent by a check: x')
     expect(issue.body).toBe(`${DISCLOSURE}\n\nThe memory.\n\nReference: bauherr-memory-1`)
     expect((await issuesOf(s)).length).toBe(before + 1)
@@ -177,9 +179,12 @@ describe('openIssue', () => {
       title: issueInput.title,
       body: disclosed(`${issueInput.body}\n\nReference: ${issueInput.reference}`),
     })
+    await h.sync({ [s.repo]: readerOf(s.fake) })
     const before = (await issuesOf(s)).length
+    const list = vi.spyOn(s.fake.tickets(s.repo), 'list')
     const found = await s.writer.openIssue(at(), issueInput)
     await s.writer.openIssue(at(), issueInput)
+    expect(list).not.toHaveBeenCalled()
     expect(found.number).toBe(half.number)
     expect((await issuesOf(s)).length).toBe(before)
     expect((await h.items(s.repo)).filter((r) => Number(r.number) === half.number)).toHaveLength(1)

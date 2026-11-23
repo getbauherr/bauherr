@@ -18,6 +18,7 @@ import { upsertComments, upsertItem } from '../mirror/store'
 import { disclosed, hashBody, planStageLabels } from './disclosure'
 import { HeadMoved, ProductObserving, WrongItemKind } from './errors'
 import {
+  findIssueByReference,
   loadProductRow,
   loadWriteRow,
   saveClosed,
@@ -157,9 +158,9 @@ const openIssue = async (ctx: Ctx, target: ProductTarget, input: NewIssue): Prom
   }
   const tickets = (await ctx.deps.backend(row.connection)).tickets(row.repo)
   const reference = `Reference: ${input.reference}`
-  const earlier = (await tickets.list({ state: 'all' })).find((t) => t.body?.trimEnd().endsWith(reference))
+  const earlier = await findIssueByReference(ctx.payload, { source: row.source, reference })
   const issue = earlier
-    ? await tickets.get(earlier.id)
+    ? await tickets.get(earlier)
     : await tickets.create({ title: input.title, body: disclosed(`${input.body}\n\n${reference}`) })
   const { source, repo } = row
   await upsertItem(ctx.payload, { ...target, source, repo }, itemFromTicket(issue), ctx.deps.now())

@@ -107,6 +107,19 @@ export const loadWriteRow = async (payload: Payload, target: Target): Promise<Wr
   }
 }
 
+export const findIssueByReference = async (
+  payload: Payload,
+  f: { source: number; reference: string },
+): Promise<string | null> => {
+  const result = await payload.db.drizzle.execute(sql`
+    SELECT "number" FROM "mirror_items"
+    WHERE "source_id" = ${f.source} AND "kind" = 'issue' AND "gone_at" IS NULL
+      AND rtrim("body", E' \t\r\n') LIKE ${`%${f.reference.replace(/[\\%_]/g, '\\$&')}`}
+    ORDER BY "number" DESC LIMIT 1`)
+  const row = result.rows[0]
+  return row ? String(count.parse(row.number)) : null
+}
+
 export const saveLabels = async (payload: Payload, itemId: number, labels: string[]): Promise<void> => {
   await payload.db.drizzle.execute(sql`
     UPDATE "mirror_items" SET "labels" = ${JSON.stringify(labels)}::jsonb, "updated_at" = now()
