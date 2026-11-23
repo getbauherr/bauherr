@@ -25,15 +25,17 @@ const screen = (done: boolean): Buffer =>
 
 const idOf = z.object({ id: z.coerce.number() })
 
-const store = (e: Engine, id: number, run: number, caption: string, bytes: Buffer, n: number, kind = 'mockup') =>
+type Image = { caption: string; bytes: Buffer; n: number; kind?: string; screenName?: string | null }
+
+const store = (e: Engine, id: number, run: number, { caption, bytes, n, kind = 'mockup', screenName = null }: Image) =>
   e.db.payload.db.drizzle.execute(sql`
     INSERT INTO "attachments" ("workspace_id", "record_id", "run_id", "stage", "kind", "caption", "content_type",
       "byte_size", "sha256", "content", "token_hash", "lease_hash", "expires_at", "screen", "width", "proof_sha",
       "updated_at", "created_at")
     VALUES (${e.db.workspace}, ${id}, ${run}, 'brief', ${kind}, ${caption}, 'image/png', ${bytes.length},
       ${`seed${n}`}, ${bytes.toString('base64')}, ${`seed-${kind}-${id}-${n}`}, 'seed', now(),
-      ${kind === 'mockup' ? null : MOCKUP_CAPTIONS[n % 2]}, ${kind === 'mockup' ? null : 1280},
-      ${kind === 'mockup' ? null : 'seedhead'}, now(), now())`)
+      ${screenName}, ${screenName === null ? null : 1280},
+      ${screenName === null ? null : 'seedhead'}, now(), now())`)
 
 export const seedMockupTicket = async (e: Engine): Promise<number> => {
   const id = await begin(e)
@@ -46,11 +48,28 @@ export const seedMockupTicket = async (e: Engine): Promise<number> => {
     sql`SELECT "id" FROM "stage_runs" WHERE "record_id" = ${id} AND "stage" = 'brief' ORDER BY "id" DESC LIMIT 1`,
   )
   const run = idOf.parse(found.rows[0]).id
-  for (const [n, caption] of MOCKUP_CAPTIONS.entries()) await store(e, id, run, caption, screen(n === 1), n)
-  for (const [n, caption] of MOCKUP_CAPTIONS.entries()) {
-    await store(e, id, run, `Before: ${caption}`, screen(false), n * 2 + 2, 'before')
-    await store(e, id, run, `After: ${caption}`, screen(true), n * 2 + 3, 'after')
+  for (const [n, caption] of MOCKUP_CAPTIONS.entries()) await store(e, id, run, { caption, bytes: screen(n === 1), n })
+  for (const [n, screenName] of MOCKUP_CAPTIONS.entries()) {
+    const taken = { screenName, n: n * 2 + 2 }
+    await store(e, id, run, { ...taken, caption: `Before: ${screenName}`, bytes: screen(false), kind: 'before' })
+    const after = { ...taken, caption: `After: ${screenName}`, bytes: screen(true), kind: 'after', n: taken.n + 1 }
+    await store(e, id, run, after)
   }
+  const seeded = await readRecord(e.db.payload, id)
+  const verified = { stage: 'verify', runId: 'seed' } as const
+  await patchRecord(e.db.payload, id, {
+    expectedVersion: seeded.version,
+    writes: ['result'],
+    patch: {
+      result: {
+        changes: [{ text: 'The export page shows its progress and a finished state.', tag: 'visible' }],
+        walkthrough: ['Start an export.', 'Watch the progress bar fill.'],
+        notVerified: [],
+        cost: { usd: 1, runs: 2, minutes: 12 },
+      },
+    },
+    by: verified,
+  })
   const { source } = (await readRecord(e.db.payload, id)).record
   await (await mirrorSource(e)).item(source.number, { title: MOCKUP_TICKET_TITLE })
   return id
