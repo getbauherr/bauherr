@@ -7,7 +7,7 @@ import { advance, type AdvanceDeps } from './engine'
 import { fold } from './fold'
 import { gate } from './gate'
 import { loadGateFacts } from './gate-facts'
-import { foldOptions } from './lifecycle'
+import { foldOptions, type Role } from './lifecycle'
 import type { Effect, LifecycleModule, Modules, Problem } from './module'
 import {
   CriteriaEditNotAllowed,
@@ -20,11 +20,12 @@ import { appendEvent, patchRecord, readEvents, readRecord } from './record/store
 import { verifyResultSchema } from './verify-result'
 import { ModuleMissing, RecordClosed } from './run/errors'
 import { authorize, expire, release, type Expired } from './run/leases'
-import type { Run } from './run/schema'
+import type { Run, Tier } from './run/schema'
 import { finishRun, markRefused, readRun } from './run/store'
 
+export type TierLoader = (role: Role) => Promise<Tier>
 export type SkillLoader = (stage: Stage) => Promise<string | null>
-export type SubmitDeps = AdvanceDeps & { modules: Modules; skills?: SkillLoader }
+export type SubmitDeps = AdvanceDeps & { modules: Modules; skills?: SkillLoader; tiers?: TierLoader }
 export type SubmitResult = { status: 'accepted' } | { status: 'retry' | 'failed'; problems: Problem[] }
 type Accepted = { status: 'accepted'; effects: Effect[] }
 type Refused = Exclude<SubmitResult, { status: 'accepted' }>
@@ -32,8 +33,20 @@ type Locked = Accepted | Refused
 
 const REFUSALS = [FieldNotWritable, InvalidPatch, StatusChangeNotAllowed, ProofRequired, CriteriaEditNotAllowed]
 
+const reach = (branch: z.core.$ZodIssue[]): number => Math.min(...branch.map((inner) => inner.path.length))
+
+const closestBranch = (issue: z.core.$ZodIssueInvalidUnion): z.core.$ZodIssue[] =>
+  issue.errors.reduce((best, branch) => (reach(branch) > reach(best) ? branch : best))
+
 const problemsOf = (error: z.ZodError): Problem[] =>
-  error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message }))
+  error.issues.flatMap((issue) =>
+    issue.code === 'invalid_union' && issue.errors.length > 0
+      ? closestBranch(issue).map((inner) => ({
+          path: [...issue.path, ...inner.path].join('.'),
+          message: inner.message,
+        }))
+      : [{ path: issue.path.join('.'), message: issue.message }],
+  )
 
 const refusalOf = (error: unknown): Problem[] | null =>
   REFUSALS.some((refusal) => error instanceof refusal) && error instanceof Error

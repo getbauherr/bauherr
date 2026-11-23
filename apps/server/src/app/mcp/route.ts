@@ -8,7 +8,7 @@ import { AGENT_INSTRUCTIONS } from '../../core/run/mcp/instructions'
 import { callTool, TOOLS } from '../../core/run/mcp/registry'
 import type { Contexts } from '../../core/run/mcp/tool'
 import { engineDeps } from '../../jobs/engine-deps'
-import { MODULES, skillFor } from '../../lean'
+import { MODULES, skillFor, tierFor } from '../../lean'
 import { resolveAgentKey } from '../../lib/api-key'
 import { ACCOUNT_LOCKED, lockedRequests } from '../../lib/oidc-session'
 import { isArchived } from '../../lib/workspace-delete'
@@ -31,7 +31,7 @@ const textOf = (error: unknown): string => {
 }
 
 const authenticate = async (payload: Payload, token: string): Promise<Partial<Contexts> | Response> => {
-  const deps = { ...engineDeps(payload), modules: MODULES, skills: skillFor }
+  const deps = { ...engineDeps(payload), modules: MODULES, skills: skillFor, tiers: tierFor }
   const agent = await resolveAgentKey(payload, token).catch((error: unknown) => {
     if (error instanceof Error && error.message === ACCOUNT_LOCKED) return null
     throw error

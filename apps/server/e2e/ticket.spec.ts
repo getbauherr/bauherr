@@ -178,3 +178,23 @@ test('only a question whose answer is remembered says so', async ({ page }) => {
   await expect(page.getByText(sentence)).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Answer' })).toBeVisible()
 })
+
+test('an agent question in Build can send the ticket back to Brief with a note', async ({ page }) => {
+  const path = await enterOpen(page, 'Question to send back to Brief')
+  const answer = page.getByRole('button', { name: 'Answer' })
+  const back = page.getByRole('button', { name: 'Back to Brief' })
+  await expect(back).toBeVisible()
+  expect(await back.evaluate((node) => node.nextElementSibling?.textContent)).toBe('Answer')
+  await back.click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Back to Brief' })).toBeDisabled()
+  await dialog.getByLabel('Note').fill('Redo the Brief as a redesign with a mockup first.')
+  await dialog.getByRole('button', { name: 'Back to Brief' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(answer).toHaveCount(0)
+  const stages = page.getByRole('navigation', { name: 'Stage path' })
+  await expect(stages.locator('[aria-current="step"]')).toContainText('Brief')
+  await page.goto(`${path}?tab=activity`)
+  const note = 'The owner asked for changes to the Brief: Redo the Brief as a redesign with a mockup first.'
+  await expect(page.getByText(note)).toBeVisible()
+})

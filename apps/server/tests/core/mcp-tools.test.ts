@@ -157,7 +157,7 @@ describe('workspace and lease isolation', () => {
     const first = await m.begin()
     const second = await m.begin()
     const a = await m.claimed(m.alpha)
-    const b = await m.claimed(m.alpha)
+    const b = await m.claimed(m.alpha, 'builder', 2)
     expect(new Set([first, second]).size).toBe(2)
     const cross = { runId: b.runId, leaseToken: a.leaseToken }
     await expect(m.call('submit', { ...cross, result: { verdict: 'accept' } }, m.agent(m.alpha))).rejects.toThrow(

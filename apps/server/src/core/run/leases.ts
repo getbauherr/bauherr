@@ -72,6 +72,10 @@ export const claim = async (payload: Conn, input: ClaimInput): Promise<Claimed |
 const refusal = async (payload: Conn, runId: number): Promise<never> => {
   const run = await readRun(payload, runId)
   if (run.status !== 'claimed') {
+    const found = await payload.db.drizzle.execute(sql`SELECT "stage" FROM "records" WHERE "id" = ${run.recordId}`)
+    if (found.rows[0]?.stage === 'brief' && run.stage !== 'brief') {
+      throw new RunNotClaimed(`Run ${runId} was ended: the ticket went back to Brief. Stop working on it.`)
+    }
     throw new RunNotClaimed(`Run ${runId} is ${run.status}, not claimed: stop working on it.`)
   }
   throw new WrongLeaseToken(`The lease token does not belong to run ${runId}: use the token next_work returned.`)

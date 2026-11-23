@@ -14,9 +14,11 @@ export type State = {
   extraRounds: number
   failedRuns: number
   brief: 'none' | 'submitted' | 'approved'
+  returned: boolean
   adopted: boolean
   waitingAuthor: boolean
   patch: { id: string; pr: number; headSha: string } | null
+  alreadyDone: { by: string; evidence: string } | null
   checks: 'none' | 'pending' | 'passed' | 'failed'
   verdict: Verdict | null
   overridden: boolean
@@ -43,9 +45,11 @@ export const initialState = (): State => ({
   extraRounds: 0,
   failedRuns: 0,
   brief: 'none',
+  returned: false,
   adopted: false,
   waitingAuthor: false,
   patch: null,
+  alreadyDone: null,
   checks: 'none',
   verdict: null,
   overridden: false,
@@ -112,19 +116,32 @@ const owner: Reducer = (state, event) => {
       return { ...state, note: event.data.note }
     case 'ticket.closed':
       return { ...state, closed: event.data.reason }
+    case 'ticket.done-elsewhere':
+      return enter(state, 'done')
     default:
       return null
   }
 }
+
+const backToBrief = (state: State, note: string): State => ({
+  ...enter(state, 'brief'),
+  brief: 'submitted',
+  returned: true,
+  card: null,
+  run: null,
+  verifyRounds: 0,
+  extraRounds: 0,
+  note,
+})
 
 const brief: Reducer = (state, event) => {
   switch (event.type) {
     case 'brief.submitted':
       return { ...submitted(state, event.data.runId), brief: 'submitted' }
     case 'brief.approved':
-      return { ...enter(state, state.adopted ? 'verify' : 'build'), brief: 'approved' }
+      return { ...enter(state, state.adopted ? 'verify' : 'build'), brief: 'approved', returned: false }
     case 'brief.changes-requested':
-      return { ...state, note: event.data.note }
+      return state.brief === 'approved' ? backToBrief(state, event.data.note) : { ...state, note: event.data.note }
     case 'brief.discarded':
       return { ...state, closed: 'discarded' }
     default:
@@ -163,6 +180,10 @@ const patch: Reducer = (state, event, options) => {
       const latest = { id: event.data.patchId, pr: event.data.pr, headSha: event.data.headSha }
       const checks = options.requiredChecks === false ? 'none' : 'pending'
       return { ...enter(fresh, 'verify'), patch: latest, checks, verdict: null }
+    }
+    case 'build.already-done': {
+      const { by, evidence } = event.data
+      return { ...submitted(state, event.data.runId), alreadyDone: { by, evidence } }
     }
     case 'pull.adopted':
       return adopt(state, event.data, options)
@@ -260,6 +281,7 @@ const questions: Reducer = (state, event) => {
       return {
         ...state,
         card: null,
+        alreadyDone: null,
         deployStalled: null,
         failedRuns: 0,
         extraRounds: state.extraRounds + (event.data.option === 'one-more-round' ? 1 : 0),

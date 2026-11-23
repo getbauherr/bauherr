@@ -62,8 +62,9 @@ describe('the tickets the end-to-end specs read', () => {
   })
 
   it('asks a question, waits for a reporter, and keeps a run with reported steps', async () => {
-    for (const id of [...names.question, names.questionRead]) {
+    for (const id of [...names.question, ...names.questionBack, names.questionRead]) {
       expect((await view(id)).card).toMatchObject({ card: 'question', reason: 'agent' })
+      expect((await view(id)).canGoBack).toBe(true)
       expect((await view(id)).answerRemembered).toBe(true)
     }
     const intake = await view(names.intake)

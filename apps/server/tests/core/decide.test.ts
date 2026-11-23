@@ -36,11 +36,15 @@ const ROWS: Row[] = [
   ['question:verify-rounds', 'one-more-round', ['question.answered']],
   ['question:verify-rounds', 'accept-as-is', ['question.answered', 'verify.overridden']],
   ['question:verify-rounds', 'discard', ['question.answered', 'ticket.closed']],
+  ['question:already-done', 'close-as-done', ['question.answered', 'ticket.done-elsewhere']],
+  ['question:already-done', 're-run-build', ['question.answered']],
   ['question:deploy-stalled', 'check-again', ['question.answered']],
   ['question:deploy-stalled', 'continue', ['question.answered', 'ship.deployed']],
   ['question:production', 'approve', ['question.answered', 'production.approved']],
   ['question:production', 'hold', ['question.answered', 'production.held']],
   ['production-held', 'approve-production', ['production.approved']],
+  ['question:agent', 'back-to-brief', ['question.answered', 'brief.changes-requested']],
+  ['working', 'back-to-brief', ['brief.changes-requested']],
 ]
 
 describe('the decision table', () => {

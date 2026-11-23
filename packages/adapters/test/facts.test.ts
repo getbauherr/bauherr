@@ -23,6 +23,16 @@ void describe('github repository facts', () => {
     assert.equal(await forge(true).isBranchProtected('o/r', 'main'), true);
     assert.equal(await forge(false).isBranchProtected('o/r', 'main'), false);
   });
+  void it('reads the required checks of the branch protection and of the branch rules, each name once', async () => {
+    const branch = { protected: true, protection: { required_status_checks: { contexts: ['check', 'e2e'] } } };
+    const rules = [{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'e2e' }] } }];
+    const forge = (ruled: unknown[]) =>
+      github((path) => (path === '/repos/o/r/branches/main' ? json(branch) : json(ruled)));
+    assert.deepEqual(await forge([]).requiredChecks('o/r', 'main'), ['check', 'e2e']);
+    assert.deepEqual(await forge(rules).requiredChecks('o/r', 'main'), ['check', 'e2e']);
+    const lint = [{ type: 'required_status_checks', parameters: { required_status_checks: [{ context: 'lint' }] } }];
+    assert.deepEqual(await forge(lint).requiredChecks('o/r', 'main'), ['check', 'e2e', 'lint']);
+  });
   void it('tells an existing file from a missing one', async () => {
     const forge = github((path) => (path === '/repos/o/r/contents/AGENTS.md' ? json({ type: 'file' }) : missing()));
     assert.equal(await forge.fileExists('o/r', 'AGENTS.md', 'main'), true);

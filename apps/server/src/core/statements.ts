@@ -18,6 +18,8 @@ const clip = (text: string): string => text.slice(0, STATEMENT_MAX)
 const NOTE_KINDS: Record<string, StatementKind> = {
   'brief/request-changes': 'brief-change',
   'result/send-back': 'send-back',
+  'question:agent/back-to-brief': 'brief-change',
+  'working/back-to-brief': 'brief-change',
   'question:failed-runs/retry-with-guidance': 'guidance',
 }
 

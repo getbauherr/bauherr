@@ -21,3 +21,11 @@ export const RESULT_ACTIONS = actionsOf('result', [
 ])
 
 export const ANSWER_ACTION: DecisionAction = { choice: '', label: 'Answer', variant: 'default' }
+
+export const BACK_ACTION: DecisionAction = {
+  choice: 'back-to-brief',
+  variant: 'outline',
+  label: 'Back to Brief',
+  prompt: NOTE_PROMPTS['working/back-to-brief'] ?? '',
+  fixed: true,
+}

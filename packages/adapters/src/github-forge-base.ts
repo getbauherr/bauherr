@@ -99,9 +99,12 @@ export class GithubForgeBase {
       if (e instanceof GithubError && e.status === 403 && RULES_NOT_IN_PLAN.test(e.message)) return [];
       throw e;
     }
-    return list(rules)
+    const ruled = list(rules)
       .filter((r) => wire(r).type === 'required_status_checks')
       .flatMap((r) => list(get(r, 'parameters', 'required_status_checks')).map((c) => field(c, 'context')));
+    const b = await this.h.json('GET', `/repos/${repo}/branches/${encodePath(branch)}`);
+    const protectedBy = list(get(b, 'protection', 'required_status_checks', 'contexts')).map(text);
+    return [...new Set([...protectedBy, ...ruled])].filter((name) => name !== '');
   }
   async fileExists(repo: RepoRef, path: string, ref: string) {
     const url = `/repos/${repo}/contents/${encodePath(path)}?ref=${enc(ref)}`;

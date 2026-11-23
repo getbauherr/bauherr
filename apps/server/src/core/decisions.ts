@@ -2,7 +2,11 @@ import type { AppEvent } from './events'
 
 export type DecisionInput = { note: string; patchId: string; headSha: string }
 export type AgentCard = { options: string[]; text?: string }
-export type DecisionEntry = { needsNote: boolean; events: (input: DecisionInput) => AppEvent[] }
+export type DecisionEntry = {
+  needsNote: boolean
+  endsRun?: boolean
+  events: (input: DecisionInput) => AppEvent[]
+}
 
 const answered = (option: string): AppEvent => ({ type: 'question.answered', data: { option } })
 const closed = (reason: 'not-planned' | 'not-a-bug'): AppEvent => ({ type: 'intake.closed', data: { reason } })
@@ -14,6 +18,19 @@ const answer = (option: string, ...rest: AppEvent[]): DecisionEntry => one(answe
 const withNote = (make: (note: string) => AppEvent[]): DecisionEntry => ({
   needsNote: true,
   events: ({ note }) => make(note),
+})
+
+export const BACK_TO_BRIEF = 'back-to-brief'
+export const WORKING_ASK = 'working'
+export const AGENT_ASK = 'question:agent'
+
+const backToBrief = (open: boolean): DecisionEntry => ({
+  needsNote: true,
+  endsRun: true,
+  events: ({ note }) => [
+    ...(open ? [answered(BACK_TO_BRIEF)] : []),
+    { type: 'brief.changes-requested', data: { note } },
+  ],
 })
 
 export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
@@ -59,6 +76,10 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
     },
     discard: answer('discard', discarded),
   },
+  'question:already-done': {
+    'close-as-done': answer('close-as-done', { type: 'ticket.done-elsewhere', data: {} }),
+    're-run-build': answer('re-run-build'),
+  },
   'question:deploy-stalled': {
     'check-again': answer('check-again'),
     continue: answer('continue', { type: 'ship.deployed', data: {} }),
@@ -70,6 +91,8 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
   'production-held': {
     'approve-production': one({ type: 'production.approved', data: {} }),
   },
+  [AGENT_ASK]: { [BACK_TO_BRIEF]: backToBrief(true) },
+  [WORKING_ASK]: { [BACK_TO_BRIEF]: backToBrief(false) },
 }
 
 export const QUESTION_REASONS = [
@@ -77,6 +100,7 @@ export const QUESTION_REASONS = [
   'reporter-silent',
   'disputed',
   'verify-rounds',
+  'already-done',
   'deploy-stalled',
   'production',
   'agent',
@@ -90,6 +114,7 @@ export const REMEMBERED: Record<QuestionReason, boolean> = {
   'reporter-silent': false,
   disputed: true,
   'verify-rounds': false,
+  'already-done': false,
   'deploy-stalled': false,
   production: false,
   agent: true,
@@ -97,8 +122,6 @@ export const REMEMBERED: Record<QuestionReason, boolean> = {
 }
 
 export const isRemembered = (reason: string): boolean => REMEMBERED[reason as QuestionReason] === true
-
-export const AGENT_ASK = 'question:agent'
 
 export const agentEntry = (card: AgentCard | null, choice: string): DecisionEntry | undefined =>
   card?.options.includes(choice)

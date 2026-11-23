@@ -1,6 +1,6 @@
 import type { StoredCard } from '../../../../core/record/store'
 import type { TicketView } from '../../../../core/views/ticket'
-import { ANSWER_ACTION } from '../../lib/decision-actions'
+import { ANSWER_ACTION, BACK_ACTION } from '../../lib/decision-actions'
 import { questionFacts, recommendedOption } from '../../lib/question-facts'
 import { CHOICE_WORDS, NOTE_PROMPTS, REASON_WORDS } from '../../lib/ticket-words'
 import { DecisionForm } from './DecisionForm'
@@ -27,6 +27,7 @@ export function QuestionCard({ view, card, may }: Props) {
   const facts = questionFacts(view, card.reason)
   const remembered = view.answerRemembered ? 'Your answer is remembered for similar tickets.' : undefined
   const recommended = recommendedOption(view, card.reason)
+  const actions = view.canGoBack && card.reason === 'agent' ? [BACK_ACTION, ANSWER_ACTION] : [ANSWER_ACTION]
   return (
     <Card bare>
       <DecisionForm
@@ -35,7 +36,7 @@ export function QuestionCard({ view, card, may }: Props) {
         seq={card.seq}
         pick
         sentence={may ? remembered : 'A Bauherr of this Workspace answers.'}
-        actions={may ? [ANSWER_ACTION] : []}
+        actions={may ? actions : []}
       >
         <div className="grid gap-5 p-6">
           <p>{textOf(card)}</p>

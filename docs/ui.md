@@ -8,7 +8,7 @@ Every signed-in page has the same frame.
 
 - **Sidebar**: Inbox, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
 - **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page, finds Tickets by number or title and runs actions such as Toggle theme.
-- **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause.
+- **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause. It names queued work that cannot run, and only while runs wait: "No builder session is connected: 2 runs wait (Build 2)" with a Connect a session link, one line per role of a session Product with no session of that role seen for 10 minutes; "The Runner has not picked up a run for 10 minutes" when a Runner Product's run waits that long. A Runner Product never asks for a session. With no queued runs neither line shows, even when no session is connected.
 - **Ask button**: opens the [chat](#chat) dock on `Ctrl/Cmd+J`.
 - **Workspace switcher**: appears with two or more Workspaces.
 
@@ -57,6 +57,7 @@ The action bar at the top of the Now pane holds the single next step. It shows o
 - **Send back** asks for a note and returns the Ticket to Build or the Backlog.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
 - **Round cap**: when review reaches its cap you grant one more round or stop.
+- **Close as done** card: when a Build Run reports that another pull request or Ticket already covers the work, the card asks "Close #n as done by #m?". Close as done posts a comment naming #m and its evidence, closes the forge issue as completed whatever the Product's auto-close setting, and moves the Ticket to done. Re-run build queues a fresh Build Run.
 
 ### Decision card
 
@@ -76,7 +77,7 @@ After filing, the conversation is read-only history. Details of the conversation
 
 ## Parked Tickets
 
-A Run that finds a prerequisite only the owner can supply releases with that need. The Ticket shows a question card, `Parked: <need>`, in the Inbox and on the Ticket page, next to its current stage. The card offers Resume, which queues the same stage again, and Discard, which closes the Ticket. It never offers a plain Re-run and does not count as Stuck.
+A Run missing a prerequisite only the owner can supply releases with that need. The Inbox and Ticket page show `Parked: <need>` with the stage. Resume queues the stage again; Discard closes the Ticket. Not Stuck, no Re-run.
 
 ## Run page
 
@@ -108,6 +109,8 @@ More in chat.
 ## Settings
 
 Settings are grouped by scope. Account is for everyone, with Profile and API keys. Factory has Workflow, Templates, Models and budget, and AI usage. Workspace has General, Products, Connections, People and Knowledge. Admin has Audit and Health.
+
+API keys lists each session with its live Runs and slots, for example "2 of 3 working": a session connected with a capacity of 1 to 4 holds that many Runs at once, one subagent each.
 
 Only an Admin edits, except Profile and API keys. Members read the rest. The sidebar's Settings item opens Profile, and the command palette lists every page you may open.
 
