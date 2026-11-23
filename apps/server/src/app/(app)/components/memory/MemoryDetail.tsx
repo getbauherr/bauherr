@@ -8,7 +8,7 @@ import { STAGE_NAMES } from '../../lib/factory'
 export function Origin({ record, product }: { record: StatementRecord; product: string }) {
   return (
     <div className="grid gap-2">
-      <h3 className="label m-0 text-muted-foreground">Where it came from</h3>
+      <h2 className="label m-0 text-muted-foreground">Where it came from</h2>
       <p className="m-0">
         {KIND_WORDS[record.kind]}
         {record.ticket !== null && (
@@ -45,7 +45,7 @@ const OUTCOME = {
 export function Fared({ fares }: { fares: Fare[] }) {
   return (
     <div className="grid gap-2">
-      <h3 className="label m-0 text-muted-foreground">How it fared</h3>
+      <h2 className="label m-0 text-muted-foreground">How it fared</h2>
       {fares.length === 0 ? (
         <p className="m-0 text-muted-foreground">No run has got this memory yet.</p>
       ) : (

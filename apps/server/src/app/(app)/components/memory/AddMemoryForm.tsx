@@ -25,7 +25,7 @@ export function AddMemoryForm({ products, product }: { products: MemoryProduct[]
   return (
     <form onSubmit={(event) => event.preventDefault()} className="rounded-md border border-border bg-card">
       <div className="grid gap-5 p-6">
-        <h2 className="heading m-0">Add a memory</h2>
+        <h1 className="heading m-0">Add a memory</h1>
         <MemoryFields
           draft={draft}
           set={set}
