@@ -41,6 +41,7 @@ const LABELS: Labels = {
   'build.already-done': (e) => `The builder found the work already done by ${e.data.by}`,
   'ticket.done-elsewhere': () => 'The owner closed the ticket as done by other work',
   'pull.adopted': (e) => `Pull request #${e.data.pr} was adopted at ${e.data.headSha.slice(0, 7)}`,
+  'pull.conflicted': (e) => `The pull request conflicts with ${e.data.base}; sent back to Build to rebase`,
   'checks.finished': (e) => (e.data.passed ? 'The checks passed' : 'The checks failed'),
   'review.submitted': (e) =>
     e.data.findings === 0

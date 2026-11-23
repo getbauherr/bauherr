@@ -17,6 +17,7 @@ export type ItemRow = {
   forgeClosedAt: string | null
   headSha: string | null
   headRef: string | null
+  baseRef: string | null
   mergeSha: string | null
   closes: number[]
   draft: boolean
@@ -56,6 +57,7 @@ export const itemFromTicket = (ticket: Ticket): ItemRow => ({
   forgeClosedAt: ticket.closedAt ?? null,
   headSha: null,
   headRef: null,
+  baseRef: null,
   mergeSha: null,
   closes: [],
   draft: false,
@@ -78,6 +80,7 @@ export const itemFromPull = (pull: PullRequest): ItemRow => ({
   forgeClosedAt: pull.closedAt ?? null,
   headSha: pull.headSha,
   headRef: pull.head,
+  baseRef: pull.base,
   mergeSha: pull.mergeSha ?? null,
   closes: pull.closes,
   draft: pull.draft,

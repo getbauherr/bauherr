@@ -2,6 +2,7 @@ import type { PullRequest } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import type { ReadForge, ReadTickets } from '../forge/reader'
 import { checkRow, itemFromPull, itemFromTicket, type ItemRow } from './map'
+import { pullsAwaitingMergeability, saveMergeability, type AwaitingMerge } from './merge-store'
 import {
   clearGone,
   goneNumbers,
@@ -42,6 +43,33 @@ export const syncDeployChecks = async (
     const checks = await forge.listChecks(context.repo, sha)
     await upsertChecks(payload, context.workspace, itemId, checks.map((check) => checkRow(sha, check)))
     context.touched?.add(itemId)
+  }
+}
+
+const mergeCheckOf = (headSha: string, baseSha: string): string => `${headSha}@${baseSha}`
+
+const readMergeability = async (
+  payload: Payload,
+  context: PullContext,
+  forge: ReadForge,
+  pull: AwaitingMerge,
+  baseSha: string,
+): Promise<void> => {
+  const read = await forge.getPullRequest(context.repo, pull.number)
+  const check = read.mergeable === undefined ? null : mergeCheckOf(read.headSha, baseSha)
+  await saveMergeability(payload, pull.itemId, check, read.mergeable === false ? read.headSha : null)
+  context.touched?.add(pull.itemId)
+}
+
+export const syncMergeability = async (payload: Payload, context: PullContext, forge: ReadForge): Promise<void> => {
+  const bases = new Map<string, string | null>()
+  for (const pull of await pullsAwaitingMergeability(payload, context.source)) {
+    if (!bases.has(pull.baseRef)) {
+      bases.set(pull.baseRef, (await forge.getBranch(context.repo, pull.baseRef))?.sha ?? null)
+    }
+    const baseSha = bases.get(pull.baseRef) ?? null
+    if (baseSha === null || pull.checked === mergeCheckOf(pull.headSha, baseSha)) continue
+    await readMergeability(payload, context, forge, pull, baseSha)
   }
 }
 
