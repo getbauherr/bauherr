@@ -49,7 +49,7 @@ Every Ticket has one status. The labels are Done, Split, In progress, Queued, Wa
 
 ## Someday
 
-Label an issue `bauherr:someday` on the forge to park an idea. The factory leaves it alone: no Intake Run, no Inbox item. Every Product excludes this label by default; change the list under Intake in the Product settings. The Factory view shows `Someday: N` for open issues labelled `bauherr:someday`, linked to that forge issue list. Remove the label to bring an idea back: the next sync takes it into Intake once. A Ticket that has already entered stays.
+Label an issue `bauherr:someday` to park an idea: no Intake Run, no Inbox item. It is excluded by default (Product settings, Intake). The Factory view shows `Someday: N`, linked to those issues. Remove the label and the next sync takes it into Intake.
 
 ## Ticket page
 
