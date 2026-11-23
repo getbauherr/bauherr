@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 import { commitChecksUrl } from '../deploy'
 import { isRemembered } from '../decisions'
-import { canGoBack, fold } from '../lifecycle'
+import { canArchive, canGoBack, fold } from '../lifecycle'
 import type { Actor, EventType } from '../events'
 import { RecordNotFound } from '../record/errors'
 import {
@@ -76,6 +76,8 @@ export type TicketView = {
   deploy: DeployView | null
   answerRemembered: boolean
   canGoBack: boolean
+  canArchive: boolean
+  archived: boolean
 }
 
 export type TicketFilter = { workspace: number; recordId: number }
@@ -147,6 +149,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
   const issue = await loadItem(payload, { workspace: stored.workspace, repo, number })
   const runs = await loadRuns(payload, stored.id)
   const { ended, closedAs } = endOf(stored, events)
+  const folded = fold(events)
   const pulls = await pullsOf(payload, stored, events)
   return {
     recordId: stored.id,
@@ -170,7 +173,9 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),
     answerRemembered: stored.card?.card === 'question' && isRemembered(stored.card.reason),
-    canGoBack: canGoBack(fold(events)),
+    canGoBack: canGoBack(folded),
+    canArchive: canArchive(folded),
+    archived: folded.closed === 'archived',
     similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT, 'issue') : [],
   }
 }

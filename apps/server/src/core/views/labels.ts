@@ -8,11 +8,18 @@ const WRITES: Record<EventOf<'forge.write.done'>['data']['kind'], string> = {
   question: 'a question comment',
   merge: 'the merge',
   close: 'closing the issue',
+  reopen: 'reopening the issue',
   'pull-request': 'opening the pull request',
   review: 'a review comment',
 }
 
 const article = (word: string): string => (/^[aeiou]/.test(word) ? 'An' : 'A')
+
+const CLOSED_LABELS = {
+  discarded: 'The owner discarded the ticket',
+  'closed-on-forge': 'The issue was closed on the forge',
+  archived: 'The ticket was archived',
+}
 
 const LABELS: Labels = {
   'intake.accepted': () => 'The issue was accepted and goes to a Brief',
@@ -47,8 +54,8 @@ const LABELS: Labels = {
   'production.approved': () => 'The owner approved production',
   'production.held': () => 'The owner holds production',
   'owner.note': (e) => `The owner left a note: ${e.data.note}`,
-  'ticket.closed': (e) =>
-    e.data.reason === 'discarded' ? 'The owner discarded the ticket' : 'The issue was closed on the forge',
+  'ticket.closed': (e) => CLOSED_LABELS[e.data.reason],
+  'ticket.restored': () => 'The ticket was restored and its stage runs again',
   'verify.overridden': () => 'The owner accepted the patch without a passing verification',
   'question.asked': (e) => `The factory asked the owner a question (${e.data.reason.replace(/-/g, ' ')})`,
   'question.answered': (e) => `The owner answered: ${e.data.option.replace(/-/g, ' ')}`,

@@ -17,6 +17,8 @@ export type Claimed = { run: Run; token: string }
 export type Expired = { runId: number; recordId: number; stage: Stage }
 
 const CLOSING_EVENTS = sql`('ticket.closed', 'intake.closed', 'brief.discarded')`
+const SINCE_RESTORE = sql`e."id" > coalesce(
+  (SELECT max(x."id") FROM "events" x WHERE x."record_id" = r."id" AND x."type" = 'ticket.restored'), 0)`
 
 const hashOf = (token: string): string => createHash('sha256').update(token).digest('hex')
 const leaseEnd = (now: Date): string => new Date(now.getTime() + LEASE_MS).toISOString()
@@ -61,7 +63,8 @@ export const claim = async (payload: Conn, input: ClaimInput): Promise<Claimed |
       WHERE s."status" = 'queued' AND s."role" = ${input.role} AND s."workspace_id" = ${input.workspace}
         AND (${executor}::text IS NULL OR coalesce(p."executor", 'session') = ${executor}::text)
         AND r."stage" <> 'done' AND NOT EXISTS (
-          SELECT 1 FROM "events" e WHERE e."record_id" = r."id" AND e."type" IN ${CLOSING_EVENTS})
+          SELECT 1 FROM "events" e WHERE e."record_id" = r."id" AND e."type" IN ${CLOSING_EVENTS}
+            AND ${SINCE_RESTORE})
       ORDER BY r."rank", s."created_at", s."id" LIMIT 1 FOR UPDATE OF s SKIP LOCKED
     ) AND "status" = 'queued'
     RETURNING ${RUN_COLUMNS}`)

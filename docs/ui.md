@@ -59,6 +59,9 @@ The action bar at the top of the Now pane holds the single next step. It shows o
 - **Round cap**: when review reaches its cap you grant one more round or stop.
 - **Close as done** card: when a Build Run reports that another pull request or Ticket already covers the work, the card asks "Close #n as done by #m?". Close as done posts a comment naming #m and its evidence, closes the forge issue as completed whatever the Product's auto-close setting, and moves the Ticket to done. Re-run build queues a fresh Build Run.
 
+- **Archive**: for a mistaken or unwanted Ticket before Ship. A dialog confirms. The Ticket leaves the Inbox and the Factory, its Run is released and the issue closes as not planned. The Bauherr and Admins may.
+- **Restore**: an archived Ticket's page says Archived. Restore reopens the issue and runs its former stage again, as reopening the issue on the forge does.
+
 ### Decision card
 
 Every human checkpoint uses one card. It has the ask in one sentence, a recommendation, at most three reasons, the options and a collapsed details section. The Inbox and the Ticket page show the same card. Each option is an existing action, and a decided card does not come back.

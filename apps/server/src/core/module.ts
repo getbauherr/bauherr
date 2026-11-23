@@ -10,6 +10,7 @@ export type Problem = { path: string; message: string }
 export type Effect =
   | { kind: 'question'; body: string }
   | { kind: 'close'; reason: CloseReason }
+  | { kind: 'reopen' }
   | { kind: 'status' }
   | { kind: 'review'; pr: number; body: string }
 export type ApplyContext = { config: Config; state: State }

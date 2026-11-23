@@ -16,6 +16,8 @@ import { storeGiven } from './statements'
 
 export const NOTE_MAX = 1000
 
+const DISCARDING = ['brief', 'question:failed-runs', 'question:verify-rounds']
+
 export class DecisionError extends Error {
   constructor(message: string) {
     super(message)
@@ -26,7 +28,7 @@ export class StaleDecision extends DecisionError {}
 export class InvalidDecision extends DecisionError {}
 export class NotAllowedToDecide extends DecisionError {}
 
-export type Person = { id: string; role: string; workspaceIds: number[] }
+export type Person = { id: string; role: string; workspaceIds: number[]; name?: string }
 
 export const mayDecide = (person: Person, workspace: number): boolean =>
   isBauherr({ role: person.role }) && person.workspaceIds.includes(workspace)
@@ -98,6 +100,14 @@ const closedAsDone = (asked: string | null, choice: string, state: State): Effec
   ]
 }
 
+export const notPlanned = (verb: 'Archived' | 'Discarded', person: Person): Effect[] => [
+  { kind: 'question', body: `${verb} by ${person.name ?? 'the owner'}.` },
+  { kind: 'close', reason: 'not_planned' },
+]
+
+const discarded = (asked: string | null, choice: string, person: Person): Effect[] =>
+  choice === 'discard' && asked !== null && DISCARDING.includes(asked) ? notPlanned('Discarded', person) : []
+
 export const decide = async (
   recordId: number,
   person: Person,
@@ -121,7 +131,11 @@ export const decide = async (
     await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card })
     return {
       backlogBrief: asked === 'brief' && stored.record.source.backlog,
-      review: [...sentBackReview(asked, decision.choice, state, note), ...closedAsDone(asked, decision.choice, state)],
+      review: [
+        ...sentBackReview(asked, decision.choice, state, note),
+        ...closedAsDone(asked, decision.choice, state),
+        ...discarded(asked, decision.choice, person),
+      ],
     }
   })
   await advance(recordId, deps)
