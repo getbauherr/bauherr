@@ -60,6 +60,7 @@ export const SAMPLES: Record<EventType, unknown> = {
   'run.started': { stage: 'build', runId: 'r1', fingerprint: 'fp' },
   'run.failed': { stage: 'build', runId: 'r1', reason: 'no result' },
   'run.released': { stage: 'build', runId: 'r1' },
+  'run.expired': { stage: 'build', runId: 'r1', reason: 'no heartbeat for 30 minutes' },
   'brief.submitted': { runId: 'r1' },
   'brief.approved': { by: 'rule' },
   'brief.changes-requested': { note: 'shorter' },

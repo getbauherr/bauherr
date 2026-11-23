@@ -24,6 +24,7 @@ const LABELS: Labels = {
   'intake.disputed': () => 'The agent disputes that this is a change to make',
   'run.started': (e) => `${article(e.data.stage)} ${e.data.stage} run was queued`,
   'run.failed': (e) => `${article(e.data.stage)} ${e.data.stage} run failed: ${e.data.reason}`,
+  'run.expired': (e) => `${article(e.data.stage)} ${e.data.stage} run expired: ${e.data.reason}`,
   'run.released': (e) => `${article(e.data.stage)} ${e.data.stage} run was released`,
   'brief.submitted': () => 'A Brief was submitted',
   'brief.approved': (e) => (e.data.by === 'owner' ? 'The owner approved the Brief' : 'The Brief was approved by rule'),

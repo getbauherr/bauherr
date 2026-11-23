@@ -102,6 +102,7 @@ const runs: Reducer = (state, event) => {
     case 'run.started':
       return { ...state, run: event.data, note: null }
     case 'run.failed':
+    case 'run.expired':
       return { ...endRun(state, event.data.runId), failedRuns: state.failedRuns + 1 }
     case 'run.released':
       return endRun(state, event.data.runId)

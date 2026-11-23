@@ -4,7 +4,9 @@ import { z } from 'zod'
 import { pullDescription, pullTitle } from '../../core/forge/pull-description'
 import type { State } from '../../core/fold'
 import type { StoredRecord } from '../../core/record/store'
+import { LeaseLost } from '../../core/run/errors'
 import type { Run } from '../../core/run/schema'
+import { readRun } from '../../core/run/store'
 import type { RepoAccess, RunnerDeps } from './types'
 
 type CloneOptions = Parameters<typeof cloneRepo>[0]
@@ -65,6 +67,25 @@ const cloneAt = async (input: PlanInput, branch: string, checkout?: string): Pro
   }
 }
 
+const holdLease = async ({ run, deps }: PlanInput): Promise<void> => {
+  const { payload, now } = deps.engine()
+  const current = await readRun(payload, run.id)
+  if (current.status !== 'claimed' || !current.leaseExpiresAt || current.leaseExpiresAt < now) {
+    throw new LeaseLost(`The lease of run ${run.id} is gone: nothing was pushed.`)
+  }
+}
+
+const STALE_HEAD = 'branch moved'
+
+const pushed = async (checkout: Checkout, message: string, guarded: boolean): Promise<boolean | 'moved'> => {
+  try {
+    return await commitAndPush(checkout, checkout.env, message, { onlyIfHeadStillAtStart: guarded })
+  } catch (error) {
+    if (guarded && error instanceof Error && error.message.includes('stale info')) return 'moved'
+    throw error
+  }
+}
+
 const openPull = async (input: PlanInput, checkout: Checkout): Promise<number> => {
   const { record } = input.stored
   const target = { recordId: input.stored.id, itemId: await issueItemOf(input) }
@@ -87,9 +108,11 @@ const build = async (input: PlanInput): Promise<Plan> => {
     seal: async (checkout) => {
       const message = `${pullTitle(stored.record)} (#${stored.record.source.number})`
       await freshToken(checkout, access)
-      if (!(await commitAndPush(checkout, checkout.env, message))) {
-        return { ok: false, reason: 'the agent left no change in the checkout' }
-      }
+      await holdLease(input)
+      const done = await pushed(checkout, message, existing !== null)
+      if (done === 'moved') return { ok: false, reason: STALE_HEAD }
+      if (!done) return { ok: false, reason: 'the agent left no change in the checkout' }
+      await holdLease(input)
       const pr = existing ? existing.pr : await openPull(input, checkout)
       return { ok: true, facts: { pr, ...(await headFacts(checkout, access, existing !== null)) } }
     },

@@ -76,7 +76,7 @@ const partsOf = (
 ]
 
 const handoffOf = (run: { stage: Stage; status: string }, record: Pick<TicketRecord, 'handoff'>): string | null => {
-  const ended = run.status === 'submitted' || run.status === 'failed'
+  const ended = ['submitted', 'failed', 'expired'].includes(run.status)
   return ended && run.stage === 'build' && record.handoff !== '' ? record.handoff : null
 }
 
