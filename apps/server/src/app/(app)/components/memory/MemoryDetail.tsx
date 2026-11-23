@@ -3,7 +3,7 @@ import type { Fare, StatementRecord } from '../../../../core/views/statement-rec
 import { stageSchema } from '../../../../core/events'
 import { Badge } from '../ui/badge'
 import { Table } from '../ui/table'
-import { STAGE_NAMES } from '../../lib/factory'
+import { RUN_NAMES } from '../../lib/factory'
 
 export function Origin({ record, product }: { record: StatementRecord; product: string }) {
   return (
@@ -45,7 +45,7 @@ export function Origin({ record, product }: { record: StatementRecord; product: 
 
 const stageOf = (fare: Fare): string => {
   if (fare.stage === 'verify' && fare.role === 'reviewer') return 'Review'
-  return STAGE_NAMES[stageSchema.parse(fare.stage)]
+  return RUN_NAMES[stageSchema.parse(fare.stage)]
 }
 
 const OUTCOME = {

@@ -9,6 +9,7 @@ import { claim } from '../../src/core/run/leases'
 import { contextPack } from '../../src/core/run/pack'
 import { failRun, submit } from '../../src/core/submit'
 import { board } from '../../src/core/views/board'
+import { holds } from '../../src/core/views/holds'
 import { statementRecords } from '../../src/core/views/statement-records'
 import { ticket } from '../../src/core/views/ticket'
 import { learn } from '../../src/modules/learn/module'
@@ -100,6 +101,14 @@ describe('the Learn run of an accepted ticket', () => {
     })
     const lanes = await board(e.db.payload, { workspace: e.db.workspace, now: e.clock.now })
     expect(lanes.stages.done.map((card) => card.recordId)).toContain(id)
+  })
+
+  it('counts as a run that waits for a reviewer session', async () => {
+    await accepted()
+    const hold = (await holds(e.db.payload, { workspace: e.db.workspace, now: e.clock.now })).find(
+      (entry) => entry.kind === 'no-agent-connected' && entry.role === 'reviewer',
+    )
+    expect(hold).toMatchObject({ queued: 1, byStage: [{ stage: 'done', queued: 1 }] })
   })
 
   it('is not queued for a ticket nothing corrected', async () => {
