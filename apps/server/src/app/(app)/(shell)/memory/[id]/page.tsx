@@ -2,10 +2,11 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { markMemorySeen } from '../../../../../core/memory-store'
 import { memoryProducts, statementFare, statementRecord } from '../../../../../core/views/statement-records'
+import { CheckAside } from '../../../components/memory/CheckAside'
+import { MemoryState } from '../../../components/memory/CheckState'
 import { EditMemory } from '../../../components/memory/EditMemory'
 import { Fared, Origin } from '../../../components/memory/MemoryDetail'
 import { PageTitle } from '../../../components/PageTitle'
-import { Badge } from '../../../components/ui/badge'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -33,14 +34,15 @@ export default async function MemoryOnePage({ params }: { params: Promise<{ id: 
           Memory
         </Link>
         <h1 className="title">{title}</h1>
-        {record.off ? <Badge>Off</Badge> : <Badge variant="ok">Active</Badge>}
+        <MemoryState off={record.off} check={record.check} />
       </div>
-      <div className="max-w-3xl">
+      <div className="grid max-w-5xl items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <EditMemory
           id={record.id}
           product={product.id}
           initial={{ text: record.text, reach: record.reach, area: record.area ?? '', stages }}
           off={record.off}
+          mayCheck={record.mayCheck && product.repo !== null}
           hasTicket={record.ticket !== null}
           areas={product.riskAreas}
           footnote={`Handed ${record.handed} times, came back ${record.cameBack}.`}
@@ -48,6 +50,7 @@ export default async function MemoryOnePage({ params }: { params: Promise<{ id: 
           <Origin record={record} product={product.name} />
           <Fared fares={fares} />
         </EditMemory>
+        <CheckAside record={record} repo={product.repo} />
       </div>
     </>
   )

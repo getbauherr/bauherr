@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 import { commitChecksUrl } from '../deploy'
 import { isRemembered } from '../decisions'
+import { sentenceOf } from '../memory-check'
 import { canArchive, canGoBack, fold } from '../lifecycle'
 import { RecordNotFound } from '../record/errors'
 import {
@@ -16,6 +17,7 @@ import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
 import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
+import { positionsOf, type Positions } from './positions'
 import { activityOf, type EventView } from './activity'
 import { loadMockups, type AttachmentView } from './attachments'
 import { keptMemories } from './statement-records'
@@ -66,6 +68,7 @@ export type TicketView = {
   card: StoredCard | null
   record: TicketRecord
   source: { repo: string; number: number; title: string; body: string; url: string } | null
+  fromMemory: { id: number; text: string } | null
   events: EventView[]
   runs: RunView[]
   proofs: ProofGroup[]
@@ -79,6 +82,7 @@ export type TicketView = {
   statementsUsed: StatementsUsed
   deploy: DeployView | null
   answerRemembered: boolean
+  positions: Positions | null
   canGoBack: boolean
   canArchive: boolean
   archived: boolean
@@ -184,6 +188,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     parked: stored.parked,
     card: stored.card,
     record: stored.record,
+    fromMemory: await sentenceOf(payload, { workspace: stored.workspace, id: stored.record.source.memory }),
     source: issue && { repo, number, title: issue.title, body: issue.body, url: issue.url },
     events: await withKept(payload, stored.id, activityOf(events)),
     runs,
@@ -194,6 +199,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     verifySince: verifySinceOf(events),
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),
+    positions: positionsOf({ card: stored.card, record: stored.record, runs, events }),
     answerRemembered: stored.card?.card === 'question' && isRemembered(stored.card.reason),
     canGoBack: canGoBack(folded),
     canArchive: canArchive(folded),

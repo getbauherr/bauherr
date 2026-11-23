@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { TicketView } from '../../../../core/views/ticket'
 import { BRIEF_ACTIONS } from '../../lib/decision-actions'
 import { REASON_WORDS } from '../../lib/ticket-words'
@@ -20,6 +21,14 @@ export function BriefCard({ view, seq, reason, may }: Props) {
         actions={may ? BRIEF_ACTIONS : []}
       >
         <div className="grid gap-5 p-6">
+          {view.fromMemory && (
+            <p className="m-0">
+              From a memory:{' '}
+              <Link href={`/memory/${view.fromMemory.id}`} className="text-primary hover:underline">
+                {view.fromMemory.text}
+              </Link>
+            </p>
+          )}
           <BriefSheet record={view.record} mockups={view.mockups} missing={view.noMockup} reason={why} />
           <OpenDecisions decisions={view.record.decisions} />
         </div>
