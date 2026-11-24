@@ -40,6 +40,18 @@ const insert = (
     ("workspace_id", "product_id", "scope", "body", "author", "reason", "created_at", "updated_at")
     VALUES (${workspace}, ${product}, ${scope}, ${v.body}, ${v.author}, ${v.reason}, ${v.at}, ${v.at})`
 
+const REPO_FILES = [
+  ['AGENTS.md', 42],
+  ['CLAUDE.md', 250],
+  ['.cursor/rules/style.mdc', 12],
+  ['.github/copilot-instructions.md', 9],
+] as const
+
+const insertRepoFile = (workspace: number, product: number, path: string, lines: number) =>
+  sql`INSERT INTO "repo_instruction_files"
+    ("workspace_id", "product_id", "path", "lines", "chars", "commit", "synced_at")
+    VALUES (${workspace}, ${product}, ${path}, ${lines}, ${lines * 40}, 'seed', now())`
+
 export const seedMemoryEditor = async (
   p: Payload,
   ensureUser: (address: string, tenant: number) => Promise<unknown>,
@@ -52,6 +64,7 @@ export const seedMemoryEditor = async (
   const data = { name: 'Memedit App', slug: 'memedit-app', workspace }
   const product = Number((await p.create({ collection: 'products', data, ...o })).id)
   await ensureUser('memedit-bauherr@example.com', workspace)
+  await ensureUser('repofiles@example.com', workspace)
   const factory = await p.db.drizzle.execute(
     sql`SELECT 1 FROM "memory_document_versions" WHERE "scope" = 'factory' LIMIT 1`,
   )
@@ -61,4 +74,5 @@ export const seedMemoryEditor = async (
     )
   }
   for (const version of PRODUCT_VERSIONS) await p.db.drizzle.execute(insert(workspace, product, 'product', version))
+  for (const [path, lines] of REPO_FILES) await p.db.drizzle.execute(insertRepoFile(workspace, product, path, lines))
 }

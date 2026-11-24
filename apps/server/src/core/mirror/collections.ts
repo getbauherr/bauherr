@@ -76,4 +76,18 @@ export const mirrorCollections: CollectionConfig[] = [
     ],
     indexes: [{ fields: ['item', 'sha', 'name'], unique: true }],
   },
+  {
+    slug: 'repo_instruction_files',
+    admin: { useAsTitle: 'path' },
+    access,
+    fields: [
+      relation('product', 'products'),
+      text('path', true),
+      { name: 'lines', type: 'number', required: true },
+      { name: 'chars', type: 'number', required: true },
+      text('commit', true),
+      { name: 'syncedAt', type: 'date', required: true },
+    ],
+    indexes: [{ fields: ['workspace', 'product', 'path'], unique: true }],
+  },
 ]

@@ -14,6 +14,7 @@ const signInSpecs = [
   'memory-editor',
   'retro',
   'people',
+  'repo-files',
   'perf',
   'product-settings',
   'selects',
