@@ -154,6 +154,10 @@ await user('po-factory@example.com', 'product-owner', {
   assignments: [{ workspace: factory, scope: 'products', products: [factoryApp] }],
 })
 await user('po-none@example.com', 'product-owner')
+await user('po-oidc@example.com', 'product-owner', {
+  oidcSubject: 'http://localhost:4010|po-oidc',
+  assignments: [{ workspace: factory, scope: 'products', products: [factoryApp] }],
+})
 const inFactory = { workspace: { equals: factory } }
 const seeded = await payload.find({ collection: 'records', where: inFactory, limit: 1, depth: 0, ...o })
 if (!seeded.docs.length) {
