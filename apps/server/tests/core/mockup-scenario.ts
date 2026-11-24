@@ -36,15 +36,33 @@ const idOf = z.object({ id: z.coerce.number() })
 
 type Image = { caption: string; bytes: Buffer; n: number; kind?: string; screenName?: string | null }
 
-const store = (e: Engine, id: number, run: number, { caption, bytes, n, kind = 'mockup', screenName = null }: Image) =>
-  e.db.payload.db.drizzle.execute(sql`
+const store = async (e: Engine, id: number, run: number, image: Image): Promise<number> => {
+  const { caption, bytes, n, kind = 'mockup', screenName = null } = image
+  const stored = await e.db.payload.db.drizzle.execute(sql`
     INSERT INTO "attachments" ("workspace_id", "record_id", "run_id", "stage", "kind", "caption", "content_type",
       "byte_size", "sha256", "content", "token_hash", "lease_hash", "expires_at", "screen", "width", "proof_sha",
       "updated_at", "created_at")
     VALUES (${e.db.workspace}, ${id}, ${run}, 'brief', ${kind}, ${caption}, 'image/png', ${bytes.length},
       ${`seed${n}`}, ${bytes.toString('base64')}, ${`seed-${kind}-${id}-${n}`}, 'seed', now(),
       ${screenName}, ${screenName === null ? null : 1280},
-      ${screenName === null ? null : 'seedhead'}, now(), now())`)
+      ${screenName === null ? null : 'seedhead'}, now(), now()) RETURNING "id"`)
+  return idOf.parse(stored.rows[0]).id
+}
+
+export const SCREENSHOT_PROOF_CAPTION = 'Export page, progress bar filling'
+
+const addScreenshotProof = async (e: Engine, id: number, run: number) => {
+  const attachment = await store(e, id, run, {
+    caption: SCREENSHOT_PROOF_CAPTION,
+    bytes: screen(true),
+    n: 20,
+    kind: 'screenshot',
+  })
+  await e.db.payload.db.drizzle.execute(sql`
+    INSERT INTO "proofs" ("workspace_id", "record_id", "criterion", "kind", "source", "sha", "attachment_id",
+      "updated_at", "created_at")
+    VALUES (${e.db.workspace}, ${id}, 'c1', 'screenshot', 'session', 'seedhead', ${attachment}, now(), now())`)
+}
 
 export const seedMockupTicket = async (e: Engine): Promise<number> => {
   const id = await begin(e)
@@ -65,6 +83,7 @@ export const seedMockupTicket = async (e: Engine): Promise<number> => {
     const after = { ...taken, caption: `After: ${screenName}`, bytes: screen(true), kind: 'after', n: taken.n + 1 }
     await store(e, id, run, after)
   }
+  await addScreenshotProof(e, id, run)
   const seeded = await readRecord(e.db.payload, id)
   const verified = { stage: 'verify', runId: 'seed' } as const
   await patchRecord(e.db.payload, id, {
