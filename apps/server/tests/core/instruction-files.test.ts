@@ -64,16 +64,20 @@ describe('repository files that instruct agents', () => {
     expect(warningsOf('AGENTS.md', 10, 12_000)).toEqual([])
   })
 
-  it('replaces the stored list when a file disappears', async () => {
-    await synced(FILES, 'session')
-    const repo = h.fresh()
+  it('replaces the stored list per repository and keeps the files of the product\'s other repositories', async () => {
+    const first = await synced({ 'AGENTS.md': 'a', 'CLAUDE.md': 'b' }, 'session')
+    const second = h.fresh()
     const fake = new FakeBackend({ native: true, user: 'jo' })
-    await fake.tickets(repo).create({ title: 'seed', body: '' })
-    fake.commit(repo, 'main', 'CLAUDE.md', 'a')
-    await h.sync({ [repo]: readerOf(fake) })
-    await h.rows(sql`UPDATE "ticket_sources" SET "facts_at" = NULL`)
-    await h.sync({ [repo]: readerOf(fake) })
+    await fake.tickets(second).create({ title: 'seed', body: '' })
+    fake.commit(second, 'main', 'CLAUDE.md', 'a')
+    await h.sync({ [second]: readerOf(fake) })
     const view = await instructionFilesOf(h.payload(), h.ids.workspace, h.ids.product)
-    expect(view.files.map((file) => file.path)).toEqual(['CLAUDE.md'])
+    expect(view.multiRepo).toBe(true)
+    expect(new Set(first.files.map((file) => file.repo)).size).toBe(1)
+    expect(view.files.map((file) => [file.repo, file.path])).toEqual([
+      [first.files[0]?.repo, 'AGENTS.md'],
+      [first.files[0]?.repo, 'CLAUDE.md'],
+      [second, 'CLAUDE.md'],
+    ])
   })
 })

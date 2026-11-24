@@ -37,19 +37,20 @@ export const readInstructionFiles = async (
 
 export const saveInstructionFiles = async (
   payload: Payload,
-  source: { workspace: number; product: number },
+  source: { workspace: number; product: number; repo: string },
   found: InstructionFiles,
   now: Date,
 ): Promise<void> => {
-  const { workspace, product } = source
+  const { workspace, product, repo } = source
   await payload.db.drizzle.execute(
-    sql`DELETE FROM "repo_instruction_files" WHERE "workspace_id" = ${workspace} AND "product_id" = ${product}`,
+    sql`DELETE FROM "repo_instruction_files" WHERE "workspace_id" = ${workspace} AND "product_id" = ${product}
+      AND "repo" = ${repo}`,
   )
   for (const file of found.files) {
     await payload.db.drizzle.execute(sql`
       INSERT INTO "repo_instruction_files"
-        ("workspace_id", "product_id", "path", "lines", "chars", "commit", "synced_at")
-      VALUES (${workspace}, ${product}, ${file.path}, ${file.lines}, ${file.chars}, ${found.commit},
+        ("workspace_id", "product_id", "repo", "path", "lines", "chars", "commit", "synced_at")
+      VALUES (${workspace}, ${product}, ${repo}, ${file.path}, ${file.lines}, ${file.chars}, ${found.commit},
         ${now.toISOString()}::timestamptz)`)
   }
 }

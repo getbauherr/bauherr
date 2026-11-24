@@ -82,12 +82,13 @@ export const mirrorCollections: CollectionConfig[] = [
     access,
     fields: [
       relation('product', 'products'),
+      text('repo', true),
       text('path', true),
       { name: 'lines', type: 'number', required: true },
       { name: 'chars', type: 'number', required: true },
       text('commit', true),
       { name: 'syncedAt', type: 'date', required: true },
     ],
-    indexes: [{ fields: ['workspace', 'product', 'path'], unique: true }],
+    indexes: [{ fields: ['workspace', 'product', 'repo', 'path'], unique: true }],
   },
 ]

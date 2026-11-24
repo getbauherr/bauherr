@@ -49,8 +49,8 @@ const REPO_FILES = [
 
 const insertRepoFile = (workspace: number, product: number, path: string, lines: number) =>
   sql`INSERT INTO "repo_instruction_files"
-    ("workspace_id", "product_id", "path", "lines", "chars", "commit", "synced_at")
-    VALUES (${workspace}, ${product}, ${path}, ${lines}, ${lines * 40}, 'seed', now())`
+    ("workspace_id", "product_id", "repo", "path", "lines", "chars", "commit", "synced_at")
+    VALUES (${workspace}, ${product}, 'acme/app', ${path}, ${lines}, ${lines * 40}, 'seed', now())`
 
 export const seedMemoryEditor = async (
   p: Payload,

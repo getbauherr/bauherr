@@ -14,8 +14,12 @@ export function RepoFiles({ view }: { view: InstructionFilesView }) {
       ) : (
         <ul className="m-0 grid list-none gap-0 p-0">
           {view.files.map((file) => (
-            <li key={file.path} className="grid gap-0.5 border-t border-border py-1.5 first:border-t-0">
+            <li
+              key={`${file.repo}:${file.path}`}
+              className="grid gap-0.5 border-t border-border py-1.5 first:border-t-0"
+            >
               <span className="mono [overflow-wrap:anywhere]">
+                {view.multiRepo ? <span className="text-muted-foreground">{file.repo}: </span> : null}
                 {file.path} <span className="whitespace-nowrap text-muted-foreground">({file.lines} lines)</span>
               </span>
               <span className="text-sm text-muted-foreground">
