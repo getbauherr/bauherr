@@ -4,7 +4,7 @@ import { email } from './user'
 
 const TICKETS = ['No AGENTS.md', 'No issue forms']
 
-const openProduct = async (page: Page) => {
+const enter = async (page: Page) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim())
@@ -12,6 +12,10 @@ const openProduct = async (page: Page) => {
   await expect(page.getByRole('banner')).toBeVisible()
   const url = process.env.BASE_URL ?? 'http://localhost:3000'
   await page.context().addCookies([{ name: 'bauherr-ws', value: 'readiness', url }])
+}
+
+const openProduct = async (page: Page) => {
+  await enter(page)
   await page.goto('/settings/products')
   await page.getByRole('link', { name: 'Readiness App' }).click()
   await expect(page).toHaveURL(/\/settings\/products\/\d+$/)
@@ -50,4 +54,14 @@ test('Make it a ticket opens the issue and the gap reads Ticket #n open', { tag:
   await row.getByRole('button', { name: 'Make it a ticket' }).click()
   await expect(row.getByRole('button', { name: 'Make it a ticket' })).toHaveCount(0)
   await expect(row).toContainText(/Ticket #\d+ open/)
+})
+
+test('The hold strip names a ticket whose checks have not started and Why gives the likely cause', async ({ page }) => {
+  await enter(page)
+  await page.goto('/')
+  const strip = page.getByRole('region', { name: 'Holding up work' })
+  await expect(strip).toContainText(/#\d+ has waited \d+ h for checks that have not started/)
+  await strip.getByRole('link', { name: 'Why' }).click()
+  await expect(page.getByText('Checks not started')).toBeVisible()
+  await expect(page.getByText('CI is down or missing')).toBeVisible()
 })
