@@ -35,11 +35,12 @@ const setTheme = (page: Page, id: 'light' | 'dark') =>
   page.evaluate(async (t) => {
     localStorage.setItem('bauherr-theme', t)
     document.documentElement.dataset.theme = t
-    const all = document.getAnimations().filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime))
-    const done = Promise.all(all.map((a) => a.finished.catch(() => {}))).then(() => true)
-    if (!(await Promise.race([done, new Promise((r) => setTimeout(r, 20_000, false))])))
-      throw new Error('DIAG ' + all.filter((a) => a.playState !== 'finished').map((a) => a.playState + ' ' +
-        (a.effect?.target as Element | null)?.outerHTML.slice(0, 160)).join(' || '))
+    const finite = (a: Animation) => Number.isFinite(a.effect?.getComputedTiming().endTime)
+    const unfinished = () => document.getAnimations().filter((a) => finite(a) && a.playState !== 'finished')
+    for (const end = Date.now() + 20_000; unfinished().length && Date.now() < end; )
+      await new Promise((r) => setTimeout(r, 50))
+    const stuck = unfinished().map((a) => `${a.playState} ${(a.effect as KeyframeEffect).target?.className}`)
+    if (stuck.length) throw new Error(`animations unfinished after 20s: ${stuck.join(' || ')}`)
   }, id)
 
 const signIn = async (page: Page) => {
