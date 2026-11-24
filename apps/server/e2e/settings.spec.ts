@@ -95,6 +95,7 @@ test('an unsaved Workspace name says so and asks before leaving', async ({ page 
   await page.goto('/settings/workspace')
   const general = page.locator('form', { has: page.getByRole('button', { name: 'Save', exact: true }) })
   await expect(page.getByText('Not saved yet')).toHaveCount(0)
+  const original = await general.getByLabel('Name').inputValue()
   await general.getByLabel('Name').fill(`Unsaved ${Date.now()}`)
   await expect(general.getByText('Not saved yet')).toBeVisible()
   const nav = page.getByRole('navigation', { name: 'Settings' })
@@ -106,6 +107,17 @@ test('an unsaved Workspace name says so and asks before leaving', async ({ page 
   await nav.getByRole('link', { name: 'Products' }).click()
   await dialog.getByRole('button', { name: 'Discard' }).click()
   await expect(page).toHaveURL(/\/settings\/products$/)
+
+  await page.goto('/settings/workspace')
+  await general.getByLabel('Name').fill(`Saved ${Date.now()}`)
+  await expect(general.getByText('Not saved yet')).toBeVisible()
+  await general.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(general.getByText('Saved', { exact: true })).toBeVisible()
+  await expect(general.getByText('Not saved yet')).toHaveCount(0)
+
+  await general.getByLabel('Name').fill(original)
+  await general.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(general.getByText('Saved', { exact: true })).toBeVisible()
 })
 
 test('at 390 px the Next step bar does not cover the last field of the Models & budget page', async ({ page }) => {
