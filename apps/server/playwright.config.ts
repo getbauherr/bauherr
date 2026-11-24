@@ -12,6 +12,7 @@ const signInSpecs = [
   'gateway',
   'memory',
   'memory-editor',
+  'retro',
   'people',
   'perf',
   'product-settings',

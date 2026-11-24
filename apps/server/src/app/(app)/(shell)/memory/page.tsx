@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { mayDecide } from '../../../../core/decide'
 import {
   DOCUMENT_MAX_LINES,
@@ -104,8 +105,8 @@ export default async function MemoryPage({ searchParams }: Props) {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="title">Memory</h1>
         <ScopeSelect value={current.value} options={options} />
-        <Button variant="outline" className="ml-auto" disabled>
-          Retro
+        <Button variant="outline" className="ml-auto" asChild>
+          <Link href="/memory/retro">Retro</Link>
         </Button>
       </div>
       <Document current={current} workspace={workspace.id} user={user} />

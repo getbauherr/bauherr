@@ -137,5 +137,32 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'reason', type: 'text', required: true },
     ],
   },
+  {
+    slug: 'retros',
+    admin: { useAsTitle: 'state' },
+    access: { read: readable, create: closed, update: closed, delete: closed },
+    fields: [
+      { name: 'product', type: 'relationship', relationTo: 'products', required: true, index: true },
+      { name: 'rangeFrom', type: 'date', required: true },
+      { name: 'rangeTo', type: 'date', required: true },
+      { name: 'rangeLabel', type: 'text', required: true },
+      { name: 'state', type: 'text', required: true },
+      { name: 'agreed', type: 'json', required: true },
+      { name: 'opening', type: 'json' },
+      { name: 'outcome', type: 'json' },
+      { name: 'createdBy', type: 'text', required: true },
+    ],
+  },
+  {
+    slug: 'retro_messages',
+    admin: { useAsTitle: 'role' },
+    access: { read: readable, create: closed, update: closed, delete: closed },
+    fields: [
+      { name: 'retro', type: 'relationship', relationTo: 'retros', required: true, index: true },
+      { name: 'role', type: 'text', required: true },
+      { name: 'body', type: 'textarea', required: true },
+      { name: 'parts', type: 'json' },
+    ],
+  },
   ...mirrorCollections,
 ]
