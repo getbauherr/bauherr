@@ -20,6 +20,7 @@ export const FIGURE_KEYS = [
   'findingsSpec',
   'findingsStandards',
   'findingsSecurity',
+  'correctionsCameBack',
 ] as const
 export type FigureKey = (typeof FIGURE_KEYS)[number]
 export type Figures = Record<FigureKey, number | null>
@@ -53,6 +54,8 @@ const runRow = z.object({
   cost_source: z.string().nullable(),
 })
 const findingRow = z.object({ record_id: id, findings: z.array(z.object({ axis: z.enum(AXES) })).nullable() })
+
+export const cameBackOf = (verifyRounds: number): number => Math.max(0, verifyRounds - 1)
 
 const count = (events: Ev[], type: string): number => events.filter((event) => event.type === type).length
 
@@ -146,6 +149,7 @@ export const figuresOf = (tickets: TicketFacts[]): Figures => {
     findingsSpec: sum(tickets, (ticket) => ticket.findings.spec),
     findingsStandards: sum(tickets, (ticket) => ticket.findings.standards),
     findingsSecurity: sum(tickets, (ticket) => ticket.findings.security),
+    correctionsCameBack: sum(tickets, (ticket) => cameBackOf(ticket.verifyRounds)),
   }
 }
 

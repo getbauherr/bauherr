@@ -27,6 +27,7 @@ const figures = (extra: Partial<Figures> = {}): Figures => ({
   findingsSpec: 0,
   findingsStandards: 0,
   findingsSecurity: 0,
+  correctionsCameBack: 0,
   ...extra,
 })
 

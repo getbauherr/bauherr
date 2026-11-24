@@ -84,6 +84,7 @@ describe('the figures of a range', () => {
       findingsSpec: 4,
       findingsStandards: 2,
       findingsSecurity: 3,
+      correctionsCameBack: 1,
     })
   })
 
@@ -100,6 +101,7 @@ describe('the figures of a range', () => {
     expect(figures.firstTryShare.previous).toBe(0.5)
     expect(figures.costUsd.previous).toBe(4)
     expect(figures.findingsSpec.previous).toBe(1)
+    expect(figures.correctionsCameBack.previous).toBe(2)
   })
 
   it('has no previous value for the first range', async () => {
