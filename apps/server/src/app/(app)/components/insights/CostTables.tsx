@@ -42,7 +42,8 @@ export function CostTable({ cost, outside }: { cost: CostSummary; outside: numbe
         </tbody>
       </Table>
       <p className="small text-muted-foreground">
-        Measured: runs whose cost the gateway reported. The other {unmeasured} runs are left out of the sums, not
+        Measured: runs whose cost the gateway reported.{' '}
+        {unmeasured === 1 ? 'The other run is' : `The other ${unmeasured} runs are`} left out of the sums, not
         counted as $0. Cost outside runs (a session idle, you working in the same session):{' '}
         <span className="mono">{outside === null ? 'not measured' : usd(outside)}</span>, all Products.
       </p>
