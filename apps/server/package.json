@@ -57,12 +57,15 @@
     "openid-client": "^6.8.8",
     "payload": "3.92.1",
     "pg": "^8.16.0",
+    "radix-ui": "^1.8.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "3.7.0",
+    "tw-shimmer": "^0.4.14",
     "yaml": "^2.8.0",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

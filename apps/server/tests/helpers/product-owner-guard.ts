@@ -10,6 +10,8 @@ export const PO_PAGES: Record<string, string> = {
   'settings/profile': 'the profile',
 }
 export const BAUHERR_PAGES = [
+  'conversations',
+  'conversations/[id]',
   'inbox',
   'insights',
   'memory',
@@ -38,6 +40,11 @@ export const PO_ROUTES: Record<string, string> = {
 }
 export const BAUHERR_ROUTES: string[] = [
   'api/attachments/[id] GET',
+  'api/conversations POST',
+  'api/conversations/[id] GET',
+  'api/conversations/[id] POST',
+  'api/conversations/[id]/files POST',
+  'api/conversations/[id]/files/[fileId] GET',
   'api/changes GET',
   'mcp GET',
   'mcp POST',
@@ -120,6 +127,9 @@ export const BAUHERR_COLLECTIONS = [
   'agent_sessions',
   'attachments',
   'connections',
+  'conversation_files',
+  'conversation_messages',
+  'conversations',
   'events',
   'human_touches',
   'instance_state',

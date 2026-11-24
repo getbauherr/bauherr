@@ -1,9 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { useAui, useAuiState } from '@assistant-ui/react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { NoteScope } from '../../../../core/statement-scope'
 
 export function useComment(initial: NoteScope) {
+  const aui = useAui()
   const area = useRef<HTMLTextAreaElement>(null)
-  const [note, setNote] = useState('')
+  const note = useAuiState((s) => s.composer.text)
+  const attachments = useAuiState((s) => s.composer.attachments)
+  const fileIds = useMemo(
+    () => attachments.filter((a) => a.status.type === 'requires-action').map((a) => Number(a.id)),
+    [attachments],
+  )
   const [scope, setScope] = useState<NoteScope>(initial)
   const [opened, setOpened] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
@@ -23,13 +30,13 @@ export function useComment(initial: NoteScope) {
   return {
     area,
     note,
-    setNote,
+    fileIds,
     scope,
     setScope,
     hint,
     missing,
     empty: note.trim() === '',
-    open: opened || note !== '',
+    open: opened || note !== '' || fileIds.length > 0,
     reveal,
     demand: (message: string, prompt: string) => {
       setMissing(message)
@@ -40,7 +47,7 @@ export function useComment(initial: NoteScope) {
       setHint(prompt)
     },
     reset: () => {
-      setNote('')
+      void aui.composer().reset()
       setScope(initial)
       setOpened(false)
       setMissing(null)

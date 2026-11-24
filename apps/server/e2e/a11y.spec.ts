@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { aConversation } from './conversation-page'
 import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
@@ -155,6 +156,8 @@ const routes: Record<string, Target | Record<string, Target>> = {
     Factory: inFactory('/'),
     'cannot-run line': withHoldStrip('/'),
   },
+  '/conversations': inFactory('/conversations'),
+  '/conversations/[id]': aConversation,
   '/inbox': { desktop: inboxAt(1280), 'at 390 px': inboxAt(390) },
   '/insights': {
     'with time and cost': inInsights('/insights'),

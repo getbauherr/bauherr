@@ -1,0 +1,125 @@
+import { sql } from '@payloadcms/db-postgres'
+import { z } from 'zod'
+import { UploadRefused } from '../attachments/image'
+import type { Conn } from '../conn'
+import { MESSAGE_FILES_MAX, MESSAGE_TEXT_MAX } from './limits'
+
+const count = z.coerce.number()
+
+export type StoredFile = { id: number; name: string; contentType: string; bytes: number }
+export type ConversationMessage = {
+  id: number
+  role: 'user' | 'assistant'
+  text: string
+  createdAt: string
+  files: StoredFile[]
+}
+
+export type NewFile = {
+  workspace: number
+  conversationId: number
+  name: string
+  contentType: string
+  bytes: Uint8Array
+}
+export type NewMessage = {
+  workspace: number
+  conversationId: number
+  role: ConversationMessage['role']
+  text: string
+  fileIds: number[]
+}
+
+const idRow = z.object({ id: count })
+
+export const createConversation = async (db: Conn, workspace: number, title: string): Promise<number> => {
+  const found = await db.db.drizzle.execute(sql`
+    INSERT INTO "conversations" ("workspace_id", "title", "updated_at", "created_at")
+    VALUES (${workspace}, ${title}, now(), now()) RETURNING "id"`)
+  return idRow.parse(found.rows[0]).id
+}
+
+export const conversationWorkspace = async (db: Conn, id: number): Promise<number | null> => {
+  const found = await db.db.drizzle.execute(sql`SELECT "workspace_id" FROM "conversations" WHERE "id" = ${id}`)
+  return found.rows[0] ? count.parse(z.object({ workspace_id: z.unknown() }).parse(found.rows[0]).workspace_id) : null
+}
+
+export const storeFile = async (db: Conn, file: NewFile): Promise<StoredFile> => {
+  const content = Buffer.from(file.bytes).toString('base64')
+  const found = await db.db.drizzle.execute(sql`
+    INSERT INTO "conversation_files" ("workspace_id", "conversation_id", "name", "content_type", "byte_size", "content",
+      "updated_at", "created_at")
+    VALUES (${file.workspace}, ${file.conversationId}, ${file.name}, ${file.contentType}, ${file.bytes.length},
+      ${content}, now(), now()) RETURNING "id"`)
+  return { id: idRow.parse(found.rows[0]).id, name: file.name, contentType: file.contentType, bytes: file.bytes.length }
+}
+
+const attach = async (db: Conn, message: NewMessage, messageId: number): Promise<void> => {
+  if (message.fileIds.length === 0) return
+  const found = await db.db.drizzle.execute(sql`
+    UPDATE "conversation_files" SET "message_id" = ${messageId}, "updated_at" = now()
+    WHERE "conversation_id" = ${message.conversationId} AND "message_id" IS NULL
+      AND "id" IN (${sql.join(message.fileIds.map((id) => sql`${id}`), sql`, `)})
+    RETURNING "id"`)
+  if (found.rows.length !== new Set(message.fileIds).size) {
+    throw new UploadRefused('An attached file is unknown or already sent.', 409)
+  }
+}
+
+export const appendMessage = async (db: Conn, message: NewMessage): Promise<number> => {
+  if (message.text.length > MESSAGE_TEXT_MAX) throw new UploadRefused('The message is too long.', 413)
+  if (message.fileIds.length > MESSAGE_FILES_MAX) throw new UploadRefused('Too many files in one message.', 413)
+  if (message.text.trim() === '' && message.fileIds.length === 0) throw new UploadRefused('The message is empty.', 400)
+  const found = await db.db.drizzle.execute(sql`
+    INSERT INTO "conversation_messages" ("workspace_id", "conversation_id", "role", "text", "updated_at", "created_at")
+    VALUES (${message.workspace}, ${message.conversationId}, ${message.role}, ${message.text}, now(), now())
+    RETURNING "id"`)
+  const id = idRow.parse(found.rows[0]).id
+  await attach(db, message, id)
+  return id
+}
+
+const messageRow = z.object({
+  id: count,
+  role: z.enum(['user', 'assistant']),
+  text: z.string(),
+  created_at: z.coerce.date(),
+})
+const fileRow = z.object({ id: count, message_id: count, name: z.string(), content_type: z.string(), byte_size: count })
+
+export const listMessages = async (db: Conn, conversationId: number): Promise<ConversationMessage[]> => {
+  const messages = await db.db.drizzle.execute(sql`
+    SELECT "id", "role", "text", "created_at" FROM "conversation_messages"
+    WHERE "conversation_id" = ${conversationId} ORDER BY "id"`)
+  const files = await db.db.drizzle.execute(sql`
+    SELECT "id", "message_id", "name", "content_type", "byte_size" FROM "conversation_files"
+    WHERE "conversation_id" = ${conversationId} AND "message_id" IS NOT NULL ORDER BY "id"`)
+  const attached = files.rows.map((row) => fileRow.parse(row))
+  return messages.rows.map((row) => {
+    const message = messageRow.parse(row)
+    return {
+      id: message.id,
+      role: message.role,
+      text: message.text,
+      createdAt: message.created_at.toISOString(),
+      files: attached
+        .filter((file) => file.message_id === message.id)
+        .map((file) => ({ id: file.id, name: file.name, contentType: file.content_type, bytes: file.byte_size })),
+    }
+  })
+}
+
+const contentRow = z.object({ name: z.string(), content_type: z.string(), content: z.string() })
+
+export const readFile = async (
+  db: Conn,
+  conversationId: number,
+  fileId: number,
+): Promise<{ name: string; contentType: string; bytes: Buffer } | null> => {
+  const found = await db.db.drizzle.execute(sql`
+    SELECT "name", "content_type", "content" FROM "conversation_files"
+    WHERE "id" = ${fileId} AND "conversation_id" = ${conversationId}`)
+  if (!found.rows[0]) return null
+  const row = contentRow.parse(found.rows[0])
+  return { name: row.name, contentType: row.content_type, bytes: Buffer.from(row.content, 'base64') }
+}
