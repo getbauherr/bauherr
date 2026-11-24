@@ -123,10 +123,6 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'originalText', type: 'textarea' },
       { name: 'sourceKind', type: 'text' },
       { name: 'sourceText', type: 'textarea' },
-      { name: 'learnRun', type: 'number' },
-      { name: 'seenAt', type: 'date' },
-      { name: 'cameBack', type: 'json', required: true, defaultValue: [] },
-      { name: 'checkIssue', type: 'number' },
     ],
   },
   {

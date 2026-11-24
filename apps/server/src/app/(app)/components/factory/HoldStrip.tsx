@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { Hold } from '../../../../core/views/holds'
 import { duration } from '../../lib/format'
-import { RUN_NAMES } from '../../lib/factory'
+import { STAGE_NAMES } from '../../lib/factory'
 import { Time } from '../Time'
 import { TicketRef } from '../TicketRef'
 
@@ -40,7 +40,7 @@ function Sentence({ hold }: { hold: Hold }) {
       return (
         <>
           No {hold.role} session is connected: {plural(hold.queued, 'run waits', 'runs wait')} (
-          {hold.byStage.map((row) => `${RUN_NAMES[row.stage]} ${row.queued}`).join(', ')}).{' '}
+          {hold.byStage.map((row) => `${STAGE_NAMES[row.stage]} ${row.queued}`).join(', ')}).{' '}
           <Link href="/settings/api-key" className={LINK}>Connect a session</Link>
         </>
       )

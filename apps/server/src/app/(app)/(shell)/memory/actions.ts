@@ -3,8 +3,6 @@ import { revalidatePath } from 'next/cache'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { MemoryError, MemoryNotFound, memoryInput, type Who } from '../../../../core/memory'
-import { createWriter } from '../../../../core/forge/writer'
-import { makeCheck } from '../../../../core/memory-check-store'
 import { addMemory, deleteMemory, saveMemory, setMemoryOff } from '../../../../core/memory-store'
 import { currentWorkspace, payloadClient } from '../../lib/session'
 
@@ -54,11 +52,4 @@ export async function switchMemoryAction(raw: unknown): Promise<MemoryResult> {
 
 export async function deleteMemoryAction(raw: unknown): Promise<MemoryResult> {
   return change(idInput, raw, async (who, given) => deleteMemory(await payloadClient(), who, given))
-}
-
-export async function makeCheckAction(raw: unknown): Promise<MemoryResult> {
-  return change(idInput, raw, async (who, given) => {
-    const payload = await payloadClient()
-    await makeCheck(payload, who, given, createWriter(payload))
-  })
 }

@@ -13,4 +13,3 @@ skills:
   - {path: skills/build.md, purpose: Implement the Brief, self check each criterion, hand off to a verifier}
   - {path: skills/review.md, purpose: Review a patch you did not build from the diff; every finding needs a failing test or a reproduction}
   - {path: skills/verify.md, purpose: Verify from evidence as a non-author; findings need a test or reproduction}
-  - {path: skills/learn.md, purpose: Read the corrections of a finished ticket and write what the next agent must know, one rule per lesson, matching an existing memory first}

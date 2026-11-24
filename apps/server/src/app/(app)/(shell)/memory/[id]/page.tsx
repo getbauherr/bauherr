@@ -1,11 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { markMemorySeen } from '../../../../../core/memory-store'
-import { costOfComingBack } from '../../../../../core/views/cost-view'
 import { memoryProducts, statementFare, statementRecord } from '../../../../../core/views/statement-records'
-import { CheckAside } from '../../../components/memory/CheckAside'
-import { CostOfComingBack } from '../../../components/memory/ComingBack'
-import { MemoryState } from '../../../components/memory/CheckState'
+import { MemoryState } from '../../../components/memory/MemoryState'
 import { EditMemory } from '../../../components/memory/EditMemory'
 import { Fared, Origin } from '../../../components/memory/MemoryDetail'
 import { PageTitle } from '../../../components/PageTitle'
@@ -24,9 +20,7 @@ export default async function MemoryOnePage({ params }: { params: Promise<{ id: 
   if (!record) notFound()
   const product = (await memoryProducts(payload, workspace.id)).find((entry) => entry.id === record.product)
   if (!product) notFound()
-  await markMemorySeen(payload, { workspace: workspace.id, id })
   const fares = await statementFare(payload, { workspace: workspace.id, id })
-  const back = await costOfComingBack(payload, { workspace: workspace.id, id })
   const title = record.text.length > TITLE_MAX ? `${record.text.slice(0, TITLE_MAX)}…` : record.text
   const stages = record.stages
   return (
@@ -37,26 +31,21 @@ export default async function MemoryOnePage({ params }: { params: Promise<{ id: 
           Memory
         </Link>
         <h1 className="title">{title}</h1>
-        <MemoryState off={record.off} check={record.check} />
+        <MemoryState off={record.off} />
       </div>
-      <div className="grid max-w-5xl items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid max-w-5xl items-start gap-6">
         <EditMemory
           id={record.id}
           product={product.id}
           initial={{ text: record.text, reach: record.reach, area: record.area ?? '', stages }}
           off={record.off}
-          mayCheck={record.mayCheck && product.repo !== null}
           hasTicket={record.ticket !== null}
           areas={product.riskAreas}
-          footnote={`Handed ${record.handed} times, came back ${record.cameBack}.`}
+          footnote={`Handed ${record.handed} times.`}
         >
           <Origin record={record} product={product.name} />
           <Fared fares={fares} />
         </EditMemory>
-        <div className="grid content-start gap-4">
-          <CheckAside record={record} repo={product.repo} />
-          {back && <CostOfComingBack back={back} />}
-        </div>
       </div>
     </>
   )

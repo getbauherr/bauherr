@@ -113,9 +113,8 @@ export const seedInsights = async (payload: Payload): Promise<void> => {
   }
   await payload.db.drizzle.execute(sql`
     INSERT INTO "statements" ("workspace_id", "product_id", "record_id", "kind", "scope", "text", "source_kind",
-      "source_text", "learn_run", "came_back", "seen_at", "updated_at", "created_at")
+      "source_text", "updated_at", "created_at")
     SELECT "workspace_id", "product_id", "id", 'learned', 'product', 'Check the year of every date.', 'finding',
-      'The year is wrong. Evidence: open the report', 1, ${JSON.stringify([{ record: records[1], run: 1 }])}::jsonb,
-      now(), now(), now()
+      'The year is wrong. Evidence: open the report', now(), now()
     FROM "records" WHERE "id" = ${records[0]}`)
 }

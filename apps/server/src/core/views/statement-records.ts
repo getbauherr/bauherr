@@ -1,7 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
-import { acceptedCheck, checkOf, mayMakeCheck, type CheckState, type Prevention } from '../memory-check'
 import { APPLIES, MEMORY_STAGES, REACH_LABEL, type Applies, type MemoryStage, type Reach } from '../memory'
 import { STATEMENT_SCOPES, type StatementScope } from '../statement-scope'
 import { STATEMENT_KINDS, type StatementKind } from '../statements'
@@ -29,9 +28,7 @@ export type StatementRecord = {
   text: string
   originalText: string | null
   from: string
-  isNew: boolean
   sourceText: string | null
-  learnRun: number | null
   ticket: { record: number; number: number } | null
   scope: StatementScope
   applies: Applies
@@ -41,9 +38,6 @@ export type StatementRecord = {
   stages: MemoryStage[]
   off: boolean
   handed: number
-  cameBack: number
-  check: CheckState
-  mayCheck: boolean
 }
 
 export type Fare = {
@@ -51,7 +45,6 @@ export type Fare = {
   stage: string
   role: string
   ticket: { record: number; number: number; title: string | null }
-  outcome: 'came-back' | 'clean' | 'open'
 }
 
 const count = z.coerce.number()
@@ -63,8 +56,6 @@ const recordRow = z.object({
   original_text: z.string().nullable(),
   source_kind: z.enum(SOURCE_KINDS).nullable(),
   source_text: z.string().nullable(),
-  learn_run: count.nullable(),
-  is_new: z.boolean(),
   record_id: z.number().nullable(),
   source_number: count.nullable(),
   scope: z.enum(STATEMENT_SCOPES),
@@ -73,11 +64,6 @@ const recordRow = z.object({
   stages: z.array(z.enum(MEMORY_STAGES)),
   off: z.boolean(),
   handed: count,
-  came_back: count,
-  check_issue: count.nullable(),
-  check_record: count.nullable(),
-  check_accepted: z.boolean(),
-  check_ended_at: z.coerce.date().nullable(),
 })
 
 const fareRow = z.object({
@@ -87,7 +73,6 @@ const fareRow = z.object({
   record_id: count,
   source_number: count,
   title: z.string().nullable(),
-  outcome: z.enum(['came-back', 'clean', 'open']),
 })
 
 const handedIn = (workspace: number) => sql`
@@ -105,24 +90,13 @@ const recordOf = (raw: unknown): StatementRecord => {
   const reach = reachOf(row)
   const { record_id: record, source_number: number } = row
   const ticket = record === null || number === null ? null : { record, number }
-  const prevention: Prevention = {
-    scope: row.scope,
-    off: row.off,
-    cameBack: row.came_back,
-    issue: row.check_issue,
-    record: row.check_record,
-    accepted: row.check_accepted,
-    endedAt: row.check_ended_at?.toISOString() ?? null,
-  }
   return {
     id: row.id,
     kind: row.kind,
     text: row.text,
     originalText: row.original_text,
     from: row.kind === 'learned' ? LEARNED_WORDS[row.source_kind ?? 'finding'] : KIND_WORDS[row.kind],
-    isNew: row.is_new,
     sourceText: row.source_text,
-    learnRun: row.learn_run,
     ticket,
     scope: row.scope,
     applies: row.applies,
@@ -132,27 +106,12 @@ const recordOf = (raw: unknown): StatementRecord => {
     stages: row.stages,
     off: row.off,
     handed: row.handed,
-    cameBack: row.came_back,
-    check: checkOf(prevention),
-    mayCheck: mayMakeCheck(prevention),
   }
 }
 
-const preventionRecord = sql`(SELECT c."id" FROM "records" c
-  WHERE c."workspace_id" = s."workspace_id" AND c."source_number" = s."check_issue"
-    AND c."data"->'source'->>'memory' = s."id"::text LIMIT 1)`
-
-const checkEndedAt = sql`(SELECT CASE WHEN e."type" = 'ticket.restored' THEN NULL ELSE e."created_at" END
-  FROM "events" e WHERE e."record_id" = ${preventionRecord}
-    AND e."type" IN ('ticket.closed', 'brief.discarded', 'ticket.restored')
-  ORDER BY e."id" DESC LIMIT 1)`
-
 const SELECT = sql`
-  SELECT s."id", s."kind", s."text", s."original_text", s."source_kind", s."source_text", s."learn_run",
-    (s."kind" = 'learned' AND s."seen_at" IS NULL) AS is_new, s."record_id", rec."source_number", s."scope",
-    s."applies", s."area", s."stages", s."off", count(h.run_id) AS handed,
-    jsonb_array_length(s."came_back") AS came_back, s."check_issue", ${preventionRecord} AS check_record,
-    ${acceptedCheck} AS check_accepted, ${checkEndedAt} AS check_ended_at
+  SELECT s."id", s."kind", s."text", s."original_text", s."source_kind", s."source_text", s."record_id",
+    rec."source_number", s."scope", s."applies", s."area", s."stages", s."off", count(h.run_id) AS handed
   FROM "statements" s
   LEFT JOIN "records" rec ON rec."id" = s."record_id"
   LEFT JOIN handed h ON h.statement_id = s."id"`
@@ -179,16 +138,8 @@ export const statementRecord = async (
 
 export const statementFare = async (payload: Payload, f: { workspace: number; id: number }): Promise<Fare[]> => {
   const found = await payload.db.drizzle.execute(sql`${handedIn(f.workspace)}
-    SELECT h.run_id, h."stage", h."role", h.record_id, rec."source_number", i."title",
-      CASE
-        WHEN s."came_back" @> jsonb_build_array(jsonb_build_object('record', h.record_id)) THEN 'came-back'
-        WHEN EXISTS (SELECT 1 FROM "events" e WHERE e."record_id" = h.record_id AND e."type" = 'result.accepted')
-          AND NOT EXISTS (SELECT 1 FROM "stage_runs" l WHERE l."record_id" = h.record_id AND l."stage" = 'done'
-            AND l."status" IN ('queued', 'claimed')) THEN 'clean'
-        ELSE 'open'
-      END AS outcome
+    SELECT h.run_id, h."stage", h."role", h.record_id, rec."source_number", i."title"
     FROM handed h
-    JOIN "statements" s ON s."id" = h.statement_id
     JOIN "records" rec ON rec."id" = h.record_id
     LEFT JOIN "mirror_items" i ON i."workspace_id" = rec."workspace_id" AND i."repo" = rec."source_repo"
       AND i."number" = rec."source_number" AND i."kind" = 'issue'
@@ -198,7 +149,7 @@ export const statementFare = async (payload: Payload, f: { workspace: number; id
     const row = fareRow.parse(raw)
     const { run_id: run, stage, role } = row
     const ticket = { record: row.record_id, number: row.source_number, title: row.title }
-    return { run, stage, role, ticket, outcome: row.outcome }
+    return { run, stage, role, ticket }
   })
 }
 
@@ -220,19 +171,4 @@ export const memoryProducts = async (payload: Payload, workspace: number): Promi
     const row = productRow.parse(raw)
     return { id: row.id, name: row.name, riskAreas: row.risk_areas ?? [], repo: row.repo }
   })
-}
-
-export const newMemoryCount = async (payload: Payload, workspace: number): Promise<number> => {
-  const found = await payload.db.drizzle.execute(sql`
-    SELECT count(*) AS n FROM "statements"
-    WHERE "workspace_id" = ${workspace} AND "kind" = 'learned' AND "seen_at" IS NULL`)
-  return count.parse(found.rows[0]?.n)
-}
-
-const keptRow = z.object({ id: count, text: z.string() })
-
-export const keptMemories = async (payload: Payload, recordId: number): Promise<{ id: number; text: string }[]> => {
-  const found = await payload.db.drizzle.execute(sql`
-    SELECT "id", "text" FROM "statements" WHERE "record_id" = ${recordId} AND "kind" = 'learned' ORDER BY "id"`)
-  return found.rows.map((raw) => keptRow.parse(raw))
 }

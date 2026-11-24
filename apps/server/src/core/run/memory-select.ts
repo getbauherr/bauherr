@@ -1,7 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
-import { acceptedCheck } from '../memory-check'
 import { anyWord, sharedWords, sharesEnough } from '../mirror/match'
 import { WHY, type MemoryStage, type Why } from '../memory'
 
@@ -25,7 +24,7 @@ const standing = async (payload: Payload, w: Wanted) => {
   const area = areas.length > 0 ? sql`s."area" IN (${sql.join(areas, sql`, `)})` : sql`false`
   const found = await payload.db.drizzle.execute(sql`
     SELECT s."id", s."applies" AS why FROM "statements" s
-    WHERE s."product_id" = ${w.product} AND s."scope" = 'product' AND NOT s."off" AND NOT ${acceptedCheck}
+    WHERE s."product_id" = ${w.product} AND s."scope" = 'product' AND NOT s."off"
       AND ${handed(w.stage)}
       AND (s."applies" = 'always' OR (s."applies" = 'area' AND ${area}))
     ORDER BY s."applies", s."id"`)
@@ -38,7 +37,7 @@ const fitting = async (payload: Payload, w: Wanted) => {
   const shared = sharedWords(vector, w.words)
   const found = await payload.db.drizzle.execute(sql`
     SELECT s."id", 'fit' AS why FROM "statements" s
-    WHERE s."product_id" = ${w.product} AND NOT s."off" AND NOT ${acceptedCheck} AND s."applies" = 'fit'
+    WHERE s."product_id" = ${w.product} AND NOT s."off" AND s."applies" = 'fit'
       AND ${handed(w.stage)}
       AND (s."record_id" = ${w.record} OR s."scope" = 'product')
       AND ${vector} @@ ${anyWord(w.words)} AND ${sharesEnough(vector, w.words)}

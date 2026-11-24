@@ -3,8 +3,6 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import { inLockedProduct, type Conn } from './conn'
 import { mayDecide } from './decide'
-import { isRepeat, type LearnResult } from './learn-result'
-import { correctionsOf } from './learn'
 import {
   ALWAYS_MAX,
   MemoryInvalid,
@@ -14,10 +12,6 @@ import {
   type MemoryInput,
   type Who,
 } from './memory'
-import type { Problem } from './module'
-import type { Finding } from './record/schema'
-import { readEvents, readRecord } from './record/store'
-import type { Run } from './run/schema'
 import type { StatementScope } from './statement-scope'
 
 type Placement = { scope: StatementScope; applies: Applies; area: string | null }
@@ -141,99 +135,4 @@ export const deleteMemory = async (payload: Payload, who: Who, f: { id: number }
   allowed(who)
   await ownOf(payload, { workspace: who.workspace, id: f.id })
   await payload.db.drizzle.execute(sql`DELETE FROM "statements" WHERE "id" = ${f.id}`)
-}
-
-type Source = { kind: 'finding' | 'send-back' | 'brief-change'; text: string }
-
-const productRow = z.object({ product_id: z.coerce.number(), risk_areas: z.array(z.string()).nullable() })
-
-const learnContext = async (tx: Conn, run: Run) => {
-  const stored = await readRecord(tx, run.recordId)
-  const found = await tx.db.drizzle.execute(sql`
-    SELECT r."product_id", p."risk_areas" FROM "records" r JOIN "products" p ON p."id" = r."product_id"
-    WHERE r."id" = ${run.recordId}`)
-  const product = productRow.parse(found.rows[0])
-  const corrections = correctionsOf(await readEvents(tx, run.recordId))
-  return { stored, product: product.product_id, areas: product.risk_areas ?? [], corrections }
-}
-
-const findingText = (finding: Finding): string => `${finding.text} Evidence: ${finding.evidence.pointer}`
-
-const sourceOf = (
-  from: string,
-  known: { findings: Finding[]; corrections: ReturnType<typeof correctionsOf> },
-): Source | null => {
-  if (from.startsWith('f')) {
-    const finding = known.findings.find((entry) => entry.id === from && entry.status === 'fixed')
-    return finding ? { kind: 'finding', text: findingText(finding) } : null
-  }
-  const correction = known.corrections.find((entry) => entry.id === from)
-  return correction ? { kind: correction.kind, text: correction.note } : null
-}
-
-export const lessonProblems = async (tx: Conn, run: Run, result: LearnResult): Promise<Problem[]> => {
-  const { stored, product, areas, corrections } = await learnContext(tx, run)
-  const known = { findings: stored.record.findings, corrections }
-  const problems: Problem[] = []
-  result.lessons.forEach((lesson, at) => {
-    if (sourceOf(lesson.from, known) === null) {
-      problems.push({
-        path: `lessons.${at}.from`,
-        message: `${lesson.from} is not a fixed finding or a correction note of this ticket: use an id of the record.`,
-      })
-    }
-    if (!isRepeat(lesson) && lesson.area !== undefined && !areas.includes(lesson.area)) {
-      problems.push({
-        path: `lessons.${at}.area`,
-        message: `${lesson.area} is not a risk area of this Product: pick one of ${areas.join(', ') || 'none'}.`,
-      })
-    }
-  })
-  const wanted = [...new Set([...result.cameBack, ...result.lessons.filter(isRepeat).map((l) => l.repeats)])]
-  if (wanted.length > 0) {
-    const found = await tx.db.drizzle.execute(sql`
-      SELECT "id" FROM "statements" WHERE "product_id" = ${product}
-        AND "id" IN (${sql.join(wanted.map((id) => sql`${id}`), sql`, `)})`)
-    const own = new Set(found.rows.map((row) => idRow.parse(row).id))
-    for (const id of wanted.filter((entry) => !own.has(entry))) {
-      problems.push({
-        path: 'cameBack',
-        message: `${id} is not a memory of this Product: use an id from learn.handed or learn.candidates.`,
-      })
-    }
-  }
-  return problems
-}
-
-const markCameBack = (tx: Conn, f: { id: number; record: number; run: number }) =>
-  tx.db.drizzle.execute(sql`
-    UPDATE "statements" SET "updated_at" = now(),
-      "came_back" = "came_back" || jsonb_build_array(jsonb_build_object('record', ${f.record}::int,
-        'run', ${f.run}::int))
-    WHERE "id" = ${f.id}
-      AND NOT "came_back" @> jsonb_build_array(jsonb_build_object('record', ${f.record}::int))`)
-
-export const rememberLessons = async (tx: Conn, run: Run, result: LearnResult): Promise<void> => {
-  const { stored, corrections } = await learnContext(tx, run)
-  const known = { findings: stored.record.findings, corrections }
-  for (const lesson of result.lessons) {
-    const source = sourceOf(lesson.from, known)
-    if (isRepeat(lesson) || source === null) continue
-    await tx.db.drizzle.execute(sql`
-      INSERT INTO "statements" ("workspace_id", "product_id", "record_id", "kind", "scope", "applies", "area", "text",
-        "source_kind", "source_text", "learn_run", "updated_at", "created_at")
-      SELECT "workspace_id", "product_id", "id", 'learned', 'product', ${lesson.applies}, ${lesson.area ?? null},
-        ${lesson.text}, ${source.kind}, ${source.text}, ${run.id}, now(), now()
-      FROM "records" WHERE "id" = ${run.recordId}`)
-  }
-  const repeated = result.lessons.filter(isRepeat).map((lesson) => lesson.repeats)
-  for (const id of new Set([...result.cameBack, ...repeated])) {
-    await markCameBack(tx, { id, record: run.recordId, run: run.id })
-  }
-}
-
-export const markMemorySeen = async (payload: Payload, f: { workspace: number; id: number }): Promise<void> => {
-  await payload.db.drizzle.execute(sql`
-    UPDATE "statements" SET "seen_at" = now()
-    WHERE "id" = ${f.id} AND "workspace_id" = ${f.workspace} AND "kind" = 'learned' AND "seen_at" IS NULL`)
 }
