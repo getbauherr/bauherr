@@ -1,6 +1,8 @@
 import type { Payload } from 'payload'
 import { coreDbOn } from '../tests/core/db'
 import { mirrorSource } from '../tests/core/scenario'
+import { buildOpening } from '../src/core/retro/opening'
+import { addMessage, createRetro, loadRetro, saveAgreed } from '../src/core/retro/store'
 import { seedTicket, shipped, type Shape } from './seed-insights'
 
 const o = { overrideAccess: true } as const
@@ -13,6 +15,8 @@ const calm = (number: number, title: string, doneDaysAgo: number): Shape => ({
   events: [[5, 'intake.accepted'], [5, 'brief.approved', { by: 'rule' }], ...shipped(120)],
   runs: [{ stage: 'build', role: 'builder', created: 5, started: 7, finished: 60 }],
 })
+
+const DAY_MS = 86_400_000
 
 const SHAPES: Shape[] = [
   calm(1, 'Show the year in the header', 3),
@@ -62,4 +66,30 @@ export const seedRetro = async (
     await seedTicket(payload, ids, shape)
     await item(shape.number, { title: shape.title })
   }
+  const range = { from: new Date(Date.now() - 30 * DAY_MS), to: new Date(Date.now() + DAY_MS) }
+  const opening = await buildOpening(payload, { workspace, product, range })
+  const retroId = await createRetro(payload, {
+    workspace,
+    product,
+    ...range,
+    label: 'Seeded range',
+    createdBy: 'seed',
+    opening,
+  })
+  const retro = await loadRetro(payload, workspace, retroId)
+  if (!retro) throw new Error('the seeded Retro vanished')
+  const proposals = [
+    {
+      id: 'p1',
+      level: 'product' as const,
+      title: 'Should a change that is sent back twice get a mockup before Build?',
+      cause: 'The far-off ticket was built without a mockup and came back several times.',
+      evidence: opening.tickets[0] ? [opening.tickets[0].recordId] : [],
+      confidence: 'high' as const,
+      change: { section: 'Brief' as const, remove: null, add: '- A change a user sees gets a mockup before Build.' },
+    },
+  ]
+  const message = 'The export dialog stands out. What went well from your side, and what did not?'
+  await addMessage(payload, retro, { role: 'assistant', body: message, parts: { proposals, raw: '{}' } })
+  await saveAgreed(payload, retroId, ['p1'])
 }

@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { retroTarget } from './retro-targets'
 import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
@@ -163,6 +164,9 @@ const routes: Record<string, Target | Record<string, Target>> = {
   '/memory': inRecord('/memory'),
   '/memory/statements': inRecord('/memory/statements'),
   '/memory/new': inRecord('/memory/new'),
+  '/memory/retro': retroTarget(null),
+  '/memory/retro/[id]': retroTarget(''),
+  '/memory/retro/[id]/outcome': retroTarget('/outcome'),
   '/memory/[id]': {
     'with a ticket': memoryOne,
     'with the cost of coming back': insightsMemory,

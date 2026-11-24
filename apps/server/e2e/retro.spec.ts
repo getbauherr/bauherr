@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
+const isoDay = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10)
+
 const startRetro = async (page: Page) => {
   const url = process.env.BASE_URL ?? 'http://localhost:3000'
   await page.context().addCookies([{ name: 'bauherr-ws', value: 'retro', url }])
@@ -11,7 +13,7 @@ const startRetro = async (page: Page) => {
   await page.getByLabel('Password').fill(password())
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('banner')).toBeVisible()
-  await page.goto('/memory/retro')
+  await page.goto(`/memory/retro?range=dates&from=${isoDay(-30)}&to=${isoDay(1)}`)
   await expect(page.getByRole('heading', { level: 1, name: /Start a Retro/ })).toBeVisible()
   await expect(page.getByRole('region', { name: 'What this range holds' })).toContainText('4 tickets accepted')
   await page.getByRole('button', { name: 'Start Retro' }).click()
@@ -20,7 +22,11 @@ const startRetro = async (page: Page) => {
 
 const agreed = (page: Page) => page.getByRole('region', { name: 'Agreed so far' })
 
-test('a Retro opens with the figures, the far-off ticket and a proposal with evidence', async ({ page }) => {
+const OPENS = 'a Retro opens with the figures, the far-off ticket and a proposal with evidence'
+const GROWS = 'accepting a proposal and answering make the agreed list grow, each with its level'
+const fake = { tag: '@fake-forge' }
+
+test(OPENS, fake, async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await startRetro(page)
   await expect(page.getByText('Accepted', { exact: true }).first()).toBeVisible()
@@ -32,7 +38,7 @@ test('a Retro opens with the figures, the far-off ticket and a proposal with evi
   await page.screenshot({ path: test.info().outputPath('retro-opening-1280.png'), fullPage: true })
 })
 
-test('accepting a proposal and answering make the agreed list grow, each with its level', async ({ page }) => {
+test(GROWS, fake, async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await startRetro(page)
   await expect(agreed(page)).toContainText('Nothing agreed yet')
