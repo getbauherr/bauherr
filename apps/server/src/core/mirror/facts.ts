@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import type { ReadForge } from '../forge/reader'
+import { saveSuggestions, suggestRiskAreas, type RiskSuggestion } from '../readiness/suggest'
 import { errorText } from './map'
 import type { SourceRow } from './store'
 
@@ -24,9 +25,22 @@ export type SourceFacts = {
   hasAgentsFile: boolean
   agentsFile: AgentsFile | null
   issueFormCount: number
+  riskSuggestions: RiskSuggestion[] | null
 }
 
 const protection = (value: boolean | null): BranchProtection => (value === null ? 'unknown' : value ? 'yes' : 'no')
+
+const suggestionsOf = async (
+  repo: string,
+  defaultBranch: string,
+  forge: ReadForge,
+): Promise<RiskSuggestion[] | null> => {
+  try {
+    return suggestRiskAreas((await forge.listFiles(repo, defaultBranch)).paths)
+  } catch {
+    return null
+  }
+}
 
 export const readFacts = async (repo: string, forge: ReadForge): Promise<SourceFacts> => {
   const { defaultBranch } = await forge.getRepository(repo)
@@ -40,6 +54,7 @@ export const readFacts = async (repo: string, forge: ReadForge): Promise<SourceF
     hasAgentsFile,
     agentsFile,
     issueFormCount: await forge.countIssueForms(repo, defaultBranch),
+    riskSuggestions: await suggestionsOf(repo, defaultBranch, forge),
   }
 }
 
@@ -56,6 +71,7 @@ const saveFacts = async (payload: Payload, id: number, facts: SourceFacts, now: 
       "facts_at" = ${now.toISOString()}::timestamptz,
       "updated_at" = now()
     WHERE "id" = ${id}`)
+  await saveSuggestions(payload, id, facts.riskSuggestions)
 }
 
 export const refreshFacts = async (
