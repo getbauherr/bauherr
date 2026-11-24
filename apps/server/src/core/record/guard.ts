@@ -7,6 +7,22 @@ export type PatchBy = { stage: Stage; runId: string }
 const sameStructure = (before: Criterion, after: Criterion): boolean =>
   JSON.stringify([before.id, before.text, before.verify]) === JSON.stringify([after.id, after.text, after.verify])
 
+const sameWording = (a: Criterion, b: Criterion): boolean =>
+  JSON.stringify([a.text, a.verify]) === JSON.stringify([b.text, b.verify])
+
+const findBefore = (before: Criterion[], criterion: Criterion, by: PatchBy): Criterion | undefined =>
+  by.stage === 'brief'
+    ? before.find((b) => sameWording(b, criterion))
+    : before.find((b) => b.id === criterion.id)
+
+export const carryOverVerdicts = (before: Criterion[], after: Criterion[]): Criterion[] =>
+  after.map((criterion) => {
+    const same = before.find((b) => sameWording(b, criterion))
+    return same && criterion.status === 'open' && criterion.proof.length === 0
+      ? { ...criterion, status: same.status, proof: same.proof }
+      : criterion
+  })
+
 const checkStatus = (before: Criterion | undefined, after: Criterion, by: PatchBy): void => {
   const was = before?.status ?? 'open'
   if (after.status === was) return
@@ -33,7 +49,7 @@ const checkCriteria = (before: Criterion[], after: Criterion[], by: PatchBy): vo
     )
   }
   for (const criterion of after) {
-    checkStatus(before.find((b) => b.id === criterion.id), criterion, by)
+    checkStatus(findBefore(before, criterion, by), criterion, by)
   }
 }
 

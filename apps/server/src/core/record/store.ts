@@ -3,7 +3,7 @@ import type { Conn } from '../conn'
 import { z } from 'zod'
 import { ACTORS, parseEvent, stageSchema, type Actor, type AppEvent, type Stage } from '../events'
 import { CorruptRecord, InvalidPatch, RecordNotFound, VersionConflict } from './errors'
-import { checkPatch, checkWrites, type PatchBy } from './guard'
+import { carryOverVerdicts, checkPatch, checkWrites, type PatchBy } from './guard'
 import {
   emptyRecord,
   recordSchema,
@@ -131,7 +131,11 @@ export const patchRecord = async (payload: Conn, id: number, input: PatchInput):
   if (current.version !== expectedVersion) {
     throw new VersionConflict(`Record ${id} is at version ${current.version}, not ${expectedVersion}: read it again.`)
   }
-  const merged = recordSchema.safeParse({ ...current.record, ...patch })
+  const carried =
+    by.stage === 'brief' && patch.criteria
+      ? { ...patch, criteria: carryOverVerdicts(current.record.criteria, patch.criteria) }
+      : patch
+  const merged = recordSchema.safeParse({ ...current.record, ...carried })
   if (!merged.success) {
     throw new InvalidPatch(`The patch makes record ${id} invalid at ${describeIssue(merged.error)}: fix that field.`)
   }

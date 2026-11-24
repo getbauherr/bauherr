@@ -195,6 +195,40 @@ describe('patchRecord', () => {
       await expect(patch(id, version, 'verify', { criteria: missing })).resolves.toBe(version + 1)
     })
 
+    it('are replaced by a new brief, dropping one and keeping the verdicts of the others', async () => {
+      const { id, version } = await briefedRow()
+      const verified = [criterion(1, { status: 'met', proof: ['t1'] }), criterion(2), criterion(3)]
+      const verifiedVersion = await patch(id, version, 'verify', { criteria: verified })
+      const renumbered = [
+        { ...criterion(3), id: 'c1' },
+        { ...criterion(1), id: 'c2' },
+        criterion(3, { text: 'new one' }),
+      ]
+      await expect(patch(id, verifiedVersion, 'brief', { criteria: renumbered })).resolves.toBe(verifiedVersion + 1)
+      const { record } = await readRecord(payload, id)
+      expect(record.criteria.map((c) => [c.id, c.text, c.status, c.proof])).toEqual([
+        ['c1', 'criterion 3', 'open', []],
+        ['c2', 'criterion 1', 'met', ['t1']],
+        ['c3', 'new one', 'open', []],
+      ])
+    })
+
+    it('start open with no proof when reworded or new in a brief', async () => {
+      const { id, version } = await briefedRow()
+      const verified = [criterion(1, { status: 'met', proof: ['t1'] }), criterion(2), criterion(3)]
+      const verifiedVersion = await patch(id, version, 'verify', { criteria: verified })
+      const reworded = [criterion(1, { text: 'new words' }), criterion(2), criterion(3)]
+      await patch(id, verifiedVersion, 'brief', { criteria: reworded })
+      const { record } = await readRecord(payload, id)
+      expect(record.criteria[0]).toMatchObject({ text: 'new words', status: 'open', proof: [] })
+    })
+
+    it('refuse a brief that sets a status on a new criterion', async () => {
+      const { id, version } = await briefedRow()
+      const met = [criterion(1, { text: 'new words', status: 'met', proof: ['t1'] }), criterion(2), criterion(3)]
+      await expect(patch(id, version, 'brief', { criteria: met })).rejects.toBeInstanceOf(StatusChangeNotAllowed)
+    })
+
     it('become met or partial only with proof', async () => {
       const { id, version } = await briefedRow()
       for (const status of ['met', 'partial'] as const) {
