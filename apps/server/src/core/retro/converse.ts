@@ -23,7 +23,7 @@ const guard = (who: Who): void => {
 
 const noTags = { listTags: () => Promise.reject(new RetroInvalid('This range needs a release.')) }
 
-const rangeOf = async (payload: Payload, who: Who, input: StartInput, now: Date): Promise<Range> => {
+export const rangeOf = async (payload: Payload, who: Who, input: StartInput, now: Date): Promise<Range> => {
   const byRelease = 'tag' in input.range || 'lastRelease' in input.range
   const row = byRelease ? await loadProductRow(payload, { workspace: who.workspace, product: input.product }) : null
   if (!row) return resolveRange(input.range, { now, repo: '', forge: { ...noTags, releaseByTag: noTags.listTags } })
