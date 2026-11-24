@@ -42,6 +42,7 @@ export const PO_ROUTES: Record<string, string> = {
 export const BAUHERR_ROUTES: string[] = [
   'api/attachments/[id] GET',
   'api/changes GET',
+  'api/fake-forge GET',
   'mcp GET',
   'mcp POST',
   'mcp DELETE',
@@ -144,6 +145,7 @@ export const BAUHERR_COLLECTIONS = [
   'retros',
   'retro_messages',
   'records',
+  'repo_instruction_files',
   'repositories',
   'stage_runs',
   'statements',

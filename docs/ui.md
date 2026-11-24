@@ -123,7 +123,7 @@ Only an Admin edits, except Profile and API keys. Members read the rest. The sid
 
 ## Memory
 
-`/memory` edits one document (Factory, Workspace or Product) in a markdown editor with preview and versions. `/memory/statements` still lists single memories. The run page lists the memory a run got.
+`/memory` edits one document (Factory, Workspace or Product) in a markdown editor with preview; a Product's side column lists its agent instruction files. `/memory/statements` lists memories. A run page lists its memory.
 
 ## Not in the UI, by design
 

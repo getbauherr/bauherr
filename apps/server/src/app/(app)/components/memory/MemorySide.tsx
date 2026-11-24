@@ -1,6 +1,14 @@
+import type { InstructionFilesView } from '../../../../core/views/instruction-files'
+import { RepoFiles } from './RepoFiles'
 import { MemoryVersions, type VersionRow } from './MemoryVersions'
 
-type Props = { versions: VersionRow[]; last: string | null; lines: number; maxLines: number }
+type Props = {
+  versions: VersionRow[]
+  last: string | null
+  lines: number
+  maxLines: number
+  repoFiles: InstructionFilesView | null
+}
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -11,7 +19,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   )
 }
 
-export function MemorySide({ versions, last, lines, maxLines }: Props) {
+export function MemorySide({ versions, last, lines, maxLines, repoFiles }: Props) {
   return (
     <aside aria-label="About this document" className="grid gap-4">
       <Card title="Last change">
@@ -25,7 +33,7 @@ export function MemorySide({ versions, last, lines, maxLines }: Props) {
       <Card title="Versions">
         <MemoryVersions versions={versions} />
       </Card>
-      <div data-slot="repo-files" />
+      {repoFiles ? <RepoFiles view={repoFiles} /> : null}
     </aside>
   )
 }

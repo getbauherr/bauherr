@@ -14,6 +14,7 @@ const signInSpecs = [
   'memory-editor',
   'retro',
   'people',
+  'repo-files',
   'perf',
   'product-settings',
   'selects',
@@ -30,13 +31,18 @@ const grepInvert = [
   ...(hasOidc ? [] : [/@oidc/]),
 ]
 
+const countsForgeCalls = 'repo-files.spec.ts'
+
 export default defineConfig({
   testDir: 'e2e',
-  testIgnore,
   grepInvert,
   outputDir: 'e2e/results',
   workers: Number(env.E2E_WORKERS ?? 1),
   retries: Number(env.E2E_RETRIES ?? 0),
   expect: { timeout: 15_000 },
   use: { baseURL: env.BASE_URL ?? 'http://localhost:3000', screenshot: 'on' },
+  projects: [
+    { name: 'parallel', testIgnore: [...testIgnore, countsForgeCalls] },
+    { name: 'forge-calls', testIgnore, testMatch: countsForgeCalls, dependencies: ['parallel'] },
+  ],
 })
