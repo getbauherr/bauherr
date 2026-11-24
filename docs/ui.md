@@ -35,7 +35,7 @@ Only acceptance on staging closes a Ticket.
 | `/requests` | Follow your requests in four sections, starting with Needs you. |
 | `/requests/<id>` | Read one request, its status and its timeline. Report a problem once it is released. |
 | `/releases` | Pick done Tickets, choose the version and edit the notes. |
-| `/insights` | Read time to done, time per stage and cost of the tickets done in 7, 30 or 90 days. |
+| `/insights` | Read time to done, time per stage and cost. Choose 7, 30 or 90 days. |
 | `/knowledge` | Search and read the documents the agents use. |
 | `/team` | Connect an agent session and see who works on what. |
 | `/runs` | Admin only. The newest Runs with stage and status. |
