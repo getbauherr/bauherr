@@ -2,7 +2,7 @@ import type { FakeBackend } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import { describe, expect, it, vi } from 'vitest'
 import { RELEASE_CHECK_IDS } from '../../src/core/readiness/release-checks'
-import { highestVersion } from '../../src/core/readiness/release-facts'
+import { highestVersion, versionInputOf, workflowOf } from '../../src/core/readiness/release-facts'
 import { refreshReadiness } from '../../src/core/readiness/refresh'
 import { readiness, releaseBlockedOf } from '../../src/core/readiness/view'
 import { readerOf } from './mirror-harness'
@@ -11,7 +11,7 @@ import { flowHarness } from './modules-harness'
 const f = flowHarness('core_readiness_release')
 const { h } = f
 
-const STAGING = 'jobs:\n  deploy:\n    environment: staging\n'
+const STAGING = 'on:\n  push:\n    branches: [main]\njobs:\n  deploy:\n    environment: staging\n'
 const NOTHING = 'jobs:\n  build:\n    runs-on: ubuntu-latest\n'
 const PRODUCTION = (inputs: string) =>
   `on:\n  workflow_dispatch:\n${inputs}jobs:\n  deploy:\n    environment: production\n`
@@ -94,6 +94,46 @@ describe('release checks', () => {
     expect(highestVersion(['v0.3.0-rc.1', 'v0.3.0', 'v0.2.9', 'latest'])).toBe('v0.3.0')
     expect(highestVersion(['v0.10.0', 'v0.9.0'])).toBe('v0.10.0')
     expect(highestVersion(['latest'])).toBeNull()
+  })
+
+  const JOB = '\njobs:\n  deploy:\n    environment: staging\n'
+  const stagingOn = (source: string) => workflowOf('w.yml', source, 'main').stagingOnDefault
+
+  it.each([
+    ['push in the map form without a filter', 'on:\n  push:' + JOB, true],
+    ['push in the string form', 'on: push' + JOB, true],
+    ['push in the list form', 'on: [pull_request, push]' + JOB, true],
+    ['push to a branch filter that includes the default branch', 'on:\n  push:\n    branches: [main]' + JOB, true],
+    ['only workflow_dispatch', 'on:\n  workflow_dispatch:' + JOB, false],
+    ['push to another branch only', 'on:\n  push:\n    branches: [develop]' + JOB, false],
+    ['push that ignores the default branch', 'on:\n  push:\n    branches-ignore: [main]' + JOB, false],
+    ['no trigger at all', JOB.trimStart(), false],
+  ])('reads the trigger of a GitHub staging job: %s', (_name, source, expected) => {
+    expect(stagingOn(source)).toBe(expected)
+  })
+
+  const RULE = (condition: string, extra = '') =>
+    `deploy:\n  environment: staging\n  rules:\n    - if: ${condition}\n${extra ? `      ${extra}\n` : ''}`
+
+  it.each([
+    ['a plain job', 'deploy:\n  environment: staging\n', true],
+    ['a manual job', 'deploy:\n  environment: staging\n  when: manual\n', false],
+    ['only on the default branch', 'deploy:\n  environment: staging\n  only: [main]\n', true],
+    ['only on another branch', 'deploy:\n  environment: staging\n  only: [develop]\n', false],
+    ['a rule for the default branch', RULE('$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'), true],
+    ['a manual rule', RULE('$CI_COMMIT_BRANCH == "main"', 'when: manual'), false],
+    ['a rule for another branch', RULE('$CI_COMMIT_BRANCH == "develop"'), false],
+  ])('reads the trigger of a GitLab staging job: %s', (_name, source, expected) => {
+    expect(stagingOn(source)).toBe(expected)
+  })
+
+  it('counts only whole input names as a version, so force_refresh is a gap', () => {
+    for (const name of ['version', 'TAG', 'sha', 'ref', 'release_version', 'version_tag', 'commit_sha']) {
+      expect(versionInputOf(['environment', name])).toBe(name)
+    }
+    for (const name of ['force_refresh', 'tagline', 'sha_check', 'preference']) {
+      expect(versionInputOf([name])).toBeNull()
+    }
   })
 
   it('reads no forge when rendering: only the daily check stores the facts', async () => {

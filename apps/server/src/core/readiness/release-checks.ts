@@ -39,7 +39,9 @@ const stagingDeploy = (id: CheckId, workflow: string | null): Finding =>
     ? gap(
         id,
         'Staging does not deploy on every merge',
-        'No workflow has a job with the environment staging, so nobody can try a merge before a release.',
+        'No workflow runs a job with the environment staging on every push to the default branch. ' +
+          'A job started by hand or on another branch does not count, ' +
+          'so nobody can try a merge before a release.',
         ticket(
           'Deploy staging on every merge to the default branch',
           'Add a workflow that deploys to the environment staging on every push to the default branch, ' +
