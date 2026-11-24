@@ -14,7 +14,7 @@ const openMemory = async (page: Page) => {
   await page
     .context()
     .addCookies([{ name: 'bauherr-ws', value: 'check', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
-  await page.goto('/memory')
+  await page.goto('/memory/statements')
   await expect(page.getByRole('heading', { name: 'Memory', level: 1 })).toBeVisible()
 }
 
@@ -39,7 +39,7 @@ test(pressing, { tag: '@fake-forge' }, async ({ page }) => {
   await page.getByRole('button', { name: 'Make it a check' }).click()
   await expect(page.getByRole('button', { name: 'Make it a check' })).toHaveCount(0)
   await expect(page.getByText('Check being built').first()).toBeVisible()
-  await page.goto('/memory')
+  await page.goto('/memory/statements')
   const row = page.getByRole('table', { name: 'Memory' }).getByRole('row', { name: new RegExp(text.slice(0, 20)) })
   await expect(row).toContainText(/Check being built\s+#\d+/)
 })

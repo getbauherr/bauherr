@@ -13,6 +13,7 @@ import { seedSomeday } from './seed-someday'
 import { seedCheck } from './seed-check'
 import { seedInsights } from './seed-insights'
 import { seedStatements } from './seed-statements'
+import { seedMemoryEditor } from './seed-memory-editor'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -185,6 +186,7 @@ await seedConnect(payload)
 await seedSomeday(payload)
 await seedStatements(payload)
 await seedCheck(payload)
+await seedMemoryEditor(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
 await seedInsights(payload)
 
 await ensure(

@@ -33,7 +33,7 @@ export default async function MemoryOnePage({ params }: { params: Promise<{ id: 
     <>
       <PageTitle>Edit memory</PageTitle>
       <div className="flex flex-wrap items-center gap-3">
-        <Link href={`/memory?product=${product.id}`} className="text-primary hover:underline">
+        <Link href={`/memory/statements?product=${product.id}`} className="text-primary hover:underline">
           Memory
         </Link>
         <h1 className="title">{title}</h1>

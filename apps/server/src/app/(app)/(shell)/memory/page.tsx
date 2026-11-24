@@ -1,52 +1,114 @@
-import Link from 'next/link'
-import { notFound } from 'next/navigation'
-import { memoryProducts, statementRecords } from '../../../../core/views/statement-records'
+import { mayDecide } from '../../../../core/decide'
+import {
+  DOCUMENT_MAX_LINES,
+  documentVersions,
+  readDocument,
+  type DocumentTarget,
+  type DocumentVersion,
+} from '../../../../core/memory-documents'
+import { memoryProducts } from '../../../../core/views/statement-records'
 import { EmptyState } from '../../components/EmptyState'
-import { MemoryFilters } from '../../components/memory/MemoryFilters'
-import { MemoryTable } from '../../components/memory/MemoryTable'
+import { MemoryEditor } from '../../components/memory/MemoryEditor'
+import { MemorySide } from '../../components/memory/MemorySide'
+import type { VersionRow } from '../../components/memory/MemoryVersions'
+import { ScopeSelect } from '../../components/memory/ScopeSelect'
 import { PageTitle } from '../../components/PageTitle'
 import { Button } from '../../components/ui/button'
-import { countsOf, keep, parseShow } from '../../lib/memory'
-import { currentWorkspace, payloadClient } from '../../lib/session'
+import { lineCount } from '../../lib/memory-checks'
+import { pickScope, scopeOptions, type ScopeOption } from '../../lib/memory-scope'
+import { shortDate } from '../../lib/format'
+import { currentWorkspace, payloadClient, type Bauherr } from '../../lib/session'
+import type { DocumentChoice } from './document-actions'
 
 export const dynamic = 'force-dynamic'
 
-type Props = { searchParams: Promise<{ product?: string; show?: string }> }
+type Props = { searchParams: Promise<{ scope?: string; product?: string }> }
 
-const EMPTY = 'Nothing remembered yet. Your answers and notes appear here, and you can add your own.'
+const FACTORY_ONLY = 'Only an Admin changes the factory document.'
+const BAUHERR_ONLY = 'Only a Bauherr of this Workspace changes this document.'
+
+const targetOf = (choice: DocumentChoice, workspace: number): DocumentTarget =>
+  choice.scope === 'factory'
+    ? { scope: 'factory' }
+    : choice.scope === 'workspace' || choice.product === undefined
+      ? { scope: 'workspace', workspace }
+      : { scope: 'product', workspace, product: choice.product }
+
+const peopleOf = async (versions: DocumentVersion[]): Promise<Map<string, string>> => {
+  const ids = [...new Set(versions.map((version) => version.author))].map(Number).filter(Number.isInteger)
+  if (ids.length === 0) return new Map()
+  const found = await (
+    await payloadClient()
+  ).find({ collection: 'bauherren', where: { id: { in: ids } }, pagination: false, depth: 0, overrideAccess: true })
+  return new Map(found.docs.map((doc) => [String(doc.id), doc.email]))
+}
+
+const who = (version: DocumentVersion, me: string, people: Map<string, string>): string =>
+  version.reason === 'retro' ? 'Retro' : version.author === me ? 'you' : (people.get(version.author) ?? 'someone')
+
+const rowsOf = (versions: DocumentVersion[], me: string, people: Map<string, string>): VersionRow[] =>
+  versions.map((version, index) => ({
+    id: version.id,
+    number: versions.length - index,
+    body: version.body,
+    label: who(version, me, people),
+    date: shortDate(version.at),
+  }))
+
+const lastChange = (version: DocumentVersion | undefined, me: string, people: Map<string, string>): string | null =>
+  version
+    ? `${who(version, me, people).replace(/^you$/, 'You')}, ${shortDate(version.at)}, ${
+        version.reason === 'retro' ? 'agreed in a Retro' : 'edited directly'
+      }`
+    : null
+
+async function Document({ current, workspace, user }: { current: ScopeOption; workspace: number; user: Bauherr }) {
+  const payload = await payloadClient()
+  const target = targetOf(current.choice, workspace)
+  const [body, versions] = await Promise.all([readDocument(payload, target), documentVersions(payload, target)])
+  const me = String(user.id)
+  const people = await peopleOf(versions)
+  const person = { id: me, role: user.role, workspaceIds: [workspace] }
+  const mayChange = target.scope === 'factory' ? user.role === 'admin' : mayDecide(person, workspace)
+  return (
+    <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <MemoryEditor
+        key={`${current.value}-${versions[0]?.id ?? 0}`}
+        choice={current.choice}
+        initial={body}
+        maxLines={DOCUMENT_MAX_LINES}
+        mayChange={mayChange}
+        whoMay={target.scope === 'factory' ? FACTORY_ONLY : BAUHERR_ONLY}
+      />
+      <MemorySide
+        versions={rowsOf(versions, me, people)}
+        last={lastChange(versions[0], me, people)}
+        lines={lineCount(body)}
+        maxLines={DOCUMENT_MAX_LINES}
+      />
+    </div>
+  )
+}
 
 export default async function MemoryPage({ searchParams }: Props) {
-  const { workspace } = await currentWorkspace()
+  const { user, workspace } = await currentWorkspace()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const params = await searchParams
-  const payload = await payloadClient()
-  const products = await memoryProducts(payload, workspace.id)
-  const first = products[0]
-  if (!first) return <EmptyState text="Add a Product first: memory belongs to a Product." />
-  const asked = params.product === undefined ? first : products.find((entry) => entry.id === Number(params.product))
-  if (!asked) notFound()
-  const show = parseShow(params.show)
-  const records = await statementRecords(payload, { workspace: workspace.id, product: asked.id })
+  const products = await memoryProducts(await payloadClient(), workspace.id)
+  const options = scopeOptions(workspace.name, products)
+  const current = pickScope(options, params.scope ?? (params.product ? `product-${params.product}` : undefined))
+  if (!current) return <EmptyState text="You have no Workspace yet." />
   return (
     <>
       <PageTitle>Memory</PageTitle>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="title">Memory</h1>
-        <Button asChild className="ml-auto">
-          <Link href={`/memory/new?product=${asked.id}`}>Add a memory</Link>
+        <ScopeSelect value={current.value} options={options} />
+        <Button variant="outline" className="ml-auto" disabled>
+          Retro
         </Button>
       </div>
-      <MemoryFilters show={show} product={asked.id} counts={countsOf(records)} products={products} />
-      {records.length === 0 ? (
-        <EmptyState text={EMPTY} />
-      ) : (
-        <>
-          <MemoryTable records={keep(records, show)} />
-          <p className="small max-w-prose text-muted-foreground">
-            Handed: runs that got this memory. Came back: tickets that were corrected for this although a run had it.
-          </p>
-        </>
-      )}
+      <Document current={current} workspace={workspace.id} user={user} />
     </>
   )
 }

@@ -46,7 +46,7 @@ test('a ticket shows its time and cost in the side column', async ({ page }) => 
 })
 
 test('a memory shows what coming back cost', async ({ page }) => {
-  await enter(page, '/memory')
+  await enter(page, '/memory/statements')
   await page.getByRole('link', { name: 'Check the year of every date.' }).click()
   const box = page.locator('section', { has: page.getByRole('heading', { name: 'Cost of coming back' }) })
   await expect(box).toContainText('1 extra round')

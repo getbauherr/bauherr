@@ -26,7 +26,7 @@ const KEPT: Record<Show, (record: StatementRecord) => boolean> = {
 export const parseShow = (value: string | undefined): Show => SHOWS.find((show) => show === value) ?? 'all'
 
 export const filterHref = (show: Show, product: number): string =>
-  `/memory?product=${product}${show === 'all' ? '' : `&show=${show}`}`
+  `/memory/statements?product=${product}${show === 'all' ? '' : `&show=${show}`}`
 
 export const keep = (records: StatementRecord[], show: Show): StatementRecord[] => records.filter(KEPT[show])
 

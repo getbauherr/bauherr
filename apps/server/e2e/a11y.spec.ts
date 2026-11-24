@@ -76,18 +76,18 @@ const insightsTicket = async (page: Page) => {
 }
 
 const insightsMemory = async (page: Page) => {
-  await inInsights('/memory')(page)
-  return linkOn('/memory', /^\/memory\/\d+$/)(page)
+  await inInsights('/memory/statements')(page)
+  return linkOn('/memory/statements', /^\/memory\/\d+$/)(page)
 }
 
 const memoryOne = async (page: Page) => {
-  await inRecord('/memory')(page)
-  return linkOn('/memory', /^\/memory\/\d+$/)(page)
+  await inRecord('/memory/statements')(page)
+  return linkOn('/memory/statements', /^\/memory\/\d+$/)(page)
 }
 
 const memoryRun = async (page: Page) => {
   await inRecord('/memory')(page)
-  await page.goto('/memory')
+  await page.goto('/memory/statements')
   await page.getByRole('link', { name: 'Say what changed in the handoff.' }).click()
   const href = await page.locator('main a[href^="/runs/"]').first().getAttribute('href')
   expect(href, 'a run link on the memory').toBeTruthy()
@@ -161,6 +161,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'nothing done in the range': inRecord('/insights'),
   },
   '/memory': inRecord('/memory'),
+  '/memory/statements': inRecord('/memory/statements'),
   '/memory/new': inRecord('/memory/new'),
   '/memory/[id]': {
     'with a ticket': memoryOne,

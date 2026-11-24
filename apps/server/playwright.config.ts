@@ -11,6 +11,7 @@ const signInSpecs = [
   'admin-pages',
   'gateway',
   'memory',
+  'memory-editor',
   'people',
   'perf',
   'product-settings',

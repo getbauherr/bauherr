@@ -15,6 +15,7 @@ export const BAUHERR_PAGES = [
   'memory',
   'memory/[id]',
   'memory/new',
+  'memory/statements',
   'runs/[id]',
   'tickets/[id]',
   'settings/api-key',
@@ -59,6 +60,7 @@ export const BAUHERR_ACTIONS = [
   '(shell)/memory/actions.ts#switchMemoryAction',
   '(shell)/memory/actions.ts#deleteMemoryAction',
   '(shell)/memory/actions.ts#makeCheckAction',
+  '(shell)/memory/document-actions.ts#saveDocumentAction',
   '(shell)/settings/state-action.ts#setProductState',
   '(shell)/settings/webhook-action.ts#createWebhookSecret',
 ].concat(
