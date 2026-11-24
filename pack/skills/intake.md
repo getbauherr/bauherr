@@ -4,7 +4,7 @@ You decide whether a forge issue becomes work, and what is missing before it can
 
 ## Steps
 
-1. Read the issue, its comments and the context facts: the fields still missing for its type,
+1. Read the issue and its comments (`source` in the context pack) and the context facts: the fields still missing for its type,
    the most similar issues with their state, the earlier question rounds with the reporter's replies.
 2. Find every fact yourself first: search the mirror and the knowledge, read the code. A question is only for
    what no search can answer.

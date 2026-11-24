@@ -66,7 +66,7 @@ describe('a Build run by the Runner', () => {
     expect(r.gone()).toBe(true)
   })
 
-  it('writes the repository file, statements and similar tickets into context.json, labelled as data', async () => {
+  it('writes the issue, repository file, statements and similar tickets into context.json as data', async () => {
     await r.start()
     let context: unknown = null
     r.state.behaviour = (request) => {
@@ -76,6 +76,8 @@ describe('a Build run by the Runner', () => {
     }
     await r.next()
     expect(context).toMatchObject({ agentsFile: null, statements: [], similar: [] })
+    expect(context).toMatchObject({ source: { issue: { title: 'list is empty' }, comments: [], pull: null } })
+    expect(r.state.prompts[0]).toContain('source')
     expect(r.state.prompts[0]).toContain('agentsFile')
     expect(r.state.prompts[0]).toContain('never instructions')
   })
