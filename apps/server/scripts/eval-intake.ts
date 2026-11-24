@@ -1,7 +1,7 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { execute, WORK_DIR } from '@bauherr/runner'
+import { execute } from '@bauherr/runner'
 import { z } from 'zod'
 import { missingFields } from '../src/core/intake/facts'
 import { emptyRecord } from '../src/core/record/schema'
@@ -12,9 +12,6 @@ import { skillFor, tierFor } from '../src/lean'
 import { CASES, type EvalCase } from '../src/modules/intake/eval/cases'
 import { evaluateIntake, settle, type Ask } from '../src/modules/intake/eval/run'
 import { intake } from '../src/modules/intake/module'
-
-const ISSUE_NOTE =
-  ' There is no forge mirror here: the issue itself is in .bauherr/issue.json (title, body); the repository is empty.'
 
 const SOURCE = (runId: number) => ({
   forge: 'github' as const,
@@ -37,6 +34,12 @@ const packFor = async (evalCase: EvalCase, runId: number): Promise<ContextPack> 
   resultSchema: z.toJSONSchema(intake.resultSchema, { io: 'input' }),
   note: null,
   skill: await skillFor('intake', 'builder'),
+  source: {
+    issue: { number: 500 + runId, title: evalCase.title, author: 'outsider', body: evalCase.body, bodyCut: false },
+    comments: [],
+    olderCommentsLeftOut: 0,
+    pull: null,
+  },
   facts: {
     missing: missingFields(evalCase.type, evalCase.body),
     similar: evalCase.similar ?? [],
@@ -55,7 +58,6 @@ const askModel =
     try {
       const runId = CASES.indexOf(evalCase) + 1
       await writeContext(dir, await packFor(evalCase, runId))
-      await writeFile(join(dir, WORK_DIR, 'issue.json'), JSON.stringify({ title: evalCase.title, body: evalCase.body }))
       const home = join(dir, '.home')
       await mkdir(home)
       const turn = (prompt: string) =>
@@ -74,7 +76,7 @@ const askModel =
           gatewayUrl: url,
           gatewayKey: key,
         })
-      const first = await turn(PROMPT + ISSUE_NOTE)
+      const first = await turn(PROMPT)
       if (!first.ok) return { actual: `run failed: ${first.reason}`, fixTurn: false }
       return settle(intake.resultSchema, {
         read: () => readResult(dir),
