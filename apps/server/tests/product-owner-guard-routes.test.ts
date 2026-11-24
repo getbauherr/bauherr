@@ -59,7 +59,7 @@ describe('routes', () => {
     }
     for (const key of Object.keys(OPEN_ROUTES))
       expect(seen, `OPEN_ROUTES names a route that does not exist: ${key}`).toContain(key)
-    expect(seen.length).toBe(15)
+    expect(seen.length).toBe(16)
     partition('routes', seen, Object.keys(PO_ROUTES), BAUHERR_ROUTES)
   })
 })

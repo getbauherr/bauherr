@@ -28,6 +28,10 @@ You judge a patch you did not build, from evidence, and give a verdict the owner
    - `pass`: every criterion is met or waived and no finding is open.
    - `changes`: anything else. Say in `changes` what a user will notice and in `notVerified` what you could not check.
 6. Write the walkthrough as the steps a person can repeat to see the result.
+7. Write `outline`: the shape of what was built, from the pull request diff, in the same format as the Brief's
+   `shape` (`+` added, `-` removed, a space for context, real names, one line each, about 15 lines). Show the tree
+   that changed most. The owner sees it against the approved shape, and every changed line the Brief did not
+   have is marked "not in plan"; do not hide such a line, it is the point.
 
 ## Never
 

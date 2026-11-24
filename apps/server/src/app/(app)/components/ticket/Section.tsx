@@ -11,6 +11,15 @@ export function Section({ title, children }: { title: string; children: ReactNod
   )
 }
 
+export function Collapsible({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className="grid gap-2">
+      <summary className="label cursor-pointer text-muted-foreground">{title}</summary>
+      <div className="mt-2 grid gap-2">{children}</div>
+    </details>
+  )
+}
+
 export function Facts({ rows }: { rows: [label: string, value: ReactNode][] }) {
   return (
     <dl className="grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-[150px_minmax(0,1fr)]">

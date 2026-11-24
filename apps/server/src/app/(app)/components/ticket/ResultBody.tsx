@@ -1,12 +1,23 @@
+import { diffLines, driftOf } from '../../../../core/record/diff'
 import type { TicketView } from '../../../../core/views/ticket'
 import type { Tab } from '../../lib/ticket'
 import { BeforeAfter } from './BeforeAfter'
 import { CriteriaTable } from './CriteriaTable'
+import { DiffBlock } from './DiffBlock'
 import { ProofPanel } from './ProofPanel'
 import { Facts, Section } from './Section'
 import { RefText } from '../RefText'
 
 const list = 'm-0 grid gap-1 pl-5'
+
+function BuiltShape({ shape, outline }: { shape: string; outline: string | null }) {
+  if (!outline) return null
+  return (
+    <Section title="Built shape, compared with the approved brief">
+      <DiffBlock lines={shape === '' ? diffLines(outline) : driftOf(shape, outline)} label="Built shape" />
+    </Section>
+  )
+}
 
 export const selectedProof = (view: TicketView, requested: string | undefined): string | null => {
   const ids = view.proofs.map((group) => group.criterion)
@@ -31,6 +42,7 @@ export function ResultBody({ view, tab, proof }: { view: TicketView; tab: Tab; p
   const { repo } = record.source
   return (
     <>
+      <BuiltShape shape={record.shape} outline={result?.outline ?? null} />
       <Section title="Acceptance criteria">
         <CriteriaTable criteria={record.criteria} repo={repo} mode="result" {...{ recordId, tab, proofs, selected }} />
       </Section>

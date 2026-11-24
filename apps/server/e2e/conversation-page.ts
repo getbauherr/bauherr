@@ -14,3 +14,11 @@ export const aConversation = async (page: Page): Promise<string> => {
   })
   return `/conversations/${id}`
 }
+
+export const conversationTargets = {
+  '/conversations': async (page: Page): Promise<string> => {
+    await aConversation(page)
+    return '/conversations'
+  },
+  '/conversations/[id]': aConversation,
+}

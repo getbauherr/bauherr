@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto'
 import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { IMAGE_MAX_BYTES, RUN_IMAGE_MAX } from '../src/core/attachments/image'
-import { IMAGES, PNG, TEXT } from './core/images'
+import { HTML_MAX_BYTES, IMAGE_MAX_BYTES, MOCKUP_POLICY, RUN_IMAGE_MAX } from '../src/core/attachments/image'
+import { HTML, IMAGES, PNG, TEXT } from './core/images'
 import { openMcp, type Mcp } from './core/mcp-harness'
 
 type State = { person: { role: string } | null; workspaces: { id: number }[]; payload: unknown }
@@ -141,6 +141,53 @@ describe('PUT /api/attachments/upload/[token]', () => {
     const res = await put(late, PNG)
     expect(res.status).toBe(409)
     expect(reason.parse(await res.json()).error).toMatch(/already has 12 images/)
+  })
+})
+
+describe('an HTML mockup', () => {
+  const mockupFor = (ids: { runId: number; leaseToken: string }, contentType = 'text/html') =>
+    addressFor(ids, {
+      kind: 'mockup',
+      criterion: undefined,
+      sha: undefined,
+      upload: { contentType, caption: 'Run page' },
+    })
+
+  it('is stored and served in a sandbox with no network', async () => {
+    const ids = await buildRun()
+    const res = await put(await mockupFor(ids), HTML)
+    expect(res.status).toBe(201)
+    const id = z.object({ attachmentId: z.number() }).parse(await res.json()).attachmentId
+    state.person = { role: 'bauherr' }
+    state.workspaces = [{ id: m.e.db.workspace }]
+    const served = await get(id)
+    expect(served.headers.get('content-type')).toBe('text/html')
+    expect(served.headers.get('content-security-policy')).toBe(MOCKUP_POLICY)
+    expect(MOCKUP_POLICY).toMatch(/^sandbox allow-scripts; default-src 'none'/)
+    expect(MOCKUP_POLICY).not.toMatch(/allow-same-origin|connect-src/)
+    expect(Buffer.from(await served.arrayBuffer()).equals(HTML)).toBe(true)
+  })
+
+  it('is refused above 1 MB, when the bytes are no HTML page, and for any kind but a mockup', async () => {
+    const ids = await buildRun()
+    const big = Buffer.concat([HTML, Buffer.alloc(HTML_MAX_BYTES)])
+    expect((await put(await mockupFor(ids), big)).status).toBe(413)
+    const notHtml = await put(await mockupFor(ids), TEXT)
+    expect(notHtml.status).toBe(415)
+    expect((await put(await mockupFor(ids), PNG)).status).toBe(415)
+    const upload = { contentType: 'text/html', caption: 'x' }
+    const input = { ...ids, criterion: 'c1', kind: 'screenshot', sha: 'abc', upload }
+    const refused = m.call('attach_proof', input, m.agent(m.alpha))
+    await expect(refused).rejects.toThrow(/only a mockup may be an HTML page/)
+  })
+
+  it('is not served with a policy when the file is an image', async () => {
+    state.person = { role: 'bauherr' }
+    state.workspaces = [{ id: m.e.db.workspace }]
+    const ids = await buildRun()
+    const res = await put(await addressFor(ids), PNG)
+    const id = z.object({ attachmentId: z.number() }).parse(await res.json()).attachmentId
+    expect((await get(id)).headers.get('content-security-policy')).toBeNull()
   })
 })
 

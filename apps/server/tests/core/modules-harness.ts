@@ -35,6 +35,7 @@ export const BRIEF = {
   risk: { door: 'two-way', areas: [], rollback: 'revert' },
   decisions: [],
   plan: ['fix the query'],
+  shape: '- src/list.ts: query()\n+ src/list.ts: query(limit)',
 }
 
 export const buildResult = (pr: number, headSha: string, patchId: string, addressed: string[] = []) => ({

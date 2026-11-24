@@ -3,23 +3,19 @@ import { ActivityList } from './ActivityList'
 import { BriefSheet } from './BriefSheet'
 import { AnsweredDecisions } from './Decisions'
 import { ResultBody } from './ResultBody'
-import { Card, Section } from './Section'
-import { RefText } from '../RefText'
+import { Card } from './Section'
 
 export function BriefTab({ view }: { view: TicketView }) {
   const { record } = view
   if (record.goal === '') return <Card><p>No Brief yet. The agent writes it after Intake.</p></Card>
   return (
     <Card>
-      <BriefSheet record={record} mockups={view.mockups} missing={view.noMockup} />
-      {record.plan.steps.length > 0 && (
-        <Section title="Plan">
-          <ol className="m-0 grid gap-1 pl-5">
-            {record.plan.steps.map((step) => <li key={step}><RefText text={step} repo={record.source.repo} /></li>)}
-          </ol>
-        </Section>
-      )}
-      <AnsweredDecisions decisions={record.decisions} repo={record.source.repo} />
+      <BriefSheet
+        record={record}
+        mockups={view.mockups}
+        missing={view.noMockup}
+        decisions={<AnsweredDecisions decisions={record.decisions} repo={record.source.repo} />}
+      />
     </Card>
   )
 }

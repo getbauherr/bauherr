@@ -97,6 +97,7 @@ test('at 390 px the Next step bar does not cover the last field of the Models & 
   await expect(bar).toBeVisible()
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
   const field = page.locator('main input:visible, main select:visible, main textarea:visible').last()
+  await expect(field).toBeVisible()
   const box = (await field.boundingBox())!
   expect(box.y + box.height).toBeLessThanOrEqual((await bar.boundingBox())!.y)
 })

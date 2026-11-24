@@ -13,17 +13,27 @@ export function OpenDecision({ decision, repo }: { decision: Decision; repo: str
     <fieldset className="m-0 grid gap-2 border-0 p-0">
       <legend className="mb-2 p-0"><RefText text={decision.question} repo={repo} /></legend>
       {decision.options.map((option) => (
-        <label key={option.id} className={OPTION}>
-          <input
-            type="radio"
-            name={`answer:${decision.id}`}
-            value={option.id}
-            defaultChecked={option.id === decision.recommended}
-            className="accent-primary"
-          />
-          <span className="font-medium"><RefText text={option.label} repo={repo} /></span>
-          {option.id === decision.recommended && <span className="small text-muted-foreground">recommended</span>}
-        </label>
+        <div key={option.id} className="grid min-w-0 gap-1">
+          <label className={OPTION}>
+            <input
+              type="radio"
+              name={`answer:${decision.id}`}
+              value={option.id}
+              defaultChecked={option.id === decision.recommended}
+              className="accent-primary"
+            />
+            <span className="font-medium"><RefText text={option.label} repo={repo} /></span>
+            {option.id === decision.recommended && <span className="small text-muted-foreground">recommended</span>}
+          </label>
+          {option.preview !== undefined && (
+            <details open={option.id === decision.recommended} className="pl-3">
+              <summary className="small cursor-pointer text-muted-foreground">Show preview</summary>
+              <pre className="mono m-0 mt-1 min-w-0 overflow-x-auto rounded-md bg-secondary p-3 whitespace-pre-wrap">
+                {option.preview}
+              </pre>
+            </details>
+          )}
+        </div>
       ))}
     </fieldset>
   )

@@ -12,9 +12,9 @@ const patch = { patchId: 'p1', headSha: 'abc', pr: 5 }
 
 type Event = [minute: number, type: string, data?: unknown]
 type Run = { stage: string; role: string; created: number; started: number; finished: number; cost?: number }
-type Shape = { number: number; title: string; doneDaysAgo: number; events: Event[]; runs: Run[] }
+export type Shape = { number: number; title: string; doneDaysAgo: number; events: Event[]; runs: Run[] }
 
-const shipped = (accepted: number): Event[] => [
+export const shipped = (accepted: number): Event[] => [
   [60, 'build.submitted', { runId: '1', ...patch }],
   [70, 'verify.passed', { runId: '2', patchId: 'p1', headSha: 'abc' }],
   [71, 'ship.merged', { sha: 'm1' }],
@@ -71,7 +71,7 @@ const SHAPES: Shape[] = [
 
 const fingerprint = (shape: Shape, run: Run): string => `insights-${shape.number}-${run.created}`
 
-const seedTicket = async (payload: Payload, ids: { workspace: number; product: number }, shape: Shape) => {
+export const seedTicket = async (payload: Payload, ids: { workspace: number; product: number }, shape: Shape) => {
   const origin = { ...source, repo: 'insights/app', number: shape.number }
   const record = await createRecord(payload, { ...ids, source: origin, type: 'bug' })
   const last = shape.events.at(-1)?.[0] ?? 0

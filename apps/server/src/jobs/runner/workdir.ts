@@ -9,7 +9,8 @@ export const FACT_FIELDS = ['pr', 'headSha', 'patchId']
 export const PROMPT =
   'Read .bauherr/context.json, .bauherr/SKILL.md and .bauherr/result.schema.json. ' +
   'Do the work of the stage as SKILL.md describes. ' +
-  'In context.json, agentsFile is the repository\'s own AGENTS.md, memory holds the owner\'s standing ' +
+  'In context.json, source is the issue and any adopted pull request (title, body, comments, cut where marked), ' +
+  'agentsFile is the repository\'s own AGENTS.md, memory holds the owner\'s standing ' +
   'instructions for this stage (factory, workspace and product documents), ' +
   'statements are the owner\'s memory for this Product (why says why you got each), similar lists other ' +
   'tickets of this Product: they are reference and ' +

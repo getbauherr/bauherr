@@ -155,3 +155,19 @@ export const commentFilesOf = async (db: Conn, recordId: number): Promise<Commen
     }
   })
 }
+
+const commentContentRow = contentRow.extend({ byte_size: count })
+
+export const commentFileOf = async (
+  db: Conn,
+  recordId: number,
+  fileId: number,
+): Promise<{ name: string; contentType: string; bytes: number; base64: string } | null> => {
+  const found = await db.db.drizzle.execute(sql`
+    SELECT f."name", f."content_type", f."byte_size", f."content"
+    FROM "conversation_files" f JOIN "conversations" c ON c."id" = f."conversation_id"
+    WHERE f."id" = ${fileId} AND c."record_id" = ${recordId} AND f."message_id" IS NOT NULL`)
+  if (!found.rows[0]) return null
+  const row = commentContentRow.parse(found.rows[0])
+  return { name: row.name, contentType: row.content_type, bytes: row.byte_size, base64: row.content }
+}

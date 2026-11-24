@@ -31,7 +31,15 @@ export const riskSchema = z.object({
   rollback: text(200),
 })
 
-const option = z.object({ id: z.string().trim().min(1), label: text(80) })
+export const PREVIEW_MAX = 600
+export const SHAPE_MAX = 2000
+export const OUTLINE_MAX = 3000
+
+const option = z.object({
+  id: z.string().trim().min(1),
+  label: text(80),
+  preview: text(PREVIEW_MAX).optional(),
+})
 
 const decision = z
   .object({
@@ -69,6 +77,7 @@ export const resultSchema = z.object({
   changes: z.array(z.object({ text: text(160), tag: z.enum(['visible', 'behaviour', 'internal']) })).max(5),
   walkthrough: z.array(text(160)).max(5),
   notVerified: z.array(text(160)).max(5),
+  outline: z.string().trim().max(OUTLINE_MAX).nullable().default(null),
   cost: z.object({
     usd: z.number().min(0),
     runs: z.number().int().min(0),
@@ -87,6 +96,8 @@ const shape = z.object({
   risk: riskSchema.nullable(),
   decisions: z.array(decision).max(12),
   plan: z.object({ steps: z.array(text(160)).max(7) }),
+  shape: z.string().trim().max(SHAPE_MAX).default(''),
+  flow: z.string().trim().max(SHAPE_MAX).default(''),
   findings: z.array(findingSchema).max(20),
   handoff: z.string().trim().max(1200),
   result: resultSchema.nullable(),
@@ -134,6 +145,8 @@ export const emptyRecord = (recordSource: RecordSource, type: RecordType): Ticke
   risk: null,
   decisions: [],
   plan: { steps: [] },
+  shape: '',
+  flow: '',
   findings: [],
   handoff: '',
   result: null,

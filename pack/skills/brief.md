@@ -4,7 +4,7 @@ You turn an accepted issue into a short contract the owner can approve in one re
 
 ## Steps
 
-1. Read the issue, the earlier owner statements in the note, and the code the change touches.
+1. Read the issue (the field `source` of the work you were given), the earlier owner statements in the note, and the code the change touches.
 2. Write the goal as one sentence: who gets what, and why it matters.
 3. Write 3 to 7 criteria. A criterion says what a user can observe, never how it is built.
    - Each one is checkable by a single test, command, screenshot or manual look; name which one and how.
@@ -20,11 +20,22 @@ You turn an accepted issue into a short contract the owner can approve in one re
 9. When only the owner can supply a missing prerequisite (a Connection, credentials), call `release` with `need`
    set to what is missing, such as `AWS Connection`. The Ticket is parked on it.
 
+## Show me
+
+The owner judges the plan from pictures. Use the smallest view that makes the point, with real names, and not all of them.
+1. `shape` is required: a diff of the one tree that changes most (files, components, calls, state or schema), one
+   line each. Start a line with `+` for added, `-` for removed, a space for context. Never more than about 15 lines.
+2. `flow` is optional Mermaid source (a sequence diagram or flowchart) for a change whose point is order or branching.
+3. For a decision, give each option a short `preview` of what it would produce; the recommended one is shown open.
+4. A mockup may be a self-contained HTML page of at most 1 MB (`contentType` `text/html`, inline styles and scripts,
+   no network): the owner sees it in a frame at 1280 and 390 px wide. A PNG, JPEG or WebP still works.
+   A Brief without a shape is refused, and the answer says what to add.
+
 ## Mockups
 
 1. Build each mockup as a static page from the repository's own styles, or as a changed copy of the real page.
    Build nothing of the feature itself.
-2. Render it about 1280 pixels wide and save it as a PNG, JPEG or WebP of at most 2 MB.
+2. Render it about 1280 pixels wide and save it as a PNG, JPEG or WebP of at most 2 MB, or give an HTML page.
 3. Call `attach_proof` with `kind` `mockup` and `upload` `{ contentType, caption }`. A mockup has no criterion and no sha.
    The caption names the screen and marks what is new: `Run page (NEW: pull request row)`.
    The words before the first ` (` are the screen name; Verify uses it to ask for a before and an after.
@@ -34,7 +45,7 @@ You turn an accepted issue into a short contract the owner can approve in one re
 ## Adopted pull request
 
 When `source.adopted` is set on the record, a person opened pull request `source.adopted.pr` for this issue before the
-factory was connected. Read it with the issue. Describe what that pull request sets out to do: derive the goal, the
+factory was connected. It is the field `source.pull` of your work. Describe what that pull request sets out to do: derive the goal, the
 criteria, what is out of scope and the risk from both. Nothing is built here, so open no decision about how to build it.
 
 ## Never

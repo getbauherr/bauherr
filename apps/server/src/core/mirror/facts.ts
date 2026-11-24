@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import type { ReadForge } from '../forge/reader'
 import { saveSuggestions, suggestRiskAreas, type RiskSuggestion } from '../readiness/suggest'
+import { readInstructionFiles, saveInstructionFiles, type InstructionFiles } from './instruction-files'
 import { errorText } from './map'
 import type { SourceRow } from './store'
 
@@ -25,18 +26,30 @@ export type SourceFacts = {
   hasAgentsFile: boolean
   agentsFile: AgentsFile | null
   issueFormCount: number
+  instructionFiles: InstructionFiles | null
   riskSuggestions: RiskSuggestion[] | null
 }
 
 const protection = (value: boolean | null): BranchProtection => (value === null ? 'unknown' : value ? 'yes' : 'no')
 
-const suggestionsOf = async (
+type Listing = { commit: string; paths: string[] }
+
+const listingOf = async (repo: string, defaultBranch: string, forge: ReadForge): Promise<Listing | null> => {
+  try {
+    return await forge.listFiles(repo, defaultBranch)
+  } catch {
+    return null
+  }
+}
+
+const instructionFilesOf = async (
   repo: string,
   defaultBranch: string,
   forge: ReadForge,
-): Promise<RiskSuggestion[] | null> => {
+  listing: Listing | null,
+): Promise<InstructionFiles | null> => {
   try {
-    return suggestRiskAreas((await forge.listFiles(repo, defaultBranch)).paths)
+    return listing ? await readInstructionFiles(repo, forge, listing, defaultBranch) : null
   } catch {
     return null
   }
@@ -47,6 +60,7 @@ export const readFacts = async (repo: string, forge: ReadForge): Promise<SourceF
   const hasAgentsFile = await forge.fileExists(repo, 'AGENTS.md', defaultBranch)
   const file = hasAgentsFile ? await forge.getFile(repo, 'AGENTS.md', defaultBranch) : null
   const agentsFile = file ? cutAgentsFile(file.content) : null
+  const listing = await listingOf(repo, defaultBranch, forge)
   return {
     defaultBranch,
     branchProtected: protection(await forge.isBranchProtected(repo, defaultBranch)),
@@ -54,11 +68,12 @@ export const readFacts = async (repo: string, forge: ReadForge): Promise<SourceF
     hasAgentsFile,
     agentsFile,
     issueFormCount: await forge.countIssueForms(repo, defaultBranch),
-    riskSuggestions: await suggestionsOf(repo, defaultBranch, forge),
+    instructionFiles: await instructionFilesOf(repo, defaultBranch, forge, listing),
+    riskSuggestions: listing ? suggestRiskAreas(listing.paths) : null,
   }
 }
 
-const saveFacts = async (payload: Payload, id: number, facts: SourceFacts, now: Date): Promise<void> => {
+const saveFacts = async (payload: Payload, source: SourceRow, facts: SourceFacts, now: Date): Promise<void> => {
   await payload.db.drizzle.execute(sql`
     UPDATE "ticket_sources" SET
       "default_branch" = ${facts.defaultBranch},
@@ -70,8 +85,9 @@ const saveFacts = async (payload: Payload, id: number, facts: SourceFacts, now: 
       "issue_form_count" = ${facts.issueFormCount},
       "facts_at" = ${now.toISOString()}::timestamptz,
       "updated_at" = now()
-    WHERE "id" = ${id}`)
-  await saveSuggestions(payload, id, facts.riskSuggestions)
+    WHERE "id" = ${source.id}`)
+  await saveSuggestions(payload, source.id, facts.riskSuggestions)
+  if (facts.instructionFiles) await saveInstructionFiles(payload, source, facts.instructionFiles, now)
 }
 
 export const refreshFacts = async (
@@ -81,7 +97,7 @@ export const refreshFacts = async (
   now: Date,
 ): Promise<string | null> => {
   try {
-    await saveFacts(payload, source.id, await readFacts(source.repo, forge), now)
+    await saveFacts(payload, source, await readFacts(source.repo, forge), now)
     return null
   } catch (error) {
     return errorText(error)

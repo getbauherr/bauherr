@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { mayDecide } from '../../../../core/decide'
 import {
   DOCUMENT_MAX_LINES,
@@ -6,6 +7,7 @@ import {
   type DocumentTarget,
   type DocumentVersion,
 } from '../../../../core/memory-documents'
+import { instructionFilesOf } from '../../../../core/views/instruction-files'
 import { memoryProducts } from '../../../../core/views/statement-records'
 import { EmptyState } from '../../components/EmptyState'
 import { MemoryEditor } from '../../components/memory/MemoryEditor'
@@ -66,6 +68,7 @@ async function Document({ current, workspace, user }: { current: ScopeOption; wo
   const payload = await payloadClient()
   const target = targetOf(current.choice, workspace)
   const [body, versions] = await Promise.all([readDocument(payload, target), documentVersions(payload, target)])
+  const repoFiles = target.scope === 'product' ? await instructionFilesOf(payload, workspace, target.product) : null
   const me = String(user.id)
   const people = await peopleOf(versions)
   const person = { id: me, role: user.role, workspaceIds: [workspace] }
@@ -85,6 +88,7 @@ async function Document({ current, workspace, user }: { current: ScopeOption; wo
         last={lastChange(versions[0], me, people)}
         lines={lineCount(body)}
         maxLines={DOCUMENT_MAX_LINES}
+        repoFiles={repoFiles}
       />
     </div>
   )
@@ -104,8 +108,8 @@ export default async function MemoryPage({ searchParams }: Props) {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="title">Memory</h1>
         <ScopeSelect value={current.value} options={options} />
-        <Button variant="outline" className="ml-auto" disabled>
-          Retro
+        <Button variant="outline" className="ml-auto" asChild>
+          <Link href="/memory/retro">Retro</Link>
         </Button>
       </div>
       <Document current={current} workspace={workspace.id} user={user} />

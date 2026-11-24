@@ -138,6 +138,7 @@ const resultOf = async (e: Engine, id: number) => {
       ],
       walkthrough: ['The request starts a streamed export.', 'The page shows the progress.'],
       notVerified: ['Behaviour on imported legacy data.'],
+      outline: null,
       cost: { usd: 1.8, runs: 3, minutes: 41 },
     },
   })

@@ -156,6 +156,7 @@ const ofWorkspace = (ws: number) => sql`"workspace_id" = ${ws}`
 export const PURGE_ORDER: { table: string; where: (ws: number) => ReturnType<typeof sql> }[] = [
   { table: 'human_touches', where: (ws) => sql`"workspace_id" = ${ws} AND "kind" NOT LIKE 'workspace:%'` },
   ...[
+    'repo_instruction_files',
     'mirror_checks',
     'mirror_comments',
     'mirror_items',
@@ -168,6 +169,8 @@ export const PURGE_ORDER: { table: string; where: (ws: number) => ReturnType<typ
     'stage_runs',
     'statements',
     'memory_document_versions',
+    'retro_messages',
+    'retros',
     'records',
     'agent_sessions',
     'agent_keys',

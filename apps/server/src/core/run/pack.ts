@@ -15,6 +15,7 @@ import { partsOf, rememberContext, selectContext, type ContextParts, type PackSi
 import { ModuleMissing } from './errors'
 import { recordFor } from './role-view'
 import { DEFAULT_TIER, type Run, type Tier } from './schema'
+import { loadSource, type PackSource } from './source'
 
 export type ContextPack = {
   runId: number
@@ -27,6 +28,7 @@ export type ContextPack = {
   commentFiles: CommentFile[]
   skill: string | null
   facts: IntakeFacts | null
+  source: PackSource | null
   agentsFile: ContextParts['agentsFile']
   memory: MemoryPart[]
   statements: PackStatement[]
@@ -69,6 +71,7 @@ export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPa
     commentFiles: await commentFilesOf(deps.payload, run.recordId),
     skill: (await deps.skills?.(run.stage, run.role)) ?? null,
     facts: run.stage === 'intake' ? await loadIntakeFacts(deps.payload, stored) : null,
+    source: await loadSource(deps.payload, stored),
     agentsFile: parts.agentsFile,
     memory: context.memory ?? [],
     statements: parts.statements.map(({ id, kind, why, text, ticket, at }) => ({ id, kind, why, text, ticket, at })),

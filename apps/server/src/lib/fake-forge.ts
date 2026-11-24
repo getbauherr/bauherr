@@ -30,10 +30,30 @@ const build = (): FakeBackend => {
   return fake
 }
 
-const g = globalThis as { __bauherrFakeForge?: FakeBackend }
+const g = globalThis as { __bauherrFakeForge?: FakeBackend; __bauherrForgeCalls?: number }
+
+export const forgeCalls = (): number => g.__bauherrForgeCalls ?? 0
+
+const count = <A extends unknown[], R>(call: (...args: A) => R): ((...args: A) => R) => {
+  return (...args) => {
+    g.__bauherrForgeCalls = forgeCalls() + 1
+    return call(...args)
+  }
+}
+
+const spy = (fake: FakeBackend): void => {
+  const members: [string, unknown][] = Object.entries(fake.forge)
+  for (const [name, member] of members) {
+    if (typeof member !== 'function') continue
+    Reflect.set(fake.forge, name, count((...args: unknown[]): unknown => Reflect.apply(member, fake.forge, args)))
+  }
+  fake.tickets = count(fake.tickets.bind(fake))
+}
+
 export const fakeForge = (): FakeBackend => {
   if (g.__bauherrFakeForge) return g.__bauherrFakeForge
   const fake = build()
   fake.now = () => new Date().toISOString()
+  spy(fake)
   return (g.__bauherrFakeForge = fake)
 }
