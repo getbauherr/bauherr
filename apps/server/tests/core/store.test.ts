@@ -12,7 +12,8 @@ import {
   StatusChangeNotAllowed,
   VersionConflict,
 } from '../../src/core/record/errors'
-import { type RecordField } from '../../src/core/record/schema'
+import { checkPatch } from '../../src/core/record/guard'
+import { emptyRecord, type RecordField } from '../../src/core/record/schema'
 import {
   appendEvent,
   createRecord,
@@ -193,6 +194,52 @@ describe('patchRecord', () => {
       await expect(patch(id, version, 'brief', { criteria: missing })).rejects.toBeInstanceOf(StatusChangeNotAllowed)
       await expect(patch(id, version, 'build', { criteria: missing })).rejects.toBeInstanceOf(StatusChangeNotAllowed)
       await expect(patch(id, version, 'verify', { criteria: missing })).resolves.toBe(version + 1)
+    })
+
+    it('are replaced by a new brief, dropping one and keeping the verdicts of the others', async () => {
+      const { id, version } = await briefedRow()
+      const verified = [criterion(1, { status: 'met', proof: ['t1'] }), criterion(2), criterion(3)]
+      const verifiedVersion = await patch(id, version, 'verify', { criteria: verified })
+      const renumbered = [
+        { ...criterion(3), id: 'c1' },
+        { ...criterion(1), id: 'c2' },
+        criterion(3, { text: 'new one' }),
+      ]
+      await expect(patch(id, verifiedVersion, 'brief', { criteria: renumbered })).resolves.toBe(verifiedVersion + 1)
+      const { record } = await readRecord(payload, id)
+      expect(record.criteria.map((c) => [c.id, c.text, c.status, c.proof])).toEqual([
+        ['c1', 'criterion 3', 'open', []],
+        ['c2', 'criterion 1', 'met', ['t1']],
+        ['c3', 'new one', 'open', []],
+      ])
+    })
+
+    it('start open with no proof when reworded or new in a brief', async () => {
+      const { id, version } = await briefedRow()
+      const verified = [criterion(1, { status: 'met', proof: ['t1'] }), criterion(2), criterion(3)]
+      const verifiedVersion = await patch(id, version, 'verify', { criteria: verified })
+      const reworded = [criterion(1, { text: 'new words' }), criterion(2), criterion(3)]
+      await patch(id, verifiedVersion, 'brief', { criteria: reworded })
+      const { record } = await readRecord(payload, id)
+      expect(record.criteria[0]).toMatchObject({ text: 'new words', status: 'open', proof: [] })
+    })
+
+    it('refuse a brief that sets a status on a new criterion', async () => {
+      const { id, version } = await briefedRow()
+      const met = [criterion(1, { text: 'new words', status: 'met', proof: ['t1'] }), criterion(2), criterion(3)]
+      await expect(patch(id, version, 'brief', { criteria: met })).rejects.toBeInstanceOf(StatusChangeNotAllowed)
+    })
+
+    it('refuse a brief status change with the stage message unchanged', () => {
+      const current = { ...emptyRecord(source, 'feature'), criteria: [criterion(1), criterion(2)] }
+      const next = {
+        ...current,
+        criteria: [criterion(1, { status: 'met', proof: ['t1'] }), criterion(2)],
+      }
+      expect(() => checkPatch(current, next, { stage: 'brief', runId: 'r1' })).toThrow(
+        'Criterion c1 changes status in stage brief: ' +
+          'only a verify run records criterion status; leave status as it is.',
+      )
     })
 
     it('become met or partial only with proof', async () => {
