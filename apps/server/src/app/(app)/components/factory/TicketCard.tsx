@@ -42,7 +42,7 @@ export async function TicketCard({ card }: { card: BoardCard }) {
         <TicketRef recordId={card.recordId} number={card.number} />
         <Time iso={card.enteredAt} className="mono text-muted-foreground" />
       </div>
-      <Link href={`/tickets/${card.recordId}`} draggable={false} className={LINK}>
+      <Link href={`/tickets/${card.recordId}`} data-card-link draggable={false} className={LINK}>
         {card.title}
       </Link>
       <StatusChip status={card.status} closedAs={card.closedAs} />
