@@ -164,6 +164,14 @@ export class GithubTickets implements TicketSource {
       issue_id: await this.globalId(blockerId),
     });
   }
+  async removeSubTicket(parentId: string, childId: string) {
+    await this.h.json('DELETE', `${this.p}/issues/${parentId}/sub_issue`, {
+      sub_issue_id: await this.globalId(childId),
+    });
+  }
+  async removeBlockedBy(id: string, blockerId: string) {
+    await this.h.json('DELETE', `${this.p}/issues/${id}/dependencies/blocked_by/${await this.globalId(blockerId)}`);
+  }
   async addLink(id: string, url: string) {
     const body = text(wire(await this.issue(id)).body);
     const { relations } = parseRelations(body);

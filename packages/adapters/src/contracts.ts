@@ -98,6 +98,8 @@ export interface TicketSource {
   addSubTicket(parentId: string, childId: string): Promise<void>;
   listSubTickets(parentId: string): Promise<TicketSummary[]>;
   addBlockedBy(id: string, blockerId: string): Promise<void>;
+  removeSubTicket(parentId: string, childId: string): Promise<void>;
+  removeBlockedBy(id: string, blockerId: string): Promise<void>;
   addLink(id: string, url: string): Promise<void>;
   frontier(parentId: string): Promise<TicketSummary[]>;
 }
