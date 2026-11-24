@@ -39,21 +39,21 @@ export function CodeDiff({
           <span className="text-ok">+{additions}</span> <span className="text-destructive">−{deletions}</span>
         </span>
       </div>
-      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Changed lines">
-        <div className="w-max min-w-full">
+      <div>
+        <div>
           {lines.map((line, index) => (
             <div
               key={`${index}-${line.text}`}
               data-kind={line.kind}
               className={cn(
-                'flex px-4 py-0.5 leading-relaxed whitespace-pre',
+                'flex px-4 py-0.5 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]',
                 line.kind === 'context' && 'text-muted-foreground',
-                line.kind === 'added' && 'bg-ok/10 text-ok',
-                line.kind === 'removed' && 'bg-destructive/10 text-destructive',
+                line.kind === 'added' && 'bg-ok/10 text-[color-mix(in_oklab,var(--ok),var(--ink)_40%)]',
+                line.kind === 'removed' && 'bg-destructive/10 text-[color-mix(in_oklab,var(--danger),var(--ink)_40%)]',
               )}
             >
               <span aria-hidden className="w-4 shrink-0 select-none">{GUTTER[line.kind]}</span>
-              <span>{line.text}</span>
+              <span className="min-w-0">{line.text}</span>
             </div>
           ))}
         </div>

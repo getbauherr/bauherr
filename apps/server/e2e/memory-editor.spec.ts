@@ -79,6 +79,12 @@ for (const size of [
     } else {
       expect(side!.x).toBeGreaterThanOrEqual(editor!.x + editor!.width)
     }
+    await page.getByRole('button', { name: 'diff of v3', exact: true }).click()
+    await expect(page.locator('[data-slot="code-diff"] [data-kind]', { hasText: 'at 375 px' })).toBeVisible()
+    const clipped = await page
+      .locator('[data-slot="code-diff"] [data-kind]')
+      .evaluateAll((rows) => rows.filter((row) => row.scrollWidth > row.clientWidth).length)
+    expect(clipped).toBe(0)
     const { violations } = await new AxeBuilder({ page }).exclude('nextjs-portal').analyze()
     expect(violations.map((v) => v.id)).toEqual([])
     await shoot(page, 'memory')
