@@ -16,6 +16,8 @@ export type ReadForge = Pick<
   | 'getFile'
   | 'countIssueForms'
   | 'listFiles'
+  | 'listTags'
+  | 'releaseByTag'
 >
 export type ForgeReader = { tickets: (repo: RepoRef) => ReadTickets; forge: ReadForge }
 

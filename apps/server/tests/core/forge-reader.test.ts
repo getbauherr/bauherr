@@ -16,6 +16,8 @@ describe('the read-only forge view', () => {
       | 'getFile'
       | 'countIssueForms'
       | 'listFiles'
+      | 'listTags'
+      | 'releaseByTag'
     >()
     expectTypeOf<ReadTickets>().not.toHaveProperty('comment')
     expectTypeOf<ReadTickets>().not.toHaveProperty('addLabels')
