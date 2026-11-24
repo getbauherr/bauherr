@@ -25,13 +25,14 @@ const status = async (runId: number) =>
   (await rows(sql`SELECT "status" FROM "stage_runs" WHERE "id" = ${runId}`))[0]?.status
 
 describe('the tool set', () => {
-  it('has nine tools with short descriptions and refuses unknown fields', async () => {
+  it('has ten tools with short descriptions and refuses unknown fields', async () => {
     expect(TOOLS.map((t) => t.name)).toEqual([
       'connect',
       'next_work',
       'heartbeat',
       'search',
       'attach_proof',
+      'fetch_file',
       'ask',
       'submit',
       'release',

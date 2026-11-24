@@ -12,3 +12,9 @@ export const retroTarget = (suffix: string | null) => async (page: Page) => {
   expect(href, `a link to a Retro on ${START}`).toBeTruthy()
   return `${href}${suffix}`
 }
+
+export const retroTargets = {
+  '/memory/retro': retroTarget(null),
+  '/memory/retro/[id]': retroTarget(''),
+  '/memory/retro/[id]/outcome': retroTarget('/outcome'),
+}

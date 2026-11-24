@@ -1,7 +1,7 @@
 import type { Ref } from 'react'
+import { Composer } from '../conversation/Composer'
 import { Button } from '../ui/button'
 import { Label } from '../ui/label'
-import { Textarea } from '../ui/textarea'
 
 const FIELD_ID = 'decision-comment'
 const HINT_ID = 'decision-comment-hint'
@@ -9,12 +9,11 @@ const ERROR_ID = 'decision-comment-error'
 const COUNT_FROM = 100
 
 type Props = {
-  value: string
+  left: number
   max: number
   hint: string | null
   missing: string | null
   areaRef: Ref<HTMLTextAreaElement>
-  onChange: (value: string) => void
 }
 
 export function CommentToggle({ onOpen }: { onOpen: () => void }) {
@@ -45,22 +44,20 @@ function CommentFoot({ missing, left }: { missing: string | null; left: number }
   )
 }
 
-export function CommentField({ value, max, hint, missing, areaRef, onChange }: Props) {
-  const left = max - value.length
+export function DecisionComment({ left, max, hint, missing, areaRef }: Props) {
   const describedBy = [hint ? HINT_ID : null, missing ? ERROR_ID : null].filter((id) => id !== null).join(' ')
   return (
     <div className="grid gap-2 px-6 pb-6">
       <Label htmlFor={FIELD_ID}>Comment</Label>
       {hint && <p id={HINT_ID} className="small m-0 text-muted-foreground">{hint}</p>}
-      <Textarea
-        id={FIELD_ID}
-        ref={areaRef}
-        className="font-sans"
-        value={value}
+      <Composer
+        placeholder="Write a comment"
+        inputId={FIELD_ID}
+        inputRef={areaRef}
         maxLength={max}
-        aria-invalid={missing ? true : undefined}
-        aria-describedby={describedBy || undefined}
-        onChange={(event) => onChange(event.target.value)}
+        sendable={false}
+        describedBy={describedBy || undefined}
+        invalid={Boolean(missing)}
       />
       <CommentFoot missing={missing} left={left} />
     </div>

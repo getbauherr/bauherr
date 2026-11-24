@@ -1,7 +1,8 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { retroTarget } from './retro-targets'
+import { conversationTargets } from './conversation-page'
+import { retroTargets } from './retro-targets'
 import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
@@ -137,15 +138,14 @@ const routes: Record<string, Target | Record<string, Target>> = {
     Factory: inFactory('/'),
     'cannot-run line': withHoldStrip('/'),
   },
+  ...conversationTargets,
   '/inbox': { desktop: inboxAt(1280), 'at 390 px': inboxAt(390) },
   '/insights': {
     'with time and cost': inInsights('/insights'),
     'nothing done in the range': inRecord('/insights'),
   },
   '/memory': inRecord('/memory'),
-  '/memory/retro': retroTarget(null),
-  '/memory/retro/[id]': retroTarget(''),
-  '/memory/retro/[id]/outcome': retroTarget('/outcome'),
+  ...retroTargets,
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
     'Brief card with earlier answers': inTickets('Large export needs earlier answers'),

@@ -7,6 +7,7 @@ You implement the Brief on a branch and hand a pull request to a verifier who di
 1. Read the record: goal, criteria, out of scope, plan, and every finding that is still open.
 2. Work in small steps. Prefer the boring solution and the code that already exists in the repository.
 3. Follow the repository's own rules; its lint, compiler and tests are the rules. Run them before you submit.
+   If the pack lists commentFiles, call `fetch_file` with the run id, the lease token and a file id to read a file the owner attached.
 4. Call `heartbeat` right before you push: a run whose lease has expired must not push.
    Open or update the pull request and submit its number, its head commit and a patch id that changes
    whenever the head changes.

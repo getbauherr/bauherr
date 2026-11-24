@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
+import { useAui, useAuiState } from '@assistant-ui/react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 export function useComment() {
+  const aui = useAui()
   const area = useRef<HTMLTextAreaElement>(null)
-  const [note, setNote] = useState('')
+  const note = useAuiState((s) => s.composer.text)
+  const attachments = useAuiState((s) => s.composer.attachments)
+  const fileIds = useMemo(
+    () => attachments.filter((a) => a.status.type === 'requires-action').map((a) => Number(a.id)),
+    [attachments],
+  )
   const [opened, setOpened] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
   const [missing, setMissing] = useState<string | null>(null)
@@ -21,11 +28,11 @@ export function useComment() {
   return {
     area,
     note,
-    setNote,
+    fileIds,
     hint,
     missing,
     empty: note.trim() === '',
-    open: opened || note !== '',
+    open: opened || note !== '' || fileIds.length > 0,
     reveal,
     demand: (message: string, prompt: string) => {
       setMissing(message)
@@ -36,7 +43,7 @@ export function useComment() {
       setHint(prompt)
     },
     reset: () => {
-      setNote('')
+      void aui.composer().reset()
       setOpened(false)
       setMissing(null)
     },
