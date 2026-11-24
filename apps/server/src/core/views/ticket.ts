@@ -2,6 +2,8 @@ import type { Payload } from 'payload'
 import { commitChecksUrl } from '../deploy'
 import { isRemembered } from '../decisions'
 import { sentenceOf } from '../memory-check'
+import { loadNotStarted, type NotStarted } from '../readiness/not-started'
+import { productOfRecord } from '../readiness/tickets'
 import { canArchive, canGoBack, fold } from '../lifecycle'
 import { RecordNotFound } from '../record/errors'
 import {
@@ -19,6 +21,7 @@ import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
 import { positionsOf, type Positions } from './positions'
 import { activityOf, type EventView } from './activity'
+import { loadShots, pairsOf, type Pair } from '../attachments/pairs'
 import { loadMockups, type AttachmentView } from './attachments'
 import { keptMemories } from './statement-records'
 import { statementsUsed, type StatementsUsed } from './statements-used'
@@ -73,11 +76,14 @@ export type TicketView = {
   record: TicketRecord
   source: { repo: string; number: number; title: string; body: string; url: string } | null
   fromMemory: { id: number; text: string } | null
+  fromReadiness: number | null
+  checksNotStarted: NotStarted | null
   events: EventView[]
   runs: RunView[]
   proofs: ProofGroup[]
   mockups: AttachmentView[]
   noMockup: boolean
+  pairs: ScreenPair[]
   pullRequest: PullView | null
   verifySince: string | null
   similarItems: ItemHit[]
@@ -92,6 +98,8 @@ export type TicketView = {
   archived: boolean
   timing: { time: TicketTime; cost: TicketCost }
 }
+
+export type ScreenPair = Pair & { mockup: AttachmentView }
 
 export type TicketFilter = { workspace: number; recordId: number }
 
@@ -159,10 +167,29 @@ const statusFor = (stored: StoredRecord, runs: RunView[], events: StoredEvent[],
 const lacksMockup = (record: TicketRecord, mockups: AttachmentView[]): boolean =>
   record.visible && mockups.length === 0
 
+const pairsFor = async (payload: Payload, record: TicketRecord, recordId: number, mockups: AttachmentView[]) => {
+  if (!record.visible) return []
+  const screens = mockups.map((mockup) => mockup.screen)
+  return pairsOf(screens, await loadShots(payload, recordId)).flatMap((pair) => {
+    const mockup = mockups.find((candidate) => candidate.screen === pair.screen)
+    return mockup ? [{ ...pair, mockup }] : []
+  })
+}
+
 const withKept = async (payload: Payload, recordId: number, views: EventView[]): Promise<EventView[]> => {
   if (!views.some((view) => view.type === 'learn.submitted')) return views
   const memories = await keptMemories(payload, recordId)
   return views.map((view) => (view.type === 'learn.submitted' ? { ...view, memories } : view))
+}
+
+const originOf = async (payload: Payload, stored: StoredRecord) => {
+  const { workspace, id, record } = stored
+  const [notStarted] = await loadNotStarted(payload, { workspace, recordId: id, now: new Date() })
+  return {
+    fromMemory: await sentenceOf(payload, { workspace, id: record.source.memory }),
+    fromReadiness: record.source.readiness === undefined ? null : await productOfRecord(payload, id),
+    checksNotStarted: notStarted ?? null,
+  }
 }
 
 const timingOf = async (payload: Payload, recordId: number): Promise<TicketView['timing']> => {
@@ -198,13 +225,14 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     parked: stored.parked,
     card: stored.card,
     record: stored.record,
-    fromMemory: await sentenceOf(payload, { workspace: stored.workspace, id: stored.record.source.memory }),
+    ...(await originOf(payload, stored)),
     source: issue && { repo, number, title: issue.title, body: issue.body, url: issue.url },
     events: await withKept(payload, stored.id, activityOf(events)),
     runs,
     proofs: await loadProofs(payload, stored.id),
     mockups,
     noMockup: lacksMockup(stored.record, mockups),
+    pairs: await pairsFor(payload, stored.record, stored.id, mockups),
     ...pulls,
     verifySince: verifySinceOf(events),
     statementsUsed: await statementsUsed(payload, stored.id, events),

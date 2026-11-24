@@ -29,6 +29,14 @@ export function BriefCard({ view, seq, reason, may }: Props) {
               </Link>
             </p>
           )}
+          {view.fromReadiness !== null && (
+            <p className="m-0">
+              From the readiness check:{' '}
+              <Link href={`/settings/products/${view.fromReadiness}`} className="text-primary hover:underline">
+                {view.title}
+              </Link>
+            </p>
+          )}
           <BriefSheet record={view.record} mockups={view.mockups} missing={view.noMockup} reason={why} />
           <OpenDecisions decisions={view.record.decisions} repo={view.record.source.repo} />
         </div>

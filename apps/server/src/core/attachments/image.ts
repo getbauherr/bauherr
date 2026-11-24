@@ -1,11 +1,11 @@
 export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const
 export type ImageType = (typeof IMAGE_TYPES)[number]
 
-export const ATTACHMENT_KINDS = ['mockup', 'screenshot'] as const
+export const ATTACHMENT_KINDS = ['mockup', 'screenshot', 'before', 'after'] as const
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number]
 
 export const IMAGE_MAX_BYTES = 2 * 1024 * 1024
-export const RUN_IMAGE_MAX = 6
+export const RUN_IMAGE_MAX = 12
 export const RECORD_IMAGE_MAX = 30
 export const UPLOAD_TTL_MS = 10 * 60_000
 

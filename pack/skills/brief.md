@@ -26,9 +26,10 @@ You turn an accepted issue into a short contract the owner can approve in one re
    Build nothing of the feature itself.
 2. Render it about 1280 pixels wide and save it as a PNG, JPEG or WebP of at most 2 MB.
 3. Call `attach_proof` with `kind` `mockup` and `upload` `{ contentType, caption }`. A mockup has no criterion and no sha.
-   The caption names the screen and marks what is new.
+   The caption names the screen and marks what is new: `Run page (NEW: pull request row)`.
+   The words before the first ` (` are the screen name; Verify uses it to ask for a before and an after.
 4. Send the file to the `uploadUrl` the tool returns, as its description says. The address works once, for 10 minutes.
-5. At most 6 images per run. A Brief with `visible` true and no mockup is refused.
+5. At most 12 images per run. A Brief with `visible` true and no mockup is refused.
 
 ## Adopted pull request
 

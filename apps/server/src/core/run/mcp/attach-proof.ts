@@ -2,13 +2,15 @@ import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import { IMAGE_TYPES, type AttachmentKind } from '../../attachments/image'
 import { requestUpload } from '../../attachments/store'
+import { inputIssues } from './attach-rules'
+import { loadMockups } from '../../views/attachments'
 import { readRecord, type StoredRecord } from '../../record/store'
 import { ProofRefused } from '../errors'
 import { authorize } from '../leases'
 import type { Run } from '../schema'
 import { defineTool, type AgentContext, leaseToken, ownRun, runId } from './tool'
 
-export const PROOF_KINDS = ['screenshot', 'recording', 'output', 'link', 'mockup'] as const
+export const PROOF_KINDS = ['screenshot', 'recording', 'output', 'link', 'mockup', 'before', 'after'] as const
 export const BODY_MAX = 20_000
 export const ONE_FORM = 'give either body, url or upload, not both; a link with an explanation goes into body'
 
@@ -27,17 +29,11 @@ const input = z
     body: z.string().min(1).max(BODY_MAX).optional().describe(`Proof text: ${ONE_FORM}.`),
     url: z.url().max(2000).optional().describe(`A bare link: ${ONE_FORM}.`),
     upload: upload.optional(),
+    screen: z.string().trim().min(1).max(200).optional().describe('The mockup screen a before or after shows.'),
+    width: z.number().int().min(200).max(4000).optional().describe('Width in pixels of a before or after.'),
   })
   .superRefine((value, ctx) => {
-    const forms = [value.body, value.url, value.upload].filter((form) => form !== undefined).length
-    const issue = (message: string) => ctx.addIssue({ code: 'custom', message })
-    if (forms !== 1) issue('give exactly one of body, url and upload')
-    if (value.upload && value.kind !== 'mockup' && value.kind !== 'screenshot') {
-      issue('an upload is a mockup or a screenshot')
-    }
-    if (value.kind === 'mockup' && (value.criterion !== undefined || value.sha !== undefined || !value.upload)) {
-      issue('a mockup is an upload and has no criterion and no sha')
-    }
+    for (const message of inputIssues(value)) ctx.addIssue({ code: 'custom', message })
   })
 
 type Input = z.infer<typeof input>
@@ -54,11 +50,31 @@ const proofFields = (value: Input, recordId: number, criteria: Criteria) => {
   return { criterion: value.criterion, sha: value.sha }
 }
 
-const isUpload = (value: Input): value is UploadInput =>
-  value.upload !== undefined && (value.kind === 'mockup' || value.kind === 'screenshot')
+const isUpload = (value: Input): value is UploadInput => value.upload !== undefined
+
+const isPaired = (kind: string): boolean => kind === 'before' || kind === 'after'
+
+const checkedScreen = async (value: UploadInput, context: AgentContext, run: Run): Promise<string | null> => {
+  if (!isPaired(value.kind)) return null
+  const screens = (await loadMockups(context.deps.payload, run.recordId)).map((mockup) => mockup.screen)
+  if (value.screen !== undefined && screens.includes(value.screen)) return value.screen
+  const known = screens.length === 0 ? 'the Brief has no mockup screens' : `use one of: ${screens.join(', ')}`
+  throw new ProofRefused(`The Brief has no mockup screen "${value.screen}": ${known}.`)
+}
+
+const NO_PROOF = { criterion: null, proofSha: null, screen: null, width: null }
+
+const fieldsOf = async (value: UploadInput, context: AgentContext, run: Run, stored: StoredRecord) => {
+  if (value.kind === 'mockup') return NO_PROOF
+  if (isPaired(value.kind)) {
+    const screen = await checkedScreen(value, context, run)
+    return { ...NO_PROOF, proofSha: value.sha ?? null, screen, width: value.width ?? null }
+  }
+  const proof = proofFields(value, run.recordId, stored.record.criteria)
+  return { ...NO_PROOF, criterion: proof.criterion, proofSha: proof.sha }
+}
 
 const requestAddress = async (value: UploadInput, context: AgentContext, run: Run, stored: StoredRecord) => {
-  const proof = value.kind === 'mockup' ? null : proofFields(value, run.recordId, stored.record.criteria)
   const requested = await requestUpload(context.deps.payload, {
     workspace: stored.workspace,
     recordId: run.recordId,
@@ -68,8 +84,7 @@ const requestAddress = async (value: UploadInput, context: AgentContext, run: Ru
     kind: value.kind,
     caption: value.upload.caption,
     contentType: value.upload.contentType,
-    criterion: proof?.criterion ?? null,
-    proofSha: proof?.sha ?? null,
+    ...(await fieldsOf(value, context, run, stored)),
     now: context.deps.now,
   })
   return { uploadUrl: `${context.origin}/api/attachments/upload/${requested.token}`, expiresAt: requested.expiresAt }
@@ -90,7 +105,8 @@ export const attachProof = defineTool({
   name: 'attach_proof',
   description:
     `Stores a proof for one criterion of the record of your run and returns the proof id: ${ONE_FORM}. ` +
-    'With upload (a mockup or a screenshot, PNG, JPEG or WebP, at most 2 MB) it returns { uploadUrl, expiresAt }; ' +
+    'With upload (a mockup, a screenshot, or a before or after of a mockup screen with screen, width and sha; ' +
+    'PNG, JPEG or WebP, at most 2 MB) it returns { uploadUrl, expiresAt }; ' +
     'then send the file yourself: curl -X PUT --data-binary @shot.png -H "Content-Type: image/png" "<uploadUrl>".',
   access: 'agent',
   input,

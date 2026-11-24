@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
-import { IMAGE_MAX_BYTES } from '../src/core/attachments/image'
+import { IMAGE_MAX_BYTES, RUN_IMAGE_MAX } from '../src/core/attachments/image'
 import { IMAGES, PNG, TEXT } from './core/images'
 import { openMcp, type Mcp } from './core/mcp-harness'
 
@@ -126,10 +126,10 @@ describe('PUT /api/attachments/upload/[token]', () => {
     expect(reason.parse(await res.json()).error).toMatch(/lease/)
   })
 
-  it('refuses an upload past the six images of a run', async () => {
+  it('refuses an upload past the twelve images of a run', async () => {
     const ids = await buildRun()
     const tokens = []
-    for (let i = 0; i < 6; i++) tokens.push(await addressFor(ids))
+    for (let i = 0; i < RUN_IMAGE_MAX; i++) tokens.push(await addressFor(ids))
     for (const token of tokens) expect((await put(token, PNG)).status).toBe(201)
     const late = 'f'.repeat(64)
     await rows(sql`
@@ -140,7 +140,7 @@ describe('PUT /api/attachments/upload/[token]', () => {
       FROM "attachments" WHERE "run_id" = ${ids.runId} LIMIT 1`)
     const res = await put(late, PNG)
     expect(res.status).toBe(409)
-    expect(reason.parse(await res.json()).error).toMatch(/already has 6 images/)
+    expect(reason.parse(await res.json()).error).toMatch(/already has 12 images/)
   })
 })
 

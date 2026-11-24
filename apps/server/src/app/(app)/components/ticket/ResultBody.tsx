@@ -1,5 +1,6 @@
 import type { TicketView } from '../../../../core/views/ticket'
 import type { Tab } from '../../lib/ticket'
+import { BeforeAfter } from './BeforeAfter'
 import { CriteriaTable } from './CriteriaTable'
 import { ProofPanel } from './ProofPanel'
 import { Facts, Section } from './Section'
@@ -34,6 +35,7 @@ export function ResultBody({ view, tab, proof }: { view: TicketView; tab: Tab; p
         <CriteriaTable criteria={record.criteria} repo={repo} mode="result" {...{ recordId, tab, proofs, selected }} />
       </Section>
       <ProofPanel group={group} number={position + 1} />
+      <BeforeAfter pairs={view.pairs} />
       {result && result.changes.length > 0 && (
         <Section title="What changed">
           <ul className={list}>

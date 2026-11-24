@@ -99,6 +99,9 @@ const PRODUCT_SECTION_ACTIONS = [
   'saveGates',
   'saveProof',
   'copyForgeChecks',
+  'saveReadinessFix',
+  'checkReadinessNow',
+  'makeReadinessTicket',
 ]
 BAUHERR_ACTIONS.push(...PRODUCT_SECTION_ACTIONS.map((n) => `(shell)/settings/products/[id]/actions.ts#${n}`))
 export const PO_COLLECTIONS: Record<string, Record<string, string>> = {
