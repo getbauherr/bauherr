@@ -167,7 +167,7 @@ describe('checks-not-started', () => {
       }),
     )
     expect(found.status).toBe('gap')
-    expect(found.detail).toBe('#643 has waited 3 h for checks that have not started. 1 more ticket waits too.')
+    expect(found.detail).toBe('2 tickets have waited up to 3 h for checks that have not started.')
     expect(found.fix).toEqual({ kind: 'link', label: 'Why', href: '/tickets/9' })
   })
 })

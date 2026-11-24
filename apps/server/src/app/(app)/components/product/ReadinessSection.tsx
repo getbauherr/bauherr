@@ -3,6 +3,7 @@ import { describeChange } from '../../../../core/readiness/checks'
 import type { ReadinessItem, ReadinessView } from '../../../../core/readiness/view'
 import { Badge } from '../ui/badge'
 import { Time } from '../Time'
+import { TicketRef } from '../TicketRef'
 import { CheckNow, SettingFix, TicketFix } from './ReadinessActions'
 
 const MARK = {
@@ -32,11 +33,16 @@ function Fix({ item, product, admin }: { item: ReadinessItem; product: number; a
   }
   if (fix.kind === 'ticket') {
     if (ticket === null) return <TicketFix product={product} check={item.id} label={fix.label} />
-    const text = `Ticket #${ticket.number} open`
-    return ticket.recordId === null ? (
-      <span className="small text-muted-foreground">{text}</span>
-    ) : (
-      <Link href={`/tickets/${ticket.recordId}`} className={`small ${LINK}`}>{text}</Link>
+    return (
+      <span className="small text-muted-foreground">
+        Ticket{' '}
+        {ticket.recordId === null ? (
+          <span className="mono">#{ticket.number}</span>
+        ) : (
+          <TicketRef recordId={ticket.recordId} number={ticket.number} />
+        )}{' '}
+        open
+      </span>
     )
   }
   if (!admin) return null

@@ -49,7 +49,8 @@ function Sentence({ hold }: { hold: Hold }) {
     case 'checks-not-started':
       return (
         <>
-          #{hold.number} has waited {duration(hold.waitedMinutes * 60)} for checks that have not started.{' '}
+          <TicketRef recordId={hold.recordId} number={hold.number} /> has waited{' '}
+          {duration(hold.waitedMinutes * 60)} for checks that have not started.{' '}
           <Link href={`/tickets/${hold.recordId}`} className={LINK}>Why</Link>
         </>
       )

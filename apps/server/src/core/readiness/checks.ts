@@ -191,9 +191,9 @@ const waited = (minutes: number): string => (minutes < 120 ? `${minutes} min` : 
 export const checksNotStarted = (f: ReadinessFacts): Finding => {
   const [first] = f.waiting
   if (first === undefined) return ready('checks-not-started', 'no ticket waits for checks that have not started')
-  const others = f.waiting.length - 1
-  const more = others > 0 ? ` ${others} more ${others === 1 ? 'ticket waits' : 'tickets wait'} too.` : ''
-  const detail = `#${first.number} has waited ${waited(first.waitedMinutes)} for checks that have not started.${more}`
+  const count = f.waiting.length
+  const who = count === 1 ? 'A ticket has' : `${count} tickets have`
+  const detail = `${who} waited up to ${waited(first.waitedMinutes)} for checks that have not started.`
   const fix: Fix = { kind: 'link', label: 'Why', href: `/tickets/${first.recordId}` }
   return gap('checks-not-started', 'Checks have not started', detail, fix)
 }
