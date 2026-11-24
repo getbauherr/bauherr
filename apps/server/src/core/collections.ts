@@ -138,6 +138,38 @@ export const coreCollections: CollectionConfig[] = [
     ],
   },
   {
+    slug: 'conversations',
+    admin: { useAsTitle: 'title' },
+    access: { read: readable, create: closed, update: closed, delete: closed },
+    fields: [
+      { name: 'title', type: 'text', required: true },
+      { name: 'record', type: 'relationship', relationTo: 'records', index: true },
+    ],
+  },
+  {
+    slug: 'conversation_messages',
+    admin: { useAsTitle: 'role' },
+    access: { read: readable, create: closed, update: closed, delete: closed },
+    fields: [
+      { name: 'conversation', type: 'relationship', relationTo: 'conversations', required: true, index: true },
+      { name: 'role', type: 'text', required: true },
+      { name: 'text', type: 'textarea', required: true },
+    ],
+  },
+  {
+    slug: 'conversation_files',
+    admin: { useAsTitle: 'name' },
+    access: { read: readable, create: closed, update: closed, delete: closed },
+    fields: [
+      { name: 'conversation', type: 'relationship', relationTo: 'conversations', required: true, index: true },
+      { name: 'message', type: 'relationship', relationTo: 'conversation_messages', index: true },
+      { name: 'name', type: 'text', required: true },
+      { name: 'contentType', type: 'text', required: true },
+      { name: 'byteSize', type: 'number', required: true },
+      { name: 'content', type: 'textarea', access: { read: () => false } },
+    ],
+  },
+  {
     slug: 'retros',
     admin: { useAsTitle: 'state' },
     access: { read: readable, create: closed, update: closed, delete: closed },

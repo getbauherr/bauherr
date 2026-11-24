@@ -58,10 +58,10 @@ The left half is the conversation with the factory, ending in a comment box. The
 The action bar atop the Now pane holds the next step: one sentence and one primary button naming it, such as Approve plan or Re-run Build.
 
 - **Approve plan** is refused while critical decisions are unanswered.
-- **Send back** asks for a note and returns the Ticket to Build or the Backlog. Every comment has an Applies to choice: This ticket (the default), This product or Do not remember. The Ticket page lists each used memory with its scope.
+- **Send back** asks for a note and returns the Ticket to Build or the Backlog. Every comment has an Applies to choice: This ticket (default), This product or Do not remember. The Ticket page lists used memories.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
-- **Round cap**: when review reaches its cap you grant one more round or stop. It shows the verifier's last finding and the builder's last handoff, cut with … and linked to the full text.
-- **Close as done**: when Build reports another pull request or Ticket covers the work, the card asks "Close #n as done by #m?". Close comments with the evidence and moves the Ticket to done; Re-run build queues Build again.
+- **Round cap**: when review reaches its cap you grant one more round or stop.
+- **Close as done**: when Build reports another pull request or Ticket covers the work, Close #n as done by #m moves the Ticket to done; Re-run build queues Build again.
 
 - **Archive** (before Ship, after a dialog): releases the Run, hides the Ticket, closes the issue as not planned.
 - **Restore** reopens the issue and reruns the stage; so does reopening it on the forge.
@@ -81,6 +81,21 @@ Every human checkpoint uses one card. It has the ask in one sentence, a recommen
 - File request is enabled when the card is complete or the question limit is reached.
 
 After filing, the conversation is read-only history.
+
+## Conversation parts
+
+Conversation parts:
+
+- Thread: `conversation/Thread.tsx`
+- Composer: `conversation/Composer.tsx`
+- Attachments: `assistant-ui/elements/attachment.aui.tsx`
+- Option list: `assistant-ui/elements/option-list.tsx`
+- Task card: `assistant-ui/elements/task-card.tsx`
+- Artifact card: `assistant-ui/elements/artifact-card.tsx`
+- Gallery: `assistant-ui/elements/image-gallery.tsx`
+- Timeline: `assistant-ui/elements/timeline.tsx`
+
+`/conversations` starts a test conversation. Files may be up to 10 MB. Comment files show on Activity and reach the next run.
 
 ## Parked Tickets
 
@@ -119,7 +134,7 @@ Settings are grouped by scope. Account is for everyone, with Profile and API key
 
 API keys lists each session with its live Runs and slots, for example "2 of 3 working": a session connected with a capacity of 1 to 4 holds that many Runs at once, one subagent each.
 
-Only an Admin edits, except Profile and API keys. Members read the rest. The sidebar's Settings item opens Profile, and the command palette lists every page you may open.
+Only an Admin edits, except Profile and API keys. Members read the rest.
 
 ## Memory
 

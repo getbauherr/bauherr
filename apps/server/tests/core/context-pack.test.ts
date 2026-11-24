@@ -1,5 +1,8 @@
+import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { appendMessage, createConversation, storeFile } from '../../src/core/conversations/store'
+import { ticket } from '../../src/core/views/ticket'
 import { tierIn } from '../../src/core/run/tiers'
 import { MODULES, skillFor, tierFor } from '../../src/lean'
 import { openMcp, type Mcp } from './mcp-harness'
@@ -25,6 +28,7 @@ const pack = z.object({
     agentsFile: z.object({ text: z.string(), cut: z.boolean() }).nullable(),
     statements: z.array(z.unknown()),
     similar: z.array(z.unknown()),
+    commentFiles: z.array(z.object({ name: z.string(), contentType: z.string(), bytes: z.number() })),
   }),
 })
 
@@ -93,5 +97,69 @@ describe('the model tier', () => {
     await m.begin()
     const plain = await claimWith(() => Promise.resolve(null))
     expect(plain.context.model).toEqual({ tier: 'standard' })
+  })
+
+  it('shows a file attached to a card comment on the ticket and hands it to the next run', async () => {
+    const recordId = await m.begin()
+    const { workspace, payload } = m.e.db
+    const db = { db: { drizzle: payload.db.drizzle } }
+    const conversationId = await createConversation(db, workspace, `Ticket ${recordId} comment`, recordId)
+    const bytes = new TextEncoder().encode('mockup notes')
+    const file = await storeFile(db, { workspace, conversationId, name: 'notes.txt', contentType: 'text/plain', bytes })
+    await appendMessage(db, { workspace, conversationId, role: 'user', text: 'See notes', fileIds: [file.id] })
+    expect((await ticket(payload, { workspace, recordId })).commentFiles).toEqual([{ ...file, conversationId }])
+    const work = await claimWith(() => Promise.resolve(null))
+    expect(work.context.commentFiles).toEqual([{ name: 'notes.txt', contentType: 'text/plain', bytes: bytes.length }])
+  })
+})
+
+describe('fetch_file', () => {
+  const attach = async (workspace: number, recordId: number, text: string) => {
+    const db = { db: { drizzle: m.e.db.payload.db.drizzle } }
+    const conversationId = await createConversation(db, workspace, `Ticket ${recordId} comment`, recordId)
+    const file = await storeFile(db, {
+      workspace,
+      conversationId,
+      name: 'notes.txt',
+      contentType: 'text/plain',
+      bytes: new TextEncoder().encode(text),
+    })
+    await appendMessage(db, { workspace, conversationId, role: 'user', text: 'See notes', fileIds: [file.id] })
+    return file.id
+  }
+  const claim = async () => {
+    await m.begin()
+    return m.claimed(m.alpha)
+  }
+
+  it('returns the bytes of a file attached to a comment of the ticket of the run', async () => {
+    const work = await claim()
+    const found = await m.e.db.payload.db.drizzle.execute(
+      sql`SELECT "record_id" FROM "stage_runs" WHERE "id" = ${work.runId}`,
+    )
+    const fileId = await attach(m.e.db.workspace, z.coerce.number().parse(found.rows[0]?.record_id), 'screenshot notes')
+    const got = await m.call('fetch_file', { runId: work.runId, leaseToken: work.leaseToken, fileId }, m.agent(m.alpha))
+    expect(got).toEqual({
+      name: 'notes.txt',
+      contentType: 'text/plain',
+      bytes: 16,
+      base64: Buffer.from('screenshot notes').toString('base64'),
+    })
+  })
+
+  it('refuses a file attached to another ticket', async () => {
+    const work = await claim()
+    const other = await m.begin()
+    const fileId = await attach(m.e.db.workspace, other, 'other')
+    await expect(
+      m.call('fetch_file', { runId: work.runId, leaseToken: work.leaseToken, fileId }, m.agent(m.alpha)),
+    ).rejects.toThrow(/not on a comment of this ticket/)
+  })
+
+  it('refuses a run of another workspace', async () => {
+    const work = await claim()
+    await expect(
+      m.call('fetch_file', { runId: work.runId, leaseToken: work.leaseToken, fileId: 1 }, m.agent(m.beta)),
+    ).rejects.toThrow(/does not exist/)
   })
 })

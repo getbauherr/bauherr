@@ -1,7 +1,7 @@
 ---
 name: bauherr-builder
 description: Works exactly one Bauherr Run in its own worktree, heartbeats while it works, and submits or releases it. Start one per Run that next_work returns.
-tools: Read, Edit, Write, Grep, Glob, Bash, mcp__bauherr__heartbeat, mcp__bauherr__attach_proof, mcp__bauherr__submit, mcp__bauherr__release, mcp__bauherr__ask
+tools: Read, Edit, Write, Grep, Glob, Bash, mcp__bauherr__heartbeat, mcp__bauherr__attach_proof, mcp__bauherr__fetch_file, mcp__bauherr__submit, mcp__bauherr__release, mcp__bauherr__ask
 model: sonnet
 ---
 
