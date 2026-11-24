@@ -3,7 +3,7 @@ import type { Criterion } from '../../../../core/record/schema'
 import type { ProofGroup } from '../../../../core/views/ticket-parts'
 import { CRITERION_WORDS, PROOF_WORDS, ticketHref, VERIFY_WORDS, type Tab } from '../../lib/ticket'
 import { WordBadge } from '../WordBadge'
-import { ImageThumb } from './ImageThumb'
+import { ImageGallery } from './ImageGallery'
 import { RefText } from '../RefText'
 
 const TABLE = 'w-full border-collapse overflow-hidden rounded-md border border-border'
@@ -30,7 +30,7 @@ function ProofLinks({ criterion, ...linking }: { criterion: Criterion } & ProofL
       {words}
       <span className="sr-only"> for criterion {criterion.id.slice(1)}</span>
     </Link>
-    {images.map((image) => <ImageThumb key={image.id} image={image} />)}
+    <ImageGallery images={images} />
     </div>
   )
 }
