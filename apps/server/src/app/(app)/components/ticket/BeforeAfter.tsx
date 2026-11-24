@@ -41,7 +41,7 @@ function PairBlock({ pair }: { pair: ScreenPair }) {
         {pair.screen}
         {` · ${pair.width} px`}
       </h3>
-      <ImageGallery images={[...(before ? [before] : []), ...(after ? [after] : []), plan]} captions />
+      <ImageGallery images={[...(before ? [before] : []), ...(after ? [after] : []), plan]} captions columns />
       {missing && <p className="small m-0 text-muted-foreground">{missing}</p>}
       {before && after && <FlipFrame before={before} after={after} />}
     </div>
