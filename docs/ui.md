@@ -74,7 +74,7 @@ Every human checkpoint uses one card. It has the ask in one sentence, a recommen
 
 `/requests/new` opens an interview with the Factory assistant. The request card fills in beside the stream.
 
-- Pick Report a bug, Ask for a feature or Change something, or just describe it.
+- Pick Report a bug, Ask for a feature or Change something, or describe it.
 - Click a suggested answer or type your own.
 - Edit any field of the card by hand. Your edit is kept.
 - Several problems in one message become several Tickets.
