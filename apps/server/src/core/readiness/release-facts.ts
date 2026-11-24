@@ -19,7 +19,6 @@ export type ReleaseFacts = z.infer<typeof releaseFactsSchema>
 export type Workflow = { path: string; environments: string[]; inputs: string[]; stagingOnDefault: boolean }
 
 const WORKFLOW_FILE = /^(\.github\/workflows\/[^/]+\.ya?ml|\.gitlab-ci\.yml)$/
-/** Whole names only: force_refresh or tagline are no version. */
 const VERSION_INPUTS = ['version', 'tag', 'sha', 'ref', 'release_version', 'version_tag', 'commit_sha']
 const SEMVER = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/
 
@@ -37,7 +36,6 @@ const list = (value: unknown): string[] =>
 const matchesBranch = (patterns: string[], branch: string): boolean =>
   patterns.some((pattern) => pattern === branch || pattern === '*' || pattern === '**')
 
-/** GitHub: `on` as a string, a list or a map; a push filter must include the default branch (or have none). */
 const pushesToDefault = (on: unknown, branch: string): boolean => {
   if (typeof on === 'string' || Array.isArray(on)) return list(on).includes('push')
   const triggers = record(on)
@@ -53,7 +51,6 @@ const startsOnDefault = (rule: Record<string, unknown>, branch: string): boolean
   return rule.if.includes(branch) || rule.if.includes('CI_DEFAULT_BRANCH')
 }
 
-/** GitLab: the job runs on the default branch without `when: manual`, by `rules` or `only` (`except` is not read). */
 const jobRunsOnDefault = (job: Record<string, unknown>, branch: string): boolean => {
   if (Array.isArray(job.rules)) return job.rules.some((rule) => startsOnDefault(record(rule), branch))
   if (job.when === 'manual') return false
