@@ -1,9 +1,6 @@
 import type { HeldItem } from '../../../core/intake/held'
 import type { Board, BoardCard } from '../../../core/views/board'
 import { STAGES } from '../../../core/events'
-import { RecordNotFound } from '../../../core/record/errors'
-import { ticket, type TicketView } from '../../../core/views/ticket'
-import type { payloadClient } from './session'
 
 export const GROUPS = ['you', 'working', 'others', 'done'] as const
 export type GroupId = (typeof GROUPS)[number]
@@ -29,20 +26,4 @@ export const groupRows = (lanes: Board): Record<GroupId, InboxRow[]> => {
   for (const card of cards) rows[groupOf(card)].push({ kind: 'ticket', card })
   for (const item of lanes.held) rows.others.push({ kind: 'held', item, repo: item.repo })
   return rows
-}
-
-export const waitingIds = (rows: InboxRow[]): number[] =>
-  rows.flatMap((row) => (row.kind === 'ticket' ? [row.card.recordId] : []))
-
-export const selectedTicket = async (
-  payload: Awaited<ReturnType<typeof payloadClient>>,
-  workspace: number,
-  param: string | undefined,
-): Promise<TicketView | null> => {
-  const recordId = Number(param)
-  if (!Number.isInteger(recordId) || recordId <= 0) return null
-  return ticket(payload, { workspace, recordId }).catch((error: unknown) => {
-    if (error instanceof RecordNotFound) return null
-    throw error
-  })
 }

@@ -18,9 +18,7 @@ const signIn = async (page: Page) => {
 
 const open = async (page: Page, title: string) => {
   await page.goto('/inbox')
-  const link = page.getByRole('link', { name: new RegExp(title) })
-  const href = (await link.getAttribute('href'))!
-  await page.goto(href.replace('/inbox?t=', '/tickets/'))
+  await page.getByRole('link', { name: new RegExp(title) }).click()
   await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
   return new URL(page.url()).pathname
 }
@@ -34,11 +32,10 @@ const enterOpen = async (page: Page, base: string) => {
   await signIn(page)
   await page.goto('/inbox')
   const waiting = page.getByRole('region', { name: 'Waiting on you' })
-  const href = await waiting
+  await waiting
     .getByRole('link', { name: new RegExp(`${base} \\d`) })
     .first()
-    .getAttribute('href')
-  await page.goto(href!.replace('/inbox?t=', '/tickets/'))
+    .click()
   await expect(page.getByRole('heading', { level: 1, name: new RegExp(`^${base} \\d$`) })).toBeVisible()
   return new URL(page.url()).pathname
 }

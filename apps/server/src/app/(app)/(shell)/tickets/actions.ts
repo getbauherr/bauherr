@@ -44,6 +44,5 @@ export async function decideTicket(raw: unknown): Promise<DecisionResult> {
     return { error: error instanceof StaleDecision ? STALE_SENTENCE : error.message }
   }
   revalidatePath(`/tickets/${parsed.data.recordId}`)
-  revalidatePath('/inbox')
   return {}
 }
