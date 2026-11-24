@@ -10,7 +10,6 @@ const sourceOf = (candidate: Candidate) => ({
   reporter: candidate.item.author,
   external: !candidate.item.authorTrusted,
   backlog: candidate.connectedAt !== null && Date.parse(candidate.createdAt) < Date.parse(candidate.connectedAt),
-  ...(candidate.memory === null ? {} : { memory: candidate.memory }),
   ...(candidate.readiness === null ? {} : { readiness: candidate.readiness }),
 })
 

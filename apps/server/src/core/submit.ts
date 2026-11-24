@@ -7,7 +7,6 @@ import { advance, type AdvanceDeps } from './engine'
 import { fold } from './fold'
 import { gate, reviewGate, type GateFacts, type GateOutcome } from './gate'
 import { loadGateFacts } from './gate-facts'
-import { rememberLessons } from './memory-store'
 import { foldOptions, type Config, type Role } from './lifecycle'
 import { moduleKey, type Effect, type LifecycleModule, type Modules, type Problem } from './module'
 import {
@@ -104,7 +103,6 @@ const applyIn = async (
   const input = { expectedVersion: f.stored.version, writes: module.writes, patch: applied.patch, by }
   await patchRecord(tx, run.recordId, input)
   for (const event of applied.events) await appendEvent(tx, run.recordId, { ...event, actor: 'agent' })
-  if (applied.memory) await rememberLessons(tx, run, applied.memory)
   return applied.effects ?? []
 }
 

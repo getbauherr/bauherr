@@ -46,7 +46,6 @@ const packFor = async (evalCase: EvalCase, runId: number): Promise<ContextPack> 
   memory: [],
   statements: [],
   similar: [],
-  learn: null,
 })
 
 const outcomeOf = (written: Record<string, unknown> | null): string => {

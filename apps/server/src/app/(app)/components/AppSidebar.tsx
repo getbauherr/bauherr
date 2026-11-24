@@ -22,7 +22,6 @@ type Props = {
   email: string
   admin: boolean
   waitingOnYou: number
-  newMemories: number
   workspaces: { slug: string; name: string }[]
   current?: string
   logout: () => Promise<void>
@@ -42,13 +41,12 @@ function NavCount({ count, title, note }: Partial<CountProps>) {
 }
 
 export function AppSidebar(props: Props) {
-  const { email, admin, waitingOnYou, newMemories, workspaces, current, logout, selectWorkspace } = props
+  const { email, admin, waitingOnYou, workspaces, current, logout, selectWorkspace } = props
   const path = usePathname()
   const { setOpenMobile } = useSidebar()
   useEffect(() => setOpenMobile(false), [path, setOpenMobile])
   const counts: Record<string, CountProps> = {
     '/inbox': { count: waitingOnYou, title: 'Waiting on you', note: ' waiting on you' },
-    '/memory': { count: newMemories, title: 'New memories', note: ' new' },
   }
   const item = ({ href, label, Icon, match }: NavItem) => (
     <SidebarMenuItem key={href}>

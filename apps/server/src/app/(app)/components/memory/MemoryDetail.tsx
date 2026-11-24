@@ -1,9 +1,8 @@
 import Link from 'next/link'
 import type { Fare, StatementRecord } from '../../../../core/views/statement-records'
 import { stageSchema } from '../../../../core/events'
-import { Badge } from '../ui/badge'
 import { Table } from '../ui/table'
-import { RUN_NAMES } from '../../lib/factory'
+import { STAGE_NAMES } from '../../lib/factory'
 import { TicketRef } from '../TicketRef'
 
 export function Origin({ record, product }: { record: StatementRecord; product: string }) {
@@ -19,15 +18,6 @@ export function Origin({ record, product }: { record: StatementRecord; product: 
           </>
         )}
         {` in ${product}.`}
-        {record.learnRun !== null && (
-          <>
-            {' Written as a memory by Learn, '}
-            <Link href={`/runs/${record.learnRun}`} className="mono text-primary hover:underline">
-              run {record.learnRun}
-            </Link>
-            {'.'}
-          </>
-        )}
       </p>
       {record.sourceText !== null && (
         <p className="m-0 border-l-2 border-border pl-3 text-muted-foreground">{record.sourceText}</p>
@@ -44,14 +34,8 @@ export function Origin({ record, product }: { record: StatementRecord; product: 
 
 const stageOf = (fare: Fare): string => {
   if (fare.stage === 'verify' && fare.role === 'reviewer') return 'Review'
-  return RUN_NAMES[stageSchema.parse(fare.stage)]
+  return STAGE_NAMES[stageSchema.parse(fare.stage)]
 }
-
-const OUTCOME = {
-  'came-back': <Badge variant="warn">Came back</Badge>,
-  clean: <Badge variant="ok">✓ Clean</Badge>,
-  open: <span className="small text-muted-foreground">No verdict yet</span>,
-} as const
 
 export function Fared({ fares }: { fares: Fare[] }) {
   return (
@@ -65,7 +49,6 @@ export function Fared({ fares }: { fares: Fare[] }) {
             <tr>
               <th scope="col">Ticket</th>
               <th scope="col">Run that got it</th>
-              <th scope="col">Outcome</th>
             </tr>
           </thead>
           <tbody>
@@ -81,7 +64,6 @@ export function Fared({ fares }: { fares: Fare[] }) {
                     run {fare.run}
                   </Link>
                 </td>
-                <td>{OUTCOME[fare.outcome]}</td>
               </tr>
             ))}
           </tbody>

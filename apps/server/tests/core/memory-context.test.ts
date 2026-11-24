@@ -142,9 +142,9 @@ describe('the memory views', () => {
     const record = await ticketWith('Export timeout', ['adapters'])
     const { run } = await packOf(record)
     const listed = await statementRecords(e.db.payload, { workspace: e.db.workspace, product: e.db.product })
-    expect(listed.map((r) => [r.text, r.reachLabel, r.handed, r.cameBack, r.off]).sort()).toEqual([
-      ['Adapter rule.', 'Area: adapters', 1, 0, false],
-      ['Use Sie.', 'Every ticket', 1, 0, false],
+    expect(listed.map((r) => [r.text, r.reachLabel, r.handed, r.off]).sort()).toEqual([
+      ['Adapter rule.', 'Area: adapters', 1, false],
+      ['Use Sie.', 'Every ticket', 1, false],
     ])
     const page = await runPage(e.db.payload, { workspace: e.db.workspace, runId: run.id, withCost: false })
     expect(page.memory.map((m) => [m.text, m.reason]).sort()).toEqual([
@@ -152,7 +152,7 @@ describe('the memory views', () => {
       ['Use Sie.', 'every ticket'],
     ])
     const fares = await statementFare(e.db.payload, { workspace: e.db.workspace, id: always })
-    expect(fares).toMatchObject([{ run: run.id, outcome: 'open', ticket: { record } }])
+    expect(fares).toMatchObject([{ run: run.id, ticket: { record } }])
     expect(area.parse(page.memory[0]?.reason)).toBeTruthy()
   })
 

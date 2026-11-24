@@ -79,8 +79,6 @@ export const SAMPLES: Record<EventType, unknown> = {
   'ship.deploy-stalled': { reason: 'failed', checks: ['deploy'] },
   'result.accepted': {},
   'result.sent-back': { note: 'not yet' },
-  'learn.submitted': { runId: 'r3', memories: 1, cameBack: 0 },
-  'learn.skipped': { reason: 'the Learn run failed twice' },
   'production.approved': {},
   'production.held': {},
   'owner.note': { note: 'try the other way' },

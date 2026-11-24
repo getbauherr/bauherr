@@ -18,8 +18,6 @@ export const STAGE_NAMES: Record<Stage, string> = {
   done: 'Done',
 }
 
-export const RUN_NAMES: Record<Stage, string> = { ...STAGE_NAMES, done: 'Learn' }
-
 export type Who = Exclude<Show, 'all'>
 
 export const SHOW_LABELS: Record<Show, string> = {
