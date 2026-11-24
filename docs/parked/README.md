@@ -9,6 +9,7 @@ A part returns as a module: a folder that imports the core and never another mod
 | Page | Part |
 |---|---|
 | [product-owner-intake](product-owner-intake.md) | Product-owner accounts, Requests, intake chat and widget |
+| [request-widget](request-widget.md) | Request widget for a Product's own site, stakeholder access |
 | [releases](releases.md) | Release notes, changelog, publishing, deploy watching |
 | [editable-workflow](editable-workflow.md) | Factory file, workflow editor, custom stages, Jobs, WIP limits |
 | [insights-cost-trust](insights-cost-trust.md) | Insights, Trust grade, cost analytics |
