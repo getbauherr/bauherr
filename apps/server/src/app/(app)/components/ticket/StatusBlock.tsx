@@ -2,7 +2,8 @@ import type { RunView } from '../../../../core/views/ticket-parts'
 import type { TicketView } from '../../../../core/views/ticket'
 import { BACK_ACTION } from '../../lib/decision-actions'
 import { CLOSED_WORDS } from '../../lib/status-words'
-import { ROLE_WORDS } from '../../lib/ticket'
+import { ROLE_WORDS, pullLabel } from '../../lib/ticket'
+import { ChecksPanel } from './ChecksPanel'
 import { DecisionForm } from './DecisionForm'
 import { RunLink } from './RunLink'
 import { Card, Facts } from './Section'
@@ -31,12 +32,36 @@ const sentenceOf = (view: TicketView, run: RunView | undefined): string => {
   return WAITING[view.status] ?? 'The factory has the turn. Nothing to do.'
 }
 
+const ENDED_WORDS: Record<string, string> = { failed: 'Failed run', expired: 'Expired run' }
+
+const endedRun = (view: TicketView): RunView | undefined => {
+  const last = view.runs.at(-1)
+  return last && (last.status === 'failed' || last.status === 'expired') ? last : undefined
+}
+
+function Checks({ view }: { view: TicketView }) {
+  const { pullRequest: pull, verifySince } = view
+  if (view.status !== 'waiting-for-checks' || verifySince === null) return null
+  const label = pull && `Open ${pullLabel(view.record.source.forge, pull.number)}`
+  return (
+    <ChecksPanel
+      checks={pull?.checks ?? []}
+      since={verifySince}
+      now={Date.now()}
+      pull={pull && pull.url !== '' && label ? { url: pull.url, label } : null}
+    />
+  )
+}
+
 function StatusBody({ view }: { view: TicketView }) {
   const run = liveRun(view)
   const step = run?.steps.at(-1)
+  const ended = run ? undefined : endedRun(view)
   return (
     <>
       <p role="status">{sentenceOf(view, run)}</p>
+      {ended && <Facts rows={[['Last run', <RunLink key="run" id={ended.id} word={ENDED_WORDS[ended.status]} />]]} />}
+      <Checks view={view} />
       {run && (
         <Facts
           rows={[

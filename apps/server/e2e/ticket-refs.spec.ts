@@ -4,6 +4,7 @@ import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 const REFERENCED = 'Brief with a decision for the tabs'
+const LINKED = 'Large export needs earlier answers'
 
 const signIn = async (page: Page) => {
   const url = process.env.BASE_URL ?? 'http://localhost:3000'
@@ -17,7 +18,7 @@ const signIn = async (page: Page) => {
 
 const openFromInbox = async (page: Page, title: string) => {
   await page.goto('/inbox')
-  await page.getByRole('link', { name: title, exact: true }).click()
+  await page.locator('[data-inbox-row]').filter({ hasText: title }).first().click()
   await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
 }
 
@@ -60,7 +61,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 800 
     test('the box opens on tap or hover in the Inbox, on the Ticket page and on the Run page', async ({ page }) => {
       await signIn(page)
       await page.goto('/inbox')
-      const row = page.getByRole('link', { name: REFERENCED, exact: true }).locator('xpath=ancestor::div[1]')
+      const row = page.locator('[data-inbox-row]').filter({ hasText: REFERENCED }).first().locator('xpath=..')
       await row.getByRole('link', { name: /^#\d+$/ }).click()
       await expectBox(page)
       await openFromInbox(page, REFERENCED)
@@ -71,6 +72,23 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 800 
       await expect(page.getByRole('heading', { level: 1, name: /^Run \d+$/ })).toBeVisible()
       await page.getByRole('heading', { level: 1 }).locator('xpath=preceding-sibling::a[1]').click()
       await expect(popover(page)).toBeVisible()
+    })
+
+    test('a finding, a memory and a note name a ticket as a link that opens the box', async ({ page }) => {
+      await signIn(page)
+      await openFromInbox(page, 'Result to read')
+      const named = new RegExp(`^#\\d+ ${LINKED}$`)
+      const finding = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Review findings' }) })
+      const memory = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Memory used' }) })
+      for (const section of [finding, memory]) {
+        await section.getByRole('link', { name: named }).click()
+        await expect(popover(page)).toContainText(LINKED)
+        await page.keyboard.press('Escape')
+        await expect(popover(page)).toHaveCount(0)
+      }
+      await page.goto(`${new URL(page.url()).pathname}?tab=activity`)
+      await page.getByRole('main').getByRole('link', { name: named }).click()
+      await expect(popover(page)).toContainText(LINKED)
     })
   })
 }

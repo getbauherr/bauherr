@@ -11,8 +11,9 @@ export const clip = (title: string): string =>
 type Props = { text: string; repo: string; refs: TicketRefs }
 
 export function RefTextView({ text, repo, refs }: Props) {
-  return text.split(/((?<![\w/&])#\d+)/).map((part, index) => {
-    const ticket = index % 2 === 1 ? resolveMention(refs, repo, Number(part.slice(1))) : null
+  return text.split(/((?<![\w/&])[#!]\d+)/).map((part, index) => {
+    const sigil = part.startsWith('!') ? '!' : '#'
+    const ticket = index % 2 === 1 ? resolveMention(refs, repo, Number(part.slice(1)), sigil) : null
     if (!ticket) return <Fragment key={index}>{part}</Fragment>
     return (
       <TicketRefPopover

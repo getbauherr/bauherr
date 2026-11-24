@@ -1,7 +1,5 @@
 import { GROUP_TITLES, type GroupId, type InboxRow as Row } from '../../lib/inbox'
-import { InboxRow } from './InboxRow'
-
-const KEY = (row: Row): string => (row.kind === 'held' ? `held-${row.item.itemId}` : String(row.card.recordId))
+import { InboxRow, rowKeyOf } from './InboxRow'
 
 export function InboxGroup({ id, rows }: { id: GroupId; rows: Row[] }) {
   return (
@@ -16,7 +14,7 @@ export function InboxGroup({ id, rows }: { id: GroupId; rows: Row[] }) {
       </header>
       {rows.length ? (
         <ul className="m-0 list-none p-0">
-          {rows.map((row) => <li key={KEY(row)}><InboxRow row={row} /></li>)}
+          {rows.map((row) => <li key={rowKeyOf(row)}><InboxRow row={row} /></li>)}
         </ul>
       ) : (
         <p className="small px-4 py-3 text-muted-foreground">Nothing here.</p>

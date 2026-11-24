@@ -22,6 +22,7 @@ export const GET = async (): Promise<Response> => {
       (SELECT max("updated_at") FROM "events" WHERE "workspace_id" = ${id}),
       (SELECT max("updated_at") FROM "stage_runs" WHERE "workspace_id" = ${id}),
       (SELECT max("updated_at") FROM "mirror_items" WHERE "workspace_id" = ${id}),
+      (SELECT max("updated_at") FROM "mirror_checks" WHERE "workspace_id" = ${id}),
       (SELECT greatest(max("imported_at"), max("facts_at")) FROM "ticket_sources" WHERE "workspace_id" = ${id}),
       (SELECT max("updated_at") FROM "agent_sessions" WHERE "workspace_id" = ${id}))) * 1000)::bigint AS v`)
   return Response.json({ v: version.parse(rows[0]).v ?? 0 })

@@ -374,7 +374,7 @@ Rule: `/tickets/<id>` has a header (number, title, status chip, stage path with 
 
 ### Run page
 
-Rule: `/runs/<id>` shows one run of one stage: the ticket it belongs to, the run's word, stage, role and who runs it; the reported steps oldest first; the handoff once the run has ended (before that, "Not written yet"); and in the side column the parts of the context the agent was given. The cost block is Admin only and its data never reaches a non-Admin render (see Cost panel). Why: what the agent did and handed on is one click from the ticket.
+Rule: `/runs/<id>` shows one run of one stage. The header card names the ticket (a link), the run id, the derived word (Working, Waiting for a session, Stuck, Failed, Finished) with one truthful sentence from `runHealth`, the stage, role and session, and at most one primary: Connect an agent (queued, no session of the role) or Open ticket (failed or expired). Under it, in this order on a phone: the reported steps oldest first (relative time, exact time in `title`, `<time datetime>`; a claimed run without steps says when it started), the handoff once the run has ended (before that, "Not written yet"), the Links panel (pull request on its forge in a new tab, ticket, session; a missing pull request is left out), the cost (Admin only, its data never reaches a non-Admin render, see Cost panel) and the context the agent was given. Long unbroken text wraps; the page never scrolls sideways at 375 px. Why: what the agent did and handed on is one click from the ticket, and the header answers "is it healthy and what do I do".
 
 ### Transitions
 

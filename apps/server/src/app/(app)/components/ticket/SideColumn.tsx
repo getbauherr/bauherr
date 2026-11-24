@@ -115,8 +115,9 @@ function AnswersUsed({ view }: { view: TicketView }) {
     <Aside title="Memory used">
       {used.map((statement) => (
         <span key={statement.id} className="small">
-          <Link href={`/memory/${statement.id}`} className="hover:underline">
-            &quot;{statement.text}&quot;
+          &quot;<RefText text={statement.text} repo={view.record.source.repo} />&quot;{' '}
+          <Link href={`/memory/${statement.id}`} className="text-muted-foreground underline">
+            Memory
           </Link>{' '}
           {statement.record !== null && statement.ticket !== null && (
             <>

@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { readRecord } from '../../src/core/record/store'
+import { createRecord, readRecord } from '../../src/core/record/store'
 import { loadTicketRefs, resolveMention, type TicketRefs } from '../../src/core/views/refs'
+import { source } from './fixtures'
+import { mirrorSource } from './scenario'
 import { openViews, seed, type Seeded } from './views-harness'
 
 let s: Seeded
@@ -50,5 +52,21 @@ describe('loadTicketRefs', () => {
   it('resolves a pull request number to the ticket it closes and leaves one that closes nothing plain', () => {
     expect(resolveMention(refs, repo, 7001)).toMatchObject({ recordId: s.names.briefCard, number })
     expect(resolveMention(refs, repo, 7002)).toBeNull()
+  })
+
+  it('on GitLab maps #N to the issue and only !N to the ticket the merge request closes', async () => {
+    const { payload, workspace, product } = s.e.db
+    const lab = { ...source, forge: 'gitlab' as const, repo: 'acme/lab' }
+    const ids: number[] = []
+    for (const issue of [5, 7]) {
+      const input = { workspace, product, source: { ...lab, number: issue }, type: 'change' as const }
+      ids.push((await createRecord(payload, input)).id)
+    }
+    const mirror = await mirrorSource(s.e, 'acme/lab')
+    await mirror.item(7, { title: 'Issue seven' })
+    await mirror.item(5, { kind: 'pr', title: 'MR five', closes: [7] })
+    const found = await loadTicketRefs(payload, workspace)
+    expect(resolveMention(found, 'acme/lab', 5)).toMatchObject({ recordId: ids[0], number: 5 })
+    expect(resolveMention(found, 'acme/lab', 5, '!')).toMatchObject({ recordId: ids[1], number: 7 })
   })
 })
