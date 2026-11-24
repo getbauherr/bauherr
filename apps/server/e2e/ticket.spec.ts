@@ -187,6 +187,33 @@ test('only a question whose answer is remembered says so', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Answer' })).toBeVisible()
 })
 
+test('the verify-rounds card shows what the verifier asks and what the builder did, and links to the handoff', async ({
+  page,
+}) => {
+  await enter(page, 'Review rounds used up')
+  const card = page.getByRole('main')
+  await expect(card.getByRole('heading', { name: 'Where they differ after 2 review rounds' })).toBeVisible()
+  await expect(card.getByRole('heading', { name: 'Verifier: last open finding' })).toBeVisible()
+  await expect(card.getByText('A failed chunk is never retried').first()).toBeVisible()
+  await expect(card.getByRole('heading', { name: 'Builder: last handoff' })).toBeVisible()
+  await expect(card.getByText('I kept the chunked export')).toContainText('…')
+  await expect(card.getByText('END')).toHaveCount(0)
+  await card.getByRole('link', { name: 'Read the full handoff' }).click()
+  await expect(page).toHaveURL(/\/runs\/\d+$/)
+  await expect(page.getByText(/did not add the retry the verifier asks for\. END$/)).toBeVisible()
+})
+
+for (const size of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+  test(`the verify-rounds card fits one screen at ${size.width} px`, async ({ page }) => {
+    await page.setViewportSize(size)
+    await enter(page, 'Review rounds used up')
+    const form = page.locator('form').filter({ has: page.getByRole('button', { name: 'Answer' }) })
+    await expect(form).toBeVisible()
+    const bottom = await form.evaluate((el) => el.getBoundingClientRect().bottom)
+    expect(bottom).toBeLessThanOrEqual(size.height)
+  })
+}
+
 test('an agent question in Build can send the ticket back to Brief with a note', async ({ page }) => {
   const path = await enterOpen(page, 'Question to send back to Brief')
   const answer = page.getByRole('button', { name: 'Answer' })

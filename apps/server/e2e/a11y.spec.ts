@@ -177,6 +177,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'question card': inTickets('Question to read'),
     'build in progress with the way back': inTickets('Build with reported steps'),
     'deploy that did not finish': inTickets('Deploy that did not finish'),
+    'verify rounds used up': inTickets('Review rounds used up'),
     Intake: inTickets('Intake waiting for the reporter'),
     'adopted, waiting on the author': inTickets('Adopted pull request waiting on its author'),
     'adopted, Result card': inTickets('Adopted pull request with a result'),
