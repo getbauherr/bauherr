@@ -6,6 +6,7 @@ import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
 import { learnPack, type LearnPack } from '../learn'
 import type { Why } from '../memory'
+import type { MemoryPart } from '../memory-documents'
 import type { StatementKind } from '../statements'
 import type { TicketRecord } from '../record/schema'
 import { readEvents, readRecord } from '../record/store'
@@ -26,6 +27,7 @@ export type ContextPack = {
   skill: string | null
   facts: IntakeFacts | null
   agentsFile: ContextParts['agentsFile']
+  memory: MemoryPart[]
   statements: PackStatement[]
   similar: PackSimilar[]
   learn: LearnPack | null
@@ -67,6 +69,7 @@ export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPa
     skill: (await deps.skills?.(run.stage, run.role)) ?? null,
     facts: run.stage === 'intake' ? await loadIntakeFacts(deps.payload, stored) : null,
     agentsFile: parts.agentsFile,
+    memory: context.memory ?? [],
     statements: parts.statements.map(({ id, kind, why, text, ticket, at }) => ({ id, kind, why, text, ticket, at })),
     similar: parts.similar,
     learn: run.stage === 'done' ? await learnPack(deps.payload, stored.id, stored.record) : null,

@@ -11,7 +11,16 @@ export default defineConfig({
   },
   test: {
     globalSetup: ['tests/global-setup.ts'],
-    include: ['tests/**/*.test.ts'],
+    projects: [
+      {
+        extends: true,
+        test: { name: 'server', include: ['tests/**/*.test.ts'], exclude: ['tests/ui/**'] },
+      },
+      {
+        extends: true,
+        test: { name: 'ui', include: ['tests/ui/**/*.test.ts'], environment: 'jsdom' },
+      },
+    ],
     testTimeout: 60_000,
     hookTimeout: 120_000,
   },

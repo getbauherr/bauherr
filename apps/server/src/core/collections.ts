@@ -127,5 +127,17 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'checkIssue', type: 'number' },
     ],
   },
+  {
+    slug: 'memory_document_versions',
+    admin: { useAsTitle: 'scope' },
+    access: { read: readable, create: closed, update: closed, delete: closed },
+    fields: [
+      { name: 'product', type: 'relationship', relationTo: 'products', index: true },
+      { name: 'scope', type: 'text', required: true },
+      { name: 'body', type: 'textarea', required: true },
+      { name: 'author', type: 'text', required: true },
+      { name: 'reason', type: 'text', required: true },
+    ],
+  },
   ...mirrorCollections,
 ]
