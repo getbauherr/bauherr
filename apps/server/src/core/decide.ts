@@ -22,8 +22,6 @@ import type { Effect } from './module'
 import type { TicketRecord } from './record/schema'
 import { appendEvent, readEvents, readRecord, type StoredRecord } from './record/store'
 import { releaseLive } from './run/leases'
-import type { NoteScope } from './statement-scope'
-import { storeGiven } from './statements'
 
 
 const DISCARDING = ['brief', 'question:failed-runs', 'question:verify-rounds']
@@ -48,7 +46,6 @@ export type Decision = {
   choice: string
   seq: number
   note?: string
-  scope?: NoteScope
   answers?: Answers
 }
 
@@ -154,7 +151,6 @@ export const decide = async (
     const events = eventsOf(entry, state, note)
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
     await settle(tx, stored, { entry, answers }, deps.now)
-    await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card, scope: decision.scope })
     return {
       backlogBrief: asked === 'brief' && stored.record.source.backlog,
       review: [

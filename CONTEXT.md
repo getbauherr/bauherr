@@ -65,7 +65,7 @@ _Avoid_: Tracker, backend, board
 ### Knowledge
 
 **Memory**:
-One sentence the factory hands to an agent before a run: an answer or note of the owner, or one he wrote himself. It applies to every ticket of a Product, to an area of the code, to tickets that fit, or to one ticket, is handed to chosen stages (Brief, Build, Review, Verify), and can be switched off. It is reference data for the agent and never changes what the factory itself does. In code the table, the collection and the files are still named `statements`.
+Three documents the owner writes: Factory, Workspace and Product. A run gets the parts of them for its stage (All stages plus Brief, Build, Review or Verify). They are reference data for the agent and never change what the factory itself does. The old single memories (the `statements` table) are no longer handed out; the table is dropped one release later.
 _Avoid_: Statement (on screen), lesson, rule
 
 **Retro**:

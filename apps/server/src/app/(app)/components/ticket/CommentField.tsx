@@ -1,14 +1,11 @@
 import type { Ref } from 'react'
 import { Button } from '../ui/button'
-import { NOTE_SCOPE_LABEL, NOTE_SCOPES, type NoteScope } from '../../../../core/statement-scope'
 import { Label } from '../ui/label'
-import { NativeSelect } from '../ui/native-select'
 import { Textarea } from '../ui/textarea'
 
 const FIELD_ID = 'decision-comment'
 const HINT_ID = 'decision-comment-hint'
 const ERROR_ID = 'decision-comment-error'
-const SCOPE_ID = 'decision-scope'
 const COUNT_FROM = 100
 
 type Props = {
@@ -17,9 +14,7 @@ type Props = {
   hint: string | null
   missing: string | null
   areaRef: Ref<HTMLTextAreaElement>
-  scope: NoteScope
   onChange: (value: string) => void
-  onScope: (value: NoteScope) => void
 }
 
 export function CommentToggle({ onOpen }: { onOpen: () => void }) {
@@ -50,7 +45,7 @@ function CommentFoot({ missing, left }: { missing: string | null; left: number }
   )
 }
 
-export function CommentField({ value, max, hint, missing, areaRef, scope, onChange, onScope }: Props) {
+export function CommentField({ value, max, hint, missing, areaRef, onChange }: Props) {
   const left = max - value.length
   const describedBy = [hint ? HINT_ID : null, missing ? ERROR_ID : null].filter((id) => id !== null).join(' ')
   return (
@@ -68,18 +63,6 @@ export function CommentField({ value, max, hint, missing, areaRef, scope, onChan
         onChange={(event) => onChange(event.target.value)}
       />
       <CommentFoot missing={missing} left={left} />
-      <Label htmlFor={SCOPE_ID}>Applies to</Label>
-      <NativeSelect
-        id={SCOPE_ID}
-        value={scope}
-        onChange={(event) => onScope(NOTE_SCOPES.find((value) => value === event.target.value) ?? 'ticket')}
-      >
-        {NOTE_SCOPES.map((value) => (
-          <option key={value} value={value}>
-            {NOTE_SCOPE_LABEL[value]}
-          </option>
-        ))}
-      </NativeSelect>
     </div>
   )
 }

@@ -58,7 +58,7 @@ The left half is the conversation with the factory, ending in a comment box. The
 The action bar atop the Now pane holds the next step: one sentence and one primary button naming it, such as Approve plan or Re-run Build.
 
 - **Approve plan** is refused while critical decisions are unanswered.
-- **Send back** asks for a note and returns the Ticket to Build or the Backlog. Every comment has an Applies to choice: This ticket (the default), This product or Do not remember. The Ticket page lists each used memory with its scope.
+- **Send back** asks for a note and returns the Ticket to Build or the Backlog.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
 - **Round cap**: when review reaches its cap you grant one more round or stop. It shows the verifier's last finding and the builder's last handoff, cut with … and linked to the full text.
 - **Close as done**: when Build reports another pull request or Ticket covers the work, the card asks "Close #n as done by #m?". Close comments with the evidence and moves the Ticket to done; Re-run build queues Build again.
@@ -123,7 +123,7 @@ Only an Admin edits, except Profile and API keys. Members read the rest. The sid
 
 ## Memory
 
-`/memory` edits one document (Factory, Workspace or Product) in a markdown editor with preview; a Product's side column lists its agent instruction files. `/memory/statements` lists memories. A run page lists its memory.
+`/memory` edits one document (Factory, Workspace or Product) in a markdown editor with preview; a Product's side column lists its agent instruction files. A run page lists the memory parts it was given.
 
 ## Not in the UI, by design
 

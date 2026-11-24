@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { NoteScope } from '../../../../core/statement-scope'
 
-export function useComment(initial: NoteScope) {
+export function useComment() {
   const area = useRef<HTMLTextAreaElement>(null)
   const [note, setNote] = useState('')
-  const [scope, setScope] = useState<NoteScope>(initial)
   const [opened, setOpened] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
   const [missing, setMissing] = useState<string | null>(null)
@@ -24,8 +22,6 @@ export function useComment(initial: NoteScope) {
     area,
     note,
     setNote,
-    scope,
-    setScope,
     hint,
     missing,
     empty: note.trim() === '',
@@ -41,7 +37,6 @@ export function useComment(initial: NoteScope) {
     },
     reset: () => {
       setNote('')
-      setScope(initial)
       setOpened(false)
       setMissing(null)
     },

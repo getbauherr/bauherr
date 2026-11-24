@@ -1,7 +1,6 @@
 import type { Conn } from './conn'
 import { patchRecord } from './record/store'
 import type { Decision as OpenDecision, TicketRecord } from './record/schema'
-import { DEFAULT_SCOPE, storeStatement, STATEMENT_MAX } from './statements'
 
 export type Answers = Record<string, string>
 
@@ -45,15 +44,4 @@ export const storeAnswers = async (
     patch: { decisions },
     by: { stage: 'brief', runId: 'owner' },
   })
-  for (const d of stored.record.decisions) {
-    const given = answers[d.id]
-    const label = d.options.find((o) => o.id === given)?.label
-    if (label !== undefined) {
-      await storeStatement(tx, recordId, {
-        kind: 'answer',
-        scope: DEFAULT_SCOPE.answer,
-        text: `${d.question}: ${label}`.slice(0, STATEMENT_MAX),
-      })
-    }
-  }
 }

@@ -4,9 +4,7 @@ import { foldOptions } from '../lifecycle'
 import { moduleKey } from '../module'
 import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
-import type { Why } from '../memory'
 import type { MemoryPart } from '../memory-documents'
-import type { StatementKind } from '../statements'
 import type { TicketRecord } from '../record/schema'
 import { readEvents, readRecord } from '../record/store'
 import type { SubmitDeps } from '../submit'
@@ -29,17 +27,7 @@ export type ContextPack = {
   source: PackSource | null
   agentsFile: ContextParts['agentsFile']
   memory: MemoryPart[]
-  statements: PackStatement[]
   similar: PackSimilar[]
-}
-
-export type PackStatement = {
-  id: number
-  kind: StatementKind
-  why: Why
-  text: string
-  ticket: number | null
-  at: string
 }
 
 const pendingNote = async (deps: SubmitDeps, run: Run): Promise<string | null> => {
@@ -71,7 +59,6 @@ export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPa
     source: await loadSource(deps.payload, stored),
     agentsFile: parts.agentsFile,
     memory: context.memory ?? [],
-    statements: parts.statements.map(({ id, kind, why, text, ticket, at }) => ({ id, kind, why, text, ticket, at })),
     similar: parts.similar,
   }
 }

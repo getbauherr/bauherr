@@ -15,7 +15,6 @@ afterAll(async () => {
 
 const view = (recordId: number) => ticket(e.db.payload, { workspace: e.db.workspace, recordId })
 
-const withoutReference = (text: string): string => text.replace(/ See #\d+\.$/, '')
 
 describe('the tickets the end-to-end specs read', () => {
   it('stops two Briefs at an open decision with two options', async () => {
@@ -24,22 +23,6 @@ describe('the tickets the end-to-end specs read', () => {
       expect(t.card).toMatchObject({ card: 'brief', reason: 'open-decision' })
       expect(t.record.decisions.map((d) => [d.id, d.options.length, d.answer])).toEqual([['d1', 2, undefined]])
     }
-  })
-
-  it('shows the earlier answers its Brief run used on one Brief and on no other', async () => {
-    const used = (await view(names.briefAnswers)).statementsUsed
-    expect(used.brief.map((s) => withoutReference(s.text))).toEqual([
-      'Uploads and generated files go to object storage, not local disk.',
-      'No new export formats before the reporting rework.',
-    ])
-    expect(used.brief.every((s) => s.record === names.resultReadonly)).toBe(true)
-    expect((await view(names.briefTitle)).statementsUsed).toEqual({ brief: [], result: [] })
-    const result = (await view(names.resultReadonly)).statementsUsed.result
-    expect(result.map((s) => withoutReference(s.text))).toEqual([
-      'Run the old export tests before the new ones.',
-      'No new export formats before the reporting rework.',
-    ])
-    expect(result.every((s) => s.record === names.briefTitle)).toBe(true)
   })
 
   it('stops every Result ticket at a Result with proofs, findings, a pull request and a factory decision', async () => {
@@ -60,14 +43,12 @@ describe('the tickets the end-to-end specs read', () => {
     expect(t.card).toMatchObject({ card: 'question', reason: 'deploy-stalled', options: ['check-again', 'continue'] })
     expect(t.deploy).toMatchObject({ reason: 'failed', checks: ['deploy-staging'] })
     expect(t.deploy?.url).toContain('/commit/sha-')
-    expect(t.answerRemembered).toBe(false)
   })
 
   it('asks a question, waits for a reporter, and keeps a run with reported steps', async () => {
     for (const id of [...names.question, ...names.questionBack, ...names.questionOwn, names.questionRead]) {
       expect((await view(id)).card).toMatchObject({ card: 'question', reason: 'agent' })
       expect((await view(id)).canGoBack).toBe(true)
-      expect((await view(id)).answerRemembered).toBe(true)
     }
     const intake = await view(names.intake)
     expect(intake).toMatchObject({ stage: 'intake', status: 'reporter-asked' })
