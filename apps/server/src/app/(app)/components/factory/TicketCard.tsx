@@ -5,6 +5,7 @@ import { workerOf } from '../../lib/factory'
 import { adoptedLine } from '../../lib/ticket'
 import { StatusChip } from '../StatusChip'
 import { Time } from '../Time'
+import { TicketRef } from '../TicketRef'
 
 const CARD = 'relative grid min-w-0 justify-items-start gap-1.5 rounded-md border bg-card px-3 py-2.5'
 const LINK = "font-medium leading-5 after:absolute after:inset-0 after:content-['']"
@@ -33,15 +34,15 @@ export const captionOf = (card: BoardCard): string | null => {
   return parts.length ? parts.join(' · ') : null
 }
 
-export function TicketCard({ card }: { card: BoardCard }) {
+export async function TicketCard({ card }: { card: BoardCard }) {
   const caption = captionOf(card)
   return (
     <div className={cn(CARD, frameOf(card))}>
       <div className="flex w-full items-baseline justify-between gap-2">
-        <span className="mono" title={card.product.name}>#{card.number}</span>
+        <TicketRef recordId={card.recordId} number={card.number} />
         <Time iso={card.enteredAt} className="mono text-muted-foreground" />
       </div>
-      <Link href={`/tickets/${card.recordId}`} draggable={false} className={LINK}>
+      <Link href={`/tickets/${card.recordId}`} data-card-link draggable={false} className={LINK}>
         {card.title}
       </Link>
       <StatusChip status={card.status} closedAs={card.closedAs} />

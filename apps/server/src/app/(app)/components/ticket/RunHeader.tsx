@@ -5,6 +5,7 @@ import { RUN_NAMES, workerOf } from '../../lib/factory'
 import type { StatusWord } from '../../lib/status-words'
 import { ROLE_WORDS } from '../../lib/ticket'
 import { Time } from '../Time'
+import { TicketRef } from '../TicketRef'
 import { Button } from '../ui/button'
 import { WordBadge } from '../WordBadge'
 
@@ -23,9 +24,9 @@ export function RunHeader({ run }: { run: RunPage }) {
   const href = health.action === 'connect' ? '/settings/api-key' : `/tickets/${ticket.recordId}`
   return (
     <header className="grid gap-3 rounded-md border border-border bg-card p-6">
-      <Link href={`/tickets/${ticket.recordId}`} className="text-primary [overflow-wrap:anywhere] hover:underline">
-        #{ticket.number} {ticket.title}
-      </Link>
+      <p className="m-0 [overflow-wrap:anywhere]">
+        <TicketRef recordId={ticket.recordId} number={ticket.number} /> {ticket.title}
+      </p>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="title mono">Run {run.id}</h1>
         <WordBadge word={WORDS[health.word]} />

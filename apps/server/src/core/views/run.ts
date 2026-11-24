@@ -45,7 +45,7 @@ export type RunPage = {
   error: string | null
   startedAt: string
   finishedAt: string | null
-  ticket: { recordId: number; number: number; title: string }
+  ticket: { recordId: number; repo: string; number: number; title: string }
   handoff: string | null
   parts: RunPart[]
   memory: RunMemory[]
@@ -141,7 +141,7 @@ export const runPage = async (payload: Payload, filter: RunFilter): Promise<RunP
     error: run.error,
     startedAt: (run.started_at ?? run.created_at).toISOString(),
     finishedAt: run.finished_at?.toISOString() ?? null,
-    ticket: { recordId: stored.id, number, title: issue?.title ?? `#${number}` },
+    ticket: { recordId: stored.id, repo, number, title: issue?.title ?? `#${number}` },
     handoff: handoffOf(run, stored.record),
     parts: partsOf(run.stage, stored.record, run.context),
     memory: await memoryOf(payload, run.context),

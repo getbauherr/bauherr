@@ -1,6 +1,7 @@
 import type { RunPage } from '../../../../core/views/run'
 import { Time } from '../Time'
 import { Card, Section } from './Section'
+import { RefText } from '../RefText'
 
 const STEP =
   'grid grid-cols-1 gap-1 border-t border-border py-2 first:border-t-0 sm:grid-cols-[112px_minmax(0,1fr)] sm:gap-3'
@@ -36,14 +37,14 @@ export function RunSteps({ run }: { run: RunPage }) {
           {run.steps.map((step) => (
             <li key={`${step.at}-${step.text}`} className={STEP}>
               <Time iso={step.at} className="mono text-muted-foreground" />
-              <span className="[overflow-wrap:anywhere]">{step.text}</span>
+              <span className="[overflow-wrap:anywhere]"><RefText text={step.text} repo={run.ticket.repo} /></span>
             </li>
           ))}
         </ol>
       </Section>
       <Section title="Handoff, written at the end of the run">
         {handoff === null ? (
-          <pre className={HANDOFF}>{run.handoff}</pre>
+          <pre className={HANDOFF}><RefText text={run.handoff ?? ''} repo={run.ticket.repo} /></pre>
         ) : (
           <p className="m-0 [overflow-wrap:anywhere] text-muted-foreground">{handoff}</p>
         )}

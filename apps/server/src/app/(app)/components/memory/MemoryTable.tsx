@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { StatementRecord } from '../../../../core/views/statement-records'
 import { Badge } from '../ui/badge'
 import { Table } from '../ui/table'
+import { TicketRef } from '../TicketRef'
 import { CheckBadge, isShown } from './CheckState'
 
 const COUNT = 'mono text-right'
@@ -38,9 +39,7 @@ export function MemoryTable({ records }: { records: StatementRecord[] }) {
               {record.ticket !== null && (
                 <>
                   {', '}
-                  <Link href={`/tickets/${record.ticket.record}`} className="mono text-primary hover:underline">
-                    #{record.ticket.number}
-                  </Link>
+                  <TicketRef recordId={record.ticket.record} number={record.ticket.number} />
                 </>
               )}
             </td>

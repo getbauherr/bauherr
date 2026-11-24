@@ -6,6 +6,7 @@ import { captionOf } from '../factory/TicketCard'
 import { StatusChip } from '../StatusChip'
 import { Time } from '../Time'
 import { Badge } from '../ui/badge'
+import { TicketRef } from '../TicketRef'
 
 const ROW = cn(
   'flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border px-4 py-2.5 outline-none',
@@ -16,7 +17,7 @@ const ROW = cn(
 export const rowKeyOf = (row: Row): string =>
   row.kind === 'held' ? `held-${row.item.itemId}` : String(row.card.recordId)
 
-export function InboxRow({ row }: { row: Row }) {
+export async function InboxRow({ row }: { row: Row }) {
   const key = rowKeyOf(row)
   if (row.kind === 'held') {
     const { item } = row
@@ -36,13 +37,18 @@ export function InboxRow({ row }: { row: Row }) {
   }
   const { card } = row
   return (
-    <Link data-inbox-row={key} href={`/tickets/${card.recordId}`} className={ROW}>
-      <span className="mono">#{card.number}</span>
-      <span className="font-medium">{card.title}</span>
-      <span className="small text-muted-foreground">{card.product.name}</span>
-      <span><StatusChip status={card.status} closedAs={card.closedAs} /></span>
-      <span className="small text-muted-foreground">{captionOf(card)}</span>
-      <Time iso={card.enteredAt} className="mono whitespace-nowrap text-muted-foreground md:text-right" />
-    </Link>
+    <div className="relative">
+      <Link data-inbox-row={key} href={`/tickets/${card.recordId}`} className={ROW}>
+        <span aria-hidden className="mono invisible">#{card.number}</span>
+        <span className="font-medium">{card.title}</span>
+        <span className="small text-muted-foreground">{card.product.name}</span>
+        <span><StatusChip status={card.status} closedAs={card.closedAs} /></span>
+        <span className="small text-muted-foreground">{captionOf(card)}</span>
+        <Time iso={card.enteredAt} className="mono whitespace-nowrap text-muted-foreground md:text-right" />
+      </Link>
+      <span className="absolute top-2.5 left-4 z-10">
+        <TicketRef recordId={card.recordId} number={card.number} />
+      </span>
+    </div>
   )
 }

@@ -1,7 +1,12 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { HoldStrip } from '../src/app/(app)/components/factory/HoldStrip'
+
+vi.mock('../src/app/(app)/components/TicketRef', () => ({
+  TicketRef: ({ recordId, number }: { recordId: number; number: number }) =>
+    createElement('a', { href: `/tickets/${recordId}` }, `#${number}`),
+}))
 
 describe('HoldStrip', () => {
   it('renders nothing without holds', () => {
