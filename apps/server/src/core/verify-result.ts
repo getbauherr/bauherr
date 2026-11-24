@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { findingSchema, resultSchema } from './record/schema'
+import { findingSchema, OUTLINE_MAX, resultSchema } from './record/schema'
 
 const id = z.string().trim().min(1)
 
@@ -22,6 +22,7 @@ export const verifyResultSchema = z.object({
   changes: resultSchema.shape.changes,
   walkthrough: resultSchema.shape.walkthrough,
   notVerified: resultSchema.shape.notVerified,
+  outline: z.string().trim().max(OUTLINE_MAX).nullable().default(null),
 })
 
 export type VerifyResult = z.infer<typeof verifyResultSchema>

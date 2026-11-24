@@ -4,7 +4,7 @@ type Fields = {
   sha?: string | undefined
   body?: string | undefined
   url?: string | undefined
-  upload?: unknown
+  upload?: { contentType: string } | undefined
   screen?: string | undefined
   width?: number | undefined
 }
@@ -33,7 +33,12 @@ const plainIssues = (value: Fields): string[] => {
   ]
 }
 
+const htmlIssues = (value: Fields): string[] =>
+  value.upload?.contentType === 'text/html' && value.kind !== 'mockup' ? ['only a mockup may be an HTML page'] : []
+
 export const inputIssues = (value: Fields): string[] => {
+  const html = htmlIssues(value)
+  if (html.length > 0) return html
   if (value.kind === 'mockup') return [...formsIssues(value), ...mockupIssues(value)]
   if (value.kind === 'before' || value.kind === 'after') return [...formsIssues(value), ...pairedIssues(value)]
   return [...formsIssues(value), ...plainIssues(value)]

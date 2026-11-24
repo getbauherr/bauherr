@@ -5,13 +5,15 @@ import { z } from 'zod'
 import { inLockedRecord, type Conn } from '../conn'
 import { hashOf } from '../run/leases'
 import {
-  imageTypeOf,
+  attachmentTypeOf,
+  HTML_MAX_BYTES,
+  HTML_TYPE,
   RECORD_IMAGE_MAX,
   RUN_IMAGE_MAX,
   UPLOAD_TTL_MS,
   UploadRefused,
   type AttachmentKind,
-  type ImageType,
+  type AttachmentType,
 } from './image'
 
 export type UploadRequest = {
@@ -22,7 +24,7 @@ export type UploadRequest = {
   leaseToken: string
   kind: AttachmentKind
   caption: string
-  contentType: ImageType
+  contentType: AttachmentType
   criterion: string | null
   proofSha: string | null
   screen: string | null
@@ -119,7 +121,7 @@ export const checkUpload = async (payload: Payload, token: string, now: Date): P
   await pendingOf(payload, token, now, false)
 }
 
-const store = async (tx: Conn, pending: Pending, bytes: Uint8Array, type: ImageType): Promise<number | null> => {
+const store = async (tx: Conn, pending: Pending, bytes: Uint8Array, type: AttachmentType): Promise<number | null> => {
   const sha = createHash('sha256').update(bytes).digest('hex')
   await tx.db.drizzle.execute(sql`
     UPDATE "attachments" SET "content_type" = ${type}, "byte_size" = ${bytes.length}, "sha256" = ${sha},
@@ -140,8 +142,13 @@ export const receiveUpload = async (
   bytes: Uint8Array,
   now: Date,
 ): Promise<Received> => {
-  const type = imageTypeOf(bytes)
-  if (type === null) throw new UploadRefused('The file is not a PNG, JPEG or WebP image.', 415)
+  const type = attachmentTypeOf(bytes)
+  if (type === null) {
+    throw new UploadRefused('The file is not a PNG, JPEG or WebP image, or an HTML page (mockups only).', 415)
+  }
+  if (type === HTML_TYPE && bytes.length > HTML_MAX_BYTES) {
+    throw new UploadRefused('The HTML page is larger than 1 MB: shrink it.', 413)
+  }
   const first = await pendingOf(payload, token, now, false)
   return inLockedRecord(payload, first.record_id, async (tx) => {
     const pending = await pendingOf(tx, token, now, true)

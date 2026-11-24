@@ -1,24 +1,30 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
-import { imageTypeOf } from '../attachments/image'
+import { attachmentTypeOf, HTML_TYPE } from '../attachments/image'
 import { screenOf } from '../attachments/pairs'
 import type { Conn } from '../conn'
 
 const count = z.coerce.number()
 
-const viewRow = z.object({ id: count, caption: z.string(), byte_size: count })
+const viewRow = z.object({ id: count, caption: z.string(), byte_size: count, content_type: z.string() })
 
-export type AttachmentView = { id: number; caption: string; screen: string; bytes: number }
+export type AttachmentView = { id: number; caption: string; screen: string; bytes: number; html: boolean }
 
 const viewOf = (row: unknown): AttachmentView => {
   const parsed = viewRow.parse(row)
-  return { id: parsed.id, caption: parsed.caption, screen: screenOf(parsed.caption), bytes: parsed.byte_size }
+  return {
+    id: parsed.id,
+    caption: parsed.caption,
+    screen: screenOf(parsed.caption),
+    bytes: parsed.byte_size,
+    html: parsed.content_type === HTML_TYPE,
+  }
 }
 
 export const loadMockups = async (payload: Conn, recordId: number): Promise<AttachmentView[]> => {
   const found = await payload.db.drizzle.execute(sql`
-    SELECT a."id", a."caption", a."byte_size" FROM "attachments" a
+    SELECT a."id", a."caption", a."byte_size", a."content_type" FROM "attachments" a
     WHERE a."kind" = 'mockup' AND a."content" IS NOT NULL AND a."run_id" = (
       SELECT s."id" FROM "stage_runs" s
       WHERE s."record_id" = ${recordId} AND s."stage" = 'brief' AND s."status" = 'submitted'
@@ -29,7 +35,7 @@ export const loadMockups = async (payload: Conn, recordId: number): Promise<Atta
 
 export const loadRunAttachments = async (payload: Payload, runId: number): Promise<AttachmentView[]> => {
   const found = await payload.db.drizzle.execute(sql`
-    SELECT "id", "caption", "byte_size" FROM "attachments"
+    SELECT "id", "caption", "byte_size", "content_type" FROM "attachments"
     WHERE "run_id" = ${runId} AND "content" IS NOT NULL ORDER BY "id"`)
   return found.rows.map(viewOf)
 }
@@ -45,6 +51,6 @@ export const readImage = async (payload: Payload, id: number): Promise<StoredIma
   if (!found.rows[0]) return null
   const row = imageRow.parse(found.rows[0])
   const bytes = Buffer.from(row.content, 'base64')
-  const contentType = imageTypeOf(bytes)
+  const contentType = attachmentTypeOf(bytes)
   return contentType === null ? null : { workspace: row.workspace_id, contentType, bytes }
 }

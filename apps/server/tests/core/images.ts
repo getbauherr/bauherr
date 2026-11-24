@@ -41,3 +41,5 @@ export const drawnPng = (width: number, height: number, rects: Rect[]): Buffer =
     chunk('IEND', Buffer.alloc(0)),
   ])
 }
+
+export const HTML = Buffer.from('<!doctype html><html><body><h1>Run page</h1><script>1</script></body></html>')

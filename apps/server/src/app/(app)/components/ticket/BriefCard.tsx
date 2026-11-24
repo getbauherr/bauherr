@@ -29,8 +29,13 @@ export function BriefCard({ view, seq, reason, may }: Props) {
               </Link>
             </p>
           )}
-          <BriefSheet record={view.record} mockups={view.mockups} missing={view.noMockup} reason={why} />
-          <OpenDecisions decisions={view.record.decisions} repo={view.record.source.repo} />
+          <BriefSheet
+            record={view.record}
+            mockups={view.mockups}
+            missing={view.noMockup}
+            reason={why}
+            decisions={<OpenDecisions decisions={view.record.decisions} repo={view.record.source.repo} />}
+          />
         </div>
       </DecisionForm>
     </Card>

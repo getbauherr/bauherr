@@ -1,10 +1,23 @@
 export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const
 export type ImageType = (typeof IMAGE_TYPES)[number]
 
+export const HTML_TYPE = 'text/html'
+export const MOCKUP_POLICY = [
+  'sandbox allow-scripts',
+  "default-src 'none'",
+  "style-src 'unsafe-inline'",
+  "script-src 'unsafe-inline'",
+  'img-src data:',
+  'font-src data:',
+].join('; ')
+export const ATTACHMENT_TYPES = [...IMAGE_TYPES, HTML_TYPE] as const
+export type AttachmentType = (typeof ATTACHMENT_TYPES)[number]
+
 export const ATTACHMENT_KINDS = ['mockup', 'screenshot', 'before', 'after'] as const
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number]
 
 export const IMAGE_MAX_BYTES = 2 * 1024 * 1024
+export const HTML_MAX_BYTES = 1024 * 1024
 export const RUN_IMAGE_MAX = 12
 export const RECORD_IMAGE_MAX = 30
 export const UPLOAD_TTL_MS = 10 * 60_000
@@ -23,6 +36,20 @@ export const imageTypeOf = (bytes: Uint8Array): ImageType | null => {
   if (startsWith(bytes, RIFF) && startsWith(bytes, WEBP, 8)) return 'image/webp'
   return null
 }
+
+const HTML_START = /^(<!doctype html|<html)[\s>]/i
+
+const isHtml = (bytes: Uint8Array): boolean => {
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    return HTML_START.test(text.trimStart())
+  } catch {
+    return false
+  }
+}
+
+export const attachmentTypeOf = (bytes: Uint8Array): AttachmentType | null =>
+  imageTypeOf(bytes) ?? (isHtml(bytes) ? HTML_TYPE : null)
 
 export class UploadRefused extends Error {
   constructor(

@@ -37,6 +37,30 @@ const attachMockup = async (ids: { runId: number; leaseToken: string }) => {
   await receiveUpload(m.e.db.payload, out.uploadUrl.slice(out.uploadUrl.lastIndexOf('/') + 1), PNG, m.e.clock.now)
 }
 
+describe('a Brief without a shape view', () => {
+  it('is refused with a message that says what to add, and keeps the shape once given', async () => {
+    const { record, ids } = await briefRun()
+    const without = { ...BRIEF, shape: '' }
+    const refused = z
+      .object({ status: z.literal('retry'), problems: z.array(z.object({ path: z.string(), message: z.string() })) })
+      .parse(await m.call('submit', { ...ids, result: without }, m.agent(m.alpha)))
+    expect(refused.problems).toHaveLength(1)
+    expect(refused.problems[0]?.path).toBe('shape')
+    expect(refused.problems[0]?.message).toMatch(/add `shape`.*\+ for added and - for removed/)
+    const flow = 'flowchart LR\n  A --> B'
+    const options = [
+      { id: 'a', label: 'A', preview: 'one row' },
+      { id: 'b', label: 'B' },
+    ]
+    const given = { ...BRIEF, flow, decisions: [{ question: 'Which?', recommended: 'a', options }] }
+    expect(await m.call('submit', { ...ids, result: given }, m.agent(m.alpha))).toEqual({ status: 'accepted' })
+    const stored = (await readRecord(m.e.db.payload, record)).record
+    expect(stored.shape).toBe(BRIEF.shape)
+    expect(stored.flow).toBe(flow)
+    expect(stored.decisions[0]?.options[0]?.preview).toBe('one row')
+  })
+})
+
 describe('a Brief for a visible change', () => {
   it('is refused without a mockup, with the one fix turn, and accepted once a mockup is attached', async () => {
     const { record, ids } = await briefRun()

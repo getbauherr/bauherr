@@ -1,6 +1,7 @@
 import type { ProofGroup, ProofView } from '../../../../core/views/ticket-parts'
 import { PROOF_WORDS } from '../../lib/ticket'
 import { ForgeLink } from './ForgeLink'
+import { ImageGallery } from './ImageGallery'
 import { Section } from './Section'
 
 const BLOCK = 'mono m-0 whitespace-pre-wrap rounded-md bg-secondary p-3'
@@ -11,7 +12,12 @@ function Proof({ proof }: { proof: ProofView }) {
     <li className="grid gap-1">
       <span className="small text-muted-foreground">{word}</span>
       {proof.body !== null && <pre className={BLOCK}>{proof.body}</pre>}
-      {proof.attachment !== null && <span>{proof.attachment.caption}</span>}
+      {proof.attachment !== null && (
+        <>
+          <ImageGallery images={[proof.attachment]} large />
+          <span>{proof.attachment.caption}</span>
+        </>
+      )}
       {proof.url !== null && <ForgeLink href={proof.url} label={proof.url} />}
     </li>
   )

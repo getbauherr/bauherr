@@ -32,7 +32,13 @@ export const verify = defineModule({
       patch: {
         criteria,
         findings,
-        result: { changes: result.changes, walkthrough: result.walkthrough, notVerified: result.notVerified, cost },
+        result: {
+          changes: result.changes,
+          walkthrough: result.walkthrough,
+          notVerified: result.notVerified,
+          outline: result.outline,
+          cost,
+        },
       },
       events: [event],
       effects: body !== null && state.patch !== null ? [{ kind: 'review', pr: state.patch.pr, body }] : [],

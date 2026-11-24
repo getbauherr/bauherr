@@ -53,6 +53,7 @@
     "cmdk": "1.1.1",
     "graphql": "^16.11.0",
     "lucide-react": "1.72.0",
+    "mermaid": "^11.17.2",
     "next": "16.4.5",
     "openid-client": "^6.8.8",
     "payload": "3.92.1",

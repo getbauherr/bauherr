@@ -42,6 +42,7 @@ const passing = (extra: Partial<VerifyResult> = {}): VerifyResult => ({
   changes: [],
   walkthrough: [],
   notVerified: [],
+  outline: null,
   ...extra,
 })
 
