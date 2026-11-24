@@ -55,6 +55,12 @@ const EXCEPTIONS = [
       'Payload relationships always generate ON DELETE SET NULL and have no option for it.',
   },
   {
+    prefix: 'constraint conversations conversations_record_id_records_id_fk ',
+    reason:
+      'Deleting a Ticket deletes the conversations of its comments (ON DELETE CASCADE); ' +
+      'Payload relationships always generate ON DELETE SET NULL and have no option for it.',
+  },
+  {
     prefix: 'index bauherren_oidc_subject_idx ',
     reason:
       'The migration makes it unique and partial (WHERE oidc_subject IS NOT NULL); ' +

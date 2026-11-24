@@ -141,7 +141,10 @@ export const coreCollections: CollectionConfig[] = [
     slug: 'conversations',
     admin: { useAsTitle: 'title' },
     access: { read: readable, create: closed, update: closed, delete: closed },
-    fields: [{ name: 'title', type: 'text', required: true }],
+    fields: [
+      { name: 'title', type: 'text', required: true },
+      { name: 'record', type: 'relationship', relationTo: 'records', index: true },
+    ],
   },
   {
     slug: 'conversation_messages',

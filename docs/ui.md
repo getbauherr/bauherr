@@ -58,7 +58,7 @@ The left half is the conversation with the factory, ending in a comment box. The
 The action bar atop the Now pane holds the next step: one sentence and one primary button naming it, such as Approve plan or Re-run Build.
 
 - **Approve plan** is refused while critical decisions are unanswered.
-- **Send back** asks for a note and returns the Ticket to Build or the Backlog. Every comment has an Applies to choice: This ticket (the default), This product or Do not remember. The Ticket page lists each used memory with its scope.
+- **Send back** asks for a note and returns the Ticket to Build or the Backlog. Every comment has an Applies to choice: This ticket (default), This product or Do not remember. The Ticket page lists used memories.
 - **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
 - **Round cap**: when review reaches its cap you grant one more round or stop.
 - **Close as done**: when Build reports another pull request or Ticket covers the work, Close #n as done by #m moves the Ticket to done; Re-run build queues Build again.
@@ -84,7 +84,7 @@ After filing, the conversation is read-only history.
 
 ## Conversation parts
 
-Conversations use these assistant-ui parts, under `components/`.
+Conversation parts:
 
 - Thread: `conversation/Thread.tsx`
 - Composer: `conversation/Composer.tsx`
@@ -95,7 +95,7 @@ Conversations use these assistant-ui parts, under `components/`.
 - Gallery: `assistant-ui/elements/image-gallery.tsx`
 - Timeline: `assistant-ui/elements/timeline.tsx`
 
-`/conversations` starts a test conversation. Files may be up to 10 MB.
+`/conversations` starts a test conversation. Files may be up to 10 MB. Comment files show on Activity and reach the next run.
 
 ## Parked Tickets
 

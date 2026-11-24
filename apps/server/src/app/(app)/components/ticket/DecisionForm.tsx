@@ -165,7 +165,8 @@ function Form({ recordId, ask, seq, sentence, actions, pick, children, ensure, f
 function Keyed(props: Props) {
   const conversation = useRef<Promise<number> | null>(null)
   const title = `Ticket ${props.recordId} comment`
-  const ensure = useCallback(() => (conversation.current ??= api.create(undefined, title)), [title])
+  const { recordId } = props
+  const ensure = useCallback(() => (conversation.current ??= api.create(undefined, title, recordId)), [title, recordId])
   const forget = useCallback(() => {
     conversation.current = null
   }, [])

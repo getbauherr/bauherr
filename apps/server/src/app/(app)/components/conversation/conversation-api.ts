@@ -27,11 +27,11 @@ export const fileUrl = (conversationId: number, fileId: number): string =>
   `/api/conversations/${conversationId}/files/${fileId}`
 
 export const conversationApi = (fetcher: Fetcher = (input, init) => fetch(input, init)) => ({
-  create: async (workspace: number | undefined, title: string): Promise<number> => {
+  create: async (workspace: number | undefined, title: string, recordId?: number): Promise<number> => {
     const res = await fetcher('/api/conversations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspace, title }),
+      body: JSON.stringify({ workspace, title, recordId }),
     })
     return (await parsed(res, z.object({ id: z.number() }))).id
   },

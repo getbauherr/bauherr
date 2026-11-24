@@ -36,6 +36,7 @@ const packFor = async (evalCase: EvalCase, runId: number): Promise<ContextPack> 
   ),
   resultSchema: z.toJSONSchema(intake.resultSchema, { io: 'input' }),
   note: null,
+  commentFiles: [],
   skill: await skillFor('intake', 'builder'),
   facts: {
     missing: missingFields(evalCase.type, evalCase.body),

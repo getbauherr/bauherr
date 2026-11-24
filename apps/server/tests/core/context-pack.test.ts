@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
+import { appendMessage, createConversation, storeFile } from '../../src/core/conversations/store'
+import { ticket } from '../../src/core/views/ticket'
 import { tierIn } from '../../src/core/run/tiers'
 import { MODULES, skillFor, tierFor } from '../../src/lean'
 import { openMcp, type Mcp } from './mcp-harness'
@@ -25,6 +27,7 @@ const pack = z.object({
     agentsFile: z.object({ text: z.string(), cut: z.boolean() }).nullable(),
     statements: z.array(z.unknown()),
     similar: z.array(z.unknown()),
+    commentFiles: z.array(z.object({ name: z.string(), contentType: z.string(), bytes: z.number() })),
   }),
 })
 
@@ -93,5 +96,18 @@ describe('the model tier', () => {
     await m.begin()
     const plain = await claimWith(() => Promise.resolve(null))
     expect(plain.context.model).toEqual({ tier: 'standard' })
+  })
+
+  it('shows a file attached to a card comment on the ticket and hands it to the next run', async () => {
+    const recordId = await m.begin()
+    const { workspace, payload } = m.e.db
+    const db = { db: { drizzle: payload.db.drizzle } }
+    const conversationId = await createConversation(db, workspace, `Ticket ${recordId} comment`, recordId)
+    const bytes = new TextEncoder().encode('mockup notes')
+    const file = await storeFile(db, { workspace, conversationId, name: 'notes.txt', contentType: 'text/plain', bytes })
+    await appendMessage(db, { workspace, conversationId, role: 'user', text: 'See notes', fileIds: [file.id] })
+    expect((await ticket(payload, { workspace, recordId })).commentFiles).toEqual([{ ...file, conversationId }])
+    const work = await claimWith(() => Promise.resolve(null))
+    expect(work.context.commentFiles).toEqual([{ name: 'notes.txt', contentType: 'text/plain', bytes: bytes.length }])
   })
 })

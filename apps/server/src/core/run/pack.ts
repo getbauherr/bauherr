@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { fold } from '../fold'
 import { foldOptions } from '../lifecycle'
 import { moduleKey } from '../module'
+import { commentFilesOf, type CommentFile } from '../conversations/store'
 import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
 import type { Why } from '../memory'
@@ -23,6 +24,7 @@ export type ContextPack = {
   record: TicketRecord
   resultSchema: unknown
   note: string | null
+  commentFiles: CommentFile[]
   skill: string | null
   facts: IntakeFacts | null
   agentsFile: ContextParts['agentsFile']
@@ -64,6 +66,7 @@ export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPa
     record: recordFor(run.role, stored.record),
     resultSchema: z.toJSONSchema(module.resultSchema, { io: 'input' }),
     note: await pendingNote(deps, run),
+    commentFiles: await commentFilesOf(deps.payload, run.recordId),
     skill: (await deps.skills?.(run.stage, run.role)) ?? null,
     facts: run.stage === 'intake' ? await loadIntakeFacts(deps.payload, stored) : null,
     agentsFile: parts.agentsFile,

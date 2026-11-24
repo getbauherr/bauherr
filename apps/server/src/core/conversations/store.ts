@@ -32,10 +32,15 @@ export type NewMessage = {
 
 const idRow = z.object({ id: count })
 
-export const createConversation = async (db: Conn, workspace: number, title: string): Promise<number> => {
+export const createConversation = async (
+  db: Conn,
+  workspace: number,
+  title: string,
+  recordId: number | null = null,
+): Promise<number> => {
   const found = await db.db.drizzle.execute(sql`
-    INSERT INTO "conversations" ("workspace_id", "title", "updated_at", "created_at")
-    VALUES (${workspace}, ${title}, now(), now()) RETURNING "id"`)
+    INSERT INTO "conversations" ("workspace_id", "title", "record_id", "updated_at", "created_at")
+    VALUES (${workspace}, ${title}, ${recordId}, now(), now()) RETURNING "id"`)
   return idRow.parse(found.rows[0]).id
 }
 
@@ -122,4 +127,31 @@ export const readFile = async (
   if (!found.rows[0]) return null
   const row = contentRow.parse(found.rows[0])
   return { name: row.name, contentType: row.content_type, bytes: Buffer.from(row.content, 'base64') }
+}
+
+export type CommentFile = StoredFile & { conversationId: number }
+
+const commentFileRow = z.object({
+  id: count,
+  conversation_id: count,
+  name: z.string(),
+  content_type: z.string(),
+  byte_size: count,
+})
+
+export const commentFilesOf = async (db: Conn, recordId: number): Promise<CommentFile[]> => {
+  const found = await db.db.drizzle.execute(sql`
+    SELECT f."id", f."conversation_id", f."name", f."content_type", f."byte_size"
+    FROM "conversation_files" f JOIN "conversations" c ON c."id" = f."conversation_id"
+    WHERE c."record_id" = ${recordId} AND f."message_id" IS NOT NULL ORDER BY f."id"`)
+  return found.rows.map((row) => {
+    const file = commentFileRow.parse(row)
+    return {
+      id: file.id,
+      conversationId: file.conversation_id,
+      name: file.name,
+      contentType: file.content_type,
+      bytes: file.byte_size,
+    }
+  })
 }
