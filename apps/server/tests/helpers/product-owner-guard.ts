@@ -8,7 +8,6 @@ export const PO_PAGES: Record<string, string> = {
   '': 'the Factory view for a Bauherr; a Product owner gets a static empty state that reads no data',
   requests: 'the Requests of the Products assigned to them, nothing else',
   'requests/[id]': 'one request, only when its Product is assigned to them',
-  'settings/profile': 'the profile',
 }
 export const BAUHERR_PAGES = [
   'settings',
@@ -24,6 +23,7 @@ export const BAUHERR_PAGES = [
   'runs/[id]',
   'tickets/[id]',
   'settings/api-key',
+  'settings/profile',
   'settings/audit',
   'settings/bauherren',
   'settings/connections',
@@ -52,10 +52,9 @@ export const BAUHERR_ROUTES: string[] = [
 export const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
-  '(shell)/settings/profile/actions.ts#saveOwnLogin':
-    'the profile: links or removes their own forge login; Payload refuses a login another account holds',
 }
 export const BAUHERR_ACTIONS = [
+  '(shell)/settings/profile/actions.ts#saveOwnLogin',
   'lib/actions.ts#selectWorkspace',
   '(shell)/actions.ts#moveCard',
   '(shell)/tickets/actions.ts#decideTicket',

@@ -48,7 +48,8 @@ test('a Product owner signs in, lands on Requests and sees only their Product, a
   await expect(page.getByRole('heading', { level: 1, name: 'Add target-year check' })).toBeVisible()
 
   const other = await ticketOutsideTheFactory(browser)
-  for (const path of ['/factory', '/settings', '/settings/products', '/inbox', other]) {
+  const closed = ['/factory', '/settings', '/settings/profile', '/settings/bauherren', '/settings/products', '/inbox']
+  for (const path of [...closed, other]) {
     expect(await status(page, path), path).toBe(404)
   }
 })

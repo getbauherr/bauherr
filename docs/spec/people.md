@@ -47,10 +47,10 @@ Not yet: commenting from the Ticket page, and forge comments counting as decisio
 
 ## Closed by default
 
-Besides the table above, a Product owner reaches only `/login`, sign-out, the OIDC flow, `/requests`, `/requests/<id>`, `/settings/profile`, `/api/health`, the signed image link `/m/<id>/<sig>` and their own account over Payload REST.
+Besides the table above, a Product owner reaches only `/login`, sign-out, the OIDC flow, `/requests`, `/requests/<id>`, `/api/health`, the signed image link `/m/<id>/<sig>` and their own account over Payload REST.
 
 - Signing in lands on `/requests`; `/` redirects there. The sidebar shows only Requests. `/requests` lists the requests of the assigned Products, or says that nobody has given them a Product yet. `/requests/<id>` is a 404 unless its Product is assigned.
-- `/settings` is a 404.
+- Every `/settings/*` page, the profile included, is a 404.
 - The account allows read, and update of `password` and `uiPrefs` only. The account's `beforeValidate` hook refuses any other changed field. No API key can be enabled for them.
 - `requireBauherr` answers a Product owner with 404 and `getBauherr` returns null. Every page, action and route built on them is closed without a check at the call site. `getPerson` and `requirePerson` serve the few places open to both.
 - The intake `actor`, `/mcp`, which also needs an agent key, `callTool` and `chatWho` refuse a Product owner.
