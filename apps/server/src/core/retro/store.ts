@@ -116,6 +116,33 @@ export const addMessage = async (
       ${message.parts ? json(message.parts) : null})`)
 }
 
+export const addFirstMessage = async (
+  payload: Payload,
+  retro: Retro,
+  message: { role: 'assistant'; body: string; parts: Parts },
+): Promise<void> => {
+  await payload.db.drizzle.transaction(async (tx) => {
+    await tx.execute(sql`SELECT 1 FROM "retros" WHERE "id" = ${retro.id} FOR UPDATE`)
+    await tx.execute(sql`
+      INSERT INTO "retro_messages" ("workspace_id", "retro_id", "role", "body", "parts")
+      SELECT ${retro.workspace}, ${retro.id}, ${message.role}, ${message.body}, ${json(message.parts)}
+      WHERE NOT EXISTS (SELECT 1 FROM "retro_messages" WHERE "retro_id" = ${retro.id})`)
+  })
+}
+
+export const unopenedRetro = async (
+  payload: Payload,
+  workspace: number,
+  product: number,
+  label: string,
+): Promise<Retro | null> => {
+  const found = await payload.db.drizzle.execute(sql`SELECT ${COLUMNS} FROM "retros"
+    WHERE "workspace_id" = ${workspace} AND "product_id" = ${product} AND "range_label" = ${label}
+      AND "state" = 'open' AND NOT EXISTS (SELECT 1 FROM "retro_messages" WHERE "retro_id" = "retros"."id")
+    ORDER BY "id" DESC LIMIT 1`)
+  return found.rows[0] ? retroOf(found.rows[0]) : null
+}
+
 export const messagesOf = async (payload: Payload, retro: number): Promise<Message[]> => {
   const found = await payload.db.drizzle.execute(
     sql`SELECT "id", "role", "body", "parts" FROM "retro_messages" WHERE "retro_id" = ${retro} ORDER BY "id"`,

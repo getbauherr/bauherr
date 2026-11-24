@@ -1,4 +1,3 @@
-import { cn } from '@/lib/utils'
 import { Badge } from '../../ui/badge'
 
 export type TodoItem = { id: string; text: string; badge: string; done: boolean }
@@ -23,7 +22,7 @@ export function TodoList({ title, items }: { title: string; items: TodoItem[] })
         <ul className="m-0 grid list-none gap-3 p-0">
           {items.map((item) => (
             <li key={item.id} className="grid gap-1">
-              <span className={cn(item.done && 'line-through')}>{item.text}</span>
+              <span>{item.text}</span>
               <Badge className="w-fit">{item.badge}</Badge>
             </li>
           ))}

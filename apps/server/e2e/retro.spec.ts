@@ -16,8 +16,9 @@ const startRetro = async (page: Page) => {
   await page.goto(`/memory/retro?range=dates&from=${isoDay(-30)}&to=${isoDay(1)}`)
   await expect(page.getByRole('heading', { level: 1, name: /Start a Retro/ })).toBeVisible()
   await expect(page.getByRole('region', { name: 'What this range holds' })).toContainText('4 tickets accepted')
-  await page.getByRole('button', { name: 'Start Retro' }).click()
+  await page.getByRole('button', { name: 'Start Retro' }).dblclick()
   await expect(page.getByRole('heading', { level: 1, name: /^Retro:/ })).toBeVisible()
+  await expect(page.getByRole('log', { name: 'Conversation' })).toContainText('Factory')
 }
 
 const agreed = (page: Page) => page.getByRole('region', { name: 'Agreed so far' })
@@ -36,6 +37,12 @@ test(OPENS, fake, async ({ page }) => {
   await expect(page.getByText('Should a change that is sent back twice get a mockup before Build?')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Rebuild the export dialog' }).last()).toBeVisible()
   await page.screenshot({ path: test.info().outputPath('retro-opening-1280.png'), fullPage: true })
+})
+
+test('Start lands on the conversation and a double click opens the conversation', fake, async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await startRetro(page)
+  await expect(page).toHaveURL(/\/memory\/retro\/\d+$/)
 })
 
 test(GROWS, fake, async ({ page }) => {

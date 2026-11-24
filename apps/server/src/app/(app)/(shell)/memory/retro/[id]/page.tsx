@@ -5,6 +5,7 @@ import { ticketTitles } from '../../../../../../core/retro/history'
 import { loadRetro, messagesOf } from '../../../../../../core/retro/store'
 import { PageTitle } from '../../../../components/PageTitle'
 import { TodoList } from '../../../../components/assistant-ui/elements/todo-list'
+import { PreparingOpening } from '../../../../components/retro/PreparingOpening'
 import { ProposalCards } from '../../../../components/retro/ProposalCards'
 import { RetroComposer } from '../../../../components/retro/RetroComposer'
 import { RetroOpening } from '../../../../components/retro/RetroOpening'
@@ -46,7 +47,13 @@ export default async function RetroPage({ params }: Props) {
               />
             </div>
           ))}
-          {retro.state !== 'applied' && <RetroComposer retro={retro.id} />}
+          {messages.length === 0 && (
+            <>
+              <RetroOpening opening={retro.opening} />
+              <PreparingOpening retro={retro.id} />
+            </>
+          )}
+          {messages.length > 0 && retro.state !== 'applied' && <RetroComposer retro={retro.id} />}
         </div>
         <aside className="grid gap-4">
           <TodoList

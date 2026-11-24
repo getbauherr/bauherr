@@ -5,6 +5,7 @@ import { startRetroAction } from '../../(shell)/memory/retro/actions'
 import { Button } from '../ui/button'
 import { NativeSelect } from '../ui/native-select'
 import { RangeFields } from './RangeFields'
+import { StartButton } from './StartButton'
 
 type Props = { data: StartData; params: Record<string, string | undefined> }
 
@@ -63,9 +64,7 @@ export function StartForm({ data, params }: Props) {
           {params.error}
         </p>
       )}
-      <Button type="submit" formAction={startRetroAction} formMethod="post" disabled={!range} className="w-fit">
-        Start Retro
-      </Button>
+      <StartButton action={startRetroAction} disabled={!range} />
     </form>
   )
 }
