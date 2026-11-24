@@ -16,10 +16,10 @@ export function CostTable({ cost, outside }: { cost: CostSummary; outside: numbe
         <thead>
           <tr>
             <th scope="col">By stage</th>
-            <th scope="col" className="text-right">Runs</th>
-            <th scope="col" className="text-right">Measured</th>
-            <th scope="col" className="text-right">Cost</th>
-            <th scope="col" className="text-right">Per ticket</th>
+            <th scope="col" className="text-right!">Runs</th>
+            <th scope="col" className="text-right!">Measured</th>
+            <th scope="col" className="text-right!">Cost</th>
+            <th scope="col" className="text-right!">Per ticket</th>
           </tr>
         </thead>
         <tbody>
@@ -59,9 +59,9 @@ export function TopTickets({ cost }: { cost: CostSummary }) {
         <thead>
           <tr>
             <th scope="col">Ticket</th>
-            <th scope="col" className="text-right">Verify rounds</th>
-            <th scope="col" className="text-right">Lead time</th>
-            <th scope="col" className="text-right">Cost</th>
+            <th scope="col" className="text-right!">Verify rounds</th>
+            <th scope="col" className="text-right!">Lead time</th>
+            <th scope="col" className="text-right!">Cost</th>
           </tr>
         </thead>
         <tbody>

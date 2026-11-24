@@ -39,7 +39,7 @@ test('a ticket shows its time and cost in the side column', async ({ page }) => 
   await enter(page, '/insights')
   const top = page.getByRole('table', { name: 'Most expensive tickets' })
   await top.getByRole('link', { name: /Add target-year check/ }).click()
-  const box = page.getByRole('region').filter({ has: page.getByRole('heading', { name: 'Time and cost' }) })
+  const box = page.locator('section', { has: page.getByRole('heading', { name: 'Time and cost' }) })
   await expect(box.getByText('Issue to done')).toBeVisible()
   await expect(box.getByText('Waiting on you')).toBeVisible()
   await expect(box.getByText('5 of 5 runs measured')).toBeVisible()
@@ -48,7 +48,7 @@ test('a ticket shows its time and cost in the side column', async ({ page }) => 
 test('a memory shows what coming back cost', async ({ page }) => {
   await enter(page, '/memory')
   await page.getByRole('link', { name: 'Check the year of every date.' }).click()
-  const box = page.getByRole('region').filter({ has: page.getByRole('heading', { name: 'Cost of coming back' }) })
+  const box = page.locator('section', { has: page.getByRole('heading', { name: 'Cost of coming back' }) })
   await expect(box).toContainText('1 extra round')
   await expect(box).toContainText('1 ticket')
 })
