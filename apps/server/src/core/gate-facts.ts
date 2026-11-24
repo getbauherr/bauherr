@@ -41,9 +41,16 @@ const checksOf = async (tx: Conn, item: number, sha: string, required: boolean):
   return checksState(checks)
 }
 
-const proofsOf = async (tx: Conn, recordId: number): Promise<string[]> => {
-  const found = await tx.db.drizzle.execute(sql`SELECT "id" FROM "proofs" WHERE "record_id" = ${recordId}`)
-  return found.rows.map((row) => String(z.object({ id: z.coerce.number() }).parse(row).id))
+const proofRow = z.object({ id: z.coerce.number(), exit_code: z.coerce.number().nullable() })
+
+const proofsOf = async (tx: Conn, recordId: number) => {
+  const found = await tx.db.drizzle.execute(sql`SELECT "id", "exit_code" FROM "proofs" WHERE "record_id" = ${recordId}`)
+  const rows = found.rows.map((row) => proofRow.parse(row))
+  const named = (list: typeof rows) => list.map((row) => String(row.id))
+  return {
+    proofIds: named(rows),
+    failedProofIds: named(rows.filter((row) => row.exit_code !== null && row.exit_code !== 0)),
+  }
 }
 
 export const loadGateFacts = async (tx: Conn, stored: StoredRecord, run: Run, config: Config): Promise<GateFacts> => {
@@ -57,7 +64,7 @@ export const loadGateFacts = async (tx: Conn, stored: StoredRecord, run: Run, co
     patch,
     headCommit,
     checks: pull && headCommit ? await checksOf(tx, pull.id, headCommit, config.requiredChecks) : 'pending',
-    proofIds: await proofsOf(tx, stored.id),
+    ...(await proofsOf(tx, stored.id)),
     screens: stored.record.visible ? (await loadMockups(tx, stored.id)).map((mockup) => mockup.screen) : [],
     shots: await loadShots(tx, stored.id),
   }
