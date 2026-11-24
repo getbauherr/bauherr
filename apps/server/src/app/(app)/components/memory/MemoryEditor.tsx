@@ -66,7 +66,7 @@ export function MemoryEditor({ choice, initial, maxLines, mayChange, whoMay }: P
               aria-controls={`memory-panel-${id}`}
               onClick={() => setTab(id)}
               className={cn(
-                '-mb-px border-b-2 border-transparent px-3 py-2.5 text-muted-foreground outline-none',
+                '-mb-px border-b-2 border-transparent bg-transparent px-3 py-2.5 text-muted-foreground outline-none',
                 'focus-visible:ring-2 focus-visible:ring-ring',
                 tab === id && 'border-primary font-medium text-foreground',
               )}

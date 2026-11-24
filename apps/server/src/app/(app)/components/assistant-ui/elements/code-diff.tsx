@@ -39,7 +39,7 @@ export function CodeDiff({
           <span className="text-ok">+{additions}</span> <span className="text-destructive">−{deletions}</span>
         </span>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Changed lines">
         <div className="w-max min-w-full">
           {lines.map((line, index) => (
             <div

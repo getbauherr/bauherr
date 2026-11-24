@@ -24,7 +24,7 @@ export function MemoryVersions({ versions }: { versions: VersionRow[] }) {
               <button
                 type="button"
                 aria-expanded={shown}
-                aria-label={`${shown ? 'Hide' : 'Show'} what changed in v${version.number}`}
+                aria-label={`${shown ? 'hide diff' : 'diff'} of v${version.number}`}
                 onClick={() => setOpen(shown ? null : version.id)}
                 className={cn(
                   'small rounded-sm text-primary outline-none hover:underline',
