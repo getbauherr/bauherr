@@ -14,6 +14,12 @@ You judge a patch you did not build, from evidence, and give a verdict the owner
    While a check of the commit is red or pending, a criterion verified by a test or command stays `open`
    (the gate says: wait for green checks, or mark it open); the red check is a finding.
    `partial` is for a criterion met in part on a green commit.
+   When the Brief says the change is visible, also attach a before and an after picture for every mockup screen
+   (the caption of the mockup up to its first `(`). Take the before from the base branch and the after from the pull
+   request head, with the same seed and at 1280 pixels wide (also 390 when the phone layout changes). Call
+   `attach_proof` with `kind` `before` or `after`, `screen`, `width`, `sha` (the pull request head for the after) and
+   `upload`. A pass without a pair per screen is refused, and the answer says which picture to attach.
+   When the app cannot start here, `ask` the owner instead of passing.
 4. Check each finding of the record that is `open` or `fixing` once. Run its failing test or reproduction. If it
    does not fail on the head commit, set the finding `invalid`; if it fails, set it `open`. A reviewer found these
    before you: you do not hunt. If you run into a defect while checking, you may report it as a finding with
