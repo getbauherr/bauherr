@@ -6,7 +6,11 @@ import { drawnPng } from './images'
 import { begin, mirrorSource, workOn } from './scenario'
 
 export const MOCKUP_TICKET_TITLE = 'Brief with a mockup'
-export const MOCKUP_CAPTIONS = ['Export page, new: progress bar', 'Export page, new: finished state']
+export const MOCKUP_CAPTIONS = [
+  'Export page, new: progress bar',
+  'Export page, new: finished state',
+  'Export page, full length',
+]
 
 type Rgb = [number, number, number]
 type Block = [x: number, y: number, w: number, h: number, rgb: Rgb]
@@ -22,6 +26,11 @@ const SCREEN: Block[] = [
 
 const screen = (done: boolean): Buffer =>
   drawnPng(1280, 720, SCREEN.map(([x, y, w, h, rgb], i): Block => [x, y, w, h, done && i === 5 ? [34, 197, 94] : rgb]))
+
+const TALL = drawnPng(1240, 2450, [
+  [0, 0, 1240, 120, [30, 41, 59]],
+  [0, 2330, 1240, 120, [37, 99, 235]],
+])
 
 const idOf = z.object({ id: z.coerce.number() })
 
@@ -48,7 +57,8 @@ export const seedMockupTicket = async (e: Engine): Promise<number> => {
     sql`SELECT "id" FROM "stage_runs" WHERE "record_id" = ${id} AND "stage" = 'brief' ORDER BY "id" DESC LIMIT 1`,
   )
   const run = idOf.parse(found.rows[0]).id
-  for (const [n, caption] of MOCKUP_CAPTIONS.entries()) await store(e, id, run, { caption, bytes: screen(n === 1), n })
+  const pictures = [screen(false), screen(true), TALL]
+  for (const [n, caption] of MOCKUP_CAPTIONS.entries()) await store(e, id, run, { caption, bytes: pictures[n], n })
   for (const [n, screenName] of MOCKUP_CAPTIONS.entries()) {
     const taken = { screenName, n: n * 2 + 2 }
     await store(e, id, run, { ...taken, caption: `Before: ${screenName}`, bytes: screen(false), kind: 'before' })

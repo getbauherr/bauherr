@@ -17,6 +17,7 @@ import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
 import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
+import { positionsOf, type Positions } from './positions'
 import { activityOf, type EventView } from './activity'
 import { loadShots, pairsOf, type Pair } from '../attachments/pairs'
 import { loadMockups, type AttachmentView } from './attachments'
@@ -82,6 +83,7 @@ export type TicketView = {
   statementsUsed: StatementsUsed
   deploy: DeployView | null
   answerRemembered: boolean
+  positions: Positions | null
   canGoBack: boolean
   canArchive: boolean
   archived: boolean
@@ -206,6 +208,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     ...pulls,
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),
+    positions: positionsOf({ card: stored.card, record: stored.record, runs, events }),
     answerRemembered: stored.card?.card === 'question' && isRemembered(stored.card.reason),
     canGoBack: canGoBack(folded),
     canArchive: canArchive(folded),

@@ -1,15 +1,13 @@
 'use client'
 import { useState, type KeyboardEvent, type RefObject, type TouchEvent } from 'react'
 import { Dialog, DialogContent, DialogTitle } from '../ui/dialog'
-import { sourceOf, type ImageRef } from './image-ref'
+import type { ImageRef } from './image-ref'
 import { ViewerBar } from './ViewerBar'
+import { ViewerPicture } from './ViewerPicture'
 
 const FRAME =
   'top-0 left-0 grid h-dvh w-screen max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)_auto] ' +
   'gap-0 rounded-none border-0 p-0 sm:max-w-none'
-const FIT = 'm-auto block max-h-full max-w-full object-contain'
-const NATURAL = 'm-auto block max-w-none'
-const PICTURE = 'm-auto flex max-h-full max-w-full'
 const SWIPE_MIN = 50
 
 export const swipeStep = (dx: number, dy: number): -1 | 0 | 1 => {
@@ -67,15 +65,13 @@ export function ImageViewer({ images, shown, onShow, opener }: Props) {
             onStep={step}
             onToggle={() => setNatural(!natural)}
           />
-          <div
-            className="flex overflow-auto bg-secondary"
+          <ViewerPicture
+            image={image}
+            natural={natural}
+            onToggle={() => setNatural(!natural)}
             onTouchStart={(event) => setTouchStart({ x: event.touches[0].clientX, y: event.touches[0].clientY })}
             onTouchEnd={onTouchEnd}
-          >
-            <button type="button" tabIndex={-1} className={PICTURE} onClick={() => setNatural(!natural)}>
-              <img src={sourceOf(image)} alt={image.caption} className={natural ? NATURAL : FIT} />
-            </button>
-          </div>
+          />
           <div className="border-t border-border p-3">
             <DialogTitle>{image.caption}</DialogTitle>
           </div>
