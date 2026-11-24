@@ -11,6 +11,8 @@ const WRITES: Record<EventOf<'forge.write.done'>['data']['kind'], string> = {
   reopen: 'reopening the issue',
   'pull-request': 'opening the pull request',
   review: 'a review comment',
+  'relation-add': 'a ticket relation',
+  'relation-remove': 'removing a ticket relation',
 }
 
 const article = (word: string): string => (/^[aeiou]/.test(word) ? 'An' : 'A')
