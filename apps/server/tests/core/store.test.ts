@@ -12,7 +12,8 @@ import {
   StatusChangeNotAllowed,
   VersionConflict,
 } from '../../src/core/record/errors'
-import { type RecordField } from '../../src/core/record/schema'
+import { checkPatch } from '../../src/core/record/guard'
+import { emptyRecord, type RecordField } from '../../src/core/record/schema'
 import {
   appendEvent,
   createRecord,
@@ -227,6 +228,18 @@ describe('patchRecord', () => {
       const { id, version } = await briefedRow()
       const met = [criterion(1, { text: 'new words', status: 'met', proof: ['t1'] }), criterion(2), criterion(3)]
       await expect(patch(id, version, 'brief', { criteria: met })).rejects.toBeInstanceOf(StatusChangeNotAllowed)
+    })
+
+    it('refuse a brief status change with the stage message unchanged', () => {
+      const current = { ...emptyRecord(source, 'feature'), criteria: [criterion(1), criterion(2)] }
+      const next = {
+        ...current,
+        criteria: [criterion(1, { status: 'met', proof: ['t1'] }), criterion(2)],
+      }
+      expect(() => checkPatch(current, next, { stage: 'brief', runId: 'r1' })).toThrow(
+        'Criterion c1 changes status in stage brief: ' +
+          'only a verify run records criterion status; leave status as it is.',
+      )
     })
 
     it('become met or partial only with proof', async () => {
