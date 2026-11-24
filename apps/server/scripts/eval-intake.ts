@@ -7,10 +7,10 @@ import { missingFields } from '../src/core/intake/facts'
 import { emptyRecord } from '../src/core/record/schema'
 import type { ContextPack } from '../src/core/run/pack'
 import { MAX_BUDGET_USD, MAX_TURNS, TIMEOUT_MS } from '../src/jobs/runner/deps'
-import { PROMPT, readResult, writeContext } from '../src/jobs/runner/workdir'
+import { FIX_PROMPT, PROMPT, readResult, writeContext, writeProblems } from '../src/jobs/runner/workdir'
 import { skillFor, tierFor } from '../src/lean'
 import { CASES, type EvalCase } from '../src/modules/intake/eval/cases'
-import { evaluateIntake, type Ask } from '../src/modules/intake/eval/run'
+import { evaluateIntake, settle, type Ask } from '../src/modules/intake/eval/run'
 import { intake } from '../src/modules/intake/module'
 
 const ISSUE_NOTE =
@@ -48,17 +48,6 @@ const packFor = async (evalCase: EvalCase, runId: number): Promise<ContextPack> 
   similar: [],
 })
 
-const outcomeOf = (written: Record<string, unknown> | null): string => {
-  if (written === null) return 'no result written'
-  const checked = intake.resultSchema.safeParse(written)
-  if (!checked.success) {
-    const issue = checked.error.issues[0]
-    return `invalid result (${issue?.path.join('.') || 'result'}: ${issue?.message ?? 'unknown'})`
-  }
-  const parsed = z.object({ outcome: z.string() }).safeParse(written)
-  return parsed.success ? parsed.data.outcome : 'invalid result (outcome missing)'
-}
-
 const askModel =
   (url: string, key: string, model: string): Ask =>
   async (evalCase) => {
@@ -69,22 +58,32 @@ const askModel =
       await writeFile(join(dir, WORK_DIR, 'issue.json'), JSON.stringify({ title: evalCase.title, body: evalCase.body }))
       const home = join(dir, '.home')
       await mkdir(home)
-      const done = await execute({
-        runId: `eval-${runId}`,
-        stage: 'intake',
-        model,
-        cwd: dir,
-        home,
-        prompt: PROMPT + ISSUE_NOTE,
-        readOnly: true,
-        writablePaths: ['.bauherr/'],
-        maxTurns: MAX_TURNS,
-        maxBudgetUsd: MAX_BUDGET_USD,
-        timeoutMs: TIMEOUT_MS,
-        gatewayUrl: url,
-        gatewayKey: key,
+      const turn = (prompt: string) =>
+        execute({
+          runId: `eval-${runId}`,
+          stage: 'intake',
+          model,
+          cwd: dir,
+          home,
+          prompt,
+          readOnly: true,
+          writablePaths: ['.bauherr/'],
+          maxTurns: MAX_TURNS,
+          maxBudgetUsd: MAX_BUDGET_USD,
+          timeoutMs: TIMEOUT_MS,
+          gatewayUrl: url,
+          gatewayKey: key,
+        })
+      const first = await turn(PROMPT + ISSUE_NOTE)
+      if (!first.ok) return { actual: `run failed: ${first.reason}`, fixTurn: false }
+      return settle(intake.resultSchema, {
+        read: () => readResult(dir),
+        fix: async (problems) => {
+          await writeProblems(dir, problems)
+          const fix = await turn(FIX_PROMPT)
+          return fix.ok ? null : fix.reason
+        },
       })
-      return done.ok ? outcomeOf(await readResult(dir)) : `run failed: ${done.reason}`
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
