@@ -1,17 +1,10 @@
 import Link from 'next/link'
 import type { StatementRecord } from '../../../../core/views/statement-records'
-import { Badge } from '../ui/badge'
 import { Table } from '../ui/table'
 import { TicketRef } from '../TicketRef'
-import { CheckBadge, isShown } from './CheckState'
+import { MemoryState } from './MemoryState'
 
 const COUNT = 'mono text-right'
-
-const stateOf = (record: StatementRecord) => {
-  if (record.off) return <Badge>Off</Badge>
-  if (isShown(record.check)) return <CheckBadge check={record.check} />
-  return record.isNew ? <Badge variant="accent">New</Badge> : <Badge variant="ok">Active</Badge>
-}
 
 export function MemoryTable({ records }: { records: StatementRecord[] }) {
   return (
@@ -22,7 +15,6 @@ export function MemoryTable({ records }: { records: StatementRecord[] }) {
           <th scope="col">From</th>
           <th scope="col">Applies to</th>
           <th scope="col" className="text-right">Handed</th>
-          <th scope="col" className="text-right">Came back</th>
           <th scope="col">State</th>
         </tr>
       </thead>
@@ -45,8 +37,7 @@ export function MemoryTable({ records }: { records: StatementRecord[] }) {
             </td>
             <td>{record.reachLabel}</td>
             <td className={COUNT}>{record.handed}</td>
-            <td className={COUNT}>{record.cameBack}</td>
-            <td>{stateOf(record)}</td>
+            <td><MemoryState off={record.off} /></td>
           </tr>
         ))}
       </tbody>

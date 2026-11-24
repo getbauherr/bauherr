@@ -16,7 +16,6 @@ export type Candidate = {
   createdAt: string
   connectedAt: string | null
   imported: boolean
-  memory: number | null
   readiness: string | null
   item: IntakeItem
   settings: IntakeSettings
@@ -38,7 +37,6 @@ const candidateRow = z.object({
   forge_created_at: z.coerce.date(),
   connected_at: z.coerce.date().nullable(),
   imported: z.boolean(),
-  memory_id: count.nullable(),
   readiness_check: z.string().nullable(),
   kind: z.enum(['issue', 'pr']),
   state: z.enum(['open', 'closed', 'merged']),
@@ -68,7 +66,6 @@ const toCandidate = (row: unknown): Candidate => {
     createdAt: r.forge_created_at.toISOString(),
     connectedAt: r.connected_at?.toISOString() ?? null,
     imported: r.imported,
-    memory: r.memory_id,
     readiness: r.readiness_check,
     item: {
       kind: r.kind,
@@ -88,8 +85,6 @@ export const loadCandidates = async (payload: Payload, product: number | null): 
   const result = await payload.db.drizzle.execute(sql`
     SELECT i."id" AS item_id, i."workspace_id", i."product_id", c."kind"::text AS forge, i."repo", i."number",
       i."title", i."url", i."forge_created_at", p."connected_at", (s."imported_at" IS NOT NULL) AS imported,
-      (SELECT st."id" FROM "statements" st WHERE st."product_id" = i."product_id" AND st."check_issue" = i."number"
-        ORDER BY st."id" LIMIT 1) AS memory_id,
       (SELECT k."key" FROM "instance_state" st CROSS JOIN LATERAL jsonb_each_text(st."value") k
         WHERE st."key" = ${READINESS_KEY} || i."product_id"::text AND k."value" = i."number"::text
         LIMIT 1) AS readiness_check,
@@ -126,8 +121,8 @@ export const admittedToday = async (payload: Payload, now: Date): Promise<Map<nu
 
 export type Classified = { candidate: Candidate; selection: Selection }
 
-export const askedByFactory = (candidate: Pick<Candidate, 'memory' | 'readiness'>): boolean =>
-  candidate.memory !== null || candidate.readiness !== null
+export const askedByFactory = (candidate: Pick<Candidate, 'readiness'>): boolean =>
+  candidate.readiness !== null
 
 const asFactoryIssue = (candidate: Candidate): Candidate =>
   askedByFactory(candidate)

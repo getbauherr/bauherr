@@ -17,7 +17,7 @@ const openMemory = async (page: Page) => {
 
 const SEEDED = 'Say what changed in the handoff.'
 
-test('the Memory page lists what the factory remembers with how often it was handed and came back', async ({
+test('the Memory page lists what the factory remembers with how often it was handed', async ({
   page,
 }) => {
   await openMemory(page)
@@ -25,15 +25,14 @@ test('the Memory page lists what the factory remembers with how often it was han
   const queue = table.getByRole('row', { name: /Never block the queue/ })
   await expect(queue.getByRole('cell').nth(2)).toHaveText('This ticket only')
   await expect(queue.getByRole('cell').nth(3)).toHaveText('3')
-  await expect(queue.getByRole('cell').nth(4)).toHaveText('2')
-  await expect(queue.getByRole('cell').nth(5)).toHaveText('Active')
+  await expect(queue.getByRole('cell').nth(4)).toHaveText('Active')
+  await expect(table.getByRole('columnheader', { name: 'Came back' })).toHaveCount(0)
   const seeded = table.getByRole('row', { name: new RegExp(SEEDED) })
   await expect(seeded.getByRole('cell').nth(1)).toHaveText('You wrote it')
   await expect(seeded.getByRole('cell').nth(2)).toHaveText('Every ticket')
   const filters = page.getByRole('navigation', { name: 'Filter memory' })
-  await filters.getByRole('link', { name: /^Came back/ }).click()
-  await expect(table.getByRole('row', { name: /Never block the queue/ })).toBeVisible()
-  await expect(table.getByRole('row', { name: /Old rule nobody hit/ })).toHaveCount(0)
+  await expect(filters.getByRole('link')).toHaveText([/^All/, /^You said/, /^Agents found/, /^Off/])
+  await expect(page.getByText(/^New$|Wants a check|Came back/)).toHaveCount(0)
 })
 
 test('adds a memory for every ticket, edits it, switches it off and finds it under Off', async ({ page }) => {
@@ -47,7 +46,7 @@ test('adds a memory for every ticket, edits it, switches it off and finds it und
   const table = page.getByRole('table', { name: 'Memory' })
   const row = table.getByRole('row', { name: new RegExp(first.replace('.', '\\.')) })
   await expect(row.getByRole('cell').nth(2)).toHaveText('Every ticket')
-  await expect(row.getByRole('cell').nth(5)).toHaveText('Active')
+  await expect(row.getByRole('cell').nth(4)).toHaveText('Active')
   await row.getByRole('link', { name: first }).click()
   await page.getByLabel('What the factory remembers').fill(edited)
   await page.getByRole('button', { name: 'Save' }).click()
@@ -59,7 +58,7 @@ test('adds a memory for every ticket, edits it, switches it off and finds it und
   await page.goto('/memory/statements')
   await page.getByRole('navigation', { name: 'Filter memory' }).getByRole('link', { name: /^Off/ }).click()
   const off = table.getByRole('row', { name: new RegExp(edited.replace('.', '\\.')) })
-  await expect(off.getByRole('cell').nth(5)).toHaveText('Off')
+  await expect(off.getByRole('cell').nth(4)).toHaveText('Off')
 })
 
 test('a memory page lists the runs that got it and the run page lists the memory it was handed', async ({ page }) => {
@@ -75,40 +74,19 @@ test('a memory page lists the runs that got it and the run page lists the memory
 
 const LEARNED = ['Check the last row of every list.', 'Name the failing test in every finding.']
 
-const newMemories = (page: Page) =>
-  page.evaluate(() => {
-    const links = [...document.querySelectorAll('nav[aria-label="Main"] a')]
-    const link = links.find((a) => a.textContent?.startsWith('Memory'))
-    return Number(link?.textContent?.match(/(\d+) new/)?.[1] ?? 0)
-  })
-
-test('a memory the agents wrote shows New, says where it came from, and is no longer New once opened', async ({
+test('a memory the agents wrote earlier still shows its text and origin, without Learn or check parts', async ({
   page,
 }) => {
   const text = LEARNED[test.info().retry] ?? ''
   await openMemory(page)
-  await page.getByLabel('Product').selectOption({ label: 'Record Learn' })
+  await page.getByLabel('Product').selectOption({ label: 'Record Older' })
   await page.getByRole('button', { name: 'Show' }).click()
   const table = page.getByRole('table', { name: 'Memory' })
   const row = table.getByRole('row', { name: new RegExp(text) })
   await expect(row.getByRole('cell').nth(1)).toHaveText(/^Reviewer finding, #5$/)
-  await expect(row.getByRole('cell').nth(5)).toHaveText('New')
-  const before = await newMemories(page)
-  expect(before).toBeGreaterThan(0)
-  const filters = page.getByRole('navigation', { name: 'Filter memory' })
-  await filters.getByRole('link', { name: /^Agents found/ }).click()
-  await expect(table.getByRole('row', { name: new RegExp(text) })).toBeVisible()
-  await filters.getByRole('link', { name: /^You said/ }).click()
-  await expect(table.getByRole('row', { name: new RegExp(text) })).toHaveCount(0)
-
-  await filters.getByRole('link', { name: /^New/ }).click()
+  await expect(row.getByRole('cell').nth(4)).toHaveText('Active')
   await table.getByRole('link', { name: text }).click()
-  await expect(page.getByText('Written as a memory by Learn')).toBeVisible()
   await expect(page.getByText('The list drops the last row. Evidence: open the list with three rows')).toBeVisible()
-
-  await page.goto('/memory/statements')
-  await page.getByLabel('Product').selectOption({ label: 'Record Learn' })
-  await page.getByRole('button', { name: 'Show' }).click()
-  await expect(table.getByRole('row', { name: new RegExp(text) }).getByRole('cell').nth(5)).toHaveText('Active')
-  expect(await newMemories(page)).toBeLessThan(before)
+  await expect(page.getByText(/Learn|came back|Make it a check|Cost of coming back/i)).toHaveCount(0)
+  await expect(page.getByRole('columnheader', { name: 'Outcome' })).toHaveCount(0)
 })

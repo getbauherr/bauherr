@@ -13,7 +13,7 @@ const BRIEF_REASONS = [
   'backlog',
   'external-request',
   'sent-back',
-  'memory',
+  'readiness',
 ]
 
 describe('the words of a card', () => {

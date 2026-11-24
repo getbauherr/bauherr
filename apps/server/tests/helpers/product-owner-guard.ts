@@ -59,7 +59,6 @@ export const BAUHERR_ACTIONS = [
   '(shell)/memory/actions.ts#saveMemoryAction',
   '(shell)/memory/actions.ts#switchMemoryAction',
   '(shell)/memory/actions.ts#deleteMemoryAction',
-  '(shell)/memory/actions.ts#makeCheckAction',
   '(shell)/memory/document-actions.ts#saveDocumentAction',
   '(shell)/settings/state-action.ts#setProductState',
   '(shell)/settings/webhook-action.ts#createWebhookSecret',

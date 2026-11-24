@@ -16,8 +16,7 @@ const WRITES: Record<EventOf<'forge.write.done'>['data']['kind'], string> = {
 const article = (word: string): string => (/^[aeiou]/.test(word) ? 'An' : 'A')
 
 const runOf = (stage: string): string => {
-  const name = stage === 'done' ? 'learn' : stage
-  return `${article(name)} ${name} run`
+  return `${article(stage)} ${stage} run`
 }
 
 const CLOSED_LABELS = {
@@ -62,11 +61,6 @@ const LABELS: Labels = {
       : `No deploy result arrived in time for: ${e.data.checks.join(', ')}`,
   'result.accepted': () => 'The owner accepted the Result',
   'result.sent-back': (e) => `The owner sent the Result back: ${e.data.note}`,
-  'learn.submitted': (e) =>
-    e.data.memories === 0
-      ? 'Learn kept nothing'
-      : `Learn kept ${e.data.memories} ${e.data.memories === 1 ? 'memory' : 'memories'}`,
-  'learn.skipped': (e) => `Learn was skipped: ${e.data.reason}`,
   'production.approved': () => 'The owner approved production',
   'production.held': () => 'The owner holds production',
   'owner.note': (e) => `The owner left a note: ${e.data.note}`,

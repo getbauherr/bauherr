@@ -71,7 +71,7 @@ export const claim = async (payload: Conn, input: ClaimInput): Promise<Claimed |
       JOIN "products" p ON p."id" = r."product_id"
       WHERE s."status" = 'queued' AND s."role" = ${input.role} AND s."workspace_id" = ${input.workspace}
         AND (${executor}::text IS NULL OR coalesce(p."executor", 'session') = ${executor}::text)
-        AND (r."stage" <> 'done' OR s."stage" = 'done') AND NOT EXISTS (
+        AND r."stage" <> 'done' AND NOT EXISTS (
           SELECT 1 FROM "events" e WHERE e."record_id" = r."id" AND e."type" IN ${CLOSING_EVENTS}
             AND ${SINCE_RESTORE})
       ORDER BY r."rank", s."created_at", s."id" LIMIT 1 FOR UPDATE OF s SKIP LOCKED

@@ -1,6 +1,5 @@
 import { conflictNote } from './conflict-note'
 import type { AppEvent, EventOf, EventType, Stage } from './events'
-import { withLearning } from './fold-learn'
 
 export type Card = { card: 'question'; reason: string; options: string[]; text?: string }
 export type Verdict = { patchId: string; headSha: string }
@@ -31,7 +30,6 @@ export type State = {
   deployed: boolean
   deployStalled: { reason: 'failed' | 'overdue'; checks: string[] } | null
   accepted: boolean
-  learn: { corrected: boolean; learned: boolean }
   productionApproved: boolean
   productionHeld: boolean
   note: string | null
@@ -65,7 +63,6 @@ export const initialState = (): State => ({
   deployed: false,
   deployStalled: null,
   accepted: false,
-  learn: { corrected: false, learned: false },
   productionApproved: false,
   productionHeld: false,
   note: null,
@@ -320,7 +317,7 @@ const REDUCERS: Reducer[] = [intake, runs, owner, brief, patch, verify, ship, qu
 export const reduce = (state: State, event: AppEvent, options: FoldOptions): State => {
   if (event.type.startsWith('forge.write.')) return state
   const next = REDUCERS.reduce<State | null>((found, reducer) => found ?? reducer(state, event, options), null)
-  return { ...withLearning(next ?? state, event), last: event.type }
+  return { ...(next ?? state), last: event.type }
 }
 
 export const fold = (events: AppEvent[], options: FoldOptions = { productionGate: false }): State =>

@@ -244,7 +244,7 @@ describe('the whole flow on the fake forge', () => {
     expect((await f.view(s.id)).stage).toBe('done')
   })
 
-  it('works the Learn run of a corrected ticket read-only and keeps nothing for an empty answer', async () => {
+  it('sends an accepted ticket with a fixed finding straight to Done and starts no further run', async () => {
     const s = await r.toBuild()
     await r.next()
     await r.green(s)
@@ -261,13 +261,8 @@ describe('the whole flow on the fake forge', () => {
     const owner = { id: 'u7', role: 'bauherr', workspaceIds: [f.h.ids.workspace] }
     await decide(s.id, owner, { ask: 'result', choice: 'accept', seq: card?.seq ?? -1 }, f.subDeps())
     expect(await f.view(s.id)).toMatchObject({ stage: 'done', waitingOn: 'nobody' })
-    r.seen.length = 0
-    expect(await r.next()).toBe('accepted')
-    expect(r.seen[0]?.request).toMatchObject({ stage: 'done', model: 'model-for-reviewer', readOnly: true })
-    expect(await r.runRow('done')).toMatchObject({ status: 'submitted', leased_by: 'runner-reviewer' })
-    expect(await r.events(s.id)).toContain('learn.submitted')
     expect(await r.next()).toBe('idle')
-    expect(r.gone()).toBe(true)
+    expect(await r.runRow('done')).toBeUndefined()
   })
 
   it('pushes a send-back Build to the same pull request', async () => {

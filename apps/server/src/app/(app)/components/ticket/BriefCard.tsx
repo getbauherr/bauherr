@@ -21,14 +21,6 @@ export function BriefCard({ view, seq, reason, may }: Props) {
         actions={may ? BRIEF_ACTIONS : []}
       >
         <div className="grid gap-5 p-6">
-          {view.fromMemory && (
-            <p className="m-0">
-              From a memory:{' '}
-              <Link href={`/memory/${view.fromMemory.id}`} className="text-primary hover:underline">
-                {view.fromMemory.text}
-              </Link>
-            </p>
-          )}
           {view.fromReadiness !== null && (
             <p className="m-0">
               From the readiness check:{' '}
