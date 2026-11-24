@@ -23,7 +23,7 @@ import { loadMockups, type AttachmentView } from './attachments'
 import { keptMemories } from './statement-records'
 import { statementsUsed, type StatementsUsed } from './statements-used'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
-import { TERMINAL_EVENTS } from './sql'
+import { STAGE_ENTRY, TERMINAL_EVENTS } from './sql'
 import { statusOf, type TicketStatus } from './status'
 import {
   loadChecks,
@@ -75,6 +75,7 @@ export type TicketView = {
   mockups: AttachmentView[]
   noMockup: boolean
   pullRequest: PullView | null
+  verifySince: string | null
   similarItems: ItemHit[]
   adopted: { pr: number; author: string } | null
   otherPulls: OtherPull[]
@@ -122,6 +123,9 @@ const deployOf = (stored: StoredRecord, events: StoredEvent[], pull: PullView | 
   const { reason, checks } = stalled.data
   return { reason, checks, url: commitChecksUrl(stored.record.source.forge, pull.url, merged.data.sha) }
 }
+
+const verifySinceOf = (events: StoredEvent[]): string | null =>
+  events.findLast((event) => STAGE_ENTRY[event.type] === 'verify')?.createdAt ?? null
 
 const NOT_ENDED = { ended: null, closedAs: null } as const
 
@@ -192,6 +196,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     mockups,
     noMockup: lacksMockup(stored.record, mockups),
     ...pulls,
+    verifySince: verifySinceOf(events),
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),
     positions: positionsOf({ card: stored.card, record: stored.record, runs, events }),
