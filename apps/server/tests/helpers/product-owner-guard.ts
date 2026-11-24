@@ -120,6 +120,7 @@ export const BAUHERR_COLLECTIONS = [
   'human_touches',
   'instance_state',
   'knowledge_chunks',
+  'memory_document_versions',
   'mirror_checks',
   'mirror_comments',
   'mirror_items',
