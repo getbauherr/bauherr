@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import type { TicketView } from '../../../../core/views/ticket'
 import { Time } from '../Time'
 import { Card } from './Section'
@@ -16,13 +15,6 @@ export function ActivityList({ events, repo }: { events: TicketView['events']; r
             <Time iso={event.at} className="mono text-muted-foreground" />
             <span>
               <RefText text={event.label} repo={repo} />
-              {event.memories?.map((memory) => (
-                <span key={memory.id} className="block">
-                  <Link href={`/memory/${memory.id}`} className="text-primary hover:underline">
-                    {memory.text}
-                  </Link>
-                </span>
-              ))}
             </span>
           </li>
         ))}

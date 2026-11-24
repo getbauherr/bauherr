@@ -1,7 +1,6 @@
 import type { Payload } from 'payload'
 import { commitChecksUrl } from '../deploy'
 import { isRemembered } from '../decisions'
-import { sentenceOf } from '../memory-check'
 import { loadNotStarted, type NotStarted } from '../readiness/not-started'
 import { productOfRecord } from '../readiness/tickets'
 import { canArchive, canGoBack, fold } from '../lifecycle'
@@ -23,7 +22,6 @@ import { positionsOf, type Positions } from './positions'
 import { activityOf, type EventView } from './activity'
 import { loadShots, pairsOf, type Pair } from '../attachments/pairs'
 import { loadMockups, type AttachmentView } from './attachments'
-import { keptMemories } from './statement-records'
 import { statementsUsed, type StatementsUsed } from './statements-used'
 import { costOf, type TicketCost } from './cost-view'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
@@ -75,7 +73,6 @@ export type TicketView = {
   card: StoredCard | null
   record: TicketRecord
   source: { repo: string; number: number; title: string; body: string; url: string } | null
-  fromMemory: { id: number; text: string } | null
   fromReadiness: number | null
   checksNotStarted: NotStarted | null
   events: EventView[]
@@ -176,17 +173,10 @@ const pairsFor = async (payload: Payload, record: TicketRecord, recordId: number
   })
 }
 
-const withKept = async (payload: Payload, recordId: number, views: EventView[]): Promise<EventView[]> => {
-  if (!views.some((view) => view.type === 'learn.submitted')) return views
-  const memories = await keptMemories(payload, recordId)
-  return views.map((view) => (view.type === 'learn.submitted' ? { ...view, memories } : view))
-}
-
 const originOf = async (payload: Payload, stored: StoredRecord) => {
   const { workspace, id, record } = stored
   const [notStarted] = await loadNotStarted(payload, { workspace, recordId: id, now: new Date() })
   return {
-    fromMemory: await sentenceOf(payload, { workspace, id: record.source.memory }),
     fromReadiness: record.source.readiness === undefined ? null : await productOfRecord(payload, id),
     checksNotStarted: notStarted ?? null,
   }
@@ -227,7 +217,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     record: stored.record,
     ...(await originOf(payload, stored)),
     source: issue && { repo, number, title: issue.title, body: issue.body, url: issue.url },
-    events: await withKept(payload, stored.id, activityOf(events)),
+    events: activityOf(events),
     runs,
     proofs: await loadProofs(payload, stored.id),
     mockups,

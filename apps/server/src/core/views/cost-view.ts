@@ -1,10 +1,7 @@
-import { sql } from '@payloadcms/db-postgres'
-import type { Payload } from 'payload'
-import { z } from 'zod'
 import { median } from './insights'
 import type { RunCost, TicketData } from './time-load'
 
-export const COST_ROWS = ['intake', 'brief', 'build', 'review', 'verify', 'learn'] as const
+export const COST_ROWS = ['intake', 'brief', 'build', 'review', 'verify'] as const
 export type CostKey = (typeof COST_ROWS)[number]
 
 export type TicketCost = { costUsd: number | null; measured: number; runs: number }
@@ -28,7 +25,6 @@ export const TOP = 3
 
 export const keyOf = (run: Pick<RunCost, 'stage' | 'role'>): CostKey | null => {
   if (run.stage === 'verify') return run.role === 'reviewer' ? 'review' : 'verify'
-  if (run.stage === 'done') return 'learn'
   return run.stage === 'intake' || run.stage === 'brief' || run.stage === 'build' ? run.stage : null
 }
 
@@ -80,49 +76,5 @@ export const summarizeCost = (tickets: TicketData[]): CostSummary => {
     },
     tickets: { all: tickets.length, measured: measured.length },
     top,
-  }
-}
-
-export type ComingBack = { tickets: number; rounds: number; seconds: number } & TicketCost
-
-const backRow = z.object({
-  tickets: z.coerce.number(),
-  rounds: z.coerce.number(),
-  seconds: z.coerce.number(),
-  cost: z.coerce.number().nullable(),
-  runs: z.coerce.number(),
-  measured: z.coerce.number(),
-})
-
-export const costOfComingBack = async (
-  payload: Payload,
-  where: { workspace: number; id: number },
-): Promise<ComingBack | null> => {
-  const found = await payload.db.drizzle.execute(sql`
-    WITH fixes AS (
-      SELECT DISTINCT (c.v->>'record')::int AS record_id FROM "statements" s
-      CROSS JOIN LATERAL jsonb_array_elements(s."came_back") AS c(v)
-      WHERE s."id" = ${where.id} AND s."workspace_id" = ${where.workspace}
-    ), corrected AS (
-      SELECT f.record_id, min(e."created_at") AS at FROM fixes f
-      LEFT JOIN "events" e ON e."record_id" = f.record_id
-        AND e."type" IN ('result.sent-back', 'brief.changes-requested')
-      GROUP BY f.record_id
-    )
-    SELECT count(DISTINCT c.record_id) AS tickets, count(r."id") FILTER (WHERE r."stage" = 'build') AS rounds,
-      coalesce(sum(extract(epoch FROM r."finished_at" - r."started_at")), 0) AS seconds,
-      sum(r."cost_usd") FILTER (WHERE r."cost_source" = 'gateway') AS cost, count(r."id") AS runs,
-      count(r."id") FILTER (WHERE r."cost_source" = 'gateway') AS measured
-    FROM corrected c LEFT JOIN "stage_runs" r ON r."record_id" = c.record_id AND r."stage" IN ('build', 'verify')
-      AND r."started_at" IS NOT NULL AND r."created_at" >= c.at`)
-  const row = backRow.parse(found.rows[0])
-  if (row.tickets === 0) return null
-  return {
-    tickets: row.tickets,
-    rounds: row.rounds,
-    seconds: row.seconds,
-    costUsd: row.measured === 0 ? null : row.cost,
-    measured: row.measured,
-    runs: row.runs,
   }
 }

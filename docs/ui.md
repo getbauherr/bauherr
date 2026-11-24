@@ -123,7 +123,7 @@ Only an Admin edits, except Profile and API keys. Members read the rest. The sid
 
 ## Memory
 
-`/memory` lists one Product's memory and marks what Learn wrote as New. A memory page edits, switches off or deletes it. The run page lists the memory a run got.
+`/memory` lists one Product's memory, also what agents wrote earlier, with where each came from. A memory page edits, switches off or deletes it. The run page lists the memory a run got.
 
 ## Not in the UI, by design
 

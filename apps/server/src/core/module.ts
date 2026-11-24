@@ -3,7 +3,6 @@ import type { z } from 'zod'
 import type { AppEvent, Stage } from './events'
 import type { Conn } from './conn'
 import type { State } from './fold'
-import type { LearnResult } from './learn-result'
 import type { Config, Role } from './lifecycle'
 import type { RecordField, TicketRecord } from './record/schema'
 import type { Run } from './run/schema'
@@ -20,7 +19,6 @@ export type Applied = {
   patch: Partial<TicketRecord>
   events: AppEvent[]
   effects?: Effect[]
-  memory?: LearnResult
 }
 
 export type ModuleDefinition<Result> = {
@@ -43,12 +41,11 @@ export type LifecycleModule = {
   apply: (record: TicketRecord, result: unknown, run: Run, context: ApplyContext) => Applied
 }
 
-export type ModuleKey = Stage | 'review' | 'learn'
+export type ModuleKey = Stage | 'review'
 export type Modules = Partial<Record<ModuleKey, LifecycleModule>>
 
 export const moduleKey = (stage: Stage, role: Role): ModuleKey => {
-  if (role !== 'reviewer') return stage
-  return stage === 'done' ? 'learn' : 'review'
+  return role === 'reviewer' ? 'review' : stage
 }
 
 export const defineModule = <Result>(definition: ModuleDefinition<Result>): LifecycleModule => {

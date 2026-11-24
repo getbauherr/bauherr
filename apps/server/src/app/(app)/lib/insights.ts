@@ -45,7 +45,6 @@ export const COST_WORDS: Record<CostKey, string> = {
   build: 'Build',
   review: 'Review',
   verify: 'Verify',
-  learn: 'Learn',
 }
 
 export const span = (seconds: number | null): string => {
