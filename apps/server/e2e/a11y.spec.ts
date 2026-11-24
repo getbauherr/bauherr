@@ -32,15 +32,14 @@ const scan = async (page: Page) => {
 }
 
 const setTheme = (page: Page, id: 'light' | 'dark') =>
-  page.evaluate((t) => {
+  page.evaluate(async (t) => {
     localStorage.setItem('bauherr-theme', t)
     document.documentElement.dataset.theme = t
-    return Promise.all(
-      document
-        .getAnimations()
-        .filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime))
-        .map((a) => a.finished.catch(() => {})),
-    )
+    const all = document.getAnimations().filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime))
+    const done = Promise.all(all.map((a) => a.finished.catch(() => {}))).then(() => true)
+    if (!(await Promise.race([done, new Promise((r) => setTimeout(r, 20_000, false))])))
+      throw new Error('DIAG ' + all.filter((a) => a.playState !== 'finished').map((a) => a.playState + ' ' +
+        (a.effect?.target as Element | null)?.outerHTML.slice(0, 160)).join(' || '))
   }, id)
 
 const signIn = async (page: Page) => {
