@@ -37,12 +37,13 @@ describe('ask options', () => {
     await m.e.drain()
   })
 
-  it('accepts normal options', async () => {
+  it.each([
+    [['Close this modal on save', 'Send the payload back to the caller', 'Send back 404 for an unknown session']],
+    [['Parking is out of scope', 'Send it back to the client as JSON', 'Discard it and recompute from source']],
+  ])('accepts normal options %#', async (options) => {
     await m.e.drain()
     const record = await m.begin()
     const run = await m.claimed(m.alpha)
-    const options = ['Close this modal on save', 'Parking is out of scope', 'Send back 404 for an unknown session']
-    options.push('Discard it and recompute from source')
     const ids = { runId: run.runId, leaseToken: run.leaseToken }
     expect(await m.call('ask', { ...ids, question: 'Which?', options }, m.agent(m.alpha))).toEqual({ status: 'asked' })
     expect(await m.e.view(record)).toMatchObject({ card: { card: 'question', options } })

@@ -6,7 +6,7 @@ import { defineTool, leaseToken, ownRun, runId } from './tool'
 const TICKET_VERB = '(?:discard|clos|park|archiv)\\w*'
 const STAGE_MOVES = [
   /\bback to (?:the )?brief\b/i,
-  /\bsend(?:s|ing)?\b(?:\s+\w+){0,2}\s+back\s+to\b/i,
+  /\bsend(?:s|ing)?\b(?:\s+\w+){0,2}\s+back\s+to\s+(?:the\s+)?(?:brief|build|verify|review|intake)\b/i,
   new RegExp(`\\b${TICKET_VERB}\\b(?:\\s+\\w+){0,2}\\s+(?:ticket|issue|brief)\\b`, 'i'),
   new RegExp(`^\\s*${TICKET_VERB}\\s*(?::|-|$)`, 'i'),
 ]
