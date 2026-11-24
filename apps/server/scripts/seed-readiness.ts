@@ -23,7 +23,7 @@ export const seedReadiness = async (p: Payload): Promise<void> => {
     stagingWorkflow: '.github/workflows/staging.yml',
     productionWorkflow: '.github/workflows/production.yml',
     versionInput: 'version',
-    stagingAddress: 'https://staging.bauherr.einsfuenf.de',
+    stagingAddress: 'https://staging.example.com',
     commitEndpoint: false,
     lastVersion: 'v0.6.0',
     canWrite: true,
