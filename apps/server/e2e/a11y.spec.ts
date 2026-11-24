@@ -58,16 +58,26 @@ const linkOn = (from: string, re: RegExp) => async (page: Page) => {
   return href!
 }
 
-const inFactory = (url: string) => async (page: Page) => {
+const inWorkspace = (slug: string, url: string) => async (page: Page) => {
   const base = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'factory', url: base }])
+  await page.context().addCookies([{ name: 'bauherr-ws', value: slug, url: base }])
   return url
 }
 
-const inRecord = (url: string) => async (page: Page) => {
-  const base = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'record', url: base }])
-  return url
+const inFactory = (url: string) => inWorkspace('factory', url)
+
+const inRecord = (url: string) => inWorkspace('record', url)
+
+const inInsights = (url: string) => inWorkspace('insights', url)
+
+const insightsTicket = async (page: Page) => {
+  await inInsights('/insights')(page)
+  return linkOn('/insights', /^\/tickets\/\d+$/)(page)
+}
+
+const insightsMemory = async (page: Page) => {
+  await inInsights('/memory')(page)
+  return linkOn('/memory', /^\/memory\/\d+$/)(page)
 }
 
 const memoryOne = async (page: Page) => {
@@ -93,11 +103,7 @@ const withHoldStrip = (url: string) => async (page: Page) => {
   return url
 }
 
-const inHooks = (url: string) => async (page: Page) => {
-  const base = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'hooks', url: base }])
-  return url
-}
+const inHooks = (url: string) => inWorkspace('hooks', url)
 
 const inboxAt = (width: number) => async (page: Page) => {
   await page.setViewportSize({ width, height: 800 })
@@ -150,9 +156,16 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'cannot-run line': withHoldStrip('/'),
   },
   '/inbox': { desktop: inboxAt(1280), 'at 390 px': inboxAt(390) },
+  '/insights': {
+    'with time and cost': inInsights('/insights'),
+    'nothing done in the range': inRecord('/insights'),
+  },
   '/memory': inRecord('/memory'),
   '/memory/new': inRecord('/memory/new'),
-  '/memory/[id]': memoryOne,
+  '/memory/[id]': {
+    'with a ticket': memoryOne,
+    'with the cost of coming back': insightsMemory,
+  },
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
     'Brief card with earlier answers': inTickets('Large export needs earlier answers'),
@@ -166,6 +179,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     Intake: inTickets('Intake waiting for the reporter'),
     'adopted, waiting on the author': inTickets('Adopted pull request waiting on its author'),
     'adopted, Result card': inTickets('Adopted pull request with a result'),
+    'time and cost': insightsTicket,
   },
   '/runs/[id]': {
     claimed: runOf('Build with reported steps'),

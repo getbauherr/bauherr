@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { markMemorySeen } from '../../../../../core/memory-store'
+import { costOfComingBack } from '../../../../../core/views/cost-view'
 import { memoryProducts, statementFare, statementRecord } from '../../../../../core/views/statement-records'
 import { CheckAside } from '../../../components/memory/CheckAside'
+import { CostOfComingBack } from '../../../components/memory/ComingBack'
 import { MemoryState } from '../../../components/memory/CheckState'
 import { EditMemory } from '../../../components/memory/EditMemory'
 import { Fared, Origin } from '../../../components/memory/MemoryDetail'
@@ -24,6 +26,7 @@ export default async function MemoryOnePage({ params }: { params: Promise<{ id: 
   if (!product) notFound()
   await markMemorySeen(payload, { workspace: workspace.id, id })
   const fares = await statementFare(payload, { workspace: workspace.id, id })
+  const back = await costOfComingBack(payload, { workspace: workspace.id, id })
   const title = record.text.length > TITLE_MAX ? `${record.text.slice(0, TITLE_MAX)}…` : record.text
   const stages = record.stages
   return (
@@ -50,7 +53,10 @@ export default async function MemoryOnePage({ params }: { params: Promise<{ id: 
           <Origin record={record} product={product.name} />
           <Fared fares={fares} />
         </EditMemory>
-        <CheckAside record={record} repo={product.repo} />
+        <div className="grid content-start gap-4">
+          <CheckAside record={record} repo={product.repo} />
+          {back && <CostOfComingBack back={back} />}
+        </div>
       </div>
     </>
   )

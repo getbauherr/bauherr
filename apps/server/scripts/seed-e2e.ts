@@ -11,6 +11,7 @@ import { seedTickets } from '../tests/core/ticket-scenario'
 import { seedConnect } from './seed-connect'
 import { seedSomeday } from './seed-someday'
 import { seedCheck } from './seed-check'
+import { seedInsights } from './seed-insights'
 import { seedStatements } from './seed-statements'
 
 const env = (k: string): string => {
@@ -184,6 +185,7 @@ await seedConnect(payload)
 await seedSomeday(payload)
 await seedStatements(payload)
 await seedCheck(payload)
+await seedInsights(payload)
 
 await ensure(
   'human_touches',

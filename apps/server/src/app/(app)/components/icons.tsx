@@ -116,6 +116,7 @@ export const Inbox = icon(
   </>,
 )
 export const Memory = icon(<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />)
+export const Chart = icon(<path d="M3 3v16a2 2 0 0 0 2 2h16M18 17V9M13 17V5M8 17v-3" />)
 export const Clock = icon(
   <>
     <circle cx="12" cy="12" r="10" />
