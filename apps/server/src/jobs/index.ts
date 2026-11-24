@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload, TaskConfig } from 'payload'
 import { expireRunsTask } from '../core/expire-task'
 import { mirrorItemTask, mirrorSyncTask } from '../core/jobs'
+import { readinessTask } from '../core/readiness/job'
 import { checkGateway } from '../lib/gateway-health'
 import { resync } from '../lib/knowledge'
 import { refreshPrices } from '../lib/prices'
@@ -127,6 +128,7 @@ export const TASKS = [
   mirrorSyncTask(scheduled('0 * * * * *'), afterSync),
   mirrorItemTask(afterSync),
   intakeSweepTask(scheduled('0 * * * * *')),
+  readinessTask(scheduled('0 0 8 * * *')),
   runAgentTask(),
   measureCostTask,
 ]

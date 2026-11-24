@@ -68,7 +68,7 @@ const GATES: { reason: BriefReason; applies: (record: TicketRecord, riskAreas: s
     reason: 'external-request',
     applies: (r) => r.source.external && (r.type === 'feature' || r.type === 'change'),
   },
-  { reason: 'memory', applies: (r) => r.source.memory !== undefined },
+  { reason: 'memory', applies: (r) => r.source.memory !== undefined || r.source.readiness !== undefined },
 ]
 
 export const briefGate = (record: TicketRecord, config: Pick<Config, 'riskAreas'>): BriefReason | null =>
