@@ -222,7 +222,13 @@ describe('the before and after pairs', () => {
     const found = messages({ shots: both('List').slice(0, 1) })
     expect(found).toHaveLength(2)
     expect(found[0]).toContain('Screen "List" has no after picture at width 1280')
-    expect(found[1]).toContain('Screen "Detail" has no before and no after picture')
+    expect(found[1]).toContain('Screen "Detail": attach a before and an after at 1280 px')
+  })
+
+  it('refuses a screen that only has a pair at 390 px', () => {
+    const phone = [shot('before', 'List', 390), shot('after', 'List', 390)]
+    const found = messages({ shots: [...phone, ...both('Detail')] })
+    expect(found).toEqual([expect.stringContaining('Screen "List": attach a before and an after at 1280 px')])
   })
 
   it('names a missing before', () => {
@@ -233,7 +239,7 @@ describe('the before and after pairs', () => {
   it('refuses another width and an after that is not the head', () => {
     const wide = [shot('before', 'List', 390), shot('after', 'List')]
     const found = messages({ shots: [...wide, ...both('Detail')] })
-    expect(found).toEqual([expect.stringContaining('width 390'), expect.stringContaining('width 1280')])
+    expect(found).toEqual([expect.stringContaining('width 1280'), expect.stringContaining('width 390')])
     const old = [shot('before', 'List'), shot('after', 'List', 1280, 'h0')]
     expect(messages({ shots: [...old, ...both('Detail')] })).toEqual([expect.stringContaining('pull request head')])
   })

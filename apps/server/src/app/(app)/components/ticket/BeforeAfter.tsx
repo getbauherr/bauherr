@@ -39,7 +39,7 @@ function PairBlock({ pair }: { pair: ScreenPair }) {
     <div className="grid gap-2">
       <h3 className="m-0 font-semibold">
         {pair.screen}
-        {pair.width !== null && ` · ${pair.width} px`}
+        {` · ${pair.width} px`}
       </h3>
       <ImageGallery images={[...(before ? [before] : []), ...(after ? [after] : []), plan]} captions />
       {missing && <p className="small m-0 text-muted-foreground">{missing}</p>}
