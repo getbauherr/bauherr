@@ -55,6 +55,12 @@ const EXCEPTIONS = [
       'Payload relationships always generate ON DELETE SET NULL and have no option for it.',
   },
   {
+    prefix: 'constraint repo_instruction_files repo_instruction_files_workspace_id_workspaces_id_fk ',
+    reason:
+      'The repository files go with their Workspace (ON DELETE CASCADE); ' +
+      'Payload relationships always generate ON DELETE SET NULL and have no option for it.',
+  },
+  {
     prefix: 'index bauherren_oidc_subject_idx ',
     reason:
       'The migration makes it unique and partial (WHERE oidc_subject IS NOT NULL); ' +
@@ -150,3 +156,28 @@ it('the migrations build the same schema as the collections, except the named ex
 it('every schema exception states its reason', () => {
   expect(EXCEPTIONS.filter((e) => e.reason.length < 20)).toEqual([])
 })
+
+it('deleting a Workspace deletes its repository files in the migrated schema', async () => {
+  const client = new pg.Client({ connectionString: migrated.url })
+  await client.connect()
+  try {
+    const id = async (q: string, params: unknown[] = []) => (await client.query<{ id: number }>(q, params)).rows[0].id
+    const host = await id(`INSERT INTO workspaces (name, slug) VALUES ('host', 'repo-files-host') RETURNING id`)
+    const gone = await id(`INSERT INTO workspaces (name, slug) VALUES ('gone', 'repo-files-gone') RETURNING id`)
+    const product = await id(
+      `INSERT INTO products (name, slug, workspace_id) VALUES ('p', 'repo-files-p', $1) RETURNING id`,
+      [host],
+    )
+    for (const ws of [gone, host])
+      await client.query(
+        `INSERT INTO repo_instruction_files (workspace_id, product_id, repo, path, lines, chars, commit, synced_at)
+        VALUES ($1, $2, 'o/r', 'AGENTS.md', 1, 1, 'abc', now())`,
+        [ws, product],
+      )
+    await client.query('DELETE FROM workspaces WHERE id = $1', [gone])
+    const left = await client.query('SELECT workspace_id FROM repo_instruction_files')
+    expect(left.rows).toEqual([{ workspace_id: host }])
+  } finally {
+    await client.end()
+  }
+}, 30_000)
