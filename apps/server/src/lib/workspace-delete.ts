@@ -179,7 +179,7 @@ export const PURGE_ORDER: { table: string; where: (ws: number) => ReturnType<typ
   { table: 'workspaces', where: (ws) => sql`"id" = ${ws}` },
 ]
 
-export const PURGE_CASCADED = ['bauherren_rels', 'payload_locked_documents_rels']
+export const PURGE_CASCADED = ['bauherren_rels', 'payload_locked_documents_rels', 'learn_events_archive']
 
 type Person = {
   id: number

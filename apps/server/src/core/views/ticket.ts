@@ -1,6 +1,8 @@
 import type { Payload } from 'payload'
 import { commitChecksUrl } from '../deploy'
 import { isRemembered } from '../decisions'
+import { loadNotStarted, type NotStarted } from '../readiness/not-started'
+import { productOfRecord } from '../readiness/tickets'
 import { canArchive, canGoBack, fold } from '../lifecycle'
 import { RecordNotFound } from '../record/errors'
 import {
@@ -70,6 +72,8 @@ export type TicketView = {
   card: StoredCard | null
   record: TicketRecord
   source: { repo: string; number: number; title: string; body: string; url: string } | null
+  fromReadiness: number | null
+  checksNotStarted: NotStarted | null
   events: EventView[]
   runs: RunView[]
   proofs: ProofGroup[]
@@ -156,6 +160,15 @@ const statusFor = (stored: StoredRecord, runs: RunView[], events: StoredEvent[],
 const lacksMockup = (record: TicketRecord, mockups: AttachmentView[]): boolean =>
   record.visible && mockups.length === 0
 
+const originOf = async (payload: Payload, stored: StoredRecord) => {
+  const { workspace, id, record } = stored
+  const [notStarted] = await loadNotStarted(payload, { workspace, recordId: id, now: new Date() })
+  return {
+    fromReadiness: record.source.readiness === undefined ? null : await productOfRecord(payload, id),
+    checksNotStarted: notStarted ?? null,
+  }
+}
+
 const timingOf = async (payload: Payload, recordId: number): Promise<TicketView['timing']> => {
   const [data] = await loadTickets(payload, [recordId], new Date())
   if (!data) throw new RecordNotFound(`Record ${recordId} does not exist: check the id.`)
@@ -189,6 +202,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     parked: stored.parked,
     card: stored.card,
     record: stored.record,
+    ...(await originOf(payload, stored)),
     source: issue && { repo, number, title: issue.title, body: issue.body, url: issue.url },
     events: activityOf(events),
     runs,

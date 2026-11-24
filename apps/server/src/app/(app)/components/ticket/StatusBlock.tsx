@@ -61,6 +61,7 @@ function StatusBody({ view }: { view: TicketView }) {
     <>
       <p role="status">{sentenceOf(view, run)}</p>
       {ended && <Facts rows={[['Last run', <RunLink key="run" id={ended.id} word={ENDED_WORDS[ended.status]} />]]} />}
+      {view.checksNotStarted && <Facts rows={[['Checks not started', view.checksNotStarted.text]]} />}
       <Checks view={view} />
       {run && (
         <Facts

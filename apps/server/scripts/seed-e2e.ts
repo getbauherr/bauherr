@@ -10,6 +10,7 @@ import { seedMockupTicket } from '../tests/core/mockup-scenario'
 import { seedTickets } from '../tests/core/ticket-scenario'
 import { seedConnect } from './seed-connect'
 import { seedSomeday } from './seed-someday'
+import { seedReadiness } from './seed-readiness'
 import { seedInsights } from './seed-insights'
 import { seedStatements } from './seed-statements'
 
@@ -183,6 +184,7 @@ if (!ticketsSeeded.docs.length) {
 await seedConnect(payload)
 await seedSomeday(payload)
 await seedStatements(payload)
+await seedReadiness(payload)
 await seedInsights(payload)
 
 await ensure(

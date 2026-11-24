@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import { stageSchema, type Stage } from '../events'
+import { loadNotStarted } from '../readiness/not-started'
 import { loadRows } from './rows'
 import { isStuck } from './status'
 
@@ -13,6 +14,7 @@ export type Hold =
   | { kind: 'runner-idle'; queued: number }
   | { kind: 'tickets-stuck'; tickets: { recordId: number; repo: string; number: number }[] }
   | { kind: 'sync-failed'; repo: string; error: string; at: string | null }
+  | { kind: 'checks-not-started'; recordId: number; number: number; waitedMinutes: number }
 
 export type HoldFilter = { workspace: number; now: Date }
 
@@ -81,9 +83,15 @@ const failedSyncs = async (payload: Payload, { workspace }: HoldFilter): Promise
   })
 }
 
+const checksNotStarted = async (payload: Payload, { workspace, now }: HoldFilter): Promise<Hold[]> =>
+  (await loadNotStarted(payload, { workspace, now })).map(
+    ({ recordId, number, waitedMinutes }): Hold => ({ kind: 'checks-not-started', recordId, number, waitedMinutes }),
+  )
+
 export const holds = async (payload: Payload, filter: HoldFilter): Promise<Hold[]> => [
   ...(await observing(payload, filter)),
   ...(await unattended(payload, filter)),
   ...(await stuck(payload, filter)),
   ...(await failedSyncs(payload, filter)),
+  ...(await checksNotStarted(payload, filter)),
 ]

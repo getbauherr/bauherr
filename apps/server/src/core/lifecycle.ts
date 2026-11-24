@@ -34,6 +34,7 @@ export type BriefReason =
   | 'backlog'
   | 'external-request'
   | 'sent-back'
+  | 'readiness'
 export type Step =
   | { kind: 'run'; stage: Stage; role: Role }
   | { kind: 'card'; card: 'brief' | 'result' | 'question'; reason: string; options: string[] }
@@ -67,6 +68,7 @@ const GATES: { reason: BriefReason; applies: (record: TicketRecord, riskAreas: s
     reason: 'external-request',
     applies: (r) => r.source.external && (r.type === 'feature' || r.type === 'change'),
   },
+  { reason: 'readiness', applies: (r) => r.source.readiness !== undefined },
 ]
 
 export const briefGate = (record: TicketRecord, config: Pick<Config, 'riskAreas'>): BriefReason | null =>

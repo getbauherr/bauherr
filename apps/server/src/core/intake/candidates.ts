@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
+import { READINESS_KEY } from '../readiness/tickets'
 import { select, type IntakeItem, type IntakeSettings, type Selection } from './select'
 
 export type Candidate = {
@@ -15,6 +16,7 @@ export type Candidate = {
   createdAt: string
   connectedAt: string | null
   imported: boolean
+  readiness: string | null
   item: IntakeItem
   settings: IntakeSettings
 }
@@ -35,6 +37,7 @@ const candidateRow = z.object({
   forge_created_at: z.coerce.date(),
   connected_at: z.coerce.date().nullable(),
   imported: z.boolean(),
+  readiness_check: z.string().nullable(),
   kind: z.enum(['issue', 'pr']),
   state: z.enum(['open', 'closed', 'merged']),
   gone: z.boolean(),
@@ -63,6 +66,7 @@ const toCandidate = (row: unknown): Candidate => {
     createdAt: r.forge_created_at.toISOString(),
     connectedAt: r.connected_at?.toISOString() ?? null,
     imported: r.imported,
+    readiness: r.readiness_check,
     item: {
       kind: r.kind,
       state: r.state,
@@ -81,6 +85,9 @@ export const loadCandidates = async (payload: Payload, product: number | null): 
   const result = await payload.db.drizzle.execute(sql`
     SELECT i."id" AS item_id, i."workspace_id", i."product_id", c."kind"::text AS forge, i."repo", i."number",
       i."title", i."url", i."forge_created_at", p."connected_at", (s."imported_at" IS NOT NULL) AS imported,
+      (SELECT k."key" FROM "instance_state" st CROSS JOIN LATERAL jsonb_each_text(st."value") k
+        WHERE st."key" = ${READINESS_KEY} || i."product_id"::text AND k."value" = i."number"::text
+        LIMIT 1) AS readiness_check,
       i."kind", i."state",
       (i."gone_at" IS NOT NULL) AS gone,
       i."author", i."author_trusted", i."author_is_bot", i."labels", i."assignees",
@@ -114,6 +121,14 @@ export const admittedToday = async (payload: Payload, now: Date): Promise<Map<nu
 
 export type Classified = { candidate: Candidate; selection: Selection }
 
+export const askedByFactory = (candidate: Pick<Candidate, 'readiness'>): boolean =>
+  candidate.readiness !== null
+
+const asFactoryIssue = (candidate: Candidate): Candidate =>
+  askedByFactory(candidate)
+    ? { ...candidate, item: { ...candidate.item, authorTrusted: true, authorIsBot: false } }
+    : candidate
+
 const bump = (counts: Record<string, number>, author: string): Record<string, number> => ({
   ...counts,
   [author]: (counts[author] ?? 0) + 1,
@@ -122,7 +137,8 @@ const bump = (counts: Record<string, number>, author: string): Record<string, nu
 export const classify = async (payload: Payload, now: Date, product: number | null): Promise<Classified[]> => {
   const admitted = await admittedToday(payload, now)
   const classified: Classified[] = []
-  for (const candidate of await loadCandidates(payload, product)) {
+  for (const loaded of await loadCandidates(payload, product)) {
+    const candidate = asFactoryIssue(loaded)
     const counts = admitted.get(candidate.product) ?? {}
     const selection = select(candidate.item, candidate.settings, { admittedTodayByAuthor: counts })
     if (selection.action === 'enter' && !candidate.item.authorTrusted) {
