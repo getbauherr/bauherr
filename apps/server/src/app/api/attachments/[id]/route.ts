@@ -1,3 +1,4 @@
+import { HTML_TYPE, MOCKUP_POLICY } from '../../../../core/attachments/image'
 import { readImage } from '../../../../core/views/attachments'
 import { isBauherr, isProductOwner } from '../../../../lib/people'
 import { getPerson, payloadClient, workspacesOf } from '../../../(app)/lib/session'
@@ -22,6 +23,7 @@ export const GET = async (_req: Request, context: Context): Promise<Response> =>
       'X-Content-Type-Options': 'nosniff',
       'Content-Disposition': 'inline',
       'Cache-Control': 'private, max-age=3600',
+      ...(image.contentType === HTML_TYPE ? { 'Content-Security-Policy': MOCKUP_POLICY } : {}),
     },
   })
 }

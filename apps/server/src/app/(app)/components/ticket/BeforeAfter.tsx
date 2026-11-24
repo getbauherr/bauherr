@@ -30,6 +30,24 @@ export function FlipFrame({ before, after }: { before: ImageRef; after: ImageRef
   )
 }
 
+function PhoneToggle({ after, plan }: { after: ImageRef; plan: ImageRef }) {
+  const [showAfter, setShowAfter] = useState(true)
+  const shown = showAfter ? after : plan
+  return (
+    <div className="grid gap-2 sm:hidden">
+      <div className="flex gap-2">
+        <button type="button" className={BUTTON} aria-pressed={!showAfter} onClick={() => setShowAfter(false)}>
+          Mockup
+        </button>
+        <button type="button" className={BUTTON} aria-pressed={showAfter} onClick={() => setShowAfter(true)}>
+          After
+        </button>
+      </div>
+      <img src={sourceOf(shown)} alt={shown.caption} className="block h-auto w-full rounded-md border border-border" />
+    </div>
+  )
+}
+
 function PairBlock({ pair }: { pair: ScreenPair }) {
   const before = pictureOf('Before', pair, pair.before?.id)[0]
   const after = pictureOf('After', pair, pair.after?.id)[0]
@@ -41,9 +59,16 @@ function PairBlock({ pair }: { pair: ScreenPair }) {
         {pair.screen}
         {` · ${pair.width} px`}
       </h3>
-      <ImageGallery images={[...(before ? [before] : []), ...(after ? [after] : []), plan]} captions columns />
+      {after && <PhoneToggle after={after} plan={plan} />}
+      <div className={after ? 'hidden sm:block' : ''}>
+        <ImageGallery images={[...(before ? [before] : []), ...(after ? [after] : []), plan]} captions columns />
+      </div>
       {missing && <p className="small m-0 text-muted-foreground">{missing}</p>}
-      {before && after && <FlipFrame before={before} after={after} />}
+      {before && after && (
+        <div className="hidden sm:block">
+          <FlipFrame before={before} after={after} />
+        </div>
+      )}
     </div>
   )
 }

@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react'
 import type { TicketRecord } from '../../../../core/record/schema'
 import type { AttachmentView } from '../../../../core/views/attachments'
+import { diffLines } from '../../../../core/record/diff'
 import { CriteriaTable } from './CriteriaTable'
+import { DiffBlock } from './DiffBlock'
+import { MermaidBlock } from './MermaidBlock'
 import { MockupRow } from './MockupRow'
 import { Facts, Section } from './Section'
 import { RefText } from '../RefText'
@@ -30,6 +33,16 @@ export function BriefSheet({ record, mockups, missing, reason }: Props) {
       <Section title="Goal">
         <p><RefText text={record.goal} repo={repo} /></p>
       </Section>
+      {record.shape !== '' && (
+        <Section title="Shape">
+          <DiffBlock lines={diffLines(record.shape)} label="Shape of the change" />
+        </Section>
+      )}
+      {record.flow !== '' && (
+        <Section title="Flow">
+          <MermaidBlock source={record.flow} />
+        </Section>
+      )}
       <MockupRow mockups={mockups} missing={missing} />
       <Section title="Acceptance criteria">
         <CriteriaTable criteria={record.criteria} repo={repo} mode="brief" />

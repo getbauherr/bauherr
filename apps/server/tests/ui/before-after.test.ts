@@ -5,7 +5,7 @@ import { BeforeAfter, missingOf } from '../../src/app/(app)/components/ticket/Be
 import type { ScreenPair } from '../../src/core/views/ticket'
 
 const shot = (id: number, kind: 'before' | 'after') => ({ id, kind, screen: 'List', width: 1280, sha: 'h1' })
-const mockup = { id: 9, caption: 'List (wide)', screen: 'List', bytes: 2 }
+const mockup = { id: 9, caption: 'List (wide)', screen: 'List', bytes: 2, html: false }
 const pair = (extra: Partial<ScreenPair> = {}): ScreenPair => ({
   screen: 'List',
   width: 1280,
@@ -53,5 +53,18 @@ describe('BeforeAfter', () => {
     expect(missingOf(pair({ before: null, after: null }))).toBe('Missing: a before and an after picture.')
     expect(missingOf(pair({ before: null }))).toBe('Missing: the before picture.')
     expect(missingOf(pair())).toBeNull()
+  })
+})
+
+describe('BeforeAfter on a phone', () => {
+  it('switches between the mockup and the after picture', () => {
+    render(createElement(BeforeAfter, { pairs: [pair()] }))
+    const mockupButton = screen.getByRole('button', { name: 'Mockup' })
+    const phone = () => mockupButton.parentElement!.parentElement!.querySelector('img')!
+    expect(phone().getAttribute('src')).toBe('/api/attachments/2')
+    fireEvent.click(mockupButton)
+    expect(phone().getAttribute('src')).toBe('/api/attachments/9')
+    fireEvent.click(screen.getByRole('button', { name: 'After' }))
+    expect(phone().getAttribute('src')).toBe('/api/attachments/2')
   })
 })

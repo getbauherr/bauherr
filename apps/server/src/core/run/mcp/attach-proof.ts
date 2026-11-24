@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
-import { IMAGE_TYPES, type AttachmentKind } from '../../attachments/image'
+import { ATTACHMENT_TYPES, type AttachmentKind } from '../../attachments/image'
 import { requestUpload } from '../../attachments/store'
 import { inputIssues } from './attach-rules'
 import { loadMockups } from '../../views/attachments'
@@ -15,7 +15,7 @@ export const BODY_MAX = 20_000
 export const ONE_FORM = 'give either body, url or upload, not both; a link with an explanation goes into body'
 
 const upload = z.strictObject({
-  contentType: z.enum(IMAGE_TYPES),
+  contentType: z.enum(ATTACHMENT_TYPES),
   caption: z.string().trim().min(1).max(200),
 })
 
@@ -106,7 +106,8 @@ export const attachProof = defineTool({
   description:
     `Stores a proof for one criterion of the record of your run and returns the proof id: ${ONE_FORM}. ` +
     'With upload (a mockup, a screenshot, or a before or after of a mockup screen with screen, width and sha; ' +
-    'PNG, JPEG or WebP, at most 2 MB) it returns { uploadUrl, expiresAt }; ' +
+    'PNG, JPEG or WebP, at most 2 MB; a mockup may also be a self-contained HTML page of at most 1 MB, ' +
+    'contentType text/html) it returns { uploadUrl, expiresAt }; ' +
     'then send the file yourself: curl -X PUT --data-binary @shot.png -H "Content-Type: image/png" "<uploadUrl>".',
   access: 'agent',
   input,

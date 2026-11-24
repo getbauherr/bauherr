@@ -75,6 +75,7 @@ export const seedMockupTicket = async (e: Engine): Promise<number> => {
         changes: [{ text: 'The export page shows its progress and a finished state.', tag: 'visible' }],
         walkthrough: ['Start an export.', 'Watch the progress bar fill.'],
         notVerified: [],
+        outline: null,
         cost: { usd: 1, runs: 2, minutes: 12 },
       },
     },
