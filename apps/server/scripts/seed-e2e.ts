@@ -11,6 +11,7 @@ import { seedTickets } from '../tests/core/ticket-scenario'
 import { seedConnect } from './seed-connect'
 import { seedSomeday } from './seed-someday'
 import { seedCheck } from './seed-check'
+import { seedReadiness } from './seed-readiness'
 import { seedInsights } from './seed-insights'
 import { seedStatements } from './seed-statements'
 
@@ -185,6 +186,7 @@ await seedConnect(payload)
 await seedSomeday(payload)
 await seedStatements(payload)
 await seedCheck(payload)
+await seedReadiness(payload)
 await seedInsights(payload)
 
 await ensure(

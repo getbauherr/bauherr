@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { Hold } from '../../../../core/views/holds'
+import { duration } from '../../lib/format'
 import { RUN_NAMES } from '../../lib/factory'
 import { Time } from '../Time'
 import { TicketRef } from '../TicketRef'
@@ -45,6 +46,13 @@ function Sentence({ hold }: { hold: Hold }) {
       )
     case 'runner-idle':
       return <>The Runner has not picked up a run for 10 minutes: {plural(hold.queued, 'run waits', 'runs wait')}.</>
+    case 'checks-not-started':
+      return (
+        <>
+          #{hold.number} has waited {duration(hold.waitedMinutes * 60)} for checks that have not started.{' '}
+          <Link href={`/tickets/${hold.recordId}`} className={LINK}>Why</Link>
+        </>
+      )
     case 'sync-failed':
       return (
         <>

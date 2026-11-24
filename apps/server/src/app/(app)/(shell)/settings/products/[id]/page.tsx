@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { readiness } from '../../../../../../core/readiness/view'
 import { forgeCheckNames, productSettings } from '../../../../../../core/views/product-settings'
 import { ticketsMessage, blockedBy, recordCountOf } from '../../../../../../lib/settings-guards'
 import { EmptyState } from '../../../../components/EmptyState'
@@ -7,6 +8,7 @@ import { PageTitle } from '../../../../components/PageTitle'
 import { GatesSection } from '../../../../components/product/GatesSection'
 import { IntakeSection } from '../../../../components/product/IntakeSection'
 import { ProofSection } from '../../../../components/product/ProofSection'
+import { ReadinessSection } from '../../../../components/product/ReadinessSection'
 import { RemoveDoc } from '../../../../components/product/RemoveDoc'
 import { RepositorySection } from '../../../../components/product/RepositorySection'
 import { SettingsSection } from '../../../../components/SettingsParts'
@@ -50,6 +52,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   const product = await productSettings(payload, filter)
   if (!product) notFound()
   const admin = isAdmin(user)
+  const ready = await readiness(payload, { ...filter, now: new Date() })
   return (
     <div data-wide className="flex max-w-5xl flex-col gap-4">
       <PageTitle>{product.name}</PageTitle>
@@ -60,6 +63,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
         <h2 className="title">{product.name}</h2>
       </div>
       {!admin && <p className="small text-muted-foreground">Only an Admin can change Product settings.</p>}
+      {ready && <ReadinessSection product={product.id} view={ready} admin={admin} />}
       <div className="grid grid-cols-2 items-start gap-4 max-lg:grid-cols-1">
         <div className="flex min-w-0 flex-col gap-4">
           <RepositorySection
