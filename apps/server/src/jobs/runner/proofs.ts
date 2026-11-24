@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { sql } from '@payloadcms/db-postgres'
-import { git, WORK_DIR } from '@bauherr/runner'
+import { egressGuard, git, WORK_DIR } from '@bauherr/runner'
 import { z } from 'zod'
 import type { Conn } from '../../core/conn'
 import type { Problem } from '../../core/module'
@@ -14,6 +14,7 @@ const exec = promisify(execFile)
 
 export const PROOFS_FILE = 'proofs.json'
 export const COMMAND_TIMEOUT_MS = 5 * 60_000
+const NO_GATEWAY = 'no-gateway.invalid'
 const TIMED_OUT = 124
 const FAILED = 1
 const BUFFER_BYTES = 16 * 1024 * 1024
@@ -118,7 +119,11 @@ const refusals = (entries: Entry[], criteria: string[]): Problem[] => {
     const path = `.${index}`
     const duplicate = seen.has(item.ref)
     seen.add(item.ref)
+    const blocked = item.kind === 'command' ? egressGuard('Bash', { command: item.command }, NO_GATEWAY) : null
     return [
+      ...(blocked && !blocked.allow
+        ? [problem(`${path}.command`, `${blocked.reason}: a proof command runs offline.`)]
+        : []),
       ...(criteria.includes(item.criterion)
         ? []
         : [problem(`${path}.criterion`, `the record has no criterion ${item.criterion}: use an id from the record.`)]),

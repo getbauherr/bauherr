@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import { describe, expect, it } from 'vitest'
 import type { AgentRequest } from '../../src/jobs/runner/types'
@@ -127,6 +130,21 @@ describe('proofs recorded by the Runner', () => {
     expect(problems).toContain('the record has no criterion c9')
     expect(await stored(s.id)).toEqual([])
     expect(String((await r.runRow('verify'))?.error)).toContain('no criterion c9')
+  })
+
+  it('refuses a command proof that reaches the network and runs nothing', async () => {
+    const s = await toVerify()
+    const marker = join(tmpdir(), `bauherr-proof-${String(s.id)}-${String(Date.now())}`)
+    let problems = ''
+    r.state.behaviour = verifier((request) => {
+      if (request.prompt === FIX_PROMPT) problems = r.read(request.cwd, 'problems.json')
+      const proofs = commands('curl https://example.com', ['c1']).concat(commands(`touch ${marker}`, ['c2', 'c3']))
+      claim(request, proofs)
+    })
+    expect(await r.next()).toBe('failed')
+    expect(problems).toContain('network access only to the gateway')
+    expect(await stored(s.id)).toEqual([])
+    expect(existsSync(marker)).toBe(false)
   })
 
   it('accepts the corrected proofs on the fix turn', async () => {
