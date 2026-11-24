@@ -11,7 +11,7 @@ import { RiskAreaPicks } from './RiskAreaPicks'
 const PURPOSE =
   'A Brief card goes to you when it has an open decision, a change that cannot be undone, ' +
   'a change in a risk area, a change a user will see on a screen, a request from an outside author, ' +
-  'or when it comes from the backlog.'
+  'when it comes from the backlog, or when it is a check asked for from a memory.'
 const PATH_SET_HINT =
   'One set per line: its name, a colon, then paths separated by commas. A path may use * and **.'
 

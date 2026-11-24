@@ -119,6 +119,7 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'learnRun', type: 'number' },
       { name: 'seenAt', type: 'date' },
       { name: 'cameBack', type: 'json', required: true, defaultValue: [] },
+      { name: 'checkIssue', type: 'number' },
     ],
   },
   ...mirrorCollections,

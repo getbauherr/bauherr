@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 import { commitChecksUrl } from '../deploy'
 import { isRemembered } from '../decisions'
+import { sentenceOf } from '../memory-check'
 import { canArchive, canGoBack, fold } from '../lifecycle'
 import { RecordNotFound } from '../record/errors'
 import {
@@ -16,12 +17,13 @@ import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
 import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
+import { positionsOf, type Positions } from './positions'
 import { activityOf, type EventView } from './activity'
 import { loadMockups, type AttachmentView } from './attachments'
 import { keptMemories } from './statement-records'
 import { statementsUsed, type StatementsUsed } from './statements-used'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
-import { TERMINAL_EVENTS } from './sql'
+import { STAGE_ENTRY, TERMINAL_EVENTS } from './sql'
 import { statusOf, type TicketStatus } from './status'
 import {
   loadChecks,
@@ -29,6 +31,7 @@ import {
   loadOtherPulls,
   loadProofs,
   loadRuns,
+  pullNumberOf,
   type CheckView,
   type OtherPull,
   type ProofGroup,
@@ -66,18 +69,21 @@ export type TicketView = {
   card: StoredCard | null
   record: TicketRecord
   source: { repo: string; number: number; title: string; body: string; url: string } | null
+  fromMemory: { id: number; text: string } | null
   events: EventView[]
   runs: RunView[]
   proofs: ProofGroup[]
   mockups: AttachmentView[]
   noMockup: boolean
   pullRequest: PullView | null
+  verifySince: string | null
   similarItems: ItemHit[]
   adopted: { pr: number; author: string } | null
   otherPulls: OtherPull[]
   statementsUsed: StatementsUsed
   deploy: DeployView | null
   answerRemembered: boolean
+  positions: Positions | null
   canGoBack: boolean
   canArchive: boolean
   archived: boolean
@@ -100,8 +106,7 @@ const pullOf = async (
 
 const pullsOf = async (payload: Payload, stored: StoredRecord, events: StoredEvent[]) => {
   const { repo, number, adopted } = stored.record.source
-  const built = events.findLast((event) => event.type === 'build.submitted')
-  const pr = adopted?.pr ?? (built?.type === 'build.submitted' ? built.data.pr : undefined)
+  const pr = pullNumberOf(stored, events)
   const pullRequest = await pullOf(payload, stored.workspace, repo, pr)
   return {
     pullRequest,
@@ -118,6 +123,9 @@ const deployOf = (stored: StoredRecord, events: StoredEvent[], pull: PullView | 
   const { reason, checks } = stalled.data
   return { reason, checks, url: commitChecksUrl(stored.record.source.forge, pull.url, merged.data.sha) }
 }
+
+const verifySinceOf = (events: StoredEvent[]): string | null =>
+  events.findLast((event) => STAGE_ENTRY[event.type] === 'verify')?.createdAt ?? null
 
 const NOT_ENDED = { ended: null, closedAs: null } as const
 
@@ -180,6 +188,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     parked: stored.parked,
     card: stored.card,
     record: stored.record,
+    fromMemory: await sentenceOf(payload, { workspace: stored.workspace, id: stored.record.source.memory }),
     source: issue && { repo, number, title: issue.title, body: issue.body, url: issue.url },
     events: await withKept(payload, stored.id, activityOf(events)),
     runs,
@@ -187,8 +196,10 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     mockups,
     noMockup: lacksMockup(stored.record, mockups),
     ...pulls,
+    verifySince: verifySinceOf(events),
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),
+    positions: positionsOf({ card: stored.card, record: stored.record, runs, events }),
     answerRemembered: stored.card?.card === 'question' && isRemembered(stored.card.reason),
     canGoBack: canGoBack(folded),
     canArchive: canArchive(folded),
