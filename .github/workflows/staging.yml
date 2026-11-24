@@ -36,6 +36,9 @@ jobs:
           cache-from: type=gha
           load: true
           tags: bauherr:smoke
+          build-args: |
+            BAUHERR_VERSION=staging
+            BAUHERR_REVISION=${{ github.sha }}
       - name: Start and check /api/health
         run: |
           payload_secret=$(openssl rand -hex 32)
@@ -46,7 +49,7 @@ jobs:
             -e DATABASE_URL=postgres://bauherr:bauherr@127.0.0.1:5432/bauherr \
             -e PAYLOAD_SECRET="$payload_secret" -e ENCRYPTION_KEY="$encryption_key" \
             -e PUBLIC_URL=http://localhost:3000 bauherr:smoke
-          curl -fsS --retry 60 --retry-delay 2 --retry-all-errors http://127.0.0.1:3000/api/health | jq -e '.ok == true'
+          curl -fsS --retry 60 --retry-delay 2 --retry-all-errors http://127.0.0.1:3000/api/health | jq -e --arg commit "${GITHUB_SHA::7}" '.ok == true and .commit == $commit'
       - name: Smoke logs
         if: failure()
         run: docker logs smoke 2>&1 | tail -n 50
