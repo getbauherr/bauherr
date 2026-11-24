@@ -12,7 +12,17 @@ import { instructionFiles, ticketNotes } from './history'
 import { buildOpening } from './opening'
 import { parseReply, RETRY_LINE, turnsOf, type RetroContext } from './prompt'
 import { RetroInvalid, RetroNotFound, type Proposal, type Reply } from './schema'
-import { addMessage, createRetro, loadRetro, messagesOf, saveAgreed, type Message, type Retro } from './store'
+import {
+  addFirstMessage,
+  addMessage,
+  createRetro,
+  loadRetro,
+  messagesOf,
+  saveAgreed,
+  unopenedRetro,
+  type Message,
+  type Retro,
+} from './store'
 
 export type ConverseDeps = { model: RetroModel; skill: () => Promise<string>; now: () => Date }
 export type StartInput = { product: number; range: RangeInput; label: string }
@@ -77,28 +87,35 @@ export const startRetro = async (
   input: StartInput,
 ): Promise<number> => {
   guard(who)
+  const waiting = await unopenedRetro(payload, who.workspace, input.product, input.label)
+  if (waiting) return waiting.id
   const range = await rangeOf(payload, who, input, deps.now())
   const filter: FigureFilter & { product: number } = { workspace: who.workspace, product: input.product, range }
-  const opening = await buildOpening(payload, filter)
-  const base = {
+  return createRetro(payload, {
     workspace: who.workspace,
     product: input.product,
     from: range.from,
     to: range.to,
     label: input.label,
     createdBy: who.person.id,
-    opening,
-  }
-  const reply = await ask(deps, who.workspace, await contextOf(payload, base), [])
-  const id = await createRetro(payload, base)
-  const retro = await loadRetro(payload, who.workspace, id)
-  if (!retro) throw new RetroNotFound('The Retro vanished.')
-  await addMessage(payload, retro, {
+    opening: await buildOpening(payload, filter),
+  })
+}
+
+export const prepareOpening = async (
+  payload: Payload,
+  deps: ConverseDeps,
+  who: Who,
+  retroId: number,
+): Promise<void> => {
+  const retro = await open(payload, who, retroId)
+  if ((await messagesOf(payload, retro.id)).length > 0) return
+  const reply = await ask(deps, who.workspace, await contextOf(payload, retro), [])
+  await addFirstMessage(payload, retro, {
     role: 'assistant',
     body: reply.message,
     parts: { proposals: reply.proposals, raw: JSON.stringify(reply) },
   })
-  return id
 }
 
 export const proposalsOf = (messages: Message[]): Map<string, Proposal> => {

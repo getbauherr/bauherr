@@ -64,6 +64,7 @@ export const BAUHERR_ACTIONS = [
   '(shell)/memory/actions.ts#switchMemoryAction',
   '(shell)/memory/actions.ts#deleteMemoryAction',
   '(shell)/memory/retro/actions.ts#startRetroAction',
+  '(shell)/memory/retro/actions.ts#prepareOpeningAction',
   '(shell)/memory/retro/actions.ts#sendMessageAction',
   '(shell)/memory/retro/actions.ts#acceptProposalAction',
   '(shell)/memory/retro/actions.ts#toOutcomeAction',

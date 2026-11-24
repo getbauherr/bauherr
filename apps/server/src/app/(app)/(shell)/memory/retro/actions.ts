@@ -3,7 +3,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { applyRetro } from '../../../../../core/retro/apply'
-import { acceptProposal, sendMessage, startRetro } from '../../../../../core/retro/converse'
+import { acceptProposal, prepareOpening, sendMessage, startRetro } from '../../../../../core/retro/converse'
 import { buildOutcome } from '../../../../../core/retro/outcome'
 import { decideChange, decideTicket, editChange } from '../../../../../core/retro/outcome-edit'
 import { DECISIONS, type Outcome } from '../../../../../core/retro/schema'
@@ -32,6 +32,17 @@ export async function startRetroAction(form: FormData): Promise<void> {
     return redirect(`/memory/retro?${new URLSearchParams({ ...params, error: message }).toString()}`)
   }
   redirect(here(id))
+}
+
+export async function prepareOpeningAction(retro: number): Promise<ActionResult> {
+  const { payload, who } = await held()
+  try {
+    await prepareOpening(payload, await converseDeps(payload), who, retro)
+  } catch (error) {
+    return failure(error)
+  }
+  revalidatePath(here(retro))
+  return {}
 }
 
 export async function sendMessageAction(retro: number, text: string): Promise<ActionResult> {
