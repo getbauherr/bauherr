@@ -31,7 +31,9 @@ const pack = z.object({
 const claimWith = async (skills: (stage: string) => Promise<string | null>) => {
   const { agent } = m.agent(m.alpha)
   const contexts = { agent: { ...agent, deps: { ...agent.deps, skills: (stage: string) => skills(stage) } } }
-  const { session } = z.object({ session: z.string() }).parse(await m.call('connect', { role: 'builder' }, contexts))
+  const { session } = z
+    .object({ session: z.string() })
+    .parse(await m.call('connect', { role: 'builder', clientSession: 'test-session-1' }, contexts))
   return pack.parse(await m.call('next_work', { session }, contexts))
 }
 
@@ -83,7 +85,9 @@ describe('the model tier', () => {
     await m.begin()
     const { agent } = m.agent(m.alpha)
     const contexts = { agent: { ...agent, deps: { ...agent.deps, tiers: () => Promise.resolve('cheap' as const) } } }
-    const { session } = z.object({ session: z.string() }).parse(await m.call('connect', { role: 'builder' }, contexts))
+    const { session } = z
+      .object({ session: z.string() })
+      .parse(await m.call('connect', { role: 'builder', clientSession: 'test-session-1' }, contexts))
     expect(pack.parse(await m.call('next_work', { session }, contexts)).context.model).toEqual({ tier: 'cheap' })
     await m.e.drain()
     await m.begin()

@@ -39,7 +39,10 @@ test('@fake-forge an agent key comes with the command, a start sentence per role
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
-      params: { name: 'connect', arguments: { role: 'reviewer', label: 'e2e session' } },
+      params: {
+        name: 'connect',
+        arguments: { role: 'reviewer', label: 'e2e session', clientSession: 'test-session-1' },
+      },
     },
   })
   expect(reply.ok()).toBe(true)

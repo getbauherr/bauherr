@@ -23,7 +23,7 @@ afterAll(async () => {
 const connect = async (member: typeof m.alpha, role: string, label?: string) =>
   z
     .object({ session: z.string() })
-    .parse(await m.call('connect', { role, label }, m.agent(member)))
+    .parse(await m.call('connect', { role, label, clientSession: 'test-session-1' }, m.agent(member)))
     .session
 
 const list = (owner: number, workspace = m.e.db.workspace, now = m.e.clock.now) =>
@@ -73,7 +73,13 @@ describe('a session with several runs', () => {
     await m.e.drain()
     const { session } = z
       .object({ session: z.string() })
-      .parse(await m.call('connect', { role: 'builder', label: 'multi', capacity: 3 }, m.agent(m.alpha)))
+      .parse(
+        await m.call(
+          'connect',
+          { role: 'builder', label: 'multi', capacity: 3, clientSession: 'test-session-1' },
+          m.agent(m.alpha),
+        ),
+      )
     await m.begin()
     await m.begin()
     await m.call('next_work', { session }, m.agent(m.alpha))
