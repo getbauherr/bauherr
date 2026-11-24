@@ -160,6 +160,11 @@ export default tseslint.config(
     rules: { 'max-lines-per-function': 'off' },
   },
   {
+    name: 'migrations are generated SQL that must stay byte-identical once applied, so the size rules do not apply',
+    files: [`${serverSrc}/migrations/**/*.ts`],
+    rules: { 'max-lines': 'off', 'max-lines-per-function': 'off' },
+  },
+  {
     files: [`${serverSrc}/core/**/*.{ts,tsx}`, `${serverSrc}/modules/**/*.{ts,tsx}`],
     rules: { 'no-restricted-syntax': syntaxRule([...everywhereSyntax, ...coreSyntax]) },
   },

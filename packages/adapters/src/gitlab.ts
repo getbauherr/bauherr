@@ -75,7 +75,7 @@ export class GitlabHttp {
     }
   }
 
-  async json<T = any>(method: string, path: string, body?: unknown): Promise<T> {
+  async json<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await this.raw(method, path, body);
     return (res.status === 204 ? undefined : await res.json()) as T;
   }
@@ -100,7 +100,7 @@ export class GitlabHttp {
     return known;
   }
 
-  async paginate<T = any>(path: string): Promise<T[]> {
+  async paginate<T = unknown>(path: string): Promise<T[]> {
     const out: T[] = [];
     let next: string | undefined = path;
     while (next) {

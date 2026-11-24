@@ -71,12 +71,12 @@ export class Http {
     }
   }
 
-  async json<T = any>(method: string, path: string, body?: unknown): Promise<T> {
+  async json<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await this.raw(method, path, body);
     return (res.status === 204 ? undefined : await res.json()) as T;
   }
 
-  async paginate<T = any>(path: string, pick?: (page: any) => T[]): Promise<T[]> {
+  async paginate<T = unknown>(path: string, pick?: (page: unknown) => T[]): Promise<T[]> {
     const out: T[] = [];
     let next: string | undefined = path;
     while (next) {
