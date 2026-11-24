@@ -38,7 +38,8 @@ describe('the tool set', () => {
       'decide',
     ])
     for (const tool of TOOLS) expect(tool.description.split('. ').length, tool.name).toBeLessThanOrEqual(2)
-    await expect(m.call('connect', { role: 'builder', extra: 1 }, m.agent(m.alpha))).rejects.toThrow(z.ZodError)
+    const extra = m.call('connect', { role: 'builder', clientSession: 'test-session-1', extra: 1 }, m.agent(m.alpha))
+    await expect(extra).rejects.toThrow(z.ZodError)
     await expect(m.call('nope', {}, m.agent(m.alpha))).rejects.toThrow(UnknownTool)
   })
 
@@ -67,7 +68,9 @@ describe('keys', () => {
     const record = await m.begin()
     const decision = { record, ask: 'brief', choice: 'approve', seq: 0 }
     await expect(m.call('decide', decision, m.agent(m.alpha))).rejects.toThrow(WrongKeyKind)
-    await expect(m.call('connect', { role: 'builder' }, m.person(m.alpha, [m.e.db.workspace]))).rejects.toThrow(
+    await expect(
+      m.call('connect', { role: 'builder', clientSession: 'test-session-1' }, m.person(m.alpha, [m.e.db.workspace])),
+    ).rejects.toThrow(
       WrongKeyKind,
     )
     await expect(m.call('next_work', { session: 'x' }, m.person(m.alpha, [m.e.db.workspace]))).rejects.toThrow(
@@ -87,8 +90,12 @@ describe('keys', () => {
 
 describe('sessions and next_work', () => {
   it('refreshes the same session per key and role and says when there is no work', async () => {
-    const a = z.object({ session: z.string() }).parse(await m.call('connect', { role: 'verifier' }, m.agent(m.alpha)))
-    const b = z.object({ session: z.string() }).parse(await m.call('connect', { role: 'verifier' }, m.agent(m.alpha)))
+    const a = z
+      .object({ session: z.string() })
+      .parse(await m.call('connect', { role: 'verifier', clientSession: 'test-session-1' }, m.agent(m.alpha)))
+    const b = z
+      .object({ session: z.string() })
+      .parse(await m.call('connect', { role: 'verifier', clientSession: 'test-session-1' }, m.agent(m.alpha)))
     expect(b.session).toBe(a.session)
     expect(await m.call('next_work', { session: a.session }, m.agent(m.alpha))).toEqual({ status: 'idle' })
   })
@@ -97,7 +104,9 @@ describe('sessions and next_work', () => {
     const connect = async (extra: Record<string, unknown>) =>
       z
         .object({ session: z.string(), capacity: z.number() })
-        .parse(await m.call('connect', { role: 'reviewer', ...extra }, m.agent(m.alpha)))
+        .parse(
+          await m.call('connect', { role: 'reviewer', clientSession: 'test-session-1', ...extra }, m.agent(m.alpha)),
+        )
     const a = await connect({ instance: 'proc-a', capacity: 1, label: 'one' })
     const b = await connect({ instance: 'proc-b' })
     expect(b.session).not.toBe(a.session)
@@ -118,7 +127,7 @@ describe('sessions and next_work', () => {
   it('refuses an unknown session and the session of another key', async () => {
     const { session } = z
       .object({ session: z.string() })
-      .parse(await m.call('connect', { role: 'builder' }, m.agent(m.alpha)))
+      .parse(await m.call('connect', { role: 'builder', clientSession: 'test-session-1' }, m.agent(m.alpha)))
     await expect(m.call('next_work', { session }, m.agent(m.beta))).rejects.toThrow(SessionNotFound)
     await expect(m.call('next_work', { session: 'missing' }, m.agent(m.alpha))).rejects.toThrow(SessionNotFound)
   })
@@ -127,7 +136,7 @@ describe('sessions and next_work', () => {
     const record = await m.begin()
     const { session } = z
       .object({ session: z.string() })
-      .parse(await m.call('connect', { role: 'builder' }, m.agent(m.alpha)))
+      .parse(await m.call('connect', { role: 'builder', clientSession: 'test-session-1' }, m.agent(m.alpha)))
     const out = z
       .object({
         status: z.literal('work'),
@@ -157,7 +166,7 @@ describe('sessions and next_work', () => {
     const record = await m.begin()
     const { session } = z
       .object({ session: z.string() })
-      .parse(await m.call('connect', { role: 'builder' }, m.agent(m.alpha)))
+      .parse(await m.call('connect', { role: 'builder', clientSession: 'test-session-1' }, m.agent(m.alpha)))
     const { agent } = m.agent(m.alpha)
     const bare = { agent: { ...agent, deps: { ...agent.deps, modules: {} } } }
     await expect(m.call('next_work', { session }, bare)).rejects.toThrow(ModuleMissing)

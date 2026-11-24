@@ -111,7 +111,9 @@ describe('authentication', () => {
 
 describe('the Workspace of a key', () => {
   const connect = (key: string) =>
-    route.POST(rpc('tools/call', { name: 'connect', arguments: { role: 'builder' } }, key))
+    route.POST(
+      rpc('tools/call', { name: 'connect', arguments: { role: 'builder', clientSession: 'test-session-1' } }, key),
+    )
   const make = async (email: string, extra: Record<string, unknown> = {}) => {
     const { payload } = m.e.db
     const data = { email, password: 'pw-123456', role: 'bauherr', tenants: [{ tenant: m.e.db.workspace }], ...extra }
@@ -129,10 +131,10 @@ describe('the Workspace of a key', () => {
     const admin = await make('admin@x.io', { role: 'admin', tenants: [] })
     const adminKey = await mintAgentKey(m.e.db.payload, admin, 'x', m.e.db.workspace)
     expect((await connect(adminKey)).status).toBe(200)
-    expect((await call(adminKey, 'connect', { role: 'builder' })).error).toBe(false)
+    expect((await call(adminKey, 'connect', { role: 'builder', clientSession: 'test-session-1' })).error).toBe(false)
     const member = await make('member@x.io')
     const memberKey = await mintAgentKey(m.e.db.payload, member, 'x', m.e.db.workspace)
-    expect((await call(memberKey, 'connect', { role: 'builder' })).error).toBe(false)
+    expect((await call(memberKey, 'connect', { role: 'builder', clientSession: 'test-session-1' })).error).toBe(false)
   })
 
   it('refuses a key of an archived Workspace until it is restored, and minting for one', async () => {
@@ -160,7 +162,7 @@ describe('the Workspace of a key', () => {
       tenants: [{ tenant: m.e.db.workspace }, { tenant: m.e.db.otherWorkspace }],
     })
     const token = await mintAgentKey(m.e.db.payload, user, 'x', m.e.db.otherWorkspace)
-    expect((await call(token, 'connect', { role: 'builder' })).error).toBe(false)
+    expect((await call(token, 'connect', { role: 'builder', clientSession: 'test-session-1' })).error).toBe(false)
     const row = await m.e.db.payload.db.drizzle.execute(
       sql`SELECT "workspace_id" FROM "agent_sessions" ORDER BY "id" DESC LIMIT 1`,
     )
@@ -186,7 +188,9 @@ describe('the nine tools through the route', () => {
     await m.e.drain()
     const key = m.alpha.agentToken
     const record = await m.begin()
-    const { session } = z.object({ session: z.string() }).parse(await ok(key, 'connect', { role: 'builder' }))
+    const { session } = z
+      .object({ session: z.string() })
+      .parse(await ok(key, 'connect', { role: 'builder', clientSession: 'test-session-1' }))
     const work = z
       .object({ runId: z.number(), leaseToken: z.string(), context: z.object({ stage: z.literal('intake') }) })
       .parse(await ok(key, 'next_work', { session }))
@@ -272,7 +276,7 @@ describe('the nine tools through the route', () => {
     const mine = await m.claimed(m.alpha)
     const { session } = z
       .object({ session: z.string() })
-      .parse(await ok(m.beta.agentToken, 'connect', { role: 'builder' }))
+      .parse(await ok(m.beta.agentToken, 'connect', { role: 'builder', clientSession: 'test-session-1' }))
     expect(await ok(m.beta.agentToken, 'next_work', { session })).toEqual({ status: 'idle' })
     const out = await call(m.beta.agentToken, 'heartbeat', { runId: mine.runId, leaseToken: mine.leaseToken })
     expect(out).toMatchObject({ error: true })
@@ -281,7 +285,11 @@ describe('the nine tools through the route', () => {
   })
 
   it('refuses unknown fields and bad input as a tool error', async () => {
-    const out = await call(m.alpha.agentToken, 'connect', { role: 'builder', admin: true })
+    const out = await call(m.alpha.agentToken, 'connect', {
+      role: 'builder',
+      clientSession: 'test-session-1',
+      admin: true,
+    })
     expect(out.error).toBe(true)
     expect(out.text).toMatch(/Unrecognized key/)
   })

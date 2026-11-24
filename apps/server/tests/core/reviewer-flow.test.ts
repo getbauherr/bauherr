@@ -35,7 +35,7 @@ const agent = async (): Promise<Agent> => {
 }
 
 const session = async (contexts: Agent, role: string) => {
-  const connected = await callTool('connect', { role }, contexts)
+  const connected = await callTool('connect', { role, clientSession: 'test-session-1' }, contexts)
   return z.object({ session: z.string() }).parse(connected).session
 }
 
