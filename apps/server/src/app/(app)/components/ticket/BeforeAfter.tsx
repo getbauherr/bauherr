@@ -30,15 +30,17 @@ export function FlipFrame({ before, after }: { before: ImageRef; after: ImageRef
   )
 }
 
-function PhoneToggle({ after, plan }: { after: ImageRef; plan: ImageRef }) {
+function PhoneToggle({ after, plan }: { after: ImageRef; plan: ImageRef | null }) {
   const [showAfter, setShowAfter] = useState(true)
-  const shown = showAfter ? after : plan
+  const shown = showAfter || plan === null ? after : plan
   return (
     <div className="grid gap-2 sm:hidden">
       <div className="flex gap-2">
-        <button type="button" className={BUTTON} aria-pressed={!showAfter} onClick={() => setShowAfter(false)}>
-          Mockup
-        </button>
+        {plan && (
+          <button type="button" className={BUTTON} aria-pressed={!showAfter} onClick={() => setShowAfter(false)}>
+            Mockup
+          </button>
+        )}
         <button type="button" className={BUTTON} aria-pressed={showAfter} onClick={() => setShowAfter(true)}>
           After
         </button>
@@ -48,10 +50,14 @@ function PhoneToggle({ after, plan }: { after: ImageRef; plan: ImageRef }) {
   )
 }
 
+const planOf = (pair: ScreenPair): ImageRef | null =>
+  pair.mockup.html ? null : { id: pair.mockup.id, caption: `Plan: ${pair.screen}` }
+
 function PairBlock({ pair }: { pair: ScreenPair }) {
   const before = pictureOf('Before', pair, pair.before?.id)[0]
   const after = pictureOf('After', pair, pair.after?.id)[0]
-  const plan = { id: pair.mockup.id, caption: `Plan: ${pair.screen}` }
+  const plan = planOf(pair)
+  const pictures = [before, after, plan].filter((picture) => picture !== undefined && picture !== null)
   const missing = missingOf(pair)
   return (
     <div className="grid gap-2">
@@ -61,7 +67,7 @@ function PairBlock({ pair }: { pair: ScreenPair }) {
       </h3>
       {after && <PhoneToggle after={after} plan={plan} />}
       <div className={after ? 'hidden sm:block' : ''}>
-        <ImageGallery images={[...(before ? [before] : []), ...(after ? [after] : []), plan]} captions columns />
+        <ImageGallery images={pictures} captions columns />
       </div>
       {missing && <p className="small m-0 text-muted-foreground">{missing}</p>}
       {before && after && (

@@ -67,4 +67,10 @@ describe('BeforeAfter on a phone', () => {
     fireEvent.click(screen.getByRole('button', { name: 'After' }))
     expect(phone().getAttribute('src')).toBe('/api/attachments/2')
   })
+
+  it('has no plan picture and no mockup button for a live HTML mockup', () => {
+    render(createElement(BeforeAfter, { pairs: [pair({ mockup: { ...mockup, html: true } })] }))
+    expect(screen.queryByRole('button', { name: 'Mockup' })).toBeNull()
+    expect(screen.queryByRole('img', { name: 'Plan: List' })).toBeNull()
+  })
 })
