@@ -2,10 +2,11 @@ import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import { advance } from '../../src/core/engine'
 import { decide } from '../../src/core/decide'
-import { appendEvent, readRecord, setParked, setProjection, setRank } from '../../src/core/record/store'
+import { appendEvent, patchRecord, readRecord, setParked, setProjection, setRank } from '../../src/core/record/store'
 import { claim } from '../../src/core/run/leases'
 import { finishRun } from '../../src/core/run/store'
 import { submit } from '../../src/core/submit'
+import type { TicketRecord } from '../../src/core/record/schema'
 import type { Engine } from './harness'
 
 const o = { overrideAccess: true } as const
@@ -198,4 +199,13 @@ export const seedScenario = async (e: Engine, title?: (name: keyof ScenarioNames
     await mirror.item(source.number, named)
   }
   return { names: full, source: mirror.source, item: mirror.item }
+}
+
+type Stage = 'brief' | 'build' | 'verify'
+
+export const edit = async (e: Engine, id: number, stage: Stage, patchOf: Partial<TicketRecord>) => {
+  const { version } = await readRecord(e.db.payload, id)
+  const writes = Object.keys(patchOf) as (keyof TicketRecord)[]
+  const by = { stage, runId: 'seed' }
+  await patchRecord(e.db.payload, id, { expectedVersion: version, writes, patch: patchOf, by })
 }
