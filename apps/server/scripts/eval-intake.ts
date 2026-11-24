@@ -50,8 +50,13 @@ const packFor = async (evalCase: EvalCase, runId: number): Promise<ContextPack> 
 
 const outcomeOf = (written: Record<string, unknown> | null): string => {
   if (written === null) return 'no result written'
+  const checked = intake.resultSchema.safeParse(written)
+  if (!checked.success) {
+    const issue = checked.error.issues[0]
+    return `invalid result (${issue?.path.join('.') || 'result'}: ${issue?.message ?? 'unknown'})`
+  }
   const parsed = z.object({ outcome: z.string() }).safeParse(written)
-  return intake.resultSchema.safeParse(written).success && parsed.success ? parsed.data.outcome : 'invalid result'
+  return parsed.success ? parsed.data.outcome : 'invalid result (outcome missing)'
 }
 
 const askModel =
