@@ -165,6 +165,7 @@ if (!seeded.docs.length) {
 }
 
 const ticketsWs = Number((await ensure('workspaces', { slug: 'tickets' }, { name: 'Tickets', slug: 'tickets' })).id)
+await user('run-member@example.com', 'bauherr', { tenants: [{ tenant: ticketsWs }] })
 const ticketsApp = { name: 'Tickets App', slug: 'tickets-app', workspace: ticketsWs, state: 'active' }
 const ticketsProduct = Number((await ensure('products', { slug: 'tickets-app' }, ticketsApp)).id)
 const inTickets = { workspace: { equals: ticketsWs } }

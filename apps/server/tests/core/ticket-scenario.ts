@@ -5,11 +5,12 @@ import { DISCLOSURE } from '../../src/core/forge/disclosure'
 import { questionsBody } from '../../src/core/intake/questions'
 import type { Criterion, Decision, Finding, TicketRecord } from '../../src/core/record/schema'
 import { advance } from '../../src/core/engine'
-import { appendEvent, createRecord, readRecord, setRank } from '../../src/core/record/store'
-import { claim, heartbeat } from '../../src/core/run/leases'
+import { appendEvent, createRecord, readRecord } from '../../src/core/record/store'
+import { heartbeat } from '../../src/core/run/leases'
 import { rememberContext } from '../../src/core/run/context'
 import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
+import { claimed, runTickets } from './run-seed'
 import { source } from './fixtures'
 import { verifyRoundsTicket } from './verify-rounds-fixtures'
 import { asked, begin, edit, mirrorSource, patch, toBrief, workOn } from './scenario'
@@ -22,6 +23,9 @@ export const TICKET_TITLES = {
   questionRead: 'Question to read',
   intake: 'Intake waiting for the reporter',
   runSteps: 'Build with reported steps',
+  runQueued: 'Build waiting for an agent',
+  runFailed: 'Build that failed',
+  runQuiet: 'Build that has not reported',
   adoptedWaiting: 'Adopted pull request waiting on its author',
   adoptedResult: 'Adopted pull request with a result',
   deployStalled: 'Deploy that did not finish',
@@ -178,15 +182,6 @@ const adoptedTicket = async (e: Engine, pr: number, passed: boolean): Promise<nu
   return id
 }
 
-const claimed = async (e: Engine, id: number) => {
-  await setRank(e.db.payload, id, -1000)
-  const input = { workspace: e.db.workspace, role: 'builder', by: 'runner-seed', now: e.clock.now } as const
-  const got = await claim(e.db.payload, input)
-  await setRank(e.db.payload, id, 0)
-  if (!got) throw new Error('no run queued')
-  return got
-}
-
 const reportedSteps = async (e: Engine, id: number) => {
   const { run, token } = await claimed(e, id)
   const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000)
@@ -289,6 +284,9 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     parkedOnNeed: await parkedTicket(e),
   }
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
+  const runs = await runTickets(e)
+  titled.push([runs.runQueued, TICKET_TITLES.runQueued], [runs.runFailed, TICKET_TITLES.runFailed])
+  titled.push([runs.runQuiet, TICKET_TITLES.runQuiet])
   const deployStalled = await deployStalledTicket(e, ++pr)
   const verifyRounds = await verifyRoundsTicket(e, ++pr, briefFields([SETTLED]))
   titled.push([deployStalled, TICKET_TITLES.deployStalled], [verifyRounds, TICKET_TITLES.verifyRounds])
@@ -320,5 +318,5 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     await mirror.item(source.number, { title: titled.find(([found]) => found === id)?.[1] ?? '' })
   }
   const waiting = { adoptedWaiting, adoptedResult, deployStalled, verifyRounds, intake }
-  return { ...names, questionBack, questionOwn, briefComment, ...waiting }
+  return { ...names, ...runs, questionBack, questionOwn, briefComment, ...waiting }
 }
