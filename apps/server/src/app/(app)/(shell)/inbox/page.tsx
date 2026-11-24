@@ -3,6 +3,7 @@ import { board } from '../../../../core/views/board'
 import { stageStats } from '../../../../core/views/stats'
 import { AutoRefresh } from '../../components/AutoRefresh'
 import { EmptyState } from '../../components/EmptyState'
+import { InboxKeys } from '../../components/inbox/InboxKeys'
 import { InboxGroup } from '../../components/inbox/InboxGroup'
 import { Badge } from '../../components/ui/badge'
 import { GROUPS, groupRows } from '../../lib/inbox'
@@ -30,7 +31,7 @@ export default async function Inbox() {
           exceptions <span className="mono">{percent(totals.exceptionRate)}</span>
         </p>
       </div>
-      {GROUPS.map((id) => <InboxGroup key={id} id={id} rows={rows[id]} />)}
+      <InboxKeys>{GROUPS.map((id) => <InboxGroup key={id} id={id} rows={rows[id]} />)}</InboxKeys>
       <AutoRefresh />
     </>
   )

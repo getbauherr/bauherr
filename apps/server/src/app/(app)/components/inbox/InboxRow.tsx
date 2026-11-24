@@ -13,11 +13,15 @@ const ROW = cn(
   'md:grid md:grid-cols-[56px_minmax(0,1.6fr)_110px_200px_minmax(0,1.4fr)_96px]',
 )
 
+export const rowKeyOf = (row: Row): string =>
+  row.kind === 'held' ? `held-${row.item.itemId}` : String(row.card.recordId)
+
 export function InboxRow({ row }: { row: Row }) {
+  const key = rowKeyOf(row)
   if (row.kind === 'held') {
     const { item } = row
     return (
-      <a href={item.url} target="_blank" rel="noopener noreferrer" className={ROW}>
+      <a data-inbox-row={key} href={item.url} target="_blank" rel="noopener noreferrer" className={ROW}>
         <span className="mono">#{item.number}</span>
         <span className="font-medium">
           {item.title}
@@ -32,7 +36,7 @@ export function InboxRow({ row }: { row: Row }) {
   }
   const { card } = row
   return (
-    <Link href={`/tickets/${card.recordId}`} className={ROW}>
+    <Link data-inbox-row={key} href={`/tickets/${card.recordId}`} className={ROW}>
       <span className="mono">#{card.number}</span>
       <span className="font-medium">{card.title}</span>
       <span className="small text-muted-foreground">{card.product.name}</span>

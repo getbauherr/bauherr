@@ -18,6 +18,7 @@ export const TICKET_TITLES = {
   briefTitle: 'Brief with a decision for the tabs',
   briefAnswers: 'Large export needs earlier answers',
   resultReadonly: 'Result to read',
+  resultLive: 'Result for the live refresh',
   questionRead: 'Question to read',
   intake: 'Intake waiting for the reporter',
   runSteps: 'Build with reported steps',
@@ -163,12 +164,8 @@ const ADOPTED_AUTHOR = 'dev-sam'
 const ADOPTED_FIRST = 70
 
 const adoptedTicket = async (e: Engine, pr: number, passed: boolean): Promise<number> => {
-  const input = {
-    workspace: e.db.workspace,
-    product: e.db.product,
-    source: { ...source, number: 3000 + pr, adopted: { pr } },
-    type: 'change' as const,
-  }
+  const adopted = { ...source, number: 3000 + pr, adopted: { pr } }
+  const input = { workspace: e.db.workspace, product: e.db.product, source: adopted, type: 'change' as const }
   const { id } = await createRecord(e.db.payload, input)
   const data = { pr, headSha: `h${pr}`, patchId: `adopted:h${pr}` }
   await appendEvent(e.db.payload, id, { type: 'pull.adopted', data, actor: 'factory' })
@@ -282,6 +279,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     briefApprove: await pooled((n) => open(`${POOL_TITLES.briefApprove} ${n}`)),
     briefArchive: await pooled((n) => open(`${POOL_TITLES.briefArchive} ${n}`)),
     resultReadonly: await result(TICKET_TITLES.resultReadonly, ++pr),
+    resultLive: await result(TICKET_TITLES.resultLive, ++pr),
     resultSendBack: await pooled((n) => result(`${POOL_TITLES.resultSendBack} ${n}`, ++pr)),
     resultAccept: await pooled((n) => result(`${POOL_TITLES.resultAccept} ${n}`, ++pr)),
     resultStale: await pooled((n) => result(`${POOL_TITLES.resultStale} ${n}`, ++pr)),
@@ -312,9 +310,8 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     const title = `Pull request ${number}`
     await mirror.item(number, { kind: 'pr', head: `h${number}`, title, author: ADOPTED_AUTHOR, closes })
   }
-  const closes = [3000 + ADOPTED_FIRST]
-  const other = { kind: 'pr', head: 'h72', title: 'Another take on the fix', author: 'dev-lee', closes } as const
-  await mirror.item(ADOPTED_FIRST + 2, { ...other, closes })
+  const other = { kind: 'pr', head: 'h72', title: 'Another take on the fix', author: 'dev-lee' } as const
+  await mirror.item(ADOPTED_FIRST + 2, { ...other, closes: [3000 + ADOPTED_FIRST] })
   const intake = await intakeTicket(e, mirror.item)
   const questionBack = await pooled((n) => asking(`${POOL_TITLES.questionBack} ${n}`))
   const questionOwn = await pooled((n) => asking(`${POOL_TITLES.questionOwn} ${n}`))

@@ -99,6 +99,12 @@ const inHooks = (url: string) => async (page: Page) => {
   return url
 }
 
+const inboxAt = (width: number) => async (page: Page) => {
+  await page.setViewportSize({ width, height: 800 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  return inFactory('/inbox')(page)
+}
+
 const inTickets =
   (title: string, query = '') =>
   async (page: Page) => {
@@ -143,7 +149,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     Factory: inFactory('/'),
     'cannot-run line': withHoldStrip('/'),
   },
-  '/inbox': inFactory('/inbox'),
+  '/inbox': { desktop: inboxAt(1280), 'at 390 px': inboxAt(390) },
   '/memory': inRecord('/memory'),
   '/memory/new': inRecord('/memory/new'),
   '/memory/[id]': memoryOne,
