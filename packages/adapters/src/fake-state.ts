@@ -1,5 +1,14 @@
 import { createHash } from 'node:crypto';
-import type { Check, CloseReason, Comment, InlineComment, LabelEvent, PullRequest, Release } from './contracts.js';
+import type {
+  Check,
+  CloseReason,
+  Comment,
+  Deployment,
+  InlineComment,
+  LabelEvent,
+  PullRequest,
+  Release,
+} from './contracts.js';
 import type { Relations } from './body-convention.js';
 
 export interface FakeTicket {
@@ -37,6 +46,9 @@ export interface FakeRepo {
   queueSupport: boolean;
   requiredChecks: string[];
   branchProtected: boolean | null;
+  deployments: Map<string, Deployment>;
+  commitEndpoint: boolean;
+  canWrite: boolean;
   queue: number[];
   issued: number;
   snapshots: Map<string, Map<string, string>>;

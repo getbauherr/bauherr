@@ -2,6 +2,7 @@ import type {
   Backend,
   Capabilities,
   Check,
+  Deployment,
   InlineComment,
   PullRequest,
   Release,
@@ -206,6 +207,20 @@ export class FakeBackend implements Backend {
     this.repo(repo).branchProtected = value;
   }
 
+  setDeployment(repo: RepoRef, environment: string, deployment: Deployment | null): void {
+    const { deployments } = this.repo(repo);
+    if (deployment) deployments.set(environment, deployment);
+    else deployments.delete(environment);
+  }
+
+  setCommitEndpoint(repo: RepoRef, value: boolean): void {
+    this.repo(repo).commitEndpoint = value;
+  }
+
+  setCanWrite(repo: RepoRef, value: boolean): void {
+    this.repo(repo).canWrite = value;
+  }
+
   advanceQueue(repo: RepoRef, o: { fail?: number[] } = {}): number | null {
     const r = this.repo(repo);
     const n = r.queue.shift();
@@ -236,6 +251,9 @@ export class FakeBackend implements Backend {
         queueSupport: false,
         requiredChecks: [],
         branchProtected: false,
+        deployments: new Map(),
+        commitEndpoint: false,
+        canWrite: true,
         queue: [],
         issued: 0,
         snapshots: new Map(),

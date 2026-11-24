@@ -171,6 +171,11 @@ export interface Release {
   createdAt?: string;
 }
 
+export interface Deployment {
+  sha: string;
+  url: string | null;
+}
+
 /** Thrown by `putFile` when `expectSha` no longer matches the file. */
 export class Conflict extends Error {}
 
@@ -257,6 +262,9 @@ export interface Forge {
   updateRelease(repo: RepoRef, id: string, o: { body: string }): Promise<Release>;
   latestRelease(repo: RepoRef): Promise<Release | null>;
   listCommits(repo: RepoRef, o: { from?: string; to: string }): Promise<{ sha: string; message: string }[]>;
+  latestDeployment(repo: RepoRef, environment: string): Promise<Deployment | null>;
+  commitEndpoint(repo: RepoRef, o: { url: string; sha: string }): Promise<boolean>;
+  canWrite(repo: RepoRef): Promise<boolean>;
   webhooks?: Webhooks;
 }
 

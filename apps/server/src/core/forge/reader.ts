@@ -18,6 +18,10 @@ export type ReadForge = Pick<
   | 'listFiles'
   | 'listTags'
   | 'releaseByTag'
+  | 'listReleases'
+  | 'latestDeployment'
+  | 'commitEndpoint'
+  | 'canWrite'
 >
 export type ForgeReader = { tickets: (repo: RepoRef) => ReadTickets; forge: ReadForge }
 

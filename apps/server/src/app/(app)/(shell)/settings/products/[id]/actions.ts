@@ -8,7 +8,7 @@ import { openReadinessTicket } from '../../../../../../core/readiness/ticket'
 import { forgeCheckNames, productSettings, type ProductSettings } from '../../../../../../core/views/product-settings'
 import { currentWorkspace, payloadClient } from '../../../../lib/session'
 import { only, run, type FormState } from '../../../../lib/settings'
-import { parseExecutor, parseGates, parseIntake, parseProof } from '../../../../lib/product-sections'
+import { parseExecutor, parseGates, parseIntake, parseProof, parseReleaseMode } from '../../../../lib/product-sections'
 
 type Build = (
   product: ProductSettings,
@@ -34,6 +34,10 @@ async function save(fd: FormData, build: Build): Promise<FormState> {
 
 export async function saveExecutor(_prev: FormState, fd: FormData): Promise<FormState> {
   return save(fd, () => parseExecutor(fd))
+}
+
+export async function saveReleaseMode(_prev: FormState, fd: FormData): Promise<FormState> {
+  return save(fd, () => parseReleaseMode(fd))
 }
 
 export async function saveIntake(_prev: FormState, fd: FormData): Promise<FormState> {

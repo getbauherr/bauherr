@@ -34,6 +34,8 @@ const facts = (change: Partial<ReadinessFacts> = {}): ReadinessFacts => ({
   executor: 'session',
   rolesSeen: ['builder', 'reviewer', 'verifier'],
   waiting: [],
+  releaseMode: 'direct',
+  release: null,
   ...change,
 })
 
