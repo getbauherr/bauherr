@@ -98,7 +98,10 @@ function Picker({
         options={options}
         empty={empty}
         choice={choice}
-        setChoice={setChoice}
+        setChoice={(v) => {
+          setChoice(v)
+          hidden.current?.dispatchEvent(new Event('change', { bubbles: true }))
+        }}
         error={error}
         described={describedBy(uid, [hint && 'h', error && 'e'])}
       />

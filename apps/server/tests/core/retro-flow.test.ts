@@ -6,7 +6,13 @@ import type { Stage } from '../../src/core/events'
 import { NotAllowedToChangeMemory } from '../../src/core/memory'
 import { readDocument, documentVersions } from '../../src/core/memory-documents'
 import { applyRetro, type ApplyDeps } from '../../src/core/retro/apply'
-import { acceptProposal, sendMessage, startRetro, type ConverseDeps } from '../../src/core/retro/converse'
+import {
+  acceptProposal,
+  prepareOpening,
+  sendMessage,
+  startRetro,
+  type ConverseDeps,
+} from '../../src/core/retro/converse'
 import { buildOutcome } from '../../src/core/retro/outcome'
 import { decideChange, decideTicket, editChange } from '../../src/core/retro/outcome-edit'
 import { RetroUndecided } from '../../src/core/retro/schema'
@@ -67,7 +73,12 @@ beforeEach(async () => {
   }
 })
 
-const begin = () => startRetro(e.db.payload, converse, bauherr(), { product: e.db.product, ...range })
+const start = () => startRetro(e.db.payload, converse, bauherr(), { product: e.db.product, ...range })
+const begin = async () => {
+  const id = await start()
+  await prepareOpening(e.db.payload, converse, bauherr(), id)
+  return id
+}
 
 const packOf = async (stage: Stage) => {
   const record = await createRecord(e.db.payload, {
@@ -84,6 +95,27 @@ const packOf = async (stage: Stage) => {
 }
 
 describe('opening a Retro', () => {
+  it('starts at once without asking the model, and a second start opens the same Retro', async () => {
+    const model = vi.fn(fakeRetroModel)
+    const quick = { ...converse, model }
+    const input = { product: e.db.product, ...range }
+    const first = await startRetro(e.db.payload, quick, bauherr(), input)
+    expect(await startRetro(e.db.payload, quick, bauherr(), input)).toBe(first)
+    expect(model).not.toHaveBeenCalled()
+    expect(await messagesOf(e.db.payload, first)).toHaveLength(0)
+  })
+
+  it('writes the opening message once however often it is prepared', async () => {
+    const id = await start()
+    await Promise.all([1, 2].map(() => prepareOpening(e.db.payload, converse, bauherr(), id)))
+    expect(await messagesOf(e.db.payload, id)).toHaveLength(1)
+  })
+
+  it('starts a new Retro once the earlier one has its opening', async () => {
+    const first = await begin()
+    expect(await start()).not.toBe(first)
+  })
+
   it('holds the figures, the far-off ticket and a proposal with its evidence', async () => {
     const id = await begin()
     const retro = await loadRetro(e.db.payload, e.db.workspace, id)

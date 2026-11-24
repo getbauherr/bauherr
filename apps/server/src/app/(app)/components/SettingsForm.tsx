@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { FormState } from '../lib/settings'
+import { LeaveGuard } from './LeaveGuard'
 import { NextStepBar } from './NextStepBar'
 import { FormStateContext } from './SettingsFormState'
 import { Alert } from './ui/alert'
@@ -26,7 +27,7 @@ const submitWith = (formAction: (fd: FormData) => void) => (e: FormEvent<HTMLFor
   startTransition(() => formAction(fd))
 }
 
-function useFormLifecycle(state: FormState, reset?: boolean) {
+function useFormLifecycle(state: FormState, reset: boolean | undefined, track: boolean) {
   const ref = useRef<HTMLFormElement>(null)
   const [dirty, setDirty] = useState(false)
   const [round, setRound] = useState(0)
@@ -41,17 +42,29 @@ function useFormLifecycle(state: FormState, reset?: boolean) {
     if (reset && state.saved) ref.current?.reset()
   }, [reset, state])
   useEffect(() => {
+    const form = ref.current
+    if (!track || !form) return
+    const mark = () => setDirty(true)
+    form.addEventListener('input', mark)
+    form.addEventListener('change', mark)
+    return () => {
+      form.removeEventListener('input', mark)
+      form.removeEventListener('change', mark)
+    }
+  }, [track])
+  useEffect(() => {
     const invalid = ref.current?.querySelector<HTMLElement>('[aria-invalid]')
     invalid?.closest('details')?.setAttribute('open', '')
     invalid?.focus()
   }, [state])
-  return { ref, dirty, setDirty, round }
+  return { ref, dirty, round }
 }
 
-function FormStatus({ state }: { state: FormState }) {
+function FormStatus({ state, unsaved }: { state: FormState; unsaved?: boolean }) {
   return (
     <>
-      {state.saved && (
+      {unsaved && <span className="small text-muted-foreground">Not saved yet</span>}
+      {state.saved && !unsaved && (
         <span role="status" className="small text-ok">
           Saved
         </span>
@@ -88,8 +101,10 @@ function SubmitRow({
   submit,
   confirm,
   primary,
+  unsaved,
 }: {
   state: FormState
+  unsaved: boolean
   round: number
   pending: boolean
   submit: string
@@ -105,7 +120,7 @@ function SubmitRow({
           {submit}
         </Button>
       )}
-      <FormStatus state={state} />
+      <FormStatus state={state} unsaved={unsaved} />
     </div>
   )
 }
@@ -139,14 +154,14 @@ export function SettingsForm({
 }: SettingsFormProps) {
   const [state, formAction, pending] = useActionState(action, {})
   const formId = useId()
-  const { ref, dirty, setDirty, round } = useFormLifecycle(state, reset)
+  const track = bar || /^Save/.test(submit)
+  const { ref, dirty, round } = useFormLifecycle(state, reset, !!track)
   return (
     <FormStateContext value={state}>
       <form
         ref={ref}
         id={formId}
         className={inline ? 'flex flex-row items-center gap-4' : 'flex flex-col gap-4'}
-        onChange={bar ? () => setDirty(true) : undefined}
         onSubmit={submitWith(formAction)}
       >
         {bar && (
@@ -154,7 +169,7 @@ export function SettingsForm({
             sentence={dirty ? 'Unsaved changes' : 'Change the settings below, then save'}
             primary={{ label: submit, disabled: pending, form: formId }}
           >
-            <FormStatus state={state} />
+            <FormStatus state={state} unsaved={dirty} />
           </NextStepBar>
         )}
         {children}
@@ -166,10 +181,12 @@ export function SettingsForm({
             submit={submit}
             confirm={confirm}
             primary={primary}
+            unsaved={dirty}
           />
         )}
         <FormNotice state={state} noticeHint={noticeHint} copy={copy} />
       </form>
+      {track && dirty && <LeaveGuard />}
       {after?.(state)}
     </FormStateContext>
   )
