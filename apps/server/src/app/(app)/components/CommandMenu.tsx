@@ -64,7 +64,7 @@ export function CommandMenu({
   const [q, setQ] = useState('')
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey) && !e.defaultPrevented) {
         e.preventDefault()
         setOpen((o) => !o)
       }
