@@ -55,7 +55,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   const admin = isAdmin(user)
   const ready = await readiness(payload, { ...filter, now: new Date() })
   return (
-    <div data-wide className="flex max-w-5xl flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <PageTitle>{product.name}</PageTitle>
       <div className="flex min-w-0 flex-col gap-1">
         <p className="small text-muted-foreground">
@@ -66,20 +66,10 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       {!admin && <p className="small text-muted-foreground">Only an Admin can change Product settings.</p>}
       {ready && <ReadinessSection product={product.id} view={ready} admin={admin} />}
       {ready && <ReleasesSection product={product} view={ready} admin={admin} />}
-      <div className="grid grid-cols-2 items-start gap-4 max-lg:grid-cols-1">
-        <div className="flex min-w-0 flex-col gap-4">
-          <RepositorySection
-            product={product}
-            connections={await gitConnections(payload, workspace.id)}
-            admin={admin}
-          />
-          <IntakeSection product={product} admin={admin} />
-        </div>
-        <div className="flex min-w-0 flex-col gap-4">
-          <GatesSection product={product} admin={admin} />
-          <ProofSection product={product} forgeChecks={await forgeCheckNames(payload, filter)} admin={admin} />
-        </div>
-      </div>
+      <RepositorySection product={product} connections={await gitConnections(payload, workspace.id)} admin={admin} />
+      <IntakeSection product={product} admin={admin} />
+      <GatesSection product={product} admin={admin} />
+      <ProofSection product={product} forgeChecks={await forgeCheckNames(payload, filter)} admin={admin} />
       <p className="small text-muted-foreground">
         What the factory remembers for this Product is on the{' '}
         <Link href={`/memory?product=${product.id}`} className="text-primary hover:underline">

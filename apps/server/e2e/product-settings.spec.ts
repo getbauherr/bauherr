@@ -214,6 +214,23 @@ test('an unsaved Repository change says so, asks before leaving and says Saved a
   })
 })
 
+test('Product settings stack the sections in one column to the right of the Settings nav', async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await ownProduct(page, async () => {
+    const boxes = await Promise.all(
+      ['repository', 'intake', 'gates', 'proof'].map(async (id) => (await page.locator(`#${id}`).boundingBox())!),
+    )
+    for (const [i, b] of boxes.entries()) {
+      expect(b.x).toBe(boxes[0].x)
+      expect(b.width).toBe(boxes[0].width)
+      if (i) expect(b.y).toBeGreaterThan(boxes[i - 1].y + boxes[i - 1].height - 1)
+    }
+    const nav = (await page.getByRole('navigation', { name: 'Settings' }).boundingBox())!
+    expect(nav.x + nav.width).toBeLessThanOrEqual(boxes[0].x)
+  })
+})
+
 test('the mirror state shows a sync error in plain words', async ({ page }) => {
   await signIn(page)
   await inConnect(page)
