@@ -27,7 +27,7 @@ export function RetroOpening({ opening }: { opening: Opening }) {
       </div>
       {opening.tickets.length > 0 && (
         <>
-          <h3 className="m-0 text-base font-semibold">Tickets far off the others</h3>
+          <h2 className="m-0 text-base font-semibold">Tickets far off the others</h2>
           <DataTable
             caption="Tickets far off the others"
             columns={['Ticket', 'Verify rounds', 'Send-backs', 'Failed runs', 'What is off']}
