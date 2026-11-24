@@ -37,6 +37,14 @@ SELECT 'view ' || viewname FROM pg_views WHERE schemaname = 'public'
 
 const EXCEPTIONS = [
   {
+    prefix: 'table learn_events_archive',
+    reason: 'A safety copy of the removed learn events kept by a migration; no collection reads it.',
+  },
+  {
+    prefix: 'column learn_events_archive.',
+    reason: 'A safety copy of the removed learn events kept by a migration; no collection reads it.',
+  },
+  {
     prefix: 'constraint agent_keys agent_keys_owner_id_bauherren_id_fk ',
     reason:
       'Deleting a user deletes the keys (ON DELETE CASCADE); ' +

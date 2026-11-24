@@ -200,3 +200,12 @@ describe('a session with several runs', () => {
     expect(statuses.map((r) => r.status)).toEqual(['claimed', 'claimed', 'expired'])
   })
 })
+
+describe('a run left over from the removed Learn step', () => {
+  it('is never claimed, even when its ticket is done', async () => {
+    const record = await db.fresh()
+    await enqueue(db.payload, record, { stage: 'done', role: 'reviewer', fingerprint: 'old' })
+    await db.payload.db.drizzle.execute(sql`UPDATE "records" SET "stage" = 'done' WHERE "id" = ${record}`)
+    expect(await claim(db.payload, { workspace: db.workspace, role: 'reviewer', by: 'a', now: t0 })).toBeNull()
+  })
+})
