@@ -15,6 +15,8 @@ afterAll(async () => {
 
 const view = (recordId: number) => ticket(e.db.payload, { workspace: e.db.workspace, recordId })
 
+const withoutReference = (text: string): string => text.replace(/ See #\d+\.$/, '')
+
 describe('the tickets the end-to-end specs read', () => {
   it('stops two Briefs at an open decision with two options', async () => {
     for (const id of [...names.briefApprove, names.briefTitle]) {
@@ -26,14 +28,14 @@ describe('the tickets the end-to-end specs read', () => {
 
   it('shows the earlier answers its Brief run used on one Brief and on no other', async () => {
     const used = (await view(names.briefAnswers)).statementsUsed
-    expect(used.brief.map((s) => s.text)).toEqual([
+    expect(used.brief.map((s) => withoutReference(s.text))).toEqual([
       'Uploads and generated files go to object storage, not local disk.',
       'No new export formats before the reporting rework.',
     ])
     expect(used.brief.every((s) => s.record === names.resultReadonly)).toBe(true)
     expect((await view(names.briefTitle)).statementsUsed).toEqual({ brief: [], result: [] })
     const result = (await view(names.resultReadonly)).statementsUsed.result
-    expect(result.map((s) => s.text)).toEqual([
+    expect(result.map((s) => withoutReference(s.text))).toEqual([
       'Run the old export tests before the new ones.',
       'No new export formats before the reporting rework.',
     ])

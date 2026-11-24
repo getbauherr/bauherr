@@ -70,7 +70,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 800 
       await openFromInbox(page, 'Build with reported steps')
       await page.getByRole('link', { name: /^Run \d+/ }).first().click()
       await expect(page.getByRole('heading', { level: 1, name: /^Run \d+$/ })).toBeVisible()
-      await page.getByRole('heading', { level: 1 }).locator('xpath=preceding-sibling::a[1]').click()
+      await page.getByRole('main').getByRole('link', { name: /^#\d+$/ }).first().click()
       await expect(popover(page)).toBeVisible()
     })
 
@@ -81,13 +81,13 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 800 
       const finding = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Review findings' }) })
       const memory = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Memory used' }) })
       for (const section of [finding, memory]) {
-        await section.getByRole('link', { name: named }).click()
+        await section.getByRole('link', { name: named }).first().click()
         await expect(popover(page)).toContainText(LINKED)
         await page.keyboard.press('Escape')
         await expect(popover(page)).toHaveCount(0)
       }
       await page.goto(`${new URL(page.url()).pathname}?tab=activity`)
-      await page.getByRole('main').getByRole('link', { name: named }).click()
+      await page.getByRole('main').getByRole('link', { name: named }).first().click()
       await expect(popover(page)).toContainText(LINKED)
     })
   })

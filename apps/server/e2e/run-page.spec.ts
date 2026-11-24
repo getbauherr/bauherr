@@ -78,7 +78,8 @@ test('the Links panel opens the pull request on its forge in a new tab, and name
   await expect(pull).toContainText('(opens in new tab)')
   await expect(pull).toHaveAttribute('target', '_blank')
   await expect(pull).toHaveAttribute('rel', 'noopener noreferrer')
-  await expect(links(page).getByRole('link', { name: /^Ticket #\d+ Result to read$/ })).toBeVisible()
+  await expect(links(page)).toContainText(/Ticket #\d+ Result to read/)
+  await expect(links(page).getByRole('link', { name: /^#\d+$/ })).toHaveAttribute('href', /^\/tickets\/\d+$/)
 })
 
 test('the Links panel names the session that works the run', async ({ page }) => {
@@ -91,7 +92,7 @@ test('the Links panel leaves the pull request out when the ticket has none', asy
   await signIn(page)
   await runOf(page, 'Build that failed')
   await expect(links(page).getByRole('link', { name: /Pull request/ })).toHaveCount(0)
-  await expect(links(page).getByRole('link', { name: /^Ticket #\d+/ })).toBeVisible()
+  await expect(links(page).getByRole('link', { name: /^#\d+$/ })).toBeVisible()
 })
 
 test('at 375 px nothing scrolls sideways and the order is header, steps, handoff, links, cost', async ({
