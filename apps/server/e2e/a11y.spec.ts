@@ -58,23 +58,17 @@ const linkOn = (from: string, re: RegExp) => async (page: Page) => {
   return href!
 }
 
-const inFactory = (url: string) => async (page: Page) => {
+const inWorkspace = (slug: string, url: string) => async (page: Page) => {
   const base = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'factory', url: base }])
+  await page.context().addCookies([{ name: 'bauherr-ws', value: slug, url: base }])
   return url
 }
 
-const inRecord = (url: string) => async (page: Page) => {
-  const base = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'record', url: base }])
-  return url
-}
+const inFactory = (url: string) => inWorkspace('factory', url)
 
-const inInsights = (url: string) => async (page: Page) => {
-  const base = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'insights', url: base }])
-  return url
-}
+const inRecord = (url: string) => inWorkspace('record', url)
+
+const inInsights = (url: string) => inWorkspace('insights', url)
 
 const insightsTicket = async (page: Page) => {
   await inInsights('/insights')(page)
@@ -109,11 +103,7 @@ const withHoldStrip = (url: string) => async (page: Page) => {
   return url
 }
 
-const inHooks = (url: string) => async (page: Page) => {
-  const base = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'hooks', url: base }])
-  return url
-}
+const inHooks = (url: string) => inWorkspace('hooks', url)
 
 const inboxAt = (width: number) => async (page: Page) => {
   await page.setViewportSize({ width, height: 800 })
