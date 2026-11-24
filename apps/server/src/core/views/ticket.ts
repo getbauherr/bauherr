@@ -20,6 +20,7 @@ import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
 import { positionsOf, type Positions } from './positions'
 import { activityOf, type EventView } from './activity'
+import { loadShots, pairsOf, type Pair } from '../attachments/pairs'
 import { loadMockups, type AttachmentView } from './attachments'
 import { statementsUsed, type StatementsUsed } from './statements-used'
 import { costOf, type TicketCost } from './cost-view'
@@ -79,6 +80,7 @@ export type TicketView = {
   proofs: ProofGroup[]
   mockups: AttachmentView[]
   noMockup: boolean
+  pairs: ScreenPair[]
   pullRequest: PullView | null
   verifySince: string | null
   similarItems: ItemHit[]
@@ -93,6 +95,8 @@ export type TicketView = {
   archived: boolean
   timing: { time: TicketTime; cost: TicketCost }
 }
+
+export type ScreenPair = Pair & { mockup: AttachmentView }
 
 export type TicketFilter = { workspace: number; recordId: number }
 
@@ -160,6 +164,15 @@ const statusFor = (stored: StoredRecord, runs: RunView[], events: StoredEvent[],
 const lacksMockup = (record: TicketRecord, mockups: AttachmentView[]): boolean =>
   record.visible && mockups.length === 0
 
+const pairsFor = async (payload: Payload, record: TicketRecord, recordId: number, mockups: AttachmentView[]) => {
+  if (!record.visible) return []
+  const screens = mockups.map((mockup) => mockup.screen)
+  return pairsOf(screens, await loadShots(payload, recordId)).flatMap((pair) => {
+    const mockup = mockups.find((candidate) => candidate.screen === pair.screen)
+    return mockup ? [{ ...pair, mockup }] : []
+  })
+}
+
 const originOf = async (payload: Payload, stored: StoredRecord) => {
   const { workspace, id, record } = stored
   const [notStarted] = await loadNotStarted(payload, { workspace, recordId: id, now: new Date() })
@@ -209,6 +222,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     proofs: await loadProofs(payload, stored.id),
     mockups,
     noMockup: lacksMockup(stored.record, mockups),
+    pairs: await pairsFor(payload, stored.record, stored.id, mockups),
     ...pulls,
     verifySince: verifySinceOf(events),
     statementsUsed: await statementsUsed(payload, stored.id, events),

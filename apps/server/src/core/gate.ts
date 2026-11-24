@@ -1,3 +1,4 @@
+import { pairProblems, pairsOf, type Shot } from './attachments/pairs'
 import type { Problem } from './module'
 import type { Criterion, TicketRecord } from './record/schema'
 import type { ReviewResult } from './review-result'
@@ -12,6 +13,8 @@ export type GateFacts = {
   headCommit: string | null
   checks: ChecksState
   proofIds: string[]
+  screens: string[]
+  shots: Shot[]
 }
 
 export type GateInput = { result: VerifyResult; record: TicketRecord; facts: GateFacts }
@@ -91,7 +94,14 @@ const verdict: Rule = ({ result, record }) => {
     : [refusal('verdict', 'verdict', `pass while ${parts.join(', ')} are not settled: answer changes, or settle them.`)]
 }
 
-const RULES: Rule[] = [author, stalePatch, headMoved, checks, proof, known, evidence, verdict]
+const pairs: Rule = ({ result, record, facts }) =>
+  record.visible && result.verdict === 'pass'
+    ? pairProblems(pairsOf(facts.screens, facts.shots), result.headSha).map(({ screen, message }) =>
+        refusal('pairs', `screens.${screen}`, message),
+      )
+    : []
+
+const RULES: Rule[] = [author, stalePatch, headMoved, checks, proof, known, evidence, verdict, pairs]
 
 const REVIEW_RULES: ReviewRule[] = [author, stalePatch, headMoved, evidence]
 

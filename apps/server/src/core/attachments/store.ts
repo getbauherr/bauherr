@@ -25,6 +25,8 @@ export type UploadRequest = {
   contentType: ImageType
   criterion: string | null
   proofSha: string | null
+  screen: string | null
+  width: number | null
   now: Date
 }
 
@@ -70,10 +72,10 @@ export const requestUpload = async (
   const expiresAt = new Date(input.now.getTime() + UPLOAD_TTL_MS).toISOString()
   await db.db.drizzle.execute(sql`
     INSERT INTO "attachments" ("workspace_id", "record_id", "run_id", "stage", "kind", "caption", "content_type",
-      "token_hash", "lease_hash", "expires_at", "criterion", "proof_sha", "updated_at", "created_at")
+      "token_hash", "lease_hash", "expires_at", "criterion", "proof_sha", "screen", "width", "updated_at", "created_at")
     VALUES (${input.workspace}, ${input.recordId}, ${input.runId}, ${input.stage}, ${input.kind}, ${input.caption},
       ${input.contentType}, ${hashToken(token)}, ${hashOf(input.leaseToken)}, ${expiresAt}, ${input.criterion},
-      ${input.proofSha}, now(), now())`)
+      ${input.proofSha}, ${input.screen}, ${input.width}, now(), now())`)
   return { token, expiresAt }
 }
 

@@ -52,3 +52,29 @@ it('flags a visible Brief without a mockup for the card', async () => {
   await run(sql`UPDATE "records" SET "data" = jsonb_set("data", '{visible}', 'true') WHERE "id" = ${id}`)
   expect((await view(id)).noMockup).toBe(true)
 })
+
+it('pairs a before and an after with each mockup screen of a visible ticket, and nothing otherwise', async () => {
+  const id = s.names.resultCard
+  const insert = (kind: string, caption: string, screen: string | null, width: number | null, sha: string | null) =>
+    run(sql`INSERT INTO "attachments" ("workspace_id", "record_id", "run_id", "stage", "kind", "caption",
+      "content_type", "byte_size", "content", "token_hash", "lease_hash", "expires_at", "screen", "width", "proof_sha",
+      "updated_at", "created_at") VALUES (${s.e.db.workspace}, ${id}, ${runId}, 'brief', ${kind}, ${caption},
+      'image/png', 2, 'AA', ${`${kind}-${caption}`}, 'l', now(), ${screen}, ${width}, ${sha}, now(), now())`)
+  await run(sql`UPDATE "records" SET "data" = jsonb_set("data", '{visible}', 'true') WHERE "id" = ${id}`)
+  const base = await run(sql`SELECT "id" FROM "stage_runs" WHERE "record_id" = ${id} LIMIT 1`)
+  const copied = await run(sql`INSERT INTO "stage_runs" ("workspace_id", "record_id", "stage", "role", "status",
+    "fingerprint", "attempt", "steps", "updated_at", "created_at")
+    SELECT "workspace_id", "record_id", 'brief', "role", 'submitted', 'pairs', 0, '[]'::jsonb, now(), now()
+    FROM "stage_runs" WHERE "id" = ${Number(base.rows[0]?.id)} RETURNING "id"`)
+  const runId = Number(copied.rows[0]?.id)
+  await insert('mockup', 'List (wide)', null, null, null)
+  await insert('mockup', 'Detail (wide)', null, null, null)
+  await insert('before', 'List before', 'List', 1280, 'h0')
+  await insert('after', 'List after', 'List', 1280, 'h1')
+  const t = await view(id)
+  expect(t.pairs.map((pair) => pair.screen)).toEqual(['List', 'Detail'])
+  expect(t.pairs[0]).toMatchObject({ before: { sha: 'h0', width: 1280 }, after: { sha: 'h1' } })
+  expect(t.pairs[1]).toMatchObject({ before: null, after: null })
+  await run(sql`UPDATE "records" SET "data" = jsonb_set("data", '{visible}', 'false') WHERE "id" = ${id}`)
+  expect((await view(id)).pairs).toEqual([])
+})

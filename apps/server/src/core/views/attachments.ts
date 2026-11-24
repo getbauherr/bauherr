@@ -2,19 +2,21 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import { imageTypeOf } from '../attachments/image'
+import { screenOf } from '../attachments/pairs'
+import type { Conn } from '../conn'
 
 const count = z.coerce.number()
 
 const viewRow = z.object({ id: count, caption: z.string(), byte_size: count })
 
-export type AttachmentView = { id: number; caption: string; bytes: number }
+export type AttachmentView = { id: number; caption: string; screen: string; bytes: number }
 
 const viewOf = (row: unknown): AttachmentView => {
   const parsed = viewRow.parse(row)
-  return { id: parsed.id, caption: parsed.caption, bytes: parsed.byte_size }
+  return { id: parsed.id, caption: parsed.caption, screen: screenOf(parsed.caption), bytes: parsed.byte_size }
 }
 
-export const loadMockups = async (payload: Payload, recordId: number): Promise<AttachmentView[]> => {
+export const loadMockups = async (payload: Conn, recordId: number): Promise<AttachmentView[]> => {
   const found = await payload.db.drizzle.execute(sql`
     SELECT a."id", a."caption", a."byte_size" FROM "attachments" a
     WHERE a."kind" = 'mockup' AND a."content" IS NOT NULL AND a."run_id" = (
