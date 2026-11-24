@@ -12,6 +12,8 @@ import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
 import { claimed, runTickets } from './run-seed'
 import { source } from './fixtures'
+import { QUESTION, referral } from './question-text'
+import { referencing } from './ref-text'
 import { verifyRoundsTicket } from './verify-rounds-fixtures'
 import { asked, begin, edit, mirrorSource, patch, toBrief, workOn } from './scenario'
 
@@ -194,10 +196,9 @@ const reportedSteps = async (e: Engine, id: number) => {
   for (const [minutes, step] of steps) await heartbeat(e.db.payload, run.id, token, { now: ago(minutes), step })
 }
 
-const questionTicket = async (e: Engine, id: number) => {
+const questionTicket = async (e: Engine, id: number, text = QUESTION) => {
   const { run, token } = await claimed(e, id)
-  const text = 'Which storage should the export use?'
-  await askOwner(run.id, token, { text, options: ['Disk', 'Object storage'] }, e.deps())
+  return askOwner(run.id, token, { text, options: ['Disk', 'Object storage'] }, e.deps())
 }
 
 const parkedTicket = async (e: Engine) => {
@@ -261,15 +262,15 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     titled.push([id, title])
     return id
   }
-  const asking = async (title: string) => {
+  const asking = async (title: string, text?: string) => {
     const id = await toBrief(e, false)
-    await questionTicket(e, id)
-    titled.push([id, title])
+    await questionTicket(e, id, text).then(() => titled.push([id, title]))
     return id
   }
   let pr = 10
+  const briefTitle = await open(TICKET_TITLES.briefTitle)
   const names = {
-    briefTitle: await open(TICKET_TITLES.briefTitle),
+    briefTitle,
     briefAnswers: await open(TICKET_TITLES.briefAnswers),
     briefApprove: await pooled((n) => open(`${POOL_TITLES.briefApprove} ${n}`)),
     briefArchive: await pooled((n) => open(`${POOL_TITLES.briefArchive} ${n}`)),
@@ -279,7 +280,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     resultAccept: await pooled((n) => result(`${POOL_TITLES.resultAccept} ${n}`, ++pr)),
     resultStale: await pooled((n) => result(`${POOL_TITLES.resultStale} ${n}`, ++pr)),
     question: await pooled((n) => asking(`${POOL_TITLES.question} ${n}`)),
-    questionRead: await asking(TICKET_TITLES.questionRead),
+    questionRead: await asking(TICKET_TITLES.questionRead, await referral(e, briefTitle)),
     runSteps: await toBrief(e, false),
     parkedOnNeed: await parkedTicket(e),
   }
@@ -297,6 +298,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   titled.push([adoptedWaiting, TICKET_TITLES.adoptedWaiting], [adoptedResult, TICKET_TITLES.adoptedResult])
   await answered(e, names.briefAnswers, ['brief'], names.resultReadonly, EARLIER_ANSWERS)
   await answered(e, names.resultReadonly, ['build', 'verify'], names.briefTitle, RESULT_ANSWERS)
+  await referencing(e, { result: names.resultReadonly, statements: names.briefTitle, target: names.briefAnswers })
   await reportedSteps(e, names.runSteps)
   for (let n = 11; n <= pr; n++) await mirror.item(n, { kind: 'pr', head: `h${n}`, title: `Pull request ${n}` })
   for (const [id, title] of titled) {

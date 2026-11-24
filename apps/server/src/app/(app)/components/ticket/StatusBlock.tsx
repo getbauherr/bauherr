@@ -7,6 +7,7 @@ import { ChecksPanel } from './ChecksPanel'
 import { DecisionForm } from './DecisionForm'
 import { RunLink } from './RunLink'
 import { Card, Facts } from './Section'
+import { RefText } from '../RefText'
 
 const WAITING: Partial<Record<TicketView['status'], string>> = {
   'waiting-for-checks': 'Waiting for CI. The factory goes on when the checks finish.',
@@ -14,6 +15,8 @@ const WAITING: Partial<Record<TicketView['status'], string>> = {
   'reporter-asked': 'Waiting for the reporter. Nothing to do.',
   'waiting-on-author': 'Waiting on the author of the pull request. The factory goes on when a new commit arrives.',
 }
+
+const NO_STEP = 'The agent has not reported a step yet.'
 
 const liveRun = (view: TicketView): RunView | undefined =>
   view.runs.findLast((run) => run.status === 'queued' || run.status === 'claimed')
@@ -63,7 +66,7 @@ function StatusBody({ view }: { view: TicketView }) {
         <Facts
           rows={[
             ['Run', <RunLink key="run" id={run.id} />],
-            ['Latest step', step ? step.text : 'The agent has not reported a step yet.'],
+            ['Latest step', <RefText key="step" text={step?.text ?? NO_STEP} repo={view.record.source.repo} />],
           ]}
         />
       )}

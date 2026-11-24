@@ -4,6 +4,7 @@ import type { ProofGroup } from '../../../../core/views/ticket-parts'
 import { CRITERION_WORDS, PROOF_WORDS, ticketHref, VERIFY_WORDS, type Tab } from '../../lib/ticket'
 import { WordBadge } from '../WordBadge'
 import { ImageGallery } from './ImageGallery'
+import { RefText } from '../RefText'
 
 const TABLE = 'w-full border-collapse overflow-hidden rounded-md border border-border'
 const TH = 'label border-b border-border bg-secondary px-3 py-2 text-left font-medium text-muted-foreground'
@@ -11,7 +12,7 @@ const TD = 'border-b border-border px-3 py-2 align-top last:border-b-0'
 
 export type ProofLinking = { recordId: number; tab: Tab; proofs: ProofGroup[]; selected: string | null }
 
-type Props = { criteria: Criterion[] } & ({ mode: 'brief' } | ({ mode: 'result' } & ProofLinking))
+type Props = { criteria: Criterion[]; repo: string } & ({ mode: 'brief' } | ({ mode: 'result' } & ProofLinking))
 
 function ProofLinks({ criterion, ...linking }: { criterion: Criterion } & ProofLinking) {
   const { proofs, recordId, tab, selected } = linking
@@ -52,11 +53,13 @@ export function CriteriaTable(props: Props) {
           {props.criteria.map((criterion, index) => (
             <tr key={criterion.id}>
               <td className={`${TD} mono text-muted-foreground`}>{index + 1}</td>
-              <td className={TD}>{criterion.text}</td>
+              <td className={TD}><RefText text={criterion.text} repo={props.repo} /></td>
               {result ? <td className={TD}><WordBadge word={CRITERION_WORDS[criterion.status]} /></td> : null}
               <td className={TD}>
                 {result ? <ProofLinks criterion={criterion} {...result} /> : VERIFY_WORDS[criterion.verify.kind]}
-                {!result && <span className="small block text-muted-foreground">{criterion.verify.how}</span>}
+                {!result && <span className="small block text-muted-foreground">
+                    <RefText text={criterion.verify.how} repo={props.repo} />
+                  </span>}
               </td>
             </tr>
           ))}

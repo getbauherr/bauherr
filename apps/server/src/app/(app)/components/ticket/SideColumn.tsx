@@ -7,6 +7,8 @@ import { WordBadge } from '../WordBadge'
 import { CARD } from './Section'
 import { ForgeLink } from './ForgeLink'
 import { RunLink } from './RunLink'
+import { RefText } from '../RefText'
+import { TicketRef } from '../TicketRef'
 import { TimeCost } from './TimeCost'
 
 function Aside({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
@@ -78,7 +80,7 @@ function Findings({ view }: { view: TicketView }) {
       {view.record.findings.map((finding) => (
         <div key={finding.id} className="small grid justify-items-start gap-1">
           <WordBadge word={FINDING_WORDS[finding.status]} />
-          <span>{finding.text}</span>
+          <span><RefText text={finding.text} repo={view.record.source.repo} /></span>
           <span className="mono text-muted-foreground">{finding.evidence.pointer}</span>
         </div>
       ))}
@@ -114,13 +116,15 @@ function AnswersUsed({ view }: { view: TicketView }) {
     <Aside title="Memory used">
       {used.map((statement) => (
         <span key={statement.id} className="small">
-          <Link href={`/memory/${statement.id}`} className="hover:underline">
-            &quot;{statement.text}&quot;
+          &quot;<RefText text={statement.text} repo={view.record.source.repo} />&quot;{' '}
+          <Link href={`/memory/${statement.id}`} className="text-muted-foreground underline">
+            Memory
           </Link>{' '}
-          {statement.record !== null && (
-            <Link href={`/tickets/${statement.record}`} className="text-muted-foreground underline">
-              #{statement.ticket}, {shortDate(statement.at)}
-            </Link>
+          {statement.record !== null && statement.ticket !== null && (
+            <>
+              <TicketRef recordId={statement.record} number={statement.ticket} className="text-muted-foreground" />
+              , {shortDate(statement.at)}
+            </>
           )}{' '}
           <span className="text-muted-foreground">({statement.scopeLabel})</span>
         </span>
