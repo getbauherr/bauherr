@@ -1,16 +1,17 @@
 import Link from 'next/link'
 import { describeChange } from '../../../../core/readiness/checks'
 import type { ReadinessItem, ReadinessView } from '../../../../core/readiness/view'
+import { Check, CircleHelp, Info, X } from '../icons'
 import { Badge } from '../ui/badge'
 import { Time } from '../Time'
 import { TicketRef } from '../TicketRef'
 import { CheckNow, SettingFix, TicketFix } from './ReadinessActions'
 
 const MARK = {
-  gap: { glyph: '✕', word: 'Gap', tone: 'text-destructive' },
-  note: { glyph: 'i', word: 'Note', tone: 'text-muted-foreground' },
-  unknown: { glyph: '?', word: 'Unknown', tone: 'text-muted-foreground' },
-  ready: { glyph: '✓', word: 'Ready', tone: 'text-ok' },
+  gap: { Glyph: X, word: 'Gap', tone: 'text-destructive' },
+  note: { Glyph: Info, word: 'Note', tone: 'text-muted-foreground' },
+  unknown: { Glyph: CircleHelp, word: 'Unknown', tone: 'text-muted-foreground' },
+  ready: { Glyph: Check, word: 'Ready', tone: 'text-ok' },
 } as const
 
 const hours = (seconds: number): string =>
@@ -62,7 +63,7 @@ function Row({ item, product, admin }: { item: ReadinessItem; product: number; a
   const mark = MARK[item.status]
   return (
     <li className={`${ROW} grid-cols-[1.75rem_minmax(0,1fr)_auto]`}>
-      <span aria-hidden className={`text-center font-semibold ${mark.tone}`}>{mark.glyph}</span>
+      <mark.Glyph className={`mt-0.5 size-4 justify-self-center ${mark.tone}`} />
       <span className="grid gap-0.5">
         <span className="sr-only">{mark.word}: </span>
         <span className="font-medium">{item.title}</span>
@@ -123,7 +124,7 @@ export function ReadinessSection({ product, view, admin }: { product: number; vi
           {open.map((item) => <Row key={item.id} item={item} product={product} admin={admin} />)}
           {ready.length > 0 && (
             <li className={`${ROW} grid-cols-[1.75rem_minmax(0,1fr)]`}>
-              <span aria-hidden className="text-center font-semibold text-ok">✓</span>
+              <Check className="mt-0.5 size-4 justify-self-center text-ok" />
               <span>
                 <span className="font-medium">Ready:</span> {ready.map((item) => item.title).join(', ')}
               </span>
