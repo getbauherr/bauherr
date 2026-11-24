@@ -14,6 +14,7 @@ export class ModuleMissing extends RunError {}
 export class SessionNotFound extends RunError {}
 export class WrongKeyKind extends RunError {}
 export class ProofRefused extends RunError {}
+export class FileNotFound extends RunError {}
 export class UnknownTool extends RunError {}
 export class RecordClosed extends RunError {}
 export class OptionRefused extends RunError {}

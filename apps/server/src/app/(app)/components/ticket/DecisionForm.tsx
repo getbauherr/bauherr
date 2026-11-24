@@ -1,9 +1,11 @@
 'use client'
-import { useRef, useState, useTransition, type ReactNode } from 'react'
+import { useCallback, useRef, useState, useTransition, type ReactNode } from 'react'
 import { NOTE_MAX } from '../../../../core/limits'
 import { decideTicket } from '../../(shell)/tickets/actions'
 import { Button } from '../ui/button'
-import { CommentField, CommentToggle } from './CommentField'
+import { conversationApi } from '../conversation/conversation-api'
+import { CommentRuntime } from './CommentRuntime'
+import { CommentToggle, DecisionComment } from './DecisionComment'
 import { useComment } from './useComment'
 
 export type DecisionAction = {
@@ -26,6 +28,7 @@ type Props = {
 }
 
 const ANSWER_PREFIX = 'answer:'
+const api = conversationApi()
 
 const answersOf = (form: HTMLFormElement): Record<string, string> => {
   const answers: Record<string, string> = {}
@@ -33,6 +36,16 @@ const answersOf = (form: HTMLFormElement): Record<string, string> => {
     if (key.startsWith(ANSWER_PREFIX) && typeof value === 'string') answers[key.slice(ANSWER_PREFIX.length)] = value
   })
   return answers
+}
+
+const attachFiles = async (ensure: () => Promise<number>, note: string, fileIds: number[]): Promise<string | null> => {
+  if (fileIds.length === 0) return null
+  try {
+    await api.send(await ensure(), note, fileIds)
+    return null
+  } catch (failure) {
+    return failure instanceof Error ? failure.message : 'The attached files were not saved.'
+  }
 }
 
 type Prompted = { prompt?: string; say?: string }
@@ -83,7 +96,9 @@ function ActionBar(props: {
   )
 }
 
-function Form({ recordId, ask, seq, sentence, actions, pick, children }: Props) {
+type Attach = { ensure: () => Promise<number>; forget: () => void }
+
+function Form({ recordId, ask, seq, sentence, actions, pick, children, ensure, forget }: Props & Attach) {
   const form = useRef<HTMLFormElement>(null)
   const comment = useComment(ask.startsWith('question:') ? 'product' : 'ticket')
   const [error, setError] = useState<string | null>(null)
@@ -95,8 +110,12 @@ function Form({ recordId, ask, seq, sentence, actions, pick, children }: Props) 
       const note = comment.empty ? {} : { note: comment.note, scope: comment.scope }
       const extra = { ...note, ...(Object.keys(answers).length > 0 ? { answers } : {}) }
       const result = await decideTicket({ recordId, ask, seq, choice: action.choice, ...extra })
-      setError(result.error ?? null)
-      if (!result.error) comment.reset()
+      const attached = comment.fileIds
+      if (result.error) return setError(result.error)
+      const failure = await attachFiles(ensure, comment.note, attached)
+      setError(failure)
+      forget()
+      comment.reset()
     })
 
   const press = (action: DecisionAction) => {
@@ -126,14 +145,13 @@ function Form({ recordId, ask, seq, sentence, actions, pick, children }: Props) 
     >
       {children}
       {comment.open ? (
-        <CommentField
-          value={comment.note}
+        <DecisionComment
+          left={NOTE_MAX - comment.note.length}
           max={NOTE_MAX}
           hint={comment.hint}
           missing={comment.empty ? comment.missing : null}
           areaRef={comment.area}
           scope={comment.scope}
-          onChange={comment.setNote}
           onScope={comment.setScope}
         />
       ) : (
@@ -144,6 +162,21 @@ function Form({ recordId, ask, seq, sentence, actions, pick, children }: Props) 
   )
 }
 
+function Keyed(props: Props) {
+  const conversation = useRef<Promise<number> | null>(null)
+  const title = `Ticket ${props.recordId} comment`
+  const { recordId } = props
+  const ensure = useCallback(() => (conversation.current ??= api.create(undefined, title, recordId)), [title, recordId])
+  const forget = useCallback(() => {
+    conversation.current = null
+  }, [])
+  return (
+    <CommentRuntime conversation={ensure}>
+      <Form {...props} ensure={ensure} forget={forget} />
+    </CommentRuntime>
+  )
+}
+
 export function DecisionForm(props: Props) {
-  return <Form key={`${props.ask}:${props.seq}`} {...props} />
+  return <Keyed key={`${props.ask}:${props.seq}`} {...props} />
 }

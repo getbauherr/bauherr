@@ -28,5 +28,5 @@ export function ResultTab({ view, proof }: { view: TicketView; proof: string | u
 }
 
 export function ActivityTab({ view }: { view: TicketView }) {
-  return <ActivityList events={view.events} repo={view.record.source.repo} />
+  return <ActivityList events={view.events} repo={view.record.source.repo} files={view.commentFiles} />
 }

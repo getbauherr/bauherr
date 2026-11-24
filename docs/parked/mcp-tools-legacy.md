@@ -76,7 +76,7 @@ Cut from the lean core on 2026-11-19. The code is at the git tag `legacy-final`.
 
 ## Why it was cut
 
-The lean core has nine tools (`connect`, `next_work`, `heartbeat`, `search`, `attach_proof`, `ask`, `submit`, `release`, and `decide` for humans). Claiming, leases and per-stage submit tools collapse into `next_work` and `submit`.
+The lean core has ten tools (`connect`, `next_work`, `heartbeat`, `search`, `attach_proof`, `fetch_file`, `ask`, `submit`, `release`, and `decide` for humans). Claiming, leases and per-stage submit tools collapse into `next_work` and `submit`.
 
 ## What a module on the new core needs
 
