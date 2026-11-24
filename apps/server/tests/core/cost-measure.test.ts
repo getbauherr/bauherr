@@ -97,10 +97,10 @@ const row = async (runId: number) =>
       FROM "stage_runs" WHERE "id" = ${runId}`)
   ).rows[0]
 
-const claimOverMcp = async (clientSession: string | undefined, capacity = 1) => {
+const claimOverMcp = async (clientSession: string, capacity = 1) => {
   const { session } = z
     .object({ session: z.string() })
-    .parse(await call('connect', { role: 'builder', capacity, ...(clientSession && { clientSession }) }))
+    .parse(await call('connect', { role: 'builder', capacity, clientSession }))
   const runs: number[] = []
   for (let i = 0; i < capacity; i++) {
     await m.begin()
@@ -118,6 +118,14 @@ describe('the link over /mcp', () => {
       sql`SELECT "client_session" FROM "agent_sessions" ORDER BY "id" DESC LIMIT 1`,
     )
     expect(stored.rows[0]?.client_session).toBe(SESSION)
+  })
+
+  it('refuses a connect without the session id and tells the agent what to do', async () => {
+    const refused = reply.parse(await (await route.POST(rpc('connect', { role: 'builder' }))).json()).result
+    expect(refused.isError).toBe(true)
+    expect(JSON.stringify(refused)).toContain(
+      'Pass clientSession: run printenv CLAUDE_CODE_SESSION_ID in your shell and call connect again with its value.',
+    )
   })
 
   it('refuses an id that is not a plain session id', async () => {
@@ -173,14 +181,11 @@ describe('measuring a run', () => {
     expect(await row(runId)).toMatchObject({ cost_usd: null, cost_source: null, input_tokens: '200' })
   })
 
-  it('leaves a run without a session id, and a run without requests, null and never zero', async () => {
-    const unlinked = (await claimOverMcp(undefined))[0] ?? 0
-    await place(unlinked, 60, 30)
+  it('leaves a run without requests null and never zero', async () => {
     const silent = (await claimOverMcp('a-session-with-no-requests'))[0] ?? 0
     await place(silent, 60, 30)
     await log(agoMinutes(40), { cost: 1 })
     await measureRuns(m.e.db.payload, gatewayRequests, new Date())
-    expect(await row(unlinked)).toMatchObject({ cost_usd: null, cost_source: null, cost_measured_at: null })
     expect(await row(silent)).toMatchObject({ cost_usd: null, cost_source: null, input_tokens: null })
   })
 

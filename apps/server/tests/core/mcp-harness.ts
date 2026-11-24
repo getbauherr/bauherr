@@ -71,7 +71,7 @@ export const openMcp = async (suite: string, modules: Modules = TEST_MODULES): P
     claimed: async (member, role = 'builder', capacity) => {
       const { session } = z
         .object({ session: z.string() })
-        .parse(await mcp.call('connect', { role, capacity }, mcp.agent(member)))
+        .parse(await mcp.call('connect', { role, capacity, clientSession: 'test-session-1' }, mcp.agent(member)))
       const work = z
         .object({ runId: z.number(), leaseToken: z.string(), context: z.object({ note: z.string().nullable() }) })
         .parse(await mcp.call('next_work', { session }, mcp.agent(member)))

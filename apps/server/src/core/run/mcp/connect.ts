@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
+import { ClientSessionMissing } from '../errors'
 import { MAX_CAPACITY, ROLES } from '../schema'
 import { defineTool } from './tool'
 
@@ -36,6 +37,11 @@ export const connect = defineTool({
       .optional(),
   }),
   run: async ({ role, label, capacity: asked, instance, clientSession }, { deps, workspace, keyId }) => {
+    if (!clientSession) {
+      throw new ClientSessionMissing(
+        'Pass clientSession: run printenv CLAUDE_CODE_SESSION_ID in your shell and call connect again with its value.',
+      )
+    }
     const capacity = Math.min(MAX_CAPACITY, Math.max(1, asked ?? 1))
     const clientKey = `key-${keyId}:${role}${instance ? `:${instance}` : ''}`
     const at = deps.now.toISOString()
@@ -43,7 +49,7 @@ export const connect = defineTool({
       INSERT INTO "agent_sessions" ("workspace_id", "public_id", "owner_id", "agent_key_id", "role", "label",
         "capacity", "client_session", "client_key", "connected_at", "last_seen_at", "updated_at", "created_at")
       SELECT ${workspace}, ${randomUUID()}, k."owner_id", k."id", ${role}, ${label ?? null}, ${capacity},
-        ${clientSession ?? null}, ${clientKey}, ${at}, ${at}, now(), now()
+        ${clientSession}, ${clientKey}, ${at}, ${at}, now(), now()
       FROM "agent_keys" k WHERE k."id" = ${keyId}
       ON CONFLICT ("workspace_id", "owner_id", "client_key") DO UPDATE SET "label" = EXCLUDED."label",
         "capacity" = EXCLUDED."capacity", "client_session" = EXCLUDED."client_session",

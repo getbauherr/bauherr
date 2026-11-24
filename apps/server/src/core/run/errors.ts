@@ -17,3 +17,4 @@ export class ProofRefused extends RunError {}
 export class UnknownTool extends RunError {}
 export class RecordClosed extends RunError {}
 export class OptionRefused extends RunError {}
+export class ClientSessionMissing extends RunError {}

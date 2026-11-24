@@ -38,7 +38,7 @@ describe('run tools', () => {
     await m.begin()
     const { session } = z
       .object({ session: z.string() })
-      .parse(await m.call('connect', { role: 'builder' }, m.agent(m.alpha)))
+      .parse(await m.call('connect', { role: 'builder', clientSession: 'test-session-1' }, m.agent(m.alpha)))
     expect(await m.call('next_work', { session }, m.agent(m.alpha))).toEqual({ status: 'idle' })
     await executor('session')
     await m.e.drain()
@@ -229,7 +229,7 @@ describe('session capacity', () => {
   const connectWith = async (extra: Record<string, unknown> = {}) =>
     z
       .object({ session: z.string(), capacity: z.number() })
-      .parse(await m.call('connect', { role: 'builder', ...extra }, m.agent(m.alpha)))
+      .parse(await m.call('connect', { role: 'builder', clientSession: 'test-session-1', ...extra }, m.agent(m.alpha)))
   const nextWork = (session: string) => m.call('next_work', { session }, m.agent(m.alpha))
   const work = z.object({ status: z.literal('work'), runId: z.number(), leaseToken: z.string() })
   const atCapacity = z.object({ status: z.literal('at_capacity'), holding: z.array(z.number()) })
