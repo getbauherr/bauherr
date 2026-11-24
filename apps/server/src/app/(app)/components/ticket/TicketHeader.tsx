@@ -4,6 +4,7 @@ import type { TicketView } from '../../../../core/views/ticket'
 import { STAGE_NAMES } from '../../lib/factory'
 import { adoptedLine } from '../../lib/ticket'
 import { StatusChip } from '../StatusChip'
+import { TicketRef } from '../TicketRef'
 
 const STEP = ['text-ok', 'font-medium text-foreground', undefined]
 
@@ -35,7 +36,7 @@ export function TicketHeader({ view }: { view: TicketView }) {
     <>
       <div className="flex flex-wrap items-center gap-3">
         <Link href="/" className="text-primary hover:underline">Factory</Link>
-        <span className="mono">#{view.number}</span>
+        <TicketRef recordId={view.recordId} number={view.number} />
         <h1 className="title">{view.title}</h1>
         <StatusChip status={view.status} closedAs={view.closedAs} />
         {view.adopted && <span className="small text-muted-foreground">{adoptedLine(view.adopted)}</span>}

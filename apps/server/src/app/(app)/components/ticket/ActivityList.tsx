@@ -2,8 +2,9 @@ import Link from 'next/link'
 import type { TicketView } from '../../../../core/views/ticket'
 import { Time } from '../Time'
 import { Card } from './Section'
+import { RefText } from '../RefText'
 
-export function ActivityList({ events }: { events: TicketView['events'] }) {
+export function ActivityList({ events, repo }: { events: TicketView['events']; repo: string }) {
   return (
     <Card bare>
       <ol className="m-0 grid list-none p-0">
@@ -14,7 +15,7 @@ export function ActivityList({ events }: { events: TicketView['events'] }) {
           >
             <Time iso={event.at} className="mono text-muted-foreground" />
             <span>
-              {event.label}
+              <RefText text={event.label} repo={repo} />
               {event.memories?.map((memory) => (
                 <span key={memory.id} className="block">
                   <Link href={`/memory/${memory.id}`} className="text-primary hover:underline">

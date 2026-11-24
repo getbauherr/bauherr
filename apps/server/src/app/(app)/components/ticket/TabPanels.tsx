@@ -4,6 +4,7 @@ import { BriefSheet } from './BriefSheet'
 import { AnsweredDecisions } from './Decisions'
 import { ResultBody } from './ResultBody'
 import { Card, Section } from './Section'
+import { RefText } from '../RefText'
 
 export function BriefTab({ view }: { view: TicketView }) {
   const { record } = view
@@ -13,10 +14,12 @@ export function BriefTab({ view }: { view: TicketView }) {
       <BriefSheet record={record} mockups={view.mockups} missing={view.noMockup} />
       {record.plan.steps.length > 0 && (
         <Section title="Plan">
-          <ol className="m-0 grid gap-1 pl-5">{record.plan.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+          <ol className="m-0 grid gap-1 pl-5">
+            {record.plan.steps.map((step) => <li key={step}><RefText text={step} repo={record.source.repo} /></li>)}
+          </ol>
         </Section>
       )}
-      <AnsweredDecisions decisions={record.decisions} />
+      <AnsweredDecisions decisions={record.decisions} repo={record.source.repo} />
     </Card>
   )
 }
@@ -29,5 +32,5 @@ export function ResultTab({ view, proof }: { view: TicketView; proof: string | u
 }
 
 export function ActivityTab({ view }: { view: TicketView }) {
-  return <ActivityList events={view.events} />
+  return <ActivityList events={view.events} repo={view.record.source.repo} />
 }

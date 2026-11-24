@@ -4,6 +4,7 @@ import { stageSchema } from '../../../../core/events'
 import { Badge } from '../ui/badge'
 import { Table } from '../ui/table'
 import { RUN_NAMES } from '../../lib/factory'
+import { TicketRef } from '../TicketRef'
 
 export function Origin({ record, product }: { record: StatementRecord; product: string }) {
   return (
@@ -14,9 +15,7 @@ export function Origin({ record, product }: { record: StatementRecord; product: 
         {record.ticket !== null && (
           <>
             {' on '}
-            <Link href={`/tickets/${record.ticket.record}`} className="mono text-primary hover:underline">
-              #{record.ticket.number}
-            </Link>
+            <TicketRef recordId={record.ticket.record} number={record.ticket.number} />
           </>
         )}
         {` in ${product}.`}
@@ -73,9 +72,7 @@ export function Fared({ fares }: { fares: Fare[] }) {
             {fares.map((fare) => (
               <tr key={fare.run}>
                 <td>
-                  <Link href={`/tickets/${fare.ticket.record}`} className="mono text-primary hover:underline">
-                    #{fare.ticket.number}
-                  </Link>
+                  <TicketRef recordId={fare.ticket.record} number={fare.ticket.number} />
                   {fare.ticket.title !== null && ` ${fare.ticket.title}`}
                 </td>
                 <td>

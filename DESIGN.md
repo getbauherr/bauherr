@@ -374,7 +374,7 @@ Rule: `/tickets/<id>` has a header (number, title, status chip, stage path with 
 
 ### Run page
 
-Rule: `/runs/<id>` shows one run of one stage: the ticket it belongs to, the run's word, stage, role and who runs it; the reported steps oldest first; the handoff once the run has ended (before that, "Not written yet"); and in the side column the parts of the context the agent was given. The cost block is Admin only and its data never reaches a non-Admin render (see Cost panel). Why: what the agent did and handed on is one click from the ticket.
+Rule: `/runs/<id>` shows one run of one stage. The header card names the ticket (a link), the run id, the derived word (Working, Waiting for a session, Stuck, Failed, Finished) with one truthful sentence from `runHealth`, the stage, role and session, and at most one primary: Connect an agent (queued, no session of the role) or Open ticket (failed or expired). Under it, in this order on a phone: the reported steps oldest first (relative time, exact time in `title`, `<time datetime>`; a claimed run without steps says when it started), the handoff once the run has ended (before that, "Not written yet"), the Links panel (pull request on its forge in a new tab, ticket, session; a missing pull request is left out), the cost (Admin only, its data never reaches a non-Admin render, see Cost panel) and the context the agent was given. Long unbroken text wraps; the page never scrolls sideways at 375 px. Why: what the agent did and handed on is one click from the ticket, and the header answers "is it healthy and what do I do".
 
 ### Transitions
 
@@ -391,6 +391,8 @@ Rule: a page and its poll endpoint read only the database; forge data is stored 
 ### Cross-links
 
 Rule: every entity links to its neighbours with its own label, never to a bare id: Ticket (`/tickets/<id>`), Run (`/runs/<id>`), session (`/team/<publicId>`), merge request (forge button), Run chain ("Continues Run 1021"). A Run and a Ticket show the same session as one `SessionBadge` (avatar, name, role, link). The shell's "holding up work" strip links to the cause (Ticket, `/team?role=<role>` for a missing agent; the query only preselects the role and is removed after load). Why: the Bauherr moves between these four objects all day; each must be one click from the others.
+
+Every `#number` that names a Ticket, in agent text or in a list or header, is one `TicketRef`: in agent text the link reads `#555 <title>` (title cut at 60 characters), elsewhere `#555`. Hover, focus plus Enter or Space, or a tap opens one popover with the title, the stage name and an Open ticket link; Escape closes it and focus returns to the link. A number resolves in the Ticket's own repository from the database, never from the forge; a pull request number resolves to the Ticket it closes. Anything else stays plain text. Why: a bare number tells the Bauherr nothing, and a click to find out costs a page.
 
 ### Fast lane and defaults taken
 

@@ -5,12 +5,15 @@ import { DISCLOSURE } from '../../src/core/forge/disclosure'
 import { questionsBody } from '../../src/core/intake/questions'
 import type { Criterion, Decision, Finding, TicketRecord } from '../../src/core/record/schema'
 import { advance } from '../../src/core/engine'
-import { appendEvent, createRecord, readRecord, setRank } from '../../src/core/record/store'
-import { claim, heartbeat } from '../../src/core/run/leases'
+import { appendEvent, createRecord, readRecord } from '../../src/core/record/store'
+import { heartbeat } from '../../src/core/run/leases'
 import { rememberContext } from '../../src/core/run/context'
 import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
+import { claimed, runTickets } from './run-seed'
 import { source } from './fixtures'
+import { QUESTION, referral } from './question-text'
+import { referencing } from './ref-text'
 import { verifyRoundsTicket } from './verify-rounds-fixtures'
 import { asked, begin, edit, mirrorSource, patch, toBrief, workOn } from './scenario'
 
@@ -18,9 +21,13 @@ export const TICKET_TITLES = {
   briefTitle: 'Brief with a decision for the tabs',
   briefAnswers: 'Large export needs earlier answers',
   resultReadonly: 'Result to read',
+  resultLive: 'Result for the live refresh',
   questionRead: 'Question to read',
   intake: 'Intake waiting for the reporter',
   runSteps: 'Build with reported steps',
+  runQueued: 'Build waiting for an agent',
+  runFailed: 'Build that failed',
+  runQuiet: 'Build that has not reported',
   adoptedWaiting: 'Adopted pull request waiting on its author',
   adoptedResult: 'Adopted pull request with a result',
   deployStalled: 'Deploy that did not finish',
@@ -163,12 +170,8 @@ const ADOPTED_AUTHOR = 'dev-sam'
 const ADOPTED_FIRST = 70
 
 const adoptedTicket = async (e: Engine, pr: number, passed: boolean): Promise<number> => {
-  const input = {
-    workspace: e.db.workspace,
-    product: e.db.product,
-    source: { ...source, number: 3000 + pr, adopted: { pr } },
-    type: 'change' as const,
-  }
+  const adopted = { ...source, number: 3000 + pr, adopted: { pr } }
+  const input = { workspace: e.db.workspace, product: e.db.product, source: adopted, type: 'change' as const }
   const { id } = await createRecord(e.db.payload, input)
   const data = { pr, headSha: `h${pr}`, patchId: `adopted:h${pr}` }
   await appendEvent(e.db.payload, id, { type: 'pull.adopted', data, actor: 'factory' })
@@ -179,15 +182,6 @@ const adoptedTicket = async (e: Engine, pr: number, passed: boolean): Promise<nu
   await workOn(e, id, 'verifier', { passed, patchId: data.patchId, headSha: data.headSha })
   if (passed) await resultOf(e, id)
   return id
-}
-
-const claimed = async (e: Engine, id: number) => {
-  await setRank(e.db.payload, id, -1000)
-  const input = { workspace: e.db.workspace, role: 'builder', by: 'runner-seed', now: e.clock.now } as const
-  const got = await claim(e.db.payload, input)
-  await setRank(e.db.payload, id, 0)
-  if (!got) throw new Error('no run queued')
-  return got
 }
 
 const reportedSteps = async (e: Engine, id: number) => {
@@ -202,10 +196,9 @@ const reportedSteps = async (e: Engine, id: number) => {
   for (const [minutes, step] of steps) await heartbeat(e.db.payload, run.id, token, { now: ago(minutes), step })
 }
 
-const questionTicket = async (e: Engine, id: number) => {
+const questionTicket = async (e: Engine, id: number, text = QUESTION) => {
   const { run, token } = await claimed(e, id)
-  const text = 'Which storage should the export use?'
-  await askOwner(run.id, token, { text, options: ['Disk', 'Object storage'] }, e.deps())
+  return askOwner(run.id, token, { text, options: ['Disk', 'Object storage'] }, e.deps())
 }
 
 const parkedTicket = async (e: Engine) => {
@@ -269,28 +262,32 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     titled.push([id, title])
     return id
   }
-  const asking = async (title: string) => {
+  const asking = async (title: string, text?: string) => {
     const id = await toBrief(e, false)
-    await questionTicket(e, id)
-    titled.push([id, title])
+    await questionTicket(e, id, text).then(() => titled.push([id, title]))
     return id
   }
   let pr = 10
+  const briefTitle = await open(TICKET_TITLES.briefTitle)
   const names = {
-    briefTitle: await open(TICKET_TITLES.briefTitle),
+    briefTitle,
     briefAnswers: await open(TICKET_TITLES.briefAnswers),
     briefApprove: await pooled((n) => open(`${POOL_TITLES.briefApprove} ${n}`)),
     briefArchive: await pooled((n) => open(`${POOL_TITLES.briefArchive} ${n}`)),
     resultReadonly: await result(TICKET_TITLES.resultReadonly, ++pr),
+    resultLive: await result(TICKET_TITLES.resultLive, ++pr),
     resultSendBack: await pooled((n) => result(`${POOL_TITLES.resultSendBack} ${n}`, ++pr)),
     resultAccept: await pooled((n) => result(`${POOL_TITLES.resultAccept} ${n}`, ++pr)),
     resultStale: await pooled((n) => result(`${POOL_TITLES.resultStale} ${n}`, ++pr)),
     question: await pooled((n) => asking(`${POOL_TITLES.question} ${n}`)),
-    questionRead: await asking(TICKET_TITLES.questionRead),
+    questionRead: await asking(TICKET_TITLES.questionRead, await referral(e, briefTitle)),
     runSteps: await toBrief(e, false),
     parkedOnNeed: await parkedTicket(e),
   }
   titled.push([names.runSteps, TICKET_TITLES.runSteps])
+  const runs = await runTickets(e)
+  titled.push([runs.runQueued, TICKET_TITLES.runQueued], [runs.runFailed, TICKET_TITLES.runFailed])
+  titled.push([runs.runQuiet, TICKET_TITLES.runQuiet])
   const deployStalled = await deployStalledTicket(e, ++pr)
   const verifyRounds = await verifyRoundsTicket(e, ++pr, briefFields([SETTLED]))
   titled.push([deployStalled, TICKET_TITLES.deployStalled], [verifyRounds, TICKET_TITLES.verifyRounds])
@@ -301,6 +298,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   titled.push([adoptedWaiting, TICKET_TITLES.adoptedWaiting], [adoptedResult, TICKET_TITLES.adoptedResult])
   await answered(e, names.briefAnswers, ['brief'], names.resultReadonly, EARLIER_ANSWERS)
   await answered(e, names.resultReadonly, ['build', 'verify'], names.briefTitle, RESULT_ANSWERS)
+  await referencing(e, { result: names.resultReadonly, statements: names.briefTitle, target: names.briefAnswers })
   await reportedSteps(e, names.runSteps)
   for (let n = 11; n <= pr; n++) await mirror.item(n, { kind: 'pr', head: `h${n}`, title: `Pull request ${n}` })
   for (const [id, title] of titled) {
@@ -312,9 +310,8 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     const title = `Pull request ${number}`
     await mirror.item(number, { kind: 'pr', head: `h${number}`, title, author: ADOPTED_AUTHOR, closes })
   }
-  const closes = [3000 + ADOPTED_FIRST]
-  const other = { kind: 'pr', head: 'h72', title: 'Another take on the fix', author: 'dev-lee', closes } as const
-  await mirror.item(ADOPTED_FIRST + 2, { ...other, closes })
+  const other = { kind: 'pr', head: 'h72', title: 'Another take on the fix', author: 'dev-lee' } as const
+  await mirror.item(ADOPTED_FIRST + 2, { ...other, closes: [3000 + ADOPTED_FIRST] })
   const intake = await intakeTicket(e, mirror.item)
   const questionBack = await pooled((n) => asking(`${POOL_TITLES.questionBack} ${n}`))
   const questionOwn = await pooled((n) => asking(`${POOL_TITLES.questionOwn} ${n}`))
@@ -323,5 +320,5 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     await mirror.item(source.number, { title: titled.find(([found]) => found === id)?.[1] ?? '' })
   }
   const waiting = { adoptedWaiting, adoptedResult, deployStalled, verifyRounds, intake }
-  return { ...names, questionBack, questionOwn, briefComment, ...waiting }
+  return { ...names, ...runs, questionBack, questionOwn, briefComment, ...waiting }
 }

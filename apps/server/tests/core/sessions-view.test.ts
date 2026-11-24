@@ -1,11 +1,16 @@
 import { sql } from '@payloadcms/db-postgres'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { SessionsTable } from '../../src/app/(app)/components/connect/SessionsTable'
 import { agentSessions, IDLE_WINDOW_MS } from '../../src/core/views/sessions'
 import { openMcp, type Mcp } from './mcp-harness'
+
+vi.mock('../../src/app/(app)/components/TicketRef', () => ({
+  TicketRef: ({ recordId, number }: { recordId: number; number: number }) =>
+    createElement('a', { href: `/tickets/${recordId}` }, `#${number}`),
+}))
 
 let m: Mcp
 beforeAll(async () => {

@@ -26,7 +26,7 @@ you hunt for what the criteria miss.
 - Never mark a criterion or give a verdict; the verifier does.
 - Never open a finding without evidence.
 - When the Brief itself is wrong, contradicts an owner decision or cannot be built as written, `ask` and say so.
-  The owner can send the ticket back to Brief.
+  Options are answers for your next run, never stage moves: the owner's Back to Brief is already on the card.
 
 ## Handoff
 

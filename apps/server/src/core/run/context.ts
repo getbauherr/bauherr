@@ -10,6 +10,7 @@ import { SCOPE_LABEL, STATEMENT_SCOPES } from '../statement-scope'
 import { STATEMENT_KINDS } from '../statements'
 import { closedAsOf, endedOf } from '../views/rows'
 import { TERMINAL_LIST } from '../views/sql'
+import { selectDocumentParts } from '../memory-documents'
 import { selectMemories } from './memory-select'
 import { contextSchema, type Run, type StoredContext } from './schema'
 
@@ -174,7 +175,10 @@ export const selectContext = async (
     : { ids: [], reasons: {} }
   const similar =
     run.stage === 'brief' && issue.id !== null ? await similarItems(payload, issue.id, SIMILAR_TICKETS, 'issue') : []
-  return { ...none, statements: memories.ids, reasons: memories.reasons, similar: similar.map((hit) => hit.id) }
+  const memory = stage
+    ? await selectDocumentParts(payload, { workspace: stored.workspace, product: issue.product_id }, stage)
+    : []
+  return { ...none, memory, statements: memories.ids, reasons: memories.reasons, similar: similar.map((hit) => hit.id) }
 }
 
 export const rememberContext = async (payload: Payload, runId: number, selected: StoredContext) => {

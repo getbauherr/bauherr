@@ -4,6 +4,7 @@ import { BeforeAfter } from './BeforeAfter'
 import { CriteriaTable } from './CriteriaTable'
 import { ProofPanel } from './ProofPanel'
 import { Facts, Section } from './Section'
+import { RefText } from '../RefText'
 
 const list = 'm-0 grid gap-1 pl-5'
 
@@ -27,10 +28,11 @@ export function ResultBody({ view, tab, proof }: { view: TicketView; tab: Tab; p
   const position = record.criteria.findIndex((criterion) => criterion.id === selected)
   const { result } = record
   const factory = decidedByFactory(view)
+  const { repo } = record.source
   return (
     <>
       <Section title="Acceptance criteria">
-        <CriteriaTable criteria={record.criteria} mode="result" {...{ recordId, tab, proofs, selected }} />
+        <CriteriaTable criteria={record.criteria} repo={repo} mode="result" {...{ recordId, tab, proofs, selected }} />
       </Section>
       <ProofPanel group={group} number={position + 1} />
       <BeforeAfter pairs={view.pairs} />
@@ -38,20 +40,25 @@ export function ResultBody({ view, tab, proof }: { view: TicketView; tab: Tab; p
         <Section title="What changed">
           <ul className={list}>
             {result.changes.map((change) => (
-              <li key={change.text}>{change.text} <span className="small text-muted-foreground">{change.tag}</span></li>
+              <li key={change.text}>
+                <RefText text={change.text} repo={repo} />{' '}
+                <span className="small text-muted-foreground">{change.tag}</span>
+              </li>
             ))}
           </ul>
         </Section>
       )}
       {result && result.walkthrough.length > 0 && (
         <Section title="Walkthrough">
-          <ol className={list}>{result.walkthrough.map((step) => <li key={step}>{step}</li>)}</ol>
+          <ol className={list}>
+            {result.walkthrough.map((step) => <li key={step}><RefText text={step} repo={repo} /></li>)}
+          </ol>
         </Section>
       )}
       <Facts
         rows={[
-          ['Not verified', result && result.notVerified.length > 0 ? result.notVerified.join(' ') : 'Nothing listed.'],
-          ['Decided without you', factory.length > 0 ? factory.join(' ') : 'Nothing.'],
+          ['Not verified', <RefText key="nv" text={result?.notVerified.join(' ') || 'Nothing listed.'} repo={repo} />],
+          ['Decided without you', <RefText key="dw" text={factory.join(' ') || 'Nothing.'} repo={repo} />],
         ]}
       />
     </>

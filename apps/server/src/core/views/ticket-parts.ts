@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import { stageSchema, type Stage } from '../events'
 import { ROLES, type RunStep } from '../run/schema'
+import type { StoredEvent, StoredRecord } from '../record/store'
 
 const count = z.coerce.number()
 
@@ -96,6 +97,11 @@ const itemRow = z.object({
   head_sha: z.string().nullable(),
   author: z.string().nullable(),
 })
+
+export const pullNumberOf = (stored: StoredRecord, events: StoredEvent[]): number | undefined => {
+  const built = events.findLast((event) => event.type === 'build.submitted')
+  return stored.record.source.adopted?.pr ?? (built?.type === 'build.submitted' ? built.data.pr : undefined)
+}
 
 export type MirrorItem = {
   id: number

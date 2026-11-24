@@ -1,10 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { email } from './user'
 
 const TITLE = 'Brief with a mockup'
 const PICTURES = 3
-const SHOTS = '/tmp/claude-1000/m809'
 
 const openBrief = async (page: Page) => {
   const url = process.env.BASE_URL ?? 'http://localhost:3000'
@@ -58,25 +57,24 @@ test.describe('gallery on a phone', () => {
 test.describe('gallery on a desktop', () => {
   test.use({ viewport: { width: 1280, height: 720 } })
 
-  test('shows a tall picture whole in Fit to screen and at natural height in Actual size', async ({ page }) => {
+  test('shows a tall picture whole in Fit to screen and at natural height in Actual size', async ({ page }, info) => {
     await openBrief(page)
     await page.getByRole('button', { name: 'Export page, full length' }).click()
     const dialog = page.getByRole('dialog')
     const picture = dialog.getByRole('img', { name: 'Export page, full length' })
     await expect(picture).toHaveJSProperty('naturalHeight', 2450)
-    mkdirSync(SHOTS, { recursive: true })
 
     const fit = await picture.boundingBox()
     expect(fit!.y).toBeGreaterThanOrEqual(0)
     expect(fit!.y + fit!.height).toBeLessThanOrEqual(720)
     expect(fit!.height).toBeLessThan(720)
-    await page.screenshot({ path: `${SHOTS}/fit.png` })
+    await page.screenshot({ path: info.outputPath('fit.png') })
 
     await dialog.getByRole('button', { name: 'Fit to screen' }).click()
     await expect(dialog.getByRole('button', { name: 'Actual size' })).toBeVisible()
     const actual = await picture.boundingBox()
     expect(Math.round(actual!.height)).toBe(2450)
-    await page.screenshot({ path: `${SHOTS}/actual.png` })
+    await page.screenshot({ path: info.outputPath('actual.png') })
 
     await picture.click()
     await expect(dialog.getByRole('button', { name: 'Fit to screen' })).toBeVisible()
