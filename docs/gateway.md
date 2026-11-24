@@ -1,6 +1,6 @@
 # The gateway
 
-Every model call of the factory goes through one bundled gateway: [agentgateway](https://agentgateway.dev), image `cr.agentgateway.dev/agentgateway:v1.7.0`. That covers the Runner, CI Runs, chat answers and your own coding sessions. The gateway counts tokens, prices them and enforces the budget. Insights knows a session's cost without the session reporting anything.
+Every model call of the factory goes through one bundled gateway: [agentgateway](https://agentgateway.dev), image `cr.agentgateway.dev/agentgateway:v1.7.0`. That covers the Runner, CI Runs, chat answers and your own coding sessions. The gateway counts tokens, prices them and enforces the budget. Insights knows the cost of a run when its session passes the Claude Code session id on connect.
 
 Set up a session: Settings › AI usage › **Measure session cost**, or the **Agent team** page.
 
@@ -14,18 +14,14 @@ Set up a session: Settings › AI usage › **Measure session cost**, or the **A
 
 Request logs are deleted after 180 days. `BAUHERR_REQUEST_LOG_RETENTION_DAYS` changes that.
 
-## How a session is measured
+## How the cost of a run is measured
 
-1. Start the coding tool with the lines from the setup block. They route every call to the gateway and add the headers `x-bauherr-session: <session name>` and `x-bauherr-role: <role>`.
-2. The gateway logs them with the key's Workspace.
-3. Every minute `watch-gateway` reads the new log rows and matches them:
-   - The **key** decides the Workspace. The header only picks a session inside it.
-   - The session name is the `session` your session passes to `connect`.
-   - A call made while the session held a Run belongs to that Run. A call between Runs belongs to the session.
-   - A call with an unknown or missing name counts as "Unnamed gateway session".
-4. Insights › Cost & tokens shows cost per session, model, role, stage and Ticket. The recompute covers two days and never counts a call twice.
+1. A session passes its Claude Code session id as `clientSession` on `connect`: the value of `CLAUDE_CODE_SESSION_ID`. The run keeps it from the claim.
+2. The job `measure-cost` sums the gateway cost of that session between claim and end, five minutes after the run ends and hourly for a day. A request is split over the runs the session held at that moment.
+3. A request without a price leaves the cost unmeasured. A run without the id or without logged requests shows "not measured", never $0.
+4. A Runner run is measured by the run id its requests carry. A session's cost outside any run is kept per day.
 
-With the usage hook also running, the gateway wins from a session's first gateway call on.
+Insights shows the sums per stage, Ticket and memory.
 
 ### Which key, which payment route
 

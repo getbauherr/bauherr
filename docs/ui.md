@@ -6,7 +6,7 @@ The Bauherr UI is served at `/`. Everything an Admin configures is a page here, 
 
 Every signed-in page has this frame.
 
-- **Sidebar**: Inbox, Memory, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
+- **Sidebar**: Inbox, Memory, Insights, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
 - **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page and finds Tickets.
 - **Holding up work strip**: one line for each cause that stops several Tickets, shown only while runs wait. "No builder session is connected: 2 runs wait (Build 2)" links to Connect a session. "The Runner has not picked up a run for 10 minutes" covers a Runner Product.
 - **Ask button**: opens the [chat](#chat) dock on `Ctrl/Cmd+J`.
@@ -35,7 +35,7 @@ Only acceptance on staging closes a Ticket.
 | `/requests` | Follow your requests in four sections, starting with Needs you. |
 | `/requests/<id>` | Read one request, its status and its timeline. Report a problem once it is released. |
 | `/releases` | Pick done Tickets, choose the version and edit the notes. |
-| `/insights` | Read time to market, time per stage and the bottleneck. Choose 7, 30 or 90 days. |
+| `/insights` | Read time to done, time per stage and cost. Choose 7, 30 or 90 days. |
 | `/knowledge` | Search and read the documents the agents use. |
 | `/team` | Connect an agent session and see who works on what. |
 | `/runs` | Admin only. The newest Runs with stage and status. |

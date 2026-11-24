@@ -25,6 +25,9 @@ export const agentSessions = col(
     }),
     text('clientName'),
     text('clientVersion'),
+    text('clientSession', {
+      admin: { description: 'The Claude Code session id the agent gave on connect; links its runs to gateway cost.' },
+    }),
     text('provider'),
     text('model'),
     date('connectedAt'),

@@ -317,7 +317,7 @@ const questions: Reducer = (state, event) => {
 
 const REDUCERS: Reducer[] = [intake, runs, owner, brief, patch, verify, ship, questions]
 
-const reduce = (state: State, event: AppEvent, options: FoldOptions): State => {
+export const reduce = (state: State, event: AppEvent, options: FoldOptions): State => {
   if (event.type.startsWith('forge.write.')) return state
   const next = REDUCERS.reduce<State | null>((found, reducer) => found ?? reducer(state, event, options), null)
   return { ...withLearning(next ?? state, event), last: event.type }
