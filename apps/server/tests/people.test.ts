@@ -61,9 +61,10 @@ describe('OIDC roles', () => {
     ).toBe('admin')
     expect(syncFrom({ other: 1 })).toEqual({})
   })
-  it('a re-sync never raises a Product owner to bauherr, but follows an admin or Product owner claim', () => {
+  it('a re-sync never raises a Product owner, whatever role the identity provider sends', () => {
     expect(resyncRole('product-owner', 'bauherr')).toBe('product-owner')
-    expect(resyncRole('product-owner', 'admin')).toBe('admin')
+    expect(resyncRole('product-owner', 'admin')).toBe('product-owner')
+    expect(resyncRole('product-owner', 'product-owner')).toBe('product-owner')
     expect(resyncRole('bauherr', 'product-owner')).toBe('product-owner')
     expect(resyncRole('admin', 'bauherr')).toBe('bauherr')
     expect(resyncRole(undefined, 'bauherr')).toBe('bauherr')

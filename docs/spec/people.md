@@ -47,16 +47,17 @@ Not yet: commenting from the Ticket page, and forge comments counting as decisio
 
 ## Closed by default
 
-Besides the table above, a Product owner reaches only `/login`, sign-out, the OIDC flow, `/settings/profile`, `/api/health`, the signed image link `/m/<id>/<sig>` and their own account over Payload REST.
+Besides the table above, a Product owner reaches only `/login`, sign-out, the OIDC flow, `/requests`, `/requests/<id>`, `/settings/profile`, `/api/health`, the signed image link `/m/<id>/<sig>` and their own account over Payload REST.
 
-- `/settings` redirects to the profile.
+- Signing in lands on `/requests`; `/` redirects there. The sidebar shows only Requests. `/requests` lists the requests of the assigned Products, or says that nobody has given them a Product yet. `/requests/<id>` is a 404 unless its Product is assigned.
+- `/settings` is a 404.
 - The account allows read, and update of `password` and `uiPrefs` only. The account's `beforeValidate` hook refuses any other changed field. No API key can be enabled for them.
 - `requireBauherr` answers a Product owner with 404 and `getBauherr` returns null. Every page, action and route built on them is closed without a check at the call site. `getPerson` and `requirePerson` serve the few places open to both.
 - The intake `actor`, `/mcp`, which also needs an agent key, `callTool` and `chatWho` refuse a Product owner.
 - Every collection has an explicit `access`. `col()` defaults each operation to `bauherrOnly`, which is Admin or Bauherr, and the multi-tenant plugin still narrows to their Workspaces. A collection overrides single operations.
 - Payload's `payload-*` collections are closed the same way by `closeBuiltIns` in `payload.config.ts`, except `payload-preferences`, which Payload keys to the user.
-- `OIDC_PRODUCT_OWNER_ROLE` maps a role claim value to `product-owner`. The admin claim wins. Unset maps nobody.
-- A new SSO Product owner has no assignment and sees nothing. A re-sync never raises a Product owner to `bauherr`, `resyncRole`. SSO never touches assignments.
+- `OIDC_PRODUCT_OWNER_ROLE` maps a role claim value to `product-owner`. The admin claim wins for an account that is not yet a Product owner. Unset maps nobody.
+- A new SSO Product owner has no assignment and sees nothing. A re-sync never raises a Product owner, whatever role the identity provider sends (`resyncRole`); only an Admin changes the role, in People. SSO never touches assignments.
 - `OIDC_BAUHERR_ROLE` makes a mapped role mandatory for sign-in. See `docs/auth.md`.
 
 ## Addressed checkpoints

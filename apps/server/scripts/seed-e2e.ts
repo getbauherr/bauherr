@@ -150,6 +150,10 @@ await ensure(
 const factory = Number((await ensure('workspaces', { slug: 'factory' }, { name: 'Factory', slug: 'factory' })).id)
 const factoryProduct = { name: 'Factory App', slug: 'factory-app', workspace: factory, state: 'active' }
 const factoryApp = Number((await ensure('products', { slug: 'factory-app' }, factoryProduct)).id)
+await user('po-factory@example.com', 'product-owner', {
+  assignments: [{ workspace: factory, scope: 'products', products: [factoryApp] }],
+})
+await user('po-none@example.com', 'product-owner')
 const inFactory = { workspace: { equals: factory } }
 const seeded = await payload.find({ collection: 'records', where: inFactory, limit: 1, depth: 0, ...o })
 if (!seeded.docs.length) {
