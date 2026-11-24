@@ -13,6 +13,7 @@ import { seedSomeday } from './seed-someday'
 import { seedReadiness } from './seed-readiness'
 import { seedInsights } from './seed-insights'
 import { seedStatements } from './seed-statements'
+import { seedMemoryEditor } from './seed-memory-editor'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -184,6 +185,7 @@ if (!ticketsSeeded.docs.length) {
 await seedConnect(payload)
 await seedSomeday(payload)
 await seedStatements(payload)
+await seedMemoryEditor(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
 await seedReadiness(payload)
 await seedInsights(payload)
 

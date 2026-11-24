@@ -26,7 +26,7 @@ export function MemoryFilters({ show, product, counts, products }: Props) {
           </Link>
         ))}
       </nav>
-      <form action="/memory" method="get" className="ml-auto flex items-center gap-2">
+      <form action="/memory/statements" method="get" className="ml-auto flex items-center gap-2">
         {show !== 'all' && <input type="hidden" name="show" value={show} />}
         <label htmlFor="memory-product" className="small text-muted-foreground">Product</label>
         <NativeSelect id="memory-product" name="product" defaultValue={product} className="h-8">

@@ -40,7 +40,7 @@ describe('server actions', () => {
 
   it('every action not listed is refused with a 404 for a Product owner', async () => {
     session.cookie = productOwnerCookie
-    expect(files.length).toBe(10)
+    expect(files.length).toBe(11)
     let checked = 0
     for (const f of files) {
       const rel = f.slice((APP + '(app)/').length)

@@ -11,7 +11,7 @@ const openMemory = async (page: Page) => {
   await page
     .context()
     .addCookies([{ name: 'bauherr-ws', value: 'record', url: process.env.BASE_URL ?? 'http://localhost:3000' }])
-  await page.goto('/memory')
+  await page.goto('/memory/statements')
   await expect(page.getByRole('heading', { name: 'Memory', level: 1 })).toBeVisible()
 }
 
@@ -55,7 +55,7 @@ test('adds a memory for every ticket, edits it, switches it off and finds it und
   await expect(page.getByText(first, { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Switch off' }).click()
   await expect(page.getByRole('button', { name: 'Switch on' })).toBeVisible()
-  await page.goto('/memory')
+  await page.goto('/memory/statements')
   await page.getByRole('navigation', { name: 'Filter memory' }).getByRole('link', { name: /^Off/ }).click()
   const off = table.getByRole('row', { name: new RegExp(edited.replace('.', '\\.')) })
   await expect(off.getByRole('cell').nth(4)).toHaveText('Off')

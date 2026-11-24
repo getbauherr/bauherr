@@ -80,7 +80,7 @@ export function EditMemory({ id, product, initial, off, hasTicket, areas, footno
   const save = () =>
     run(() => saveMemoryAction({ id, input: inputOf(draft) }), () => setSaved(true))
   const flip = () => run(() => switchMemoryAction({ id, off: !off }), () => router.refresh())
-  const leave = () => router.push(`/memory?product=${product}`)
+  const leave = () => router.push(`/memory/statements?product=${product}`)
   return (
     <form onSubmit={(event) => event.preventDefault()} className="rounded-md border border-border bg-card">
       <div className="grid gap-5 p-6">
