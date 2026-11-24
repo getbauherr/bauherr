@@ -15,7 +15,6 @@ export type Candidate = {
   createdAt: string
   connectedAt: string | null
   imported: boolean
-  memory: number | null
   item: IntakeItem
   settings: IntakeSettings
 }
@@ -36,7 +35,6 @@ const candidateRow = z.object({
   forge_created_at: z.coerce.date(),
   connected_at: z.coerce.date().nullable(),
   imported: z.boolean(),
-  memory_id: count.nullable(),
   kind: z.enum(['issue', 'pr']),
   state: z.enum(['open', 'closed', 'merged']),
   gone: z.boolean(),
@@ -65,7 +63,6 @@ const toCandidate = (row: unknown): Candidate => {
     createdAt: r.forge_created_at.toISOString(),
     connectedAt: r.connected_at?.toISOString() ?? null,
     imported: r.imported,
-    memory: r.memory_id,
     item: {
       kind: r.kind,
       state: r.state,
@@ -84,8 +81,6 @@ export const loadCandidates = async (payload: Payload, product: number | null): 
   const result = await payload.db.drizzle.execute(sql`
     SELECT i."id" AS item_id, i."workspace_id", i."product_id", c."kind"::text AS forge, i."repo", i."number",
       i."title", i."url", i."forge_created_at", p."connected_at", (s."imported_at" IS NOT NULL) AS imported,
-      (SELECT st."id" FROM "statements" st WHERE st."product_id" = i."product_id" AND st."check_issue" = i."number"
-        ORDER BY st."id" LIMIT 1) AS memory_id,
       i."kind", i."state",
       (i."gone_at" IS NOT NULL) AS gone,
       i."author", i."author_trusted", i."author_is_bot", i."labels", i."assignees",
@@ -119,11 +114,6 @@ export const admittedToday = async (payload: Payload, now: Date): Promise<Map<nu
 
 export type Classified = { candidate: Candidate; selection: Selection }
 
-const asMemoryIssue = (candidate: Candidate): Candidate =>
-  candidate.memory === null
-    ? candidate
-    : { ...candidate, item: { ...candidate.item, authorTrusted: true, authorIsBot: false } }
-
 const bump = (counts: Record<string, number>, author: string): Record<string, number> => ({
   ...counts,
   [author]: (counts[author] ?? 0) + 1,
@@ -132,8 +122,7 @@ const bump = (counts: Record<string, number>, author: string): Record<string, nu
 export const classify = async (payload: Payload, now: Date, product: number | null): Promise<Classified[]> => {
   const admitted = await admittedToday(payload, now)
   const classified: Classified[] = []
-  for (const loaded of await loadCandidates(payload, product)) {
-    const candidate = asMemoryIssue(loaded)
+  for (const candidate of await loadCandidates(payload, product)) {
     const counts = admitted.get(candidate.product) ?? {}
     const selection = select(candidate.item, candidate.settings, { admittedTodayByAuthor: counts })
     if (selection.action === 'enter' && !candidate.item.authorTrusted) {

@@ -4,7 +4,6 @@ import { foldOptions } from '../lifecycle'
 import { moduleKey } from '../module'
 import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
-import { learnPack, type LearnPack } from '../learn'
 import type { Why } from '../memory'
 import type { StatementKind } from '../statements'
 import type { TicketRecord } from '../record/schema'
@@ -28,7 +27,6 @@ export type ContextPack = {
   agentsFile: ContextParts['agentsFile']
   statements: PackStatement[]
   similar: PackSimilar[]
-  learn: LearnPack | null
 }
 
 export type PackStatement = {
@@ -69,6 +67,5 @@ export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPa
     agentsFile: parts.agentsFile,
     statements: parts.statements.map(({ id, kind, why, text, ticket, at }) => ({ id, kind, why, text, ticket, at })),
     similar: parts.similar,
-    learn: run.stage === 'done' ? await learnPack(deps.payload, stored.id, stored.record) : null,
   }
 }

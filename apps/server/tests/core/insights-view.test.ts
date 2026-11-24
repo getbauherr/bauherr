@@ -1,7 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { createRecord } from '../../src/core/record/store'
-import { costOfComingBack } from '../../src/core/views/cost-view'
 import { insightsPage } from '../../src/core/views/insights-page'
 import { ticket } from '../../src/core/views/ticket'
 import { openCoreDb, type CoreDb } from './db'
@@ -80,7 +79,6 @@ const HAPPY_RUNS: R[] = [
   { stage: 'build', role: 'builder', created: 50, started: 55, finished: 115, cost: 2 },
   { stage: 'verify', role: 'reviewer', created: 115, started: 116, finished: 126 },
   { stage: 'verify', role: 'verifier', created: 136, started: 137, finished: 147, cost: 0.25 },
-  { stage: 'done', role: 'reviewer', created: 201, started: 202, finished: 210, cost: 0.125 },
 ]
 const SIMPLE: E[] = [
   [10, 'intake.accepted'],
@@ -135,10 +133,9 @@ describe('the Insights view of a Workspace', () => {
     const row = (key: string) => week.cost.rows.find((entry) => entry.key === key)
     expect(row('build')).toMatchObject({ runs: 1, measured: 1, costUsd: 2 })
     expect(row('review')).toMatchObject({ runs: 1, measured: 0, costUsd: 0, perTicket: null })
-    expect(row('learn')).toMatchObject({ runs: 1, measured: 1, costUsd: 0.125 })
-    expect(week.cost.total).toMatchObject({ runs: 6, measured: 5, costUsd: 3.875, medianPerTicket: 3.875 })
+    expect(week.cost.total).toMatchObject({ runs: 5, measured: 4, costUsd: 3.75, medianPerTicket: 3.75 })
     expect(week.cost.tickets).toEqual({ all: 1, measured: 1 })
-    expect(week.cost.top[0]).toMatchObject({ recordId: happy, number: 100, costUsd: 3.875, measured: 5, runs: 6 })
+    expect(week.cost.top[0]).toMatchObject({ recordId: happy, number: 100, costUsd: 3.75, measured: 4, runs: 5 })
   })
 
   it('shows cost outside runs only from the days in range, or nothing when it was never measured', async () => {
@@ -157,46 +154,6 @@ describe('the Insights view of a Workspace', () => {
     const shown = await ticket(db.payload, { workspace: db.workspace, recordId: happy })
     expect(shown.timing.time.seconds).toBe(200 * 60)
     expect(shown.timing.time.you).toBe(82 * 60)
-    expect(shown.timing.cost).toEqual({ costUsd: 3.875, measured: 5, runs: 6 })
-  })
-})
-
-describe('the cost of coming back', () => {
-  it('sums the Build and Verify runs after the correction on the tickets a memory came back on', async () => {
-    const events: E[] = [
-      [0, 'intake.accepted'],
-      [10, 'brief.approved', { by: 'rule' }],
-      [60, 'build.submitted', { runId: '1', ...patch }],
-      [70, 'verify.passed', { runId: '2', patchId: 'p1', headSha: 'abc' }],
-      [71, 'ship.merged', { sha: 'm' }],
-      [80, 'result.sent-back', { note: 'wrong' }],
-      [200, 'result.accepted'],
-    ]
-    const runs: R[] = [
-      { stage: 'build', role: 'builder', created: 10, started: 11, finished: 60, cost: 9 },
-      { stage: 'build', role: 'builder', created: 81, started: 82, finished: 112, cost: 1 },
-      { stage: 'build', role: 'builder', created: 120, started: 121, finished: 151, cost: 0.5 },
-      { stage: 'verify', role: 'verifier', created: 160, started: 161, finished: 171, cost: 0.25 },
-      { stage: 'verify', role: 'reviewer', created: 175, started: 176, finished: 186 },
-    ]
-    const record = await seed({ doneDaysAgo: 1, events, runs })
-    const found = await db.payload.db.drizzle.execute(sql`
-      INSERT INTO "statements" ("workspace_id", "product_id", "record_id", "kind", "scope", "text", "came_back",
-        "updated_at", "created_at")
-      SELECT "workspace_id", "product_id", "id", 'learned', 'product', 'Check the last row.',
-        ${JSON.stringify([{ record, run: 1 }])}::jsonb, now(), now() FROM "records" WHERE "id" = ${record}
-      RETURNING "id"`)
-    const id = Number(found.rows[0]?.id)
-    const back = await costOfComingBack(db.payload, { workspace: db.workspace, id })
-    const seconds = (30 + 30 + 10 + 10) * 60
-    expect(back).toEqual({ tickets: 1, rounds: 2, seconds, costUsd: 1.75, measured: 3, runs: 4 })
-    expect(await costOfComingBack(db.payload, { workspace: db.otherWorkspace, id })).toBeNull()
-  })
-
-  it('has nothing for a memory that never came back', async () => {
-    const found = await db.payload.db.drizzle.execute(sql`
-      INSERT INTO "statements" ("workspace_id", "product_id", "kind", "scope", "text", "updated_at", "created_at")
-      VALUES (${db.workspace}, ${db.product}, 'guidance', 'product', 'Never came back.', now(), now()) RETURNING "id"`)
-    expect(await costOfComingBack(db.payload, { workspace: db.workspace, id: Number(found.rows[0]?.id) })).toBeNull()
+    expect(shown.timing.cost).toEqual({ costUsd: 3.75, measured: 4, runs: 5 })
   })
 })

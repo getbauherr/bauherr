@@ -10,7 +10,6 @@ const sourceOf = (candidate: Candidate) => ({
   reporter: candidate.item.author,
   external: !candidate.item.authorTrusted,
   backlog: candidate.connectedAt !== null && Date.parse(candidate.createdAt) < Date.parse(candidate.connectedAt),
-  ...(candidate.memory === null ? {} : { memory: candidate.memory }),
 })
 
 const adoptedSourceOf = (candidate: AdoptionCandidate) => ({
@@ -59,9 +58,6 @@ export const enterIssues = async (deps: AdvanceDeps): Promise<number[]> => {
     const id = await deps.payload.db.drizzle.transaction(async (tx) => {
       const conn = { db: { drizzle: tx } }
       const stored = await createRecord(conn, input)
-      if (candidate.memory !== null && (await readEvents(conn, stored.id)).length === 0) {
-        await appendEvent(conn, stored.id, { type: 'intake.accepted', data: {}, actor: 'factory' })
-      }
       return stored.id
     })
     await advance(id, deps)

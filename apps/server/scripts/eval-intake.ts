@@ -45,7 +45,6 @@ const packFor = async (evalCase: EvalCase, runId: number): Promise<ContextPack> 
   agentsFile: null,
   statements: [],
   similar: [],
-  learn: null,
 })
 
 const outcomeOf = (written: Record<string, unknown> | null): string => {

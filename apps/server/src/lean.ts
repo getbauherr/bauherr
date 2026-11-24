@@ -9,11 +9,10 @@ import type { Role } from './core/lifecycle'
 import { brief } from './modules/brief/module'
 import { build } from './modules/build/module'
 import { intake } from './modules/intake/module'
-import { learn } from './modules/learn/module'
 import { review } from './modules/review/module'
 import { verify } from './modules/verify/module'
 
-export const MODULES: Modules = { intake, brief, build, review, verify, learn }
+export const MODULES: Modules = { intake, brief, build, review, verify }
 
 const PACK_DIR = resolve(process.env.BAUHERR_PACK_DIR ?? join(process.cwd(), '..', '..', 'pack'))
 const SKILLS_DIR = join(PACK_DIR, 'skills')

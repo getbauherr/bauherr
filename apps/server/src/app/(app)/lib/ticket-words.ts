@@ -19,7 +19,6 @@ export const REASON_WORDS: Record<BriefReason | QuestionReason, string> = {
   'visible-change': 'A user will see a difference on a screen: check the mockup.',
   backlog: 'This issue existed before the project was connected.',
   'external-request': 'A person outside the team asked for this change.',
-  memory: 'The owner asked for this check from a memory. Check the Brief before the build goes on.',
   'sent-back': 'You sent this ticket back to Brief. Check the new Brief before the build goes on.',
   'failed-runs': 'Runs on this ticket failed several times in a row. What should the factory do?',
   'reporter-silent': 'The reporter did not answer the questions the factory asked. What should the factory do?',

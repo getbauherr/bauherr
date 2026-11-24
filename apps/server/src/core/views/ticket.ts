@@ -1,7 +1,6 @@
 import type { Payload } from 'payload'
 import { commitChecksUrl } from '../deploy'
 import { isRemembered } from '../decisions'
-import { sentenceOf } from '../memory-check'
 import { canArchive, canGoBack, fold } from '../lifecycle'
 import { RecordNotFound } from '../record/errors'
 import {
@@ -20,7 +19,6 @@ import { similarItems, type ItemHit } from '../mirror/search'
 import { positionsOf, type Positions } from './positions'
 import { activityOf, type EventView } from './activity'
 import { loadMockups, type AttachmentView } from './attachments'
-import { keptMemories } from './statement-records'
 import { statementsUsed, type StatementsUsed } from './statements-used'
 import { costOf, type TicketCost } from './cost-view'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
@@ -72,7 +70,6 @@ export type TicketView = {
   card: StoredCard | null
   record: TicketRecord
   source: { repo: string; number: number; title: string; body: string; url: string } | null
-  fromMemory: { id: number; text: string } | null
   events: EventView[]
   runs: RunView[]
   proofs: ProofGroup[]
@@ -159,12 +156,6 @@ const statusFor = (stored: StoredRecord, runs: RunView[], events: StoredEvent[],
 const lacksMockup = (record: TicketRecord, mockups: AttachmentView[]): boolean =>
   record.visible && mockups.length === 0
 
-const withKept = async (payload: Payload, recordId: number, views: EventView[]): Promise<EventView[]> => {
-  if (!views.some((view) => view.type === 'learn.submitted')) return views
-  const memories = await keptMemories(payload, recordId)
-  return views.map((view) => (view.type === 'learn.submitted' ? { ...view, memories } : view))
-}
-
 const timingOf = async (payload: Payload, recordId: number): Promise<TicketView['timing']> => {
   const [data] = await loadTickets(payload, [recordId], new Date())
   if (!data) throw new RecordNotFound(`Record ${recordId} does not exist: check the id.`)
@@ -198,9 +189,8 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     parked: stored.parked,
     card: stored.card,
     record: stored.record,
-    fromMemory: await sentenceOf(payload, { workspace: stored.workspace, id: stored.record.source.memory }),
     source: issue && { repo, number, title: issue.title, body: issue.body, url: issue.url },
-    events: await withKept(payload, stored.id, activityOf(events)),
+    events: activityOf(events),
     runs,
     proofs: await loadProofs(payload, stored.id),
     mockups,

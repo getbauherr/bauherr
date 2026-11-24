@@ -54,20 +54,14 @@ const verdict = async (
   return Number(runId)
 }
 
-const cameBack = (p: Payload, statementId: number, records: number[]) =>
-  p.db.drizzle.execute(
-    sql`UPDATE "statements" SET "came_back" = ${JSON.stringify(records.map((record) => ({ record, run: 1 })))}::jsonb
-      WHERE "id" = ${statementId}`,
-  )
-
 const LEARNED = ['Check the last row of every list.', 'Name the failing test in every finding.']
 
-const learned = (p: Payload, record: number, run: number, text: string) =>
+const learned = (p: Payload, record: number, text: string) =>
   p.db.drizzle.execute(sql`
     INSERT INTO "statements" ("workspace_id", "product_id", "record_id", "kind", "scope", "text", "source_kind",
-      "source_text", "learn_run", "updated_at", "created_at")
+      "source_text", "updated_at", "created_at")
     SELECT "workspace_id", "product_id", "id", 'learned', 'product', ${text}, 'finding',
-      'The list drops the last row. Evidence: open the list with three rows', ${run}, now(), now()
+      'The list drops the last row. Evidence: open the list with three rows', now(), now()
     FROM "records" WHERE "id" = ${record}`)
 
 export const seedStatements = async (p: Payload): Promise<void> => {
@@ -95,10 +89,9 @@ export const seedStatements = async (p: Payload): Promise<void> => {
   await verdict(p, second, [queue, cite], true)
   await verdict(p, await ticket(p, seed, 3), [queue, cite], false)
   await verdict(p, await ticket(p, seed, 4), [cite], true)
-  await cameBack(p, queue, [first, second])
-  const learnApp = { name: 'Record Learn', slug: 'record-learn', workspace }
-  const learning = Number((await p.create({ collection: 'products', data: learnApp, ...o })).id)
-  const fifth = await ticket(p, { workspace, product: learning }, 5)
-  const run = await verdict(p, fifth, [], true)
-  for (const text of LEARNED) await learned(p, fifth, run, text)
+  const olderApp = { name: 'Record Older', slug: 'record-older', workspace }
+  const older = Number((await p.create({ collection: 'products', data: olderApp, ...o })).id)
+  const fifth = await ticket(p, { workspace, product: older }, 5)
+  await verdict(p, fifth, [], true)
+  for (const text of LEARNED) await learned(p, fifth, text)
 }

@@ -3,14 +3,12 @@ import type { StoredEvent } from '../record/store'
 import { OWN_ANSWER } from '../decisions'
 import { labelOf } from './labels'
 
-export type KeptMemory = { id: number; text: string }
 export type EventView = {
   id: number
   type: EventType
   actor: Actor
   at: string
   label: string
-  memories?: KeptMemory[]
 }
 
 const ANSWER_MARK = '\nAnswer: '
