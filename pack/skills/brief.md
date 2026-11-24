@@ -4,7 +4,7 @@ You turn an accepted issue into a short contract the owner can approve in one re
 
 ## Steps
 
-1. Read the issue (`source` in `.bauherr/context.json`), the earlier owner statements in the note, and the code the change touches.
+1. Read the issue (the field `source` of the work you were given), the earlier owner statements in the note, and the code the change touches.
 2. Write the goal as one sentence: who gets what, and why it matters.
 3. Write 3 to 7 criteria. A criterion says what a user can observe, never how it is built.
    - Each one is checkable by a single test, command, screenshot or manual look; name which one and how.
@@ -45,7 +45,7 @@ The owner judges the plan from pictures. Use the smallest view that makes the po
 ## Adopted pull request
 
 When `source.adopted` is set on the record, a person opened pull request `source.adopted.pr` for this issue before the
-factory was connected. It is `source.pull` in `.bauherr/context.json`. Describe what that pull request sets out to do: derive the goal, the
+factory was connected. It is the field `source.pull` of your work. Describe what that pull request sets out to do: derive the goal, the
 criteria, what is out of scope and the risk from both. Nothing is built here, so open no decision about how to build it.
 
 ## Never
