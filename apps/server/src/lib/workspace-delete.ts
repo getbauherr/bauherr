@@ -157,6 +157,7 @@ export const PURGE_ORDER: { table: string; where: (ws: number) => ReturnType<typ
   { table: 'human_touches', where: (ws) => sql`"workspace_id" = ${ws} AND "kind" NOT LIKE 'workspace:%'` },
   ...[
     'repo_instruction_files',
+    'ticket_relations',
     'mirror_checks',
     'mirror_comments',
     'mirror_items',

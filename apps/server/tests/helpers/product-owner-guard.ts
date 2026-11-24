@@ -160,6 +160,7 @@ export const BAUHERR_COLLECTIONS = [
   'repositories',
   'stage_runs',
   'statements',
+  'ticket_relations',
   'ticket_sources',
   'workspaces',
   'payload-kv',
