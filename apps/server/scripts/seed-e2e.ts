@@ -11,6 +11,7 @@ import { seedTickets } from '../tests/core/ticket-scenario'
 import { seedConnect } from './seed-connect'
 import { seedSomeday } from './seed-someday'
 import { seedCheck } from './seed-check'
+import { seedInsights } from './seed-insights'
 import { seedStatements } from './seed-statements'
 
 const env = (k: string): string => {
@@ -165,6 +166,7 @@ if (!seeded.docs.length) {
 }
 
 const ticketsWs = Number((await ensure('workspaces', { slug: 'tickets' }, { name: 'Tickets', slug: 'tickets' })).id)
+await user('run-member@example.com', 'bauherr', { tenants: [{ tenant: ticketsWs }] })
 const ticketsApp = { name: 'Tickets App', slug: 'tickets-app', workspace: ticketsWs, state: 'active' }
 const ticketsProduct = Number((await ensure('products', { slug: 'tickets-app' }, ticketsApp)).id)
 const inTickets = { workspace: { equals: ticketsWs } }
@@ -183,6 +185,7 @@ await seedConnect(payload)
 await seedSomeday(payload)
 await seedStatements(payload)
 await seedCheck(payload)
+await seedInsights(payload)
 
 await ensure(
   'human_touches',

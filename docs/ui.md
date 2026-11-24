@@ -6,9 +6,9 @@ The Bauherr UI is served at `/`. Everything an Admin configures is a page here, 
 
 Every signed-in page has this frame.
 
-- **Sidebar**: Inbox, Memory, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
+- **Sidebar**: Inbox, Memory, Insights, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
 - **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page and finds Tickets.
-- **Holding up work strip**: one line for each thing that stops work for several Tickets, linking to its cause, only while runs wait: "No builder session is connected: 2 runs wait (Build 2)" with a Connect a session link; "The Runner has not picked up a run for 10 minutes" when a Runner Product's run waits that long.
+- **Holding up work strip**: one line for each cause that stops several Tickets, shown only while runs wait. "No builder session is connected: 2 runs wait (Build 2)" links to Connect a session. "The Runner has not picked up a run for 10 minutes" covers a Runner Product.
 - **Ask button**: opens the [chat](#chat) dock on `Ctrl/Cmd+J`.
 - **Workspace switcher**: appears with two or more Workspaces.
 
@@ -29,13 +29,13 @@ Only acceptance on staging closes a Ticket.
 
 | Path | What you do |
 |---|---|
-| `/inbox` | Decide what waits for you. The list is on the left and the decision card on the right. Keys `e` and `r` take the primary action and send back. |
+| `/inbox` | Decide what waits for you, Waiting on you first. Keys: `j`/`k` move, `o`/`Enter` open, `Esc` clear, `?` help. The list refreshes every 5 s and keeps the focus. |
 | `/` | See the workflow as a graph and the open Tickets by stage. Tabs Workflow, Graph and Epics. |
 | `/workflow/<stage>` | See the Jobs of one stage and the Tickets in each. |
 | `/requests` | Follow your requests in four sections, starting with Needs you. |
 | `/requests/<id>` | Read one request, its status and its timeline. Report a problem once it is released. |
 | `/releases` | Pick done Tickets, choose the version and edit the notes. |
-| `/insights` | Read time to market, time per stage and the bottleneck. Choose 7, 30 or 90 days. |
+| `/insights` | Read time to done, time per stage and cost. Choose 7, 30 or 90 days. |
 | `/knowledge` | Search and read the documents the agents use. |
 | `/team` | Connect an agent session and see who works on what. |
 | `/runs` | Admin only. The newest Runs with stage and status. |
@@ -88,9 +88,11 @@ A Run missing a prerequisite only the owner can supply releases with that need. 
 
 ## Run page
 
-`/runs/<id>` shows one attempt of a stage. The header gives a status such as Working, Stuck or Session gone. It shows the Steps, the proof, the merge request links and the times.
+`/runs/<id>` shows one attempt of a stage. The header gives one word (Working, Waiting for a session, Stuck, Failed, Finished) and a sentence that says why.
 
-A Run offers one primary action: Connect an agent, Re-run the stage or Open ticket. An Admin can release the lock on a stuck Run.
+One primary button at most: Connect an agent for a queued Run without a session, Open ticket for a failed or expired Run.
+
+Below: timed steps, the handoff, Links (pull request, Ticket, session), Admin-only cost and the agent's context.
 
 ## Agent team
 

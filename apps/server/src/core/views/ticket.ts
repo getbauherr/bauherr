@@ -22,15 +22,19 @@ import { activityOf, type EventView } from './activity'
 import { loadMockups, type AttachmentView } from './attachments'
 import { keptMemories } from './statement-records'
 import { statementsUsed, type StatementsUsed } from './statements-used'
+import { costOf, type TicketCost } from './cost-view'
 import { closedAsOf, endedOf, type ClosedAs } from './rows'
-import { TERMINAL_EVENTS } from './sql'
+import { STAGE_ENTRY, TERMINAL_EVENTS } from './sql'
 import { statusOf, type TicketStatus } from './status'
+import { loadTickets } from './time-load'
+import type { TicketTime } from './time-split'
 import {
   loadChecks,
   loadItem,
   loadOtherPulls,
   loadProofs,
   loadRuns,
+  pullNumberOf,
   type CheckView,
   type OtherPull,
   type ProofGroup,
@@ -75,6 +79,7 @@ export type TicketView = {
   mockups: AttachmentView[]
   noMockup: boolean
   pullRequest: PullView | null
+  verifySince: string | null
   similarItems: ItemHit[]
   adopted: { pr: number; author: string } | null
   otherPulls: OtherPull[]
@@ -85,6 +90,7 @@ export type TicketView = {
   canGoBack: boolean
   canArchive: boolean
   archived: boolean
+  timing: { time: TicketTime; cost: TicketCost }
 }
 
 export type TicketFilter = { workspace: number; recordId: number }
@@ -104,8 +110,7 @@ const pullOf = async (
 
 const pullsOf = async (payload: Payload, stored: StoredRecord, events: StoredEvent[]) => {
   const { repo, number, adopted } = stored.record.source
-  const built = events.findLast((event) => event.type === 'build.submitted')
-  const pr = adopted?.pr ?? (built?.type === 'build.submitted' ? built.data.pr : undefined)
+  const pr = pullNumberOf(stored, events)
   const pullRequest = await pullOf(payload, stored.workspace, repo, pr)
   return {
     pullRequest,
@@ -122,6 +127,9 @@ const deployOf = (stored: StoredRecord, events: StoredEvent[], pull: PullView | 
   const { reason, checks } = stalled.data
   return { reason, checks, url: commitChecksUrl(stored.record.source.forge, pull.url, merged.data.sha) }
 }
+
+const verifySinceOf = (events: StoredEvent[]): string | null =>
+  events.findLast((event) => STAGE_ENTRY[event.type] === 'verify')?.createdAt ?? null
 
 const NOT_ENDED = { ended: null, closedAs: null } as const
 
@@ -155,6 +163,12 @@ const withKept = async (payload: Payload, recordId: number, views: EventView[]):
   if (!views.some((view) => view.type === 'learn.submitted')) return views
   const memories = await keptMemories(payload, recordId)
   return views.map((view) => (view.type === 'learn.submitted' ? { ...view, memories } : view))
+}
+
+const timingOf = async (payload: Payload, recordId: number): Promise<TicketView['timing']> => {
+  const [data] = await loadTickets(payload, [recordId], new Date())
+  if (!data) throw new RecordNotFound(`Record ${recordId} does not exist: check the id.`)
+  return { time: data.time, cost: costOf(data.runs) }
 }
 
 export const ticket = async (payload: Payload, filter: TicketFilter): Promise<TicketView> => {
@@ -192,6 +206,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     mockups,
     noMockup: lacksMockup(stored.record, mockups),
     ...pulls,
+    verifySince: verifySinceOf(events),
     statementsUsed: await statementsUsed(payload, stored.id, events),
     deploy: deployOf(stored, events, pulls.pullRequest),
     positions: positionsOf({ card: stored.card, record: stored.record, runs, events }),
@@ -199,6 +214,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     canGoBack: canGoBack(folded),
     canArchive: canArchive(folded),
     archived: folded.closed === 'archived',
+    timing: await timingOf(payload, stored.id),
     similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT, 'issue') : [],
   }
 }

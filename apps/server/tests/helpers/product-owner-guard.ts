@@ -11,6 +11,7 @@ export const PO_PAGES: Record<string, string> = {
 }
 export const BAUHERR_PAGES = [
   'inbox',
+  'insights',
   'memory',
   'memory/[id]',
   'memory/new',

@@ -19,7 +19,7 @@ type Resource = {
 }
 
 export const newKey = (): string => `sk-bauherr-${randomBytes(24).toString('hex')}`
-const keyName = (slug: string) => `workspace-${slug}`
+export const keyName = (slug: string) => `workspace-${slug}`
 const sessionKeyName = (slug: string) => `${keyName(slug)}-session`
 const KEYS = '/api/config/resources/llm.apiKey'
 
