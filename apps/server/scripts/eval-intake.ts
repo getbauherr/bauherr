@@ -43,6 +43,7 @@ const packFor = async (evalCase: EvalCase, runId: number): Promise<ContextPack> 
     rounds: evalCase.rounds ?? [],
   },
   agentsFile: null,
+  memory: [],
   statements: [],
   similar: [],
   learn: null,

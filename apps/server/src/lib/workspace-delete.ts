@@ -164,6 +164,7 @@ export const PURGE_ORDER: { table: string; where: (ws: number) => ReturnType<typ
     'attachments',
     'stage_runs',
     'statements',
+    'memory_document_versions',
     'records',
     'agent_sessions',
     'agent_keys',

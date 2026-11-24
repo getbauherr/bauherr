@@ -8,6 +8,7 @@ export const ALWAYS_MAX = 10
 export const MEMORY_STAGES = ['brief', 'build', 'review', 'verify'] as const
 export const REACHES = ['always', 'area', 'fit', 'ticket'] as const
 export const APPLIES = ['fit', 'always', 'area'] as const
+export const DOCUMENT_SCOPES = ['factory', 'workspace', 'product'] as const
 export const WHY = ['always', 'area', 'fit'] as const
 
 export type MemoryStage = (typeof MEMORY_STAGES)[number]
