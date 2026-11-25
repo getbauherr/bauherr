@@ -1,7 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import * as migration from '../../src/migrations/20261125_110000_drop_production_gate'
+import * as migration from '../../src/migrations/20261125_120000_drop_production_gate'
 import { forPayload } from '../helpers/migration-db'
 import { lifecycleConfig } from '../../src/jobs/engine-deps'
 import { readRecord } from '../../src/core/record/store'

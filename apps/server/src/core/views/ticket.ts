@@ -21,6 +21,7 @@ import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
 import { positionsOf, type Positions } from './positions'
 import { commentFilesOf, type CommentFile } from '../conversations/store'
+import { commentsOf, type RequestComment } from '../requests/comments'
 import { activityOf, type EventView } from './activity'
 import { loadShots, pairsOf, type Pair } from '../attachments/pairs'
 import { loadMockups, type AttachmentView } from './attachments'
@@ -84,6 +85,7 @@ export type TicketView = {
   proofs: ProofGroup[]
   mockups: AttachmentView[]
   commentFiles: CommentFile[]
+  comments: RequestComment[]
   noMockup: boolean
   pairs: ScreenPair[]
   pullRequest: PullView | null
@@ -263,6 +265,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     proofs: await loadProofs(payload, stored.id),
     mockups,
     commentFiles: await commentFilesOf(payload, stored.id),
+    comments: await commentsOf(payload, stored.id, events),
     noMockup: lacksMockup(stored.record, mockups),
     pairs: await pairsFor(payload, stored.record, stored.id, mockups),
     ...pulls,

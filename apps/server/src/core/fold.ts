@@ -255,7 +255,7 @@ const isRetired = (event: AppEvent): boolean =>
   (event.type === 'question.asked' && RETIRED_QUESTIONS.includes(event.data.reason))
 
 export const reduce = (state: State, event: AppEvent, options: FoldOptions): State => {
-  if (event.type.startsWith('forge.write.') || isRetired(event)) return state
+  if (event.type.startsWith('forge.write.') || event.type === 'request.commented' || isRetired(event)) return state
   const next = REDUCERS.reduce<State | null>((found, reducer) => found ?? reducer(state, event, options), null)
   return { ...(next ?? state), last: event.type }
 }

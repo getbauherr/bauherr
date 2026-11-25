@@ -1,4 +1,4 @@
-import { readFile } from '../../../../../../core/conversations/store'
+import { conversationRecord, readFile } from '../../../../../../core/conversations/store'
 import { tokenFits } from '../../../../../../core/requests/markdown'
 import { loadDraft } from '../../../../../../core/requests/store'
 import { secret } from '../../../../../../lib/secrets'
@@ -16,7 +16,8 @@ export const GET = async (_req: Request, context: Context): Promise<Response> =>
   if (!Number.isInteger(conversationId) || !Number.isInteger(file)) return new Response(null, { status: 404 })
   if (!tokenFits(secret('PAYLOAD_SECRET'), conversationId, file, token)) return new Response(null, { status: 404 })
   const payload = await payloadClient()
-  if ((await loadDraft(payload, conversationId))?.state !== 'sent') return new Response(null, { status: 404 })
+  const sent = (await loadDraft(payload, conversationId))?.state === 'sent'
+  if (!sent && (await conversationRecord(payload, conversationId)) === null) return new Response(null, { status: 404 })
   const found = await readFile(payload, conversationId, file)
   if (!found) return new Response(null, { status: 404 })
   return new Response(new Uint8Array(found.bytes), {
