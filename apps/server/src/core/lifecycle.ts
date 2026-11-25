@@ -174,13 +174,10 @@ const ship: Rule = (_r, state, config) => {
 
 const RULES: Rule[] = [closed, cardOpen, runLive, blocked, failedRuns, intake, brief, build, author, verify, ship]
 
-const silenced = (step: Step, blockers: Blocker[]): Step =>
-  blockers.length > 0 && step.kind === 'card' && step.card === 'question' ? wait('nobody') : step
-
 export const next = (record: TicketRecord, state: State, config: Config, blockers: Blocker[] = []): Step => {
   for (const rule of RULES) {
     const step = rule(record, state, config, blockers)
-    if (step) return silenced(step, blockers)
+    if (step) return step
   }
   return { kind: 'done' }
 }

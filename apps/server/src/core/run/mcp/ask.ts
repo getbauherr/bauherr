@@ -23,7 +23,8 @@ const refuseStageMoves = (options: string[]): void => {
 
 const WAIT_FOR_TICKET = new RegExp(
   '\\b(?:wait(?:s|ing)?|hold(?:s|ing)?|pause|blocked)\\b(?:\\s+\\w+){0,3}?' +
-    '\\s+(?:for|on|until|by)\\s+(?:ticket\\s+|issue\\s+)?#\\d+',
+    '\\s+(?:for|on|until|by)\\s+(?:(?:ticket|issue|pr|pull\\s+request)\\s+)?#?\\d+|' +
+    '\\b(?:start|begin|resume|continue|build)\\b[^.]*?\\bafter\\s+(?:(?:ticket|issue|pr|pull\\s+request)\\s+)?#?\\d+',
   'i',
 )
 

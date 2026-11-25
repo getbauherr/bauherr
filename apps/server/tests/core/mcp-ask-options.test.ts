@@ -37,7 +37,16 @@ describe('ask options', () => {
     await m.e.drain()
   })
 
-  it.each([['Wait for #842'], ['Waiting on ticket #842 to land first'], ['Hold until #12']])(
+  it.each([
+    ['Wait for #842'],
+    ['Waiting on ticket #842 to land first'],
+    ['Hold until #12'],
+    ['Wait for 842'],
+    ['Wait for PR #842'],
+    ['Wait for ticket 842'],
+    ['Wait for pull request 842'],
+    ['Start after #842 is merged'],
+  ])(
     'refuses the option "%s" that offers waiting for another ticket',
     async (option) => {
       await m.e.drain()
