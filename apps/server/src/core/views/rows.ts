@@ -5,7 +5,7 @@ import { stageSchema, type Stage } from '../events'
 import { cardSchema, WAITING_ON, type StoredCard, type WaitingOn } from '../record/store'
 import { ago, ENTRY_TABLE, LIVE_RUN_SQL, LIVE_SQL, scope, TERMINAL_LIST } from './sql'
 
-export type RowFilter = { workspace: number; product?: number; now: Date }
+export type RowFilter = { workspace: number; product?: number; now: Date; history?: 'week' | 'all' }
 
 const count = z.coerce.number()
 
@@ -35,6 +35,10 @@ const rowSchema = z.object({
   criteria_met: count,
   adopted_pr: count.nullable(),
   adopted_by: z.string().nullable(),
+  type: z.string(),
+  reporter: z.string(),
+  created_at: z.coerce.date(),
+  changed_at: z.coerce.date(),
 })
 
 export type ClosedAs = 'not-a-bug' | 'duplicate' | 'not-planned' | 'discarded' | 'closed-on-forge' | 'archived'
@@ -59,6 +63,10 @@ export type TicketRow = {
   criteria: { met: number; total: number }
   adopted: { pr: number; author: string } | null
   endedAt: Date | null
+  type: string
+  reporter: string
+  createdAt: Date
+  changedAt: Date
   run: { role: 'builder' | 'reviewer' | 'verifier'; leasedBy: string | null; step: string | null } | null
 }
 
@@ -101,11 +109,16 @@ const toRow = (raw: unknown): TicketRow => {
     closedAs: !live && ended === 'closed' ? closedAsOf(r.terminal_type, r.terminal_reason) : null,
     criteria: { met: r.criteria_met, total: r.criteria_total },
     adopted: adoptedOf(r),
+    type: r.type,
+    reporter: r.reporter,
+    createdAt: r.created_at,
+    changedAt: r.changed_at,
     run: r.role === null ? null : { role: r.role, leasedBy: r.leased_by, step: r.step },
   }
 }
 
 export const loadRows = async (payload: Payload, filter: RowFilter): Promise<TicketRow[]> => {
+  const everything = filter.history === 'all' ? sql`true` : sql`false`
   const result = await payload.db.drizzle.execute(sql`
     SELECT r."id", r."product_id", p."name" AS product_name, r."source_repo", r."source_number", r."stage",
       r."waiting_on", r."rank", r."card", r."parked", i."title", ev."entered_at", ev."verify_rounds",
@@ -115,6 +128,8 @@ export const loadRows = async (payload: Payload, filter: RowFilter): Promise<Tic
       (SELECT count(*) FROM jsonb_array_elements(coalesce(r."data" -> 'criteria', '[]'::jsonb)) c
         WHERE c ->> 'status' = 'met') AS criteria_met,
       (r."data"->'source'->'adopted'->>'pr')::integer AS adopted_pr,
+      r."data"->>'type' AS type, r."data"->'source'->>'reporter' AS reporter, r."created_at",
+      greatest(r."created_at", ev."changed_at") AS changed_at,
       (SELECT a."author" FROM "mirror_items" a WHERE a."workspace_id" = r."workspace_id"
         AND a."repo" = r."source_repo" AND a."kind" = 'pr'
         AND a."number" = (r."data"->'source'->'adopted'->>'pr')::integer) AS adopted_by
@@ -133,11 +148,12 @@ export const loadRows = async (payload: Payload, filter: RowFilter): Promise<Tic
         (array_agg(e."type" ORDER BY e."id" DESC) FILTER (WHERE e."type" IN (${TERMINAL_LIST})))[1] AS terminal_type,
         (array_agg(e."data" ->> 'reason' ORDER BY e."id" DESC) FILTER (WHERE e."type" IN (${TERMINAL_LIST})))[1]
           AS terminal_reason,
-        max(e."created_at") FILTER (WHERE e."type" IN (${TERMINAL_LIST})) AS terminal_at
+        max(e."created_at") FILTER (WHERE e."type" IN (${TERMINAL_LIST})) AS terminal_at,
+        max(e."created_at") AS changed_at
       FROM "events" e LEFT JOIN ${ENTRY_TABLE} ON m."type" = e."type" WHERE e."record_id" = r."id"
     ) ev ON true
     WHERE ${scope(filter.workspace, filter.product)}
-      AND (${LIVE_SQL} OR (r."updated_at" >= ${ago(filter.now, 7)}::timestamptz
+      AND (${LIVE_SQL} OR ${everything} OR (r."updated_at" >= ${ago(filter.now, 7)}::timestamptz
         AND ev."terminal_reason" IS DISTINCT FROM 'archived'))
     ORDER BY r."rank", ev."entered_at", r."id"`)
   return result.rows.map(toRow)

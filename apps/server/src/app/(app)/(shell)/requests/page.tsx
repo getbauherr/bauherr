@@ -1,39 +1,67 @@
 import Link from 'next/link'
 import { EmptyState } from '../../components/EmptyState'
+import { FirstVisit } from '../../components/request/FirstVisit'
+import { ProductPicker } from '../../components/request/ProductPicker'
+import { RequestFilters } from '../../components/request/RequestFilters'
+import { RequestRows } from '../../components/request/RequestRows'
+import { Button } from '../../components/ui/button'
+import {
+  applyFilter,
+  filterCounts,
+  listRequests,
+  REQUEST_FILTERS,
+  type RequestFilter,
+} from '../../../../core/views/request-status'
 import { payloadClient } from '../../lib/session'
-import { productsOf, requireProductOwner } from '../../lib/requests'
+import { readableProducts, requestsOf, requireRequestsReader } from '../../lib/requests'
 
 export const dynamic = 'force-dynamic'
 
-export default async function Requests() {
-  const user = await requireProductOwner()
-  const products = await productsOf(await payloadClient(), user.assignments)
+const filterOf = (value: string | undefined): RequestFilter =>
+  REQUEST_FILTERS.find((f) => f === value) ?? 'open'
+
+export default async function Requests({
+  searchParams,
+}: {
+  searchParams?: Promise<{ product?: string; show?: string }>
+}) {
+  const person = await requireRequestsReader()
+  const payload = await payloadClient()
+  const products = await readableProducts(payload, person)
+  const query = (await searchParams) ?? {}
+  const product = products.find((p) => String(p.id) === query.product) ?? products[0]
+  if (!product) {
+    return (
+      <>
+        <h1 className="title">Requests</h1>
+        <EmptyState text="Nobody has given you a Product yet. Ask your Bauherr to assign one." />
+      </>
+    )
+  }
+  const list = listRequests(await requestsOf(payload, product), person.email)
+  const filter = filterOf(query.show)
   return (
     <>
-      <h1 className="title">Requests</h1>
-      {products.length === 0 ? (
-        <EmptyState text="Nobody has given you a Product yet. Ask your Bauherr to assign one." />
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="title">Requests</h1>
+        <ProductPicker products={products} current={product.id} />
+        {list.length > 0 && (
+          <Button asChild className="ml-auto">
+            <Link href="/requests/new">New request</Link>
+          </Button>
+        )}
+      </div>
+      {list.length === 0 ? (
+        <FirstVisit product={product.name} />
       ) : (
-        products.map((product) => (
-          <section key={product.id} aria-labelledby={`product-${product.id}`} className="flex flex-col gap-2">
-            <h2 id={`product-${product.id}`} className="heading">
-              {product.name}
-            </h2>
-            {product.requests.length === 0 ? (
-              <p className="small text-muted-foreground">No requests yet.</p>
-            ) : (
-              <ul className="m-0 flex list-none flex-col divide-y p-0 divide-border border border-border bg-card">
-                {product.requests.map((request) => (
-                  <li key={request.recordId}>
-                    <Link className="body block px-4 py-3 hover:bg-muted" href={`/requests/${request.recordId}`}>
-                      {request.title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        ))
+        <>
+          <RequestFilters product={product.id} current={filter} counts={filterCounts(list)} />
+          {applyFilter(list, filter).length === 0 ? (
+            <p className="small text-muted-foreground">Nothing here.</p>
+          ) : (
+            <RequestRows list={applyFilter(list, filter)} />
+          )}
+        </>
       )}
     </>
   )

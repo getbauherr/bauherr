@@ -14,6 +14,7 @@ import { seedReadiness } from './seed-readiness'
 import { seedInsights } from './seed-insights'
 import { seedMemoryEditor } from './seed-memory-editor'
 import { seedRetro } from './seed-retro'
+import { seedRequests } from './seed-requests'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -190,6 +191,7 @@ if (!ticketsSeeded.docs.length) {
   await seedTickets(ticketsEngine)
   await seedMockupTicket(ticketsEngine)
 }
+await seedRequests(payload, user)
 await seedConnect(payload)
 await seedSomeday(payload)
 await seedMemoryEditor(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
