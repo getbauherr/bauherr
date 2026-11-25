@@ -9,6 +9,7 @@ import { GatesSection } from '../../../../components/product/GatesSection'
 import { IntakeSection } from '../../../../components/product/IntakeSection'
 import { ProofSection } from '../../../../components/product/ProofSection'
 import { ReadinessSection } from '../../../../components/product/ReadinessSection'
+import { ReleasesSection } from '../../../../components/product/ReleasesSection'
 import { RemoveDoc } from '../../../../components/product/RemoveDoc'
 import { RepositorySection } from '../../../../components/product/RepositorySection'
 import { SettingsSection } from '../../../../components/SettingsParts'
@@ -64,6 +65,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       </div>
       {!admin && <p className="small text-muted-foreground">Only an Admin can change Product settings.</p>}
       {ready && <ReadinessSection product={product.id} view={ready} admin={admin} />}
+      {ready && <ReleasesSection product={product} view={ready} admin={admin} />}
       <div className="grid grid-cols-2 items-start gap-4 max-lg:grid-cols-1">
         <div className="flex min-w-0 flex-col gap-4">
           <RepositorySection

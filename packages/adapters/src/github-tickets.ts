@@ -17,9 +17,11 @@ import { field, get, idText, list, nullableText, num, text, wire } from './wire.
 const sinceParam = (iso: string): string => new Date(iso).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const enc = encodeURIComponent;
 
-const parentOf = (issue: unknown): string | null => {
+const inRepo = (url: string, path: string): boolean => url.toLowerCase().endsWith(path.toLowerCase());
+
+const parentOf = (issue: unknown, path: string): string | null => {
   const url = text(wire(issue).parent_issue_url);
-  return url ? (url.split('/').at(-1) ?? null) : null;
+  return url && inRepo(url.replace(/\/issues\/\d+$/, ''), path) ? (url.split('/').at(-1) ?? null) : null;
 };
 
 const closeReasonOf = (issue: unknown): CloseReason | null => {
@@ -69,11 +71,12 @@ export class GithubTickets implements TicketSource {
   async get(id: string): Promise<Ticket> {
     const [i, blockers] = await Promise.all([this.issue(id), this.blockers(id)]);
     const { body, relations } = parseRelations(text(wire(i).body));
+    const sameRepo = blockers.filter((b) => inRepo(text(wire(b).repository_url), this.p));
     return {
       ...githubSummary(i),
       body,
-      parent: parentOf(i),
-      blockedBy: [...new Set([...blockers.map((b) => idText(wire(b).number)), ...relations.blockedBy])],
+      parent: parentOf(i, this.p),
+      blockedBy: [...new Set([...sameRepo.map((b) => idText(wire(b).number)), ...relations.blockedBy])],
       links: relations.links,
       closeReason: closeReasonOf(i),
     };
@@ -163,6 +166,14 @@ export class GithubTickets implements TicketSource {
     await this.h.json('POST', `${this.p}/issues/${id}/dependencies/blocked_by`, {
       issue_id: await this.globalId(blockerId),
     });
+  }
+  async removeSubTicket(parentId: string, childId: string) {
+    await this.h.json('DELETE', `${this.p}/issues/${parentId}/sub_issue`, {
+      sub_issue_id: await this.globalId(childId),
+    });
+  }
+  async removeBlockedBy(id: string, blockerId: string) {
+    await this.h.json('DELETE', `${this.p}/issues/${id}/dependencies/blocked_by/${await this.globalId(blockerId)}`);
   }
   async addLink(id: string, url: string) {
     const body = text(wire(await this.issue(id)).body);
