@@ -193,5 +193,5 @@ export const runnerHarness = (suite: string) => {
   const read = (dir: string, file: string) => readFileSync(join(dir, '.bauherr', file), 'utf8')
 
   const actions = { start, next, toBuild, runRow, pulls, green, events }
-  return { f, remote, seen, state, deps, ...actions, gone, read, edit, write, verified, judged, finding }
+  return { f, remote, seen, state, deps, ...actions, gone, read, edit, write, verified, judged, finding, roleOf }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { gate, reviewGate, type GateFacts } from '../../src/core/gate'
+import { gate, reviewGate, UNPROVEN_FIX, type GateFacts } from '../../src/core/gate'
 import type { Finding } from '../../src/core/record/schema'
 import type { ReviewResult } from '../../src/core/review-result'
 import type { VerifyResult } from '../../src/core/verify-result'
@@ -16,6 +16,7 @@ const facts: GateFacts = {
   headCommit: 'h1',
   checks: 'passed',
   proofIds: ['11', '12', '13'],
+  failedProofIds: [],
   screens: [],
   shots: [],
 }
@@ -81,7 +82,7 @@ describe('the verification gate', () => {
   })
 
   it('lets a criterion of another kind be met while the checks are red', () => {
-    const result = passing({ criteria: [{ id: 'c2', status: 'met', proof: ['12'] }], verdict: 'changes' })
+    const result = passing({ criteria: [{ id: 'c2', status: 'met', proof: ['12'] }] })
     const open = { ...record, criteria: [record.criteria[1] ?? criterion(2)] }
     expect(gate({ result, record: open, facts: { ...facts, checks: 'failed' } })).toEqual({ accepted: true })
   })
@@ -111,6 +112,34 @@ describe('the verification gate', () => {
 
   it('refuses pass while a criterion is not part of the result and still open', () => {
     refused(passing({ criteria: [{ id: 'c1', status: 'met', proof: ['11'] }] }), {}, 'verdict')
+  })
+
+  it('refuses met on a command proof that exited with an error', () => {
+    refused(passing(), { failedProofIds: ['12'] }, 'exited with an error')
+  })
+
+  it('accepts a command criterion left open when its proof failed', () => {
+    const criteria = [
+      { id: 'c1', status: 'met' as const, proof: ['11'] },
+      { id: 'c2', status: 'open' as const, proof: ['12'] },
+      { id: 'c3', status: 'met' as const, proof: ['13'] },
+    ]
+    const result = passing({ criteria, verdict: 'changes', findings: [finding({ status: 'open' })] })
+    expect(gate({ result, record, facts: { ...facts, failedProofIds: ['12'] } })).toEqual({ accepted: true })
+  })
+
+  it('refuses changes with every criterion open and no finding, and says how to fix it', () => {
+    const criteria = ['c1', 'c2', 'c3'].map((id) => ({ id, status: 'open' as const, proof: [] }))
+    const refusals = refused(passing({ criteria, verdict: 'changes' }), {}, UNPROVEN_FIX)
+    expect(refusals?.map((r) => r.message).join(' ')).toContain('Gate unproven')
+  })
+
+  it.each([
+    ['a finding', { findings: [finding({ status: 'open' })] }],
+    ['a missing criterion', { criteria: [{ id: 'c1', status: 'missing' as const, proof: [] }] }],
+    ['a partial criterion', { criteria: [{ id: 'c1', status: 'partial' as const, proof: ['11'] }] }],
+  ])('accepts changes with %s', (_name, change) => {
+    expect(gate({ result: passing({ verdict: 'changes', ...change }), record, facts })).toEqual({ accepted: true })
   })
 
   it('refuses a finding without an evidence pointer', () => {

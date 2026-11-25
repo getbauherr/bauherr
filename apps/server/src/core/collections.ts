@@ -80,6 +80,7 @@ export const coreCollections: CollectionConfig[] = [
       { name: 'sha', type: 'text', required: true },
       { name: 'body', type: 'textarea' },
       { name: 'url', type: 'text' },
+      { name: 'exitCode', type: 'number' },
       { name: 'attachment', type: 'relationship', relationTo: 'attachments' },
     ],
   },
