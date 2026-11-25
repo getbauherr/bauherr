@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { AppEvent } from '../../src/core/events'
 import { fold, next, type Config, type Step } from '../../src/core/lifecycle'
-import { briefed, CONFIG, ev, inBuild, inVerify, merged, start } from './fixtures'
+import { briefed, CONFIG, ev, inBuild, inVerify, start } from './fixtures'
 
 type Case = { name: string; events: AppEvent[]; expected: Step; config?: Partial<Config> }
 
-const wait = (on: 'owner'): Step => ({ kind: 'wait', on })
-const resultCard: Step = { kind: 'card', card: 'result', reason: 'result', options: [] }
-const gated = { productionGate: true }
 const changed = [start('verify', 'r2'), ev('verify.changes')]
 const secondBuild = [start('build', 'r3'), ev('build.submitted', { runId: 'r3' })]
 const atVerifyCap = [...inVerify, ...changed, ...secondBuild, ...changed]
@@ -19,24 +16,6 @@ const overridden = [
 ]
 
 const CASES: Case[] = [
-  {
-    name: 'a held production waits on the owner instead of asking again',
-    events: [...merged, ev('result.accepted'), ev('question.asked'), ev('question.answered'), ev('production.held')],
-    config: gated,
-    expected: wait('owner'),
-  },
-  {
-    name: 'a held production is done once approved',
-    events: [...merged, ev('result.accepted'), ev('production.held'), ev('production.approved')],
-    config: gated,
-    expected: { kind: 'done' },
-  },
-  {
-    name: 'a held production is not asked about before the result is accepted',
-    events: [...merged, ev('production.held')],
-    config: gated,
-    expected: resultCard,
-  },
   {
     name: 'a discarded ticket is done',
     events: [...inBuild, ev('ticket.closed')],
@@ -57,12 +36,6 @@ const CASES: Case[] = [
 const open = [{ number: 2, state: 'open' as const }]
 const OUTSIDE_BUILD: Case[] = [
   {
-    name: 'production approval still asks the owner while a blocker is open',
-    events: [...merged, ev('result.accepted')],
-    config: gated,
-    expected: { kind: 'card', card: 'question', reason: 'production', options: ['approve', 'hold'] },
-  },
-  {
     name: 'a disputed Intake still asks the owner while a blocker is open',
     events: [start('intake'), ev('intake.disputed')],
     expected: { kind: 'card', card: 'question', reason: 'disputed', options: ['not-a-bug', 'accept', 'ask-again'] },
@@ -72,7 +45,7 @@ const OUTSIDE_BUILD: Case[] = [
 describe('next with an open blocker outside Build', () => {
   it.each(OUTSIDE_BUILD.map((c) => [c.name, c] as const))('%s', (_name, c) => {
     const config = { ...CONFIG, ...c.config }
-    const state = fold(c.events, { productionGate: config.productionGate })
+    const state = fold(c.events)
     expect(next(briefed(), state, config, open)).toEqual(c.expected)
   })
 })
@@ -80,7 +53,7 @@ describe('next with an open blocker outside Build', () => {
 describe('next after owner decisions', () => {
   it.each(CASES.map((c) => [c.name, c] as const))('%s', (_name, c) => {
     const config = { ...CONFIG, ...c.config }
-    const state = fold(c.events, { productionGate: config.productionGate })
+    const state = fold(c.events)
     expect(next(briefed(), state, config)).toEqual(c.expected)
   })
 })

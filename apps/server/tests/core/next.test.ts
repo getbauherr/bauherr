@@ -37,7 +37,6 @@ const approvedByRule: Step = { kind: 'emit', event: ev('brief.approved', { by: '
 const asked = (round: number) => ev('intake.asked', { round })
 const round = (n: number) => [asked(n), ev('reporter.silent')]
 const changed = [start('verify', 'r2'), ev('verify.changes')]
-const gated = { productionGate: true }
 const external = { ...source, external: true }
 const twoFails = [start('intake'), fail('intake'), start('intake', 'r2'), fail('intake', 'r2')]
 const answeredQuestion = (option = 'retry') => [ev('question.asked'), ev('question.answered', { option })]
@@ -257,24 +256,6 @@ const CASES: Case[] = [
     expected: resultCard,
   },
   {
-    name: 'an accepted result needs production approval when the gate is on',
-    events: [...merged, ev('result.accepted')],
-    config: gated,
-    expected: question('production', ['approve', 'hold']),
-  },
-  {
-    name: 'an approved production is done when the gate is on',
-    events: [...merged, ev('result.accepted'), ev('production.approved')],
-    config: gated,
-    expected: { kind: 'done' },
-  },
-  {
-    name: 'approval before acceptance still waits for acceptance',
-    events: [...merged, ev('production.approved')],
-    config: gated,
-    expected: resultCard,
-  },
-  {
     name: 'a result sent back after ship runs build with the note',
     events: sentBack,
     expected: run('build'),
@@ -295,7 +276,7 @@ const CASES: Case[] = [
 describe('next', () => {
   it.each(CASES.map((c) => [c.name, c] as const))('%s', (_name, c) => {
     const config = { ...CONFIG, ...c.config }
-    const state = fold(c.events, { productionGate: config.productionGate })
+    const state = fold(c.events)
     expect(next(c.record ?? briefed(), state, config)).toEqual(c.expected)
   })
 })

@@ -4,7 +4,7 @@ import { savePathSets } from '../../(shell)/settings/actions'
 import { saveGates } from '../../(shell)/settings/products/[id]/actions'
 import { LIMIT } from '../../lib/product-sections'
 import { Field, SettingsForm } from '../SettingsForm'
-import { SettingsSection, ToggleRow } from '../SettingsParts'
+import { SettingsSection } from '../SettingsParts'
 import { Editable } from './Editable'
 import { RiskAreaPicks } from './RiskAreaPicks'
 
@@ -24,12 +24,6 @@ export function GatesSection({ product, admin }: Props) {
         <SettingsForm action={saveGates} submit="Save gates">
           <input type="hidden" name="id" value={product.id} />
           <RiskAreaPicks sets={product.pathSets} chosen={product.riskAreas} />
-          <ToggleRow
-            name="productionGate"
-            label="Ask me before production"
-            help="Nothing goes live until you approve it."
-            defaultChecked={product.productionGate}
-          />
           <Field
             name="backlogBriefLimit"
             label="Briefs waiting on you at a time"

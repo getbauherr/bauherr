@@ -120,7 +120,7 @@ test('Intake saves its own fields and says why a silence before the reminder is 
   })
 })
 
-test('Gates save path sets, risk areas, the production switch and the Brief limit', async ({ page }) => {
+test('Gates save path sets, risk areas and the Brief limit', async ({ page }) => {
   test.setTimeout(120_000)
   await ownProduct(page, async () => {
     const gates = page.locator('#gates')
@@ -130,14 +130,13 @@ test('Gates save path sets, risk areas, the production switch and the Brief limi
     await saved(page)
     await page.reload()
     await gates.getByRole('checkbox', { name: /^security/ }).check()
-    await gates.getByRole('switch', { name: /Ask me before production/ }).check()
     await gates.getByLabel('Briefs waiting on you at a time').fill('7')
     await gates.getByRole('button', { name: 'Save gates' }).click()
     await saved(page)
     await page.reload()
     await expect(gates.getByRole('checkbox', { name: /^security/ })).toBeChecked()
     await expect(gates.getByRole('checkbox', { name: /^ui/ })).not.toBeChecked()
-    await expect(gates.getByRole('switch', { name: /Ask me before production/ })).toBeChecked()
+    await expect(gates.getByText('Ask me before production')).toHaveCount(0)
     await expect(gates.getByLabel('Briefs waiting on you at a time')).toHaveValue('7')
     await expect(gates).toContainText('A Brief card goes to you when it has an open decision')
   })

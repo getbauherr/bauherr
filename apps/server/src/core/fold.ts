@@ -30,14 +30,12 @@ export type State = {
   deployed: boolean
   deployStalled: { reason: 'failed' | 'overdue'; checks: string[] } | null
   accepted: boolean
-  productionApproved: boolean
-  productionHeld: boolean
   note: string | null
   blockedReason: string | null
   last: EventType | null
 }
 
-export type FoldOptions = { productionGate: boolean; requiredChecks?: boolean; deployChecks?: boolean }
+export type FoldOptions = { requiredChecks?: boolean; deployChecks?: boolean }
 
 export const initialState = (): State => ({
   stage: 'intake',
@@ -64,8 +62,6 @@ export const initialState = (): State => ({
   deployed: false,
   deployStalled: null,
   accepted: false,
-  productionApproved: false,
-  productionHeld: false,
   note: null,
   blockedReason: null,
   last: null,
@@ -174,7 +170,6 @@ const adopt = (state: State, data: EventOf<'pull.adopted'>['data'], options: Fol
     verdict: null,
     accepted: false,
     overridden: false,
-    productionHeld: false,
   }
 }
 
@@ -195,7 +190,6 @@ const patch: Reducer = (state, event, options) => {
         deployed: false,
         deployStalled: null,
         accepted: false,
-        productionHeld: false,
         overridden: false,
       }
       const latest = { id: event.data.patchId, pr: event.data.pr, headSha: event.data.headSha }
@@ -251,9 +245,7 @@ const shipped = (state: State, options: FoldOptions): boolean =>
   !state.adopted || (state.merged && (options.deployChecks !== true || state.deployed))
 
 const finished = (state: State, options: FoldOptions): State =>
-  state.accepted && shipped(state, options) && (!options.productionGate || state.productionApproved)
-    ? enter(state, 'done')
-    : state
+  state.accepted && shipped(state, options) ? enter(state, 'done') : state
 
 const merged = (state: State, sha: string, options: FoldOptions): State => {
   if (!state.adopted) return { ...state, merged: true, mergeSha: sha }
@@ -281,10 +273,6 @@ const ship: Reducer = (state, event, options) => {
       return finished({ ...state, accepted: true }, options)
     case 'result.sent-back':
       return sentBack(state, event.data.note)
-    case 'production.approved':
-      return finished({ ...state, productionApproved: true }, options)
-    case 'production.held':
-      return { ...state, productionHeld: true }
     default:
       return null
   }
@@ -318,11 +306,18 @@ const questions: Reducer = (state, event) => {
 
 const REDUCERS: Reducer[] = [intake, runs, owner, brief, patch, verify, ship, questions]
 
+const RETIRED_QUESTIONS = ['production']
+
+const isRetired = (event: AppEvent): boolean =>
+  event.type === 'production.approved' ||
+  event.type === 'production.held' ||
+  (event.type === 'question.asked' && RETIRED_QUESTIONS.includes(event.data.reason))
+
 export const reduce = (state: State, event: AppEvent, options: FoldOptions): State => {
-  if (event.type.startsWith('forge.write.')) return state
+  if (event.type.startsWith('forge.write.') || isRetired(event)) return state
   const next = REDUCERS.reduce<State | null>((found, reducer) => found ?? reducer(state, event, options), null)
   return { ...(next ?? state), last: event.type }
 }
 
-export const fold = (events: AppEvent[], options: FoldOptions = { productionGate: false }): State =>
+export const fold = (events: AppEvent[], options: FoldOptions = {}): State =>
   events.reduce((state, event) => reduce(state, event, options), initialState())

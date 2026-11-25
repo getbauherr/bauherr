@@ -2,6 +2,7 @@ import type { TicketView } from '../../../../core/views/ticket'
 import { RESULT_ACTIONS } from '../../lib/decision-actions'
 import { DecisionForm } from './DecisionForm'
 import { ResultBody } from './ResultBody'
+import { StagingNow } from './StagingNow'
 import { Card } from './Section'
 
 const ACCEPT = 'Accept the Result to finish the ticket.'
@@ -21,6 +22,7 @@ export function ResultCard({ view, seq, proof, may }: Props) {
         actions={may ? RESULT_ACTIONS : []}
       >
         <div className="grid gap-5 p-6">
+          {view.staging && <StagingNow staging={view.staging} />}
           <ResultBody view={view} tab="now" proof={proof} />
         </div>
       </DecisionForm>

@@ -56,7 +56,7 @@ const noteSchema = z.string().trim().min(1).max(NOTE_MAX)
 const askedOf = (step: Step, state: State): string | null => {
   if (step.kind === 'card') return step.card === 'question' ? `question:${step.reason}` : step.card
   if (step.kind === 'wait' && step.on === 'owner') {
-    return state.card ? `question:${state.card.reason}` : 'production-held'
+    return state.card ? `question:${state.card.reason}` : null
   }
   return canGoBack(state) ? WORKING_ASK : null
 }

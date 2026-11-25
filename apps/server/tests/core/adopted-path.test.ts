@@ -39,7 +39,6 @@ const mergedAndPassed = [
   ev('verify.passed', { runId: 'r2', patchId: 'adopted:h1' }),
 ]
 const released = ev('run.released', { stage: 'verify', runId: 'r2' })
-const gated = { productionGate: true }
 const closedOnForge = ev('ticket.closed', { reason: 'closed-on-forge' })
 
 const CASES: Case[] = [
@@ -123,12 +122,6 @@ const CASES: Case[] = [
     name: 'a merged pull request after the accept is done',
     events: [...passed, ev('result.accepted'), ev('ship.merged')],
     expected: { kind: 'done' },
-  },
-  {
-    name: 'the production gate comes after the merge',
-    events: [...passed, ev('result.accepted'), ev('ship.merged')],
-    config: gated,
-    expected: question('production', ['approve', 'hold']),
   },
   {
     name: 'a merge after the accept waits for the deploy when deploy checks are on',

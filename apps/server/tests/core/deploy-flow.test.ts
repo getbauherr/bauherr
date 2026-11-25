@@ -219,3 +219,70 @@ describe('which merge commits the sync reads', () => {
     expect(await openPullsAt(f.h.payload(), Number(source?.id), head)).toEqual([])
   })
 })
+
+describe('the deploy to staging, against the fake forge', () => {
+  const URL = 'https://staging.example.com'
+
+  beforeEach(async () => {
+    await f.product(sql`"deploy_checks" = NULL, "staging_url" = ${URL}`)
+  })
+
+  const deployed = (s: Verifying, sha: string, state: 'success' | 'failure' | 'pending') =>
+    f.fake().setDeployment(s.repo, 'staging', { sha, url: URL, state })
+
+  it('shows no Result card until the merge commit runs on staging, then shows it with the way to try it', async () => {
+    const { s, sha } = await waitingOnDeploy()
+    await s.sync()
+    expect(await f.view(s.id)).toMatchObject({ waitingOn: 'agents', card: null })
+
+    f.fake().setCommitEndpoint(s.repo, false)
+    deployed(s, 'other', 'success')
+    await s.sync()
+    expect(await f.view(s.id)).toMatchObject({ waitingOn: 'agents', card: null })
+
+    deployed(s, sha, 'pending')
+    await s.sync()
+    expect(await f.view(s.id)).toMatchObject({ waitingOn: 'agents', card: null })
+
+    deployed(s, sha, 'success')
+    await s.sync()
+    expect(await f.view(s.id)).toMatchObject({ waitingOn: 'agents', card: null })
+    expect(await f.types(s.id)).not.toContain('ship.deployed')
+
+    f.fake().setCommitEndpoint(s.repo, true)
+    await s.sync()
+    expect(await f.view(s.id)).toMatchObject({ stage: 'ship', waitingOn: 'owner', card: { card: 'result' } })
+    const view = await ticket(f.h.payload(), { workspace: f.h.ids.workspace, recordId: s.id })
+    expect(view.staging).toMatchObject({ sha, url: URL })
+    expect(Date.parse(view.staging?.since ?? '')).not.toBeNaN()
+  })
+
+  it('asks about a failed staging deployment and about no deployment within the limit', async () => {
+    const failed = await waitingOnDeploy()
+    deployed(failed.s, failed.sha, 'failure')
+    await failed.s.sync()
+    expect(await f.view(failed.s.id)).toMatchObject({ waitingOn: 'owner', card: { reason: 'deploy-stalled' } })
+    const [event] = (await readEvents(f.h.payload(), failed.s.id)).filter((e) => e.type === 'ship.deploy-stalled')
+    expect(event?.data).toEqual({ reason: 'failed', checks: ['Staging deployment'] })
+
+    const silent = await waitingOnDeploy()
+    f.clock.now = new Date(Date.now() + 61 * MINUTE)
+    await silent.s.sync()
+    expect(await f.view(silent.s.id)).toMatchObject({ waitingOn: 'owner', card: { reason: 'deploy-stalled' } })
+    const [late] = (await readEvents(f.h.payload(), silent.s.id)).filter((e) => e.type === 'ship.deploy-stalled')
+    expect(late?.data).toEqual({ reason: 'overdue', checks: ['Staging deployment', 'Staging version'] })
+  })
+
+  it('ends the ticket on accept without a question or card about production', async () => {
+    const { s, sha } = await waitingOnDeploy()
+    f.fake().setCommitEndpoint(s.repo, true)
+    deployed(s, sha, 'success')
+    await s.sync()
+    const seq = (await f.view(s.id)).card?.seq ?? -1
+    await decide(s.id, owner(), { ask: 'result', choice: 'accept', seq }, f.subDeps())
+    expect(await f.view(s.id)).toMatchObject({ stage: 'done', waitingOn: 'nobody', card: null })
+    const asked = (await readEvents(f.h.payload(), s.id)).filter((e) => e.type === 'question.asked')
+    expect(asked).toHaveLength(0)
+    expect(await f.types(s.id)).not.toContain('production.approved')
+  })
+})

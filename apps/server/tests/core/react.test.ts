@@ -99,7 +99,7 @@ describe('checksFinished', () => {
   it('does not repeat once the checks are recorded or when none are required', () => {
     const done = input([...inVerify, ev('checks.finished')], { pull: pull(), checks: verifying().checks })
     expect(checksFinished(done)).toEqual([])
-    const none = { ...verifying(), state: fold(inVerify, { productionGate: false, requiredChecks: false }) }
+    const none = { ...verifying(), state: fold(inVerify, { requiredChecks: false }) }
     expect(checksFinished(none)).toEqual([])
   })
 })

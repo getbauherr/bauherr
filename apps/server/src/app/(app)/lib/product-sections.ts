@@ -106,5 +106,5 @@ export const parseGates = (fd: FormData, pathSets: Record<string, string[]>) => 
   if (unknown.length) {
     throw new SectionError([{ path: 'riskAreas', message: `${unknown.join(', ')} is not one of the path sets.` }])
   }
-  return { backlogBriefLimit, riskAreas: [...new Set(chosen)], productionGate: fd.get('productionGate') === 'on' }
+  return { backlogBriefLimit, riskAreas: [...new Set(chosen)] }
 }
