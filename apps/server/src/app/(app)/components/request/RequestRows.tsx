@@ -18,7 +18,9 @@ export function RequestRows({ list }: { list: RequestListRow[] }) {
   return (
     <div role="table" aria-label="Requests" className="border border-border bg-card">
       <div role="row" className={cn(GRID, 'label bg-secondary text-muted-foreground')}>
-        <span role="columnheader" aria-label="State" />
+        <span role="columnheader" className="sr-only">
+          State
+        </span>
         <span role="columnheader">#</span>
         <span role="columnheader">Request</span>
         <span role="columnheader">Status</span>

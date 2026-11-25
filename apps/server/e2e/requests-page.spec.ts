@@ -25,7 +25,7 @@ test('Requests lists mark, number, title, type, creator, status, created and las
   await page.goto('/requests')
   await expect(page.getByRole('heading', { level: 1, name: 'Requests' })).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Product' })).toHaveValue(/\d+/)
-  await expect(page.getByRole('columnheader')).toHaveText(['', '#', 'Request', 'Status', 'Created', 'Last change'])
+  await expect(page.getByRole('columnheader')).toHaveText(['State', '#', 'Request', 'Status', 'Created', 'Last change'])
   const asked = rowOf(page, 'The factory asked me a question')
   await expect(asked).toContainText('!')
   await expect(asked.getByRole('cell').nth(1)).toHaveText(/^#\d+$/)
