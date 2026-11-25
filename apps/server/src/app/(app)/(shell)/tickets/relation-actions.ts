@@ -11,6 +11,8 @@ import {
   itemOfRecord,
   recordOfItem,
   RELATION_GROUPS,
+  searchTickets,
+  type Candidate,
   type RelationGroup,
 } from '../../../../core/views/ticket-relations'
 import { currentWorkspace, payloadClient } from '../../lib/session'
@@ -65,4 +67,16 @@ export async function addTicketRelation(raw: unknown): Promise<RelationResult> {
 
 export async function removeTicketRelation(raw: unknown): Promise<RelationResult> {
   return change('removeRelation')(raw)
+}
+
+const searchInput = z.object({ recordId: z.number().int().positive(), query: z.string().max(200) })
+
+export async function searchRelationCandidates(raw: unknown): Promise<Candidate[]> {
+  const { user, workspace } = await currentWorkspace()
+  const parsed = searchInput.safeParse(raw)
+  if (!workspace || !parsed.success) return notFound()
+  if (!mayDecide({ id: String(user.id), role: user.role, workspaceIds: [workspace.id] }, workspace.id)) {
+    return notFound()
+  }
+  return searchTickets(await payloadClient(), workspace.id, parsed.data.recordId, parsed.data.query)
 }

@@ -21,6 +21,8 @@ export const RELATION_TITLES = [
   'Box newcomer',
   'Box remover',
   'Box old blocker',
+  'Box ancient blocker',
+  ...Array.from({ length: 210 }, (_, i) => `Box filler ${i + 1}`),
 ]
 
 const relationTickets = (fake: FakeBackend): void => {

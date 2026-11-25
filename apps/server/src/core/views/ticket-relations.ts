@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
+import { stageWord } from './relations'
 
 export const RELATION_GROUPS = ['part-of', 'blocked-by', 'blocks', 'relates-to'] as const
 export type RelationGroup = (typeof RELATION_GROUPS)[number]
@@ -14,13 +15,9 @@ export type RelatedTicket = {
   recordId: number | null
 }
 export type Candidate = { itemId: number; number: number; title: string }
-export type TicketRelations = {
-  itemId: number
-  groups: Record<RelationGroup, RelatedTicket[]>
-  candidates: Candidate[]
-}
+export type TicketRelations = { itemId: number; groups: Record<RelationGroup, RelatedTicket[]> }
 
-const CANDIDATE_LIMIT = 200
+const SEARCH_LIMIT = 20
 
 const count = z.coerce.number()
 const own = z.object({ id: count })
@@ -36,10 +33,6 @@ const related = z.object({
 })
 const candidate = z.object({ id: count, number: count, title: z.string() })
 
-const stageWord = (row: z.infer<typeof related>, open: boolean): string => {
-  if (!open) return 'Closed'
-  return row.stage === null ? 'Not on the board' : row.stage.charAt(0).toUpperCase() + row.stage.slice(1)
-}
 
 export const itemOfRecord = async (
   payload: Payload,
@@ -99,19 +92,35 @@ export const loadTicketRelations = async (
       itemId: row.id,
       number: row.number,
       title: row.title,
-      stage: stageWord(row, open),
+      stage: stageWord({ open, stage: row.stage }),
       open,
       recordId: row.record,
     })
   }
+  return { itemId, groups }
+}
+
+const escapeLike = (text: string): string => text.replace(/[\\%_]/g, (c) => `\\${c}`)
+
+export const searchTickets = async (
+  payload: Payload,
+  workspace: number,
+  recordId: number,
+  query: string,
+): Promise<Candidate[]> => {
+  const itemId = await itemOfRecord(payload, workspace, recordId)
+  if (itemId === null) return []
+  const text = query.trim().replace(/^#/, '')
+  const pattern = `%${escapeLike(text)}%`
+  const prefix = `${escapeLike(text)}%`
   const pool = await payload.db.drizzle.execute(sql`
     SELECT o."id", o."number", o."title" FROM "mirror_items" m
     JOIN "mirror_items" o ON o."product_id" = m."product_id" AND o."workspace_id" = m."workspace_id"
     WHERE m."id" = ${itemId} AND o."id" <> m."id" AND o."kind" = 'issue' AND o."gone_at" IS NULL
-    ORDER BY o."number" DESC LIMIT ${CANDIDATE_LIMIT}`)
-  const candidates = pool.rows.map((raw) => {
+      AND (${text} = '' OR o."number"::text LIKE ${prefix} OR o."title" ILIKE ${pattern})
+    ORDER BY o."number" DESC LIMIT ${SEARCH_LIMIT}`)
+  return pool.rows.map((raw) => {
     const row = candidate.parse(raw)
     return { itemId: row.id, number: row.number, title: row.title }
   })
-  return { itemId, groups, candidates }
 }

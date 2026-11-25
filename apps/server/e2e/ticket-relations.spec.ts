@@ -49,13 +49,19 @@ test(GROUPED, { tag: '@fake-forge' }, async ({ page }) => {
   await page.screenshot({ path: test.info().outputPath('relations-box-1280.png'), fullPage: true })
 })
 
-test('adding Blocked by shows in the box and on the forge', { tag: '@fake-forge' }, async ({ page }) => {
+const SEARCH = 'searching finds a ticket older than the newest 200 and adds Blocked by'
+
+test(SEARCH, { tag: '@fake-forge' }, async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
   await enter(page, 'Box newcomer')
   await box(page).getByLabel('Relation type').selectOption({ label: 'Blocked by' })
-  await box(page).getByLabel('Ticket').selectOption({ label: '#3 Box blocker' })
+  await box(page).getByLabel('Search tickets').fill('ancient')
+  await expect(box(page).getByRole('option')).toHaveCount(1)
+  await page.screenshot({ path: test.info().outputPath('relations-search-1280.png'), fullPage: true })
+  await box(page).getByRole('option', { name: '#9 Box ancient blocker' }).click()
   await box(page).getByRole('button', { name: '+ Add a relation' }).click()
-  await expect(box(page).getByRole('listitem')).toContainText('#3 Box blocker')
-  expect((await forge(page, 6)).blockedBy).toEqual(['3'])
+  await expect(box(page).getByRole('listitem')).toContainText('#9 Box ancient blocker')
+  expect((await forge(page, 6)).blockedBy).toEqual(['9'])
 })
 
 test('the cross removes a relation here and on the forge', { tag: '@fake-forge' }, async ({ page }) => {

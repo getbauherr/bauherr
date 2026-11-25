@@ -1,6 +1,6 @@
 import { sql } from '@payloadcms/db-postgres'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { loadTicketRelations } from '../../src/core/views/ticket-relations'
+import { loadTicketRelations, searchTickets } from '../../src/core/views/ticket-relations'
 import { relationsHarness } from './relations-harness'
 
 const { h, setup } = relationsHarness('ticket_relations_view')
@@ -30,7 +30,10 @@ describe('the relations of a ticket', () => {
     expect(names('blocked-by')).toEqual(['#3 blocker Not on the board'])
     expect(names('blocks')).toEqual(['#4 dependent Not on the board'])
     expect(names('relates-to')).toEqual(['#5 peer Not on the board'])
-    expect(view?.candidates.map((c) => c.number)).toEqual([6, 5, 4, 3, 2])
+    const found = (query: string) => searchTickets(h.payload(), h.ids.workspace, s.record.id, query)
+    expect((await found('')).map((c) => c.number)).toEqual([6, 5, 4, 3, 2])
+    expect((await found('#4')).map((c) => c.number)).toEqual([4])
+    expect((await found('UNREL')).map((c) => c.number)).toEqual([6])
   })
 
   it('show a closed blocker as Closed and not open', async () => {

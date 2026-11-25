@@ -1,9 +1,14 @@
 'use client'
-import { useState, useTransition } from 'react'
-import { addTicketRelation, removeTicketRelation } from '../../(shell)/tickets/relation-actions'
-import type { RelatedTicket, RelationGroup, TicketRelations } from '../../../../core/views/ticket-relations'
+import { useEffect, useState, useTransition } from 'react'
+import {
+  addTicketRelation,
+  removeTicketRelation,
+  searchRelationCandidates,
+} from '../../(shell)/tickets/relation-actions'
+import type { Candidate, RelatedTicket, RelationGroup, TicketRelations } from '../../../../core/views/ticket-relations'
 import { TicketRefPopover } from '../TicketRefPopover'
 import { Button } from '../ui/button'
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '../ui/command'
 import { NativeSelect } from '../ui/native-select'
 import { CARD } from './Section'
 
@@ -48,16 +53,76 @@ function Row({ ticket, group, label, remove, disabled }: Props & { ticket: Relat
 
 type Props = { label: string; remove: Change | null; disabled: boolean }
 
-function AddRelation({ relations, add, disabled }: { relations: TicketRelations; add: Change; disabled: boolean }) {
+function useSearch(recordId: number, query: string): Candidate[] {
+  const [results, setResults] = useState<Candidate[]>([])
+  useEffect(() => {
+    let stale = false
+    const timer = setTimeout(() => {
+      void searchRelationCandidates({ recordId, query }).then((found) => {
+        if (!stale) setResults(found)
+      })
+    }, 150)
+    return () => {
+      stale = true
+      clearTimeout(timer)
+    }
+  }, [recordId, query])
+  return results
+}
+
+function TicketPicker({
+  recordId,
+  chosen,
+  choose,
+}: {
+  recordId: number
+  chosen: Candidate | null
+  choose: (ticket: Candidate | null) => void
+}) {
+  const [query, setQuery] = useState('')
+  const results = useSearch(recordId, query)
+  if (chosen) {
+    return (
+      <button
+        type="button"
+        aria-label="Ticket"
+        className="small truncate rounded-md border px-3 py-2 text-left"
+        onClick={() => choose(null)}
+      >
+        #{chosen.number} {chosen.title} ✕
+      </button>
+    )
+  }
+  return (
+    <Command shouldFilter={false} className="min-w-0 rounded-md border">
+      <CommandInput
+        aria-label="Search tickets"
+        placeholder="Search by number or title"
+        value={query}
+        onValueChange={setQuery}
+      />
+      <CommandList className="max-h-48">
+        <CommandEmpty>No ticket found</CommandEmpty>
+        {results.map((candidate) => (
+          <CommandItem key={candidate.itemId} value={String(candidate.itemId)} onSelect={() => choose(candidate)}>
+            #{candidate.number} {candidate.title}
+          </CommandItem>
+        ))}
+      </CommandList>
+    </Command>
+  )
+}
+
+function AddRelation({ recordId, add, disabled }: { recordId: number; add: Change; disabled: boolean }) {
   const [group, setGroup] = useState<RelationGroup>('blocked-by')
-  const [other, setOther] = useState('')
+  const [chosen, setChosen] = useState<Candidate | null>(null)
   return (
     <form
       className="grid min-w-0 gap-2"
       onSubmit={(event) => {
         event.preventDefault()
-        if (other) add(group, Number(other))
-        setOther('')
+        if (chosen) add(group, chosen.itemId)
+        setChosen(null)
       }}
     >
       <NativeSelect
@@ -72,20 +137,8 @@ function AddRelation({ relations, add, disabled }: { relations: TicketRelations;
           </option>
         ))}
       </NativeSelect>
-      <NativeSelect
-        aria-label="Ticket"
-        className="w-full min-w-0"
-        value={other}
-        onChange={(e) => setOther(e.target.value)}
-      >
-        <option value="">Choose a ticket</option>
-        {relations.candidates.map((candidate) => (
-          <option key={candidate.itemId} value={candidate.itemId}>
-            #{candidate.number} {candidate.title}
-          </option>
-        ))}
-      </NativeSelect>
-      <Button type="submit" variant="outline" disabled={disabled || !other}>
+      <TicketPicker recordId={recordId} chosen={chosen} choose={setChosen} />
+      <Button type="submit" variant="outline" disabled={disabled || !chosen}>
         + Add a relation
       </Button>
     </form>
@@ -122,7 +175,7 @@ export function RelationsBox({ recordId, relations, may }: BoxProps) {
           </div>
         )
       })}
-      {may && <AddRelation relations={relations} add={run(addTicketRelation)} disabled={pending} />}
+      {may && <AddRelation recordId={recordId} add={run(addTicketRelation)} disabled={pending} />}
       {error && (
         <p role="alert" className="small m-0 text-destructive">
           {error}
