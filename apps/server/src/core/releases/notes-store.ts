@@ -9,11 +9,12 @@ import {
   generate,
   mergeNotes,
   noteItemSchema,
+  TITLE_WORDS,
   type AskModel,
   type NoteItem,
   type TicketFacts,
 } from './notes'
-import { sentence, title } from './notes-text'
+import { sentence, title, words } from './notes-text'
 
 export const UNRELEASED = 'unreleased'
 
@@ -50,7 +51,9 @@ const storedRow = z.object({
 })
 
 const referencedIn = (own: number, ...texts: string[]): number[] =>
-  [...new Set([...texts.join(' ').matchAll(/#(\d+)/g)].map((found) => Number(found[1])))].filter((n) => n !== own)
+  [...new Set([...texts.join(' ').matchAll(/(?<![\w/.-])#(\d+)/g)].map((found) => Number(found[1])))].filter(
+    (n) => n !== own,
+  )
 
 const factsOf = (ticket: MergedTicket, row: z.infer<typeof factsRow> | undefined): TicketFacts => {
   const { bug, goal, areas, related, changes } = recordData.parse(row?.data)
@@ -116,16 +119,23 @@ export const writeNotesFor = async (
   const classified = classify(await ticketFacts(payload, tickets))
   const fresh = await generate(classified, ask)
   const existing = await readNotes(payload, at.product, at.version)
-  const items = mergeNotes(existing?.items ?? [], fresh)
+  const items = mergeNotes(
+    existing?.items ?? [],
+    fresh,
+    tickets.map((ticket) => ticket.number),
+  )
   await writeNotes(payload, at, { items, internal: classified.internal }, true)
 }
 
 export type { Where }
 export type ItemEdit = { title: string; text: string; area: string }
 
+const minimumWords = (heading: string): string =>
+  words(heading).length >= TITLE_WORDS.min ? heading : ''
+
 const cleanEdit = (kind: NoteItem['kind'], edit: ItemEdit) => ({
   area: isArea(edit.area) ? edit.area : 'Factory',
-  title: kind === 'fixed' ? null : title(edit.title, 4),
+  title: kind === 'fixed' ? null : minimumWords(title(edit.title, TITLE_WORDS.max)),
   text: sentence(edit.text, 20),
 })
 

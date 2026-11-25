@@ -7,6 +7,7 @@ import {
   editItem,
   readNotes,
   removeItem,
+  ticketFacts,
   UNRELEASED,
   writeNotesFor,
 } from '../../src/core/releases/notes-store'
@@ -77,5 +78,33 @@ describe('release notes store', () => {
     const stored = await readNotes(h.payload(), h.ids.product, UNRELEASED)
     expect(stored?.items).toEqual([])
     expect(stored?.internal).toBe(1)
+  })
+
+  it('f2: rejects an edited title shorter than two words', async () => {
+    await writeNotesFor(h.payload(), at(), [await ticket(1, 'Memory as documents')], junk)
+    const [one] = await read()
+    const edit = { title: 'Docs', text: 'You own them.', area: 'Memory' }
+    await editItem(h.payload(), at(), one?.id ?? '', edit)
+    expect((await read())[0]?.title).toBe(one?.title)
+    await editItem(h.payload(), at(), one?.id ?? '', { ...edit, title: 'Memory docs' })
+    expect((await read())[0]?.title).toBe('Memory docs')
+  })
+
+  it('f3: a repo-qualified reference does not fold a fix into a feature', async () => {
+    const feature = await ticket(1, 'Show reports')
+    const fix = await ticket(2, 'Fix reports', 'bug')
+    const source = await h.newSource('o/r')
+    const insert = (body: string) => h.rows(sql`
+      INSERT INTO "mirror_items" ("workspace_id", "source_id", "product_id", "repo", "number", "kind", "title", "body",
+        "state", "author", "author_trusted", "author_is_bot", "labels", "assignees", "url", "forge_created_at",
+        "forge_updated_at", "head_sha", "closes", "draft", "synced_at", "updated_at", "created_at")
+      VALUES (${h.ids.workspace}, ${source}, ${h.ids.product}, 'o/r', 2, 'issue', 'Fix reports', ${body}, 'closed',
+        'jo', true, false, '[]'::jsonb, '[]'::jsonb, 'https://forge/x', now(), now(), '', '[]'::jsonb, false, now(),
+        now(), now())`)
+    await insert('Same bug as other/repo#1')
+    expect((await ticketFacts(h.payload(), [feature, fix]))[1]?.names).toEqual([])
+    await h.rows(sql`DELETE FROM "mirror_items"`)
+    await insert('Same bug as other/repo#1 and fixes #1')
+    expect((await ticketFacts(h.payload(), [feature, fix]))[1]?.names).toEqual([1])
   })
 })

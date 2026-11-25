@@ -6,6 +6,7 @@ import {
   limitNotes,
   MAX_FIXED,
   MAX_NEW,
+  mergeNotes,
   plainNotes,
   type NoteItem,
   type TicketFacts,
@@ -187,5 +188,34 @@ describe('release notes', () => {
     expect(text).not.toMatch(/Closes #3/)
     expect(text).toContain('\\<img')
     expect(text).toContain('\\[click\\]\\(')
+  })
+
+  it('f1: drops edits whose tickets left the release, keeps owner-added items', () => {
+    const base = { kind: 'new' as const, area: 'Tickets' as const, title: 'A title', text: 'Text.', removed: false }
+    const edited = { ...base, id: 'e', tickets: [5], edited: true, added: false }
+    const added = { ...base, id: 'a', tickets: [], edited: false, added: true }
+    const fresh = plainNotes(classify([fact(9)]))
+    expect(mergeNotes([edited, added], fresh, [9]).map((entry) => entry.id)).toEqual(['a', fresh[0]?.id])
+    expect(mergeNotes([edited], [], [5, 9]).map((entry) => entry.id)).toEqual(['e'])
+  })
+
+  it('f2: generated titles have at least two words', () => {
+    const [entry] = plainNotes(classify([fact(12, { title: '#12', changes: [], goal: '' })]))
+    expect(count(entry?.title ?? '')).toBeGreaterThanOrEqual(2)
+  })
+
+  it('f4: the section follows the ticket type, not the model answer', () => {
+    const classified = classify([fact(1), fact(2, { bug: true })])
+    const items = limitNotes(
+      answer([
+        { kind: 'fixed', area: 'Tickets', title: null, text: 'Reports show.', tickets: [1] },
+        { kind: 'new', area: 'Tickets', title: 'Bug gone now', text: 'It works.', tickets: [2] },
+      ]),
+      classified,
+    )
+    expect(items?.map((entry) => [entry.kind, entry.tickets])).toEqual([
+      ['new', [1]],
+      ['fixed', [2]],
+    ])
   })
 })

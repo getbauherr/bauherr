@@ -83,7 +83,9 @@ const sourceText = (entry: Candidate): string => entry.changes[0] || entry.goal 
 
 const titleOf = (entry: Candidate): string => {
   const heading = title(entry.title, TITLE_WORDS.max)
-  return words(heading).length >= TITLE_WORDS.min ? heading : title(`${heading} ${entry.area}`, TITLE_WORDS.max)
+  if (words(heading).length >= TITLE_WORDS.min) return heading
+  const padded = title(`${heading} ${entry.area}`, TITLE_WORDS.max)
+  return words(padded).length >= TITLE_WORDS.min ? padded : `${entry.area} update`
 }
 
 const plainItem = (entry: Candidate): NoteItem => {
@@ -114,13 +116,12 @@ const parseAnswer = (raw: string): unknown[] | null => {
   }
 }
 
-type Pool = { owner: Map<number, Candidate>; folded: Set<number>; used: Set<number> }
+type Pool = { owner: Map<number, Candidate>; used: Set<number> }
 
 const poolOf = (classified: Classified): Pool => ({
   owner: new Map(
     classified.listed.flatMap((entry) => [entry.number, ...entry.followUps].map((n) => [n, entry] as const)),
   ),
-  folded: new Set(classified.listed.flatMap((entry) => entry.followUps)),
   used: new Set(),
 })
 
@@ -132,10 +133,12 @@ const headingOf = (heading: string | null | undefined, first: Candidate): string
 const fromEntry = (entry: unknown, pool: Pool): NoteItem | null => {
   const parsed = entrySchema.safeParse(entry)
   if (!parsed.success) return null
-  const { kind, area, title: heading, text, tickets } = parsed.data
-  const free = (n: number) => pool.owner.has(n) && !pool.used.has(n) && (kind === 'new' || !pool.folded.has(n))
-  const mine = [...new Set(tickets)].filter(free)
-  const first = pool.owner.get(mine[0] ?? -1)
+  const { area, title: heading, text, tickets } = parsed.data
+  const known = [...new Set(tickets)].filter((n) => pool.owner.has(n) && !pool.used.has(n))
+  const first = pool.owner.get(known[0] ?? -1)
+  const kindOf = (n: number): NoteItem['kind'] => (pool.owner.get(n)?.bug ? 'fixed' : 'new')
+  const kind = known[0] === undefined ? 'new' : kindOf(known[0])
+  const mine = known.filter((n) => kindOf(n) === kind)
   const body = sentence(text, MAX_SENTENCE_WORDS)
   if (!first || body === '') return null
   const withFollowUps = mine.flatMap((n) => [n, ...(pool.owner.get(n)?.followUps ?? [])])
@@ -191,8 +194,9 @@ export const generate = async (classified: Classified, ask: AskModel): Promise<N
   }
 }
 
-export const mergeNotes = (existing: NoteItem[], fresh: NoteItem[]): NoteItem[] => {
-  const kept = existing.filter((entry) => entry.edited || entry.added || entry.removed)
+export const mergeNotes = (existing: NoteItem[], fresh: NoteItem[], release: number[]): NoteItem[] => {
+  const inRelease = (entry: NoteItem) => entry.added || entry.tickets.some((number) => release.includes(number))
+  const kept = existing.filter((entry) => (entry.edited || entry.added || entry.removed) && inRelease(entry))
   const covered = new Set(kept.filter((entry) => !entry.added).flatMap((entry) => entry.tickets))
   const open = (kind: NoteItem['kind']) => kept.filter((entry) => entry.kind === kind && !entry.removed).length
   const room = { new: MAX_NEW - open('new'), fixed: MAX_FIXED - open('fixed') }
