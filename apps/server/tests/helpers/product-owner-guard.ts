@@ -168,7 +168,6 @@ export const BAUHERR_COLLECTIONS = [
   'request_drafts',
   'repositories',
   'stage_runs',
-  'statements',
   'ticket_relations',
   'ticket_sources',
   'workspaces',

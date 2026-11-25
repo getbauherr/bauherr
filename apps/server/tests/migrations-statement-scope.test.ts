@@ -51,7 +51,7 @@ it(
       )
     }
 
-    await payload.db.migrate({ migrations: migrations.slice(i).map(forPayload) })
+    await payload.db.migrate({ migrations: migrations.slice(i, i + 1).map(forPayload) })
 
     expect(await stored()).toEqual([
       { kind: 'answer', scope: 'product' },

@@ -57,7 +57,6 @@ afterAll(async () => {
 })
 beforeEach(async () => {
   await e.db.payload.db.drizzle.execute(sql`DELETE FROM "memory_document_versions"`)
-  await e.db.payload.db.drizzle.execute(sql`DELETE FROM "statements"`)
 })
 
 describe('the section parser', () => {
@@ -91,17 +90,6 @@ describe('what a run is told', () => {
     expect(texts(review)).toEqual(['F all\n\nF review', 'W all\n\nW review', 'P all\n\nP review'])
     expect(texts(verify)).toEqual(['F all\n\nF verify', 'W all\n\nW verify', 'P all\n\nP verify'])
     expect(JSON.stringify([review, verify])).not.toContain('notes')
-  })
-
-  it('hands a run the three documents and none of the old single memories', async () => {
-    await seed()
-    await e.db.payload.db.drizzle.execute(sql`
-      INSERT INTO "statements" ("workspace_id", "product_id", "kind", "scope", "text", "updated_at", "created_at")
-      VALUES (${e.db.workspace}, ${e.db.product}, 'written', 'product', 'Old memory.', now(), now())`)
-    const pack = await packOf('build', 'builder')
-    expect(pack.memory.map((part) => part.scope)).toEqual(['factory', 'workspace', 'product'])
-    expect(pack).not.toHaveProperty('statements')
-    expect(JSON.stringify(pack)).not.toContain('Old memory.')
   })
 })
 
