@@ -1,4 +1,5 @@
 import type { Payload } from 'payload'
+import { MergePending } from './forge/merge-pending'
 import { runEffects, type ForgePort } from './effects'
 import type { AppEvent, Stage } from './events'
 import { fingerprint, fold, foldOptions, next, type Config, type State, type Step } from './lifecycle'
@@ -95,7 +96,7 @@ const cardStep = async (step: Extract<Step, { kind: 'card' }>, ctx: Ctx): Promis
   return 'stop'
 }
 
-const attemptMerge = async (ctx: Ctx): Promise<AppEvent> => {
+const attemptMerge = async (ctx: Ctx): Promise<AppEvent | MergePending> => {
   const pr = ctx.state.patch?.pr
   const headSha = ctx.state.verdict?.headSha
   const failed = (reason: string): AppEvent => ({ type: 'run.failed', data: { stage: 'ship', runId: 'merge', reason } })
@@ -104,8 +105,21 @@ const attemptMerge = async (ctx: Ctx): Promise<AppEvent> => {
     const { sha } = await ctx.deps.merge({ recordId: ctx.stored.id, source: ctx.stored.record.source, pr, headSha })
     return { type: 'ship.merged', data: { sha } }
   } catch (error) {
+    if (error instanceof MergePending) return error
     return failed(error instanceof Error && error.message.trim() !== '' ? error.message : 'merge failed')
   }
+}
+
+const mergeStep = async (ctx: Ctx): Promise<Outcome> => {
+  const result = await attemptMerge(ctx)
+  if (result instanceof MergePending) {
+    await setParked(ctx.deps.payload, ctx.stored.id, `Merge will be retried: ${result.message}`)
+    await project(ctx, 'agents', null)
+    return 'stop'
+  }
+  if (ctx.stored.parked !== null) await setParked(ctx.deps.payload, ctx.stored.id, null)
+  await append(ctx, result)
+  return 'repeat'
 }
 
 const waitStep = async (step: Extract<Step, { kind: 'wait' }>, ctx: Ctx): Promise<Outcome> => {
@@ -133,8 +147,7 @@ const handle = async (step: Step, ctx: Ctx): Promise<Outcome> => {
       if (step.event.type === 'brief.approved') await createKept(ctx.deps, ctx.stored.id, ctx.stored.record.relations)
       return 'repeat'
     case 'effect':
-      await append(ctx, await attemptMerge(ctx))
-      return 'repeat'
+      return mergeStep(ctx)
     case 'wait':
       return waitStep(step, ctx)
     case 'done':
