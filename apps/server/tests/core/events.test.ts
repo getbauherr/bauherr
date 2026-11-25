@@ -36,7 +36,7 @@ const BAD: [EventType, unknown][] = [
 
 describe('parseEvent', () => {
   it('has a sample for every event type, and parses each', () => {
-    expect(Object.keys(SAMPLES)).toHaveLength(42)
+    expect(Object.keys(SAMPLES)).toHaveLength(43)
     for (const [type, data] of Object.entries(SAMPLES)) {
       expect(parseEvent({ type, data })).toEqual({ type, data })
     }

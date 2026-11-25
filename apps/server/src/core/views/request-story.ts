@@ -5,11 +5,13 @@ import { DISCLOSURE } from '../forge/disclosure'
 import type { StoredEvent } from '../record/store'
 import { readEvents } from '../record/store'
 import type { TicketRecord } from '../record/schema'
+import { commentFileUrl, commentsOf, type RequestComment } from '../requests/comments'
 import { loadRunMockups } from './attachments'
 import { ticket, type TicketView } from './ticket'
 import type { TicketStatus } from './status'
 
 export type StoryImage = { id: number; caption: string }
+export type StoryFile = { name: string; url: string; image: boolean }
 export type StoryList = { heading: string; items: string[] }
 export type StoryKind = 'sent' | 'plan' | 'approved' | 'comment' | 'ready' | 'closed'
 
@@ -21,6 +23,7 @@ export type StoryEvent = {
   title: string
   text: string
   images: StoryImage[]
+  files: StoryFile[]
   lists: StoryList[]
 }
 
@@ -56,6 +59,7 @@ const productRow = z.object({ name: z.string(), staging_url: z.string().nullable
 const base = (event: Pick<StoryEvent, 'id' | 'kind' | 'at' | 'who' | 'title'>): StoryEvent => ({
   text: '',
   images: [],
+  files: [],
   lists: [],
   ...event,
 })
@@ -76,6 +80,22 @@ const loadComments = async (payload: Payload, workspace: number, view: TicketVie
     return [{ ...base({ id, kind: 'comment', at, who: row.author ?? '', title: 'Comment' }), text: body }]
   })
 }
+
+const commentEvent = (comment: RequestComment): StoryEvent => ({
+  ...base({
+    id: `request-comment-${comment.id}`,
+    kind: 'comment',
+    at: comment.at,
+    who: comment.author,
+    title: 'Comment',
+  }),
+  text: comment.text,
+  files: comment.files.map((file) => ({
+    name: file.name,
+    url: commentFileUrl(file),
+    image: file.contentType.startsWith('image/'),
+  })),
+})
 
 const loadProduct = async (payload: Payload, recordId: number) => {
   const found = await payload.db.drizzle.execute(sql`
@@ -161,7 +181,8 @@ export const requestStory = async (
     text: view.title,
   }
   const comments = await loadComments(payload, filter.workspace, view)
-  const events = [sent, ...(await eventsOf(payload, stored, view)), ...comments].sort(byTime)
+  const requested = (await commentsOf(payload, view.recordId, stored)).map(commentEvent)
+  const events = [sent, ...(await eventsOf(payload, stored, view)), ...comments, ...requested].sort(byTime)
   return {
     recordId: view.recordId,
     number: view.number,

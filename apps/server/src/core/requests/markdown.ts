@@ -29,3 +29,15 @@ export const tokenFits = (key: string, conversationId: number, fileId: number, t
 
 export const publicFileUrl = (origin: string, key: string, conversationId: number, fileId: number): string =>
   `${origin}/api/request-files/${conversationId}/${fileId}/${fileToken(key, conversationId, fileId)}`
+
+const pictureToken = (key: string, recordId: number, attachmentId: number): string =>
+  createHmac('sha256', key).update(`request-picture:${recordId}:${attachmentId}`).digest('base64url')
+
+export const pictureTokenFits = (key: string, recordId: number, attachmentId: number, token: string): boolean => {
+  const want = Buffer.from(pictureToken(key, recordId, attachmentId))
+  const got = Buffer.from(token)
+  return got.length === want.length && timingSafeEqual(got, want)
+}
+
+export const publicPictureUrl = (origin: string, key: string, recordId: number, attachmentId: number): string =>
+  `${origin}/api/request-pictures/${recordId}/${attachmentId}/${pictureToken(key, recordId, attachmentId)}`

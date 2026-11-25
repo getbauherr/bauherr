@@ -49,6 +49,12 @@ export const conversationWorkspace = async (db: Conn, id: number): Promise<numbe
   return found.rows[0] ? count.parse(z.object({ workspace_id: z.unknown() }).parse(found.rows[0]).workspace_id) : null
 }
 
+export const conversationRecord = async (db: Conn, id: number): Promise<number | null> => {
+  const found = await db.db.drizzle.execute(sql`SELECT "record_id" FROM "conversations" WHERE "id" = ${id}`)
+  const row = z.object({ record_id: count.nullable() }).safeParse(found.rows[0])
+  return row.success ? row.data.record_id : null
+}
+
 export const storeFile = async (db: Conn, file: NewFile): Promise<StoredFile> => {
   const content = Buffer.from(file.bytes).toString('base64')
   const found = await db.db.drizzle.execute(sql`

@@ -8,7 +8,7 @@ type Context = { params: Promise<{ id: string; fileId: string }> }
 
 export const GET = async (_req: Request, context: Context): Promise<Response> => {
   const { id, fileId } = await context.params
-  const granted = await grantConversation(id)
+  const granted = await grantConversation(id, 'files')
   if (granted instanceof Response) return granted
   const file = await readFile(granted.payload, granted.id, Number(fileId))
   if (!file) return new Response(null, { status: 404 })

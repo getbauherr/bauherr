@@ -11,7 +11,8 @@ import { FILE_MAX_BYTES } from '../src/core/conversations/limits'
 import { PNG } from './core/images'
 import { openCoreDb, type CoreDb } from './core/db'
 
-type State = { person: { role: string } | null; workspaces: { id: number; slug: string }[]; payload: unknown }
+type Person = { role: string; assignments?: unknown[] }
+type State = { person: Person | null; workspaces: { id: number; slug: string }[]; payload: unknown }
 const state = vi.hoisted((): State => ({ person: null, workspaces: [], payload: null }))
 
 vi.mock('next/headers', () => ({ cookies: () => Promise.resolve({ get: () => undefined }) }))
@@ -147,5 +148,36 @@ describe('attached files', () => {
     expect((await routed(url)).status).toBe(404)
     signIn('product-owner', [db.workspace])
     expect((await routed(url)).status).toBe(404)
+  })
+})
+
+describe('the files of a request conversation', () => {
+  const owner = (workspace: number, products: number[]) => {
+    state.person = { role: 'product-owner', assignments: [{ workspace, scope: 'products', products }] }
+  }
+
+  it('may be uploaded and read by a product owner of the request product and by no other', async () => {
+    const recordId = await db.fresh()
+    signIn('bauherr', [db.workspace])
+    const id = await api.create(undefined, `Request ${recordId} comments`, recordId)
+
+    owner(db.workspace, [db.product])
+    const stored = await api.upload(id, png(PNG.length + 4))
+    expect((await routed(`/api/conversations/${id}/files/${stored.id}`)).status).toBe(200)
+    expect((await routed(`/api/conversations/${id}`)).status).toBe(404)
+    await expect(api.send(id, 'bypass', [stored.id])).rejects.toThrow()
+
+    signIn('bauherr', [db.workspace])
+    const decision = await api.create(undefined, 'Decision form', recordId)
+    const hidden = await api.upload(decision, png(PNG.length + 8))
+    owner(db.workspace, [db.product])
+    expect((await post(decision, png(PNG.length + 4), { 'Content-Type': 'image/png' })).status).toBe(404)
+    expect((await routed(`/api/conversations/${decision}/files/${hidden.id}`)).status).toBe(404)
+
+    owner(db.workspace, [db.product + 1000])
+    expect((await post(id, png(PNG.length + 4), { 'Content-Type': 'image/png' })).status).toBe(404)
+    expect((await routed(`/api/conversations/${id}/files/${stored.id}`)).status).toBe(404)
+    owner(db.otherWorkspace, [db.product])
+    expect((await routed(`/api/conversations/${id}/files/${stored.id}`)).status).toBe(404)
   })
 })
