@@ -9,6 +9,7 @@ import { begin, seedScenario, type ScenarioNames } from '../tests/core/scenario'
 import { seedMockupTicket } from '../tests/core/mockup-scenario'
 import { seedTickets } from '../tests/core/ticket-scenario'
 import { seedConnect } from './seed-connect'
+import { seedBoardRelations } from './seed-board-relations'
 import { seedSomeday } from './seed-someday'
 import { seedReadiness } from './seed-readiness'
 import { seedInsights } from './seed-insights'
@@ -194,6 +195,7 @@ if (!ticketsSeeded.docs.length) {
 await seedRequests(payload, user)
 await seedConnect(payload)
 await seedSomeday(payload)
+await seedBoardRelations(payload)
 await seedMemoryEditor(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
 await seedReadiness(payload)
 await seedInsights(payload)
