@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import { highestVersion } from '../readiness/release-facts'
 import { mergedTickets, type MergedTicket } from './merged'
+import { readNotes, UNRELEASED, type StoredNotes } from './notes-store'
 import { releaseStateSchema, type ReleaseState } from './state'
 
 export type PastVersion = {
@@ -20,6 +21,7 @@ export type ReleasesView = {
   staging: ReleaseState['staging']
   ready: { since: string | null; tickets: MergedTicket[]; visible: number } | null
   past: PastVersion[]
+  notes: StoredNotes | null
 }
 
 const productRow = z.object({ id: z.coerce.number(), name: z.string() })
@@ -75,10 +77,11 @@ export const releasesPage = async (
 ): Promise<ReleasesView> => {
   const products = await productsOf(payload, f.workspace)
   const product = products.find((entry) => entry.id === f.product) ?? products[0] ?? null
-  const none = { products, product, production: null, staging: null, ready: null, past: [] }
+  const none = { products, product, production: null, staging: null, ready: null, past: [], notes: null }
   const source = product ? await sourceOf(payload, f.workspace, product.id) : null
   const state = source?.release_state
-  if (!source || !state) return none
+  if (!product || !source || !state) return none
   const { ready, past } = partition(state, await mergedTickets(payload, source.id))
-  return { products, product, production: productionOf(state), staging: state.staging, ready, past }
+  const notes = await readNotes(payload, product.id, UNRELEASED)
+  return { products, product, production: productionOf(state), staging: state.staging, ready, past, notes }
 }
