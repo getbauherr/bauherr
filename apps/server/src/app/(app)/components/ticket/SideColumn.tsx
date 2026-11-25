@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
+import type { TicketRelations } from '../../../../core/views/ticket-relations'
 import type { TicketView } from '../../../../core/views/ticket'
 import { shortDate } from '../../lib/format'
 import { FINDING_WORDS, FORGE_NAMES, pullLabel } from '../../lib/ticket'
@@ -9,6 +10,7 @@ import { ForgeLink } from './ForgeLink'
 import { RunLink } from './RunLink'
 import { RefText } from '../RefText'
 import { TicketRef } from '../TicketRef'
+import { RelationsBox } from './RelationsBox'
 import { TimeCost } from './TimeCost'
 
 function Aside({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
@@ -147,10 +149,13 @@ function Similar({ view }: { view: TicketView }) {
   )
 }
 
-export function SideColumn({ view }: { view: TicketView }) {
+type SideProps = { view: TicketView; relations: TicketRelations | null; may: boolean }
+
+export function SideColumn({ view, relations, may }: SideProps) {
   return (
     <div className="grid content-start gap-4">
       <Source view={view} />
+      {relations && <RelationsBox recordId={view.recordId} relations={relations} may={may} />}
       <TimeCost timing={view.timing} />
       <AnswersUsed view={view} />
       <Verdict view={view} />

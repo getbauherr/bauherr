@@ -66,6 +66,8 @@ export const BAUHERR_ACTIONS = [
   '(shell)/tickets/actions.ts#decideTicket',
   '(shell)/tickets/archive-actions.ts#archiveTicket',
   '(shell)/tickets/archive-actions.ts#restoreTicket',
+  '(shell)/tickets/relation-actions.ts#addTicketRelation',
+  '(shell)/tickets/relation-actions.ts#removeTicketRelation',
   '(shell)/memory/actions.ts#addMemoryAction',
   '(shell)/memory/actions.ts#saveMemoryAction',
   '(shell)/memory/actions.ts#switchMemoryAction',
