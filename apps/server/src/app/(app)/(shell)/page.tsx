@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { isProductOwner } from '../../../lib/people'
 import { AutoRefresh } from '../components/AutoRefresh'
 import { EmptyState } from '../components/EmptyState'
@@ -15,16 +16,13 @@ export const dynamic = 'force-dynamic'
 const LANE = 'relative grid grid-cols-1 items-start gap-4 md:min-w-275 md:grid-cols-6'
 const BOARD = 'overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-ring'
 
-const PROFILE = { href: '/settings/profile', label: 'Open your profile' }
 const PRODUCTS = { href: '/settings/products', label: 'Open Products settings' }
 
 type Search = { show?: string; product?: string }
 
 export default async function Factory({ searchParams }: { searchParams: Promise<Search> }) {
   const { user, workspace } = await currentPersonWorkspace()
-  if (isProductOwner(user)) {
-    return <EmptyState text="The Factory view is for Bauherren in this version." action={PROFILE} />
-  }
+  if (isProductOwner(user)) redirect('/requests')
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const { show, product } = parseSearch(await searchParams)
   const view = await loadFactory(await payloadClient(), { workspace: workspace.id, ...(product && { product }) })

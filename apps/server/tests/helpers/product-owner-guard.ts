@@ -6,11 +6,11 @@ import { createTestDb, type TestDb } from './test-db'
 export const PO_PAGES: Record<string, string> = {
   login: 'public sign-in; a signed-in account is sent to its home',
   '': 'the Factory view for a Bauherr; a Product owner gets a static empty state that reads no data',
-  settings: 'redirects to the profile',
-  'settings/profile': 'the profile',
+  requests: 'the Requests of the Products assigned to them, nothing else',
   'requests/[id]': 'one request of an assigned Product; any other answers 404 (request-page-guard.test.ts)',
 }
 export const BAUHERR_PAGES = [
+  'settings',
   'conversations',
   'conversations/[id]',
   'inbox',
@@ -25,6 +25,7 @@ export const BAUHERR_PAGES = [
   'runs/[id]',
   'tickets/[id]',
   'settings/api-key',
+  'settings/profile',
   'settings/audit',
   'settings/bauherren',
   'settings/connections',
@@ -38,12 +39,12 @@ export const BAUHERR_PAGES = [
 export const PO_ROUTES: Record<string, string> = {
   'api/hooks/[connection] POST': 'forge webhook: no session, signature-verified',
   'api/health GET': 'unauthenticated health probe',
-  'api/attachments/[id] GET': 'a picture of a request the account may open; any other 404 (request-page-guard.test.ts)',
   'api/attachments/upload/[token] PUT': 'run image upload: no session, a one-time token',
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
 }
 export const BAUHERR_ROUTES: string[] = [
+  'api/attachments/[id] GET',
   'api/conversations POST',
   'api/conversations/[id] GET',
   'api/conversations/[id] POST',
@@ -58,10 +59,9 @@ export const BAUHERR_ROUTES: string[] = [
 export const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
-  '(shell)/settings/profile/actions.ts#saveOwnLogin':
-    'the profile: links or removes their own forge login; Payload refuses a login another account holds',
 }
 export const BAUHERR_ACTIONS = [
+  '(shell)/settings/profile/actions.ts#saveOwnLogin',
   'lib/actions.ts#selectWorkspace',
   '(shell)/actions.ts#moveCard',
   '(shell)/tickets/actions.ts#decideTicket',
