@@ -41,5 +41,7 @@ it('refuses to load the fakes in production without the marker', async () => {
 })
 
 it.each(['Dockerfile', 'compose.yaml'])('%s sets neither the marker nor the fake flags', (file) => {
-  expect(readFileSync(path.join(root, file), 'utf8')).not.toMatch(/BAUHERR_TEST_BUILD|BAUHERR_E2E_FAKE_FORGE/)
+  expect(readFileSync(path.join(root, file), 'utf8')).not.toMatch(
+    /BAUHERR_TEST_BUILD|BAUHERR_E2E_FAKE_FORGE|BAUHERR_E2E_OIDC_INSECURE/,
+  )
 })

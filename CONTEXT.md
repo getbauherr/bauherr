@@ -1,256 +1,179 @@
 # Bauherr
 
-An AI software factory: agents take tickets through gated stages for products their Bauherren have connected, with human approval at the gates.
+An AI software factory. Agents take a ticket through Intake, Brief, Build, Verify and Ship. The Bauherr decides on three cards.
 
 ## Language
 
 ### Tenancy
 
 **Workspace**:
-The isolation boundary for one client or organisation; everything else belongs to exactly one Workspace.
+The isolation boundary for one client or organisation. Everything else belongs to exactly one Workspace.
 _Avoid_: Tenant, organisation, account
 
 **Product**:
-A deliverable software product inside a Workspace, with its own repositories, ticket source and workflow; intake always targets a Product.
-_Avoid_: Project (a repository in GitLab, a board container in Planka, a board in GitHub), app
+A deliverable software product inside a Workspace, with its own repositories and settings. It is `observing` until the Bauherr switches it on, then `active`. Its executor is `session` or `runner`.
+_Avoid_: Project (a repository in GitLab), app
 
 ### People
 
 **Bauherr** (plural Bauherren):
-A person who is a member of a Workspace and owns all its Products: configures the factory for them and approves work at gates; owns the factory, risk, spend and production. Can decide every Checkpoint, also one addressed to the Product owner (recorded as `bauherr`).
-_Avoid_: Operator, project owner, owner (bare; say Bauherr, Product owner or Product user)
-
-**Open point**:
-One question of a Ticket's decision sheet, or one the refinement conversation added, with its reason, options and recommended default. It is `open`, `answered` or `dropped` (no longer needed); the owner settles them in the refinement conversation and sends the Ticket on when none is open. Same rows as the Decisions of a plan; "critical" ones hold the plan.
-_Avoid_: Question card, decision row (say Open point; Decision is the recorded answer)
-
-**Product owner**:
-The person accountable for a Product's requirements: files requests for it and answers product questions about it. Has an account with a login (role `product-owner`, ranks below the Bauherr) that an Admin assigns to a Workspace or to single Products; it works in the Inbox, Requests and the reduced Ticket page of the Products assigned to it, and decides the Checkpoints and decision rows addressed to it (by default Triage's questions and acceptance on staging); everything else goes to a Bauherr. See `docs/spec/people.md`.
-_Avoid_: Project owner, owner (bare)
+A member of a Workspace who owns its Products and decides on the cards. Sets risk and spend, owns production.
+_Avoid_: Operator, owner (bare; say Bauherr or Product owner)
 
 **Admin**:
-A Bauherr who runs the Bauherr instance: creates Workspaces and is a member of all of them.
-_Avoid_: Superadmin, instance owner, root
+A Bauherr who runs the Bauherr instance. Creates Workspaces, is a member of all of them, changes the factory Memory document.
+_Avoid_: Superadmin, root
 
-**Product user**:
-The wider group of people who use a Product and can only send a request to the factory (through intake or the widget), without access to the factory's configuration.
-_Avoid_: User (bare), requester, client, customer
+**Product owner**:
+An account with a login that ranks below the Bauherr. It sees a reduced shell today. Requests from Product owners are planned, not built. See `docs/spec/people.md`.
+_Avoid_: Project owner
 
 ### External systems
 
 **Connection**:
-A credentialed link from a Workspace to one external system (a forge, a board tool, an LLM provider), shared by that Workspace's Products.
-_Avoid_: Integration, credential, account
+A credentialed link from a Workspace to an external system: a forge or an LLM provider.
+_Avoid_: Integration, credential
+
+**Forge**:
+GitHub or GitLab. Issues, pull requests, comments and checks live there.
+
+**Mirror**:
+The factory's copy of a forge's issues, comments, pull requests, reviews and checks. It is kept by polling; a webhook only triggers a re-read. The factory database is the truth for factory state.
+_Avoid_: Cache
+
+**Forge writer**:
+The one module, `core/forge/writer.ts`, that writes to the forge. A lint rule keeps every other module out.
 
 **Gateway**:
-The LLM gateway shipped inside every Bauherr instance; every agent request passes through it with the Workspace's own provider credential and key budget.
-_Avoid_: Proxy, LLM router
+The LLM gateway inside every instance. Every agent request passes through it with the Workspace's own provider credential and budget.
+_Avoid_: Proxy
 
 **Tier**:
-One of cheap, standard, strong: a Workspace resolves each to a model name; stages pick a Tier, never a model.
+One of cheap, standard, strong. A role asks for a tier in `pack/pack.yaml`; the Workspace maps it to a model.
 _Avoid_: Model (in config)
 
-**LLM provider**:
-The company or cloud whose models a Workspace pays for with its own credential.
-_Avoid_: Vendor, backend
-
 **Repository**:
-One code repository reached through a forge Connection; it belongs to exactly one Product, and a Product has one or more.
-_Avoid_: Repo (in prose), project
+One code repository reached through a Connection. It belongs to exactly one Product.
+_Avoid_: Repo (in prose)
 
-**Ticket source**:
-The one issue tracker a Product's Tickets live in, reached through a forge Connection: a GitHub repository's Issues or a GitLab project's issues. It is the source of truth for every Ticket.
-_Avoid_: Tracker, backend, board
+### Lifecycle
 
-### Knowledge
-
-**Memory**:
-One sentence the factory hands to an agent before a run: an answer or note of the owner, or one he wrote himself. It applies to every ticket of a Product, to an area of the code, to tickets that fit, or to one ticket, is handed to chosen stages (Brief, Build, Review, Verify), and can be switched off. It is reference data for the agent and never changes what the factory itself does. In code the table, the collection and the files are still named `statements`.
-_Avoid_: Statement (on screen), lesson, rule
-
-**Retro**:
-The review the owner starts after a release: it looks at what was corrected on the way and proposes changes that the owner applies or drops. Together with the owner's own edits to Memory it is the only way the factory learns; no memory becomes active without the owner.
-_Avoid_: Learn, retrospective, postmortem
-
-**Knowledge source**:
-A place agents read knowledge from, reached through a Connection; every one can be read and searched, some can also be written to or are copied into the factory's index.
-_Avoid_: Context pack, data source, knowledge base
-
-**Core pack**:
-The open-source Knowledge source that ships with Bauherr; read-only, the base every Product starts from.
-
-**Knowledge repo**:
-A Workspace's private Git Knowledge source, shared by its Products with a part per Product; changed only through merge requests.
-_Avoid_: Knowledge base, wiki
-
-**Skill**:
-A reusable instruction package an agent loads when its description matches the task, following the open Agent Skills format.
-_Avoid_: Prompt, recipe
-
-**Stage kind**:
-What a Stage is for in the workflow (`triage`, `plan`, `container`, `build`, `review`, `release`, `done`, `agent`, `human`); the factory's rules attach to the kind, not to the Stage's name.
-
-**Conditional stage**:
-An `agent` or `human` Stage with a `when` (`touches` a Path set, `paths`, `labels`, request `types`): a Ticket enters it only when the change matches, otherwise it moves on as if the Stage's pass Outcome had fired and a `skip:<stage>` event records why. Unknown changed paths count as matching.
-
-**Path set**:
-A named list of path globs a Product declares (`security`, `ui`); a conditional Stage names it in `touches`. A set the Product has not declared never matches.
-
-**Outcome**:
-A named result of a Stage (`plan`, `clean`, `changes`, ...) that maps to the Stage a Ticket moves to next; declared per Stage in `factory.yaml`.
-
-**Role**:
-A member of the factory's team (`team.roles` in `factory.yaml`): a title, a model tier or provider/model, a profile and optionally an `agents` cap; a Stage names the Role that works it. Roles are the only source of roles: an agent never invents one.
-
-**Agent session**:
-A connected client (e.g. Claude Code) working as one Role: it `connect`s, pulls Runs of its Role's Stages with `next_work`, and its presence (`working`, `idle`, `offline`) and active time are recorded.
-_Avoid_: Agent, worker
-
-**Exceptions role**:
-The one Role (`exceptions: true`) that also receives stuck Tickets when nothing normal is claimable; it can only use the repairs agents already have, never a human gate.
-
-**Factory file**:
-The `factory.yaml` of a Workspace: its team and workflow. One per Workspace, edited in the workflow editor (`/workflow/edit`) or applied from the CLI, the API or at boot; the shipped `pack/factory.yaml` is the default.
-
-**Workflow version**:
-One applied state of a Workspace's Factory file (`workflow_versions`): the file with its profiles inlined, the compiled workflow and its hash. The newest applied one is active; an identical file adds no version.
-
-**Decision**:
-The choice of whom a `human` Stage asks (the Bauherr, or the Product owner with `by: product-owner`) in that Stage: one of the Stage's Outcomes, recorded as a human touch `decide:<stage>:<outcome>`; the Ticket then follows that Outcome.
-
-**Asked**:
-Whom a Checkpoint or decision row is addressed to: `bauherr` or `product-owner` (`gate: {by}`, `refine: {by}`, `by:`, a row's `for:`). A Checkpoint asked of the Product owner of a Product without one asks the Bauherr; `tickets.needsBy` stores it. _Avoid_: assignee, owner (bare)
-
-**Checkpoint**:
-A point where the workflow waits for a person (Triage's questions, a `gate`, the production gate, a `human` Stage). Each is addressed (`by: bauherr | product-owner`, default the Bauherr): only that person, and a Bauherr or Admin in their place, can decide it (`mayDecide`).
-
-**Decision**:
-What one Checkpoint asks of a person, prepared the same way every time (ask, recommendation, at most three facts, options, what happens next) and stored on the Ticket; the Inbox lists exactly the Tickets that have one.
-
-**Progress comment**:
-The one Comment the factory keeps on a Ticket's issue, edited in place, saying in plain words where the request stands (headline, next step, a six-step path). A separate short Comment mentions the issue's author when a question is open, a change is ready on staging, it is released or stuck. Texts are the `progress` Template; switch `workspaces.progressComments`.
-
-**Template**:
-The markdown structure of one text written for people (request, plan, decision, review, staging summary, release note, worklog, triage questions, progress): shipped in the pack, overridable per Workspace, handed to agents with their skill.
-
-**TL;DR**:
-The leading section of a plan (`Decision:`, `Recommendation:`, `Why:`, `Risk:`) the plan Checkpoint's Decision is made from.
-
-### Tickets
+**Stage**:
+One of Intake, Brief, Build, Verify, Ship, Done. The set is fixed.
+_Avoid_: Column
 
 **Ticket**:
-One issue in a Product's Ticket source. Bauherr never owns a Ticket; it reads and changes it through the Ticket source and keeps only a pointer and what it derives.
-_Avoid_: Issue (in prose), card, task, story
+One issue of a Product, with its record. It enters Intake by a selection rule in code. Bauherr never owns the issue; it mirrors it.
+_Avoid_: Task, story
 
-**Comment**:
-A message on a Ticket, written by a person or an agent.
+**Record**:
+The one versioned JSON document per ticket: goal, type, source, criteria, out of scope, risk, decisions, plan, findings, handoff, result. Every card, page and agent input is a view of it.
 
-**Label**:
-A tag on a Ticket; a Ticket's type is a Label.
-_Avoid_: Tag, category
+**Brief**:
+What Build works from: a goal, up to seven criteria a user can observe, risk, decisions and plan steps. A change a user can see carries mockups. Also the name of the first card.
 
-**Claim**:
-Assigning a Ticket to someone so others leave it alone; an unassigned open Ticket is unclaimed.
-_Avoid_: Lock, reservation
+**Card**:
+What the factory asks a Bauherr. There are three: Brief, Result and Question. Each offers options and free comments. The factory acts on the chosen option, never on the text.
+_Avoid_: Checkpoint
 
-**Sub-ticket**:
-A Ticket that is a child of another Ticket, its parent.
-_Avoid_: Subtask, child issue
+**Result**:
+What Verify found, shown as pictures first: before and after per mockup screen, proof per criterion and what was not verified. The Bauherr accepts it.
 
-**Blocked by**:
-The relation saying a Ticket cannot start until another Ticket is closed.
-_Avoid_: Depends on
+**Question**:
+A card for what the factory cannot settle: a disputed issue, a silent reporter, failed runs, used-up verify rounds, a stalled deploy, production approval.
 
-**Frontier**:
-The open, unblocked, unclaimed Sub-tickets of a parent: what can be taken next.
+**Risk rule**:
+The code that decides whether a Brief goes to the Bauherr. It does on an open decision, a one-way door, a risk area, a visible change, an old backlog issue, an outside request for a feature or change, a readiness fix or a send-back. Every other Brief is approved by the rule.
+_Avoid_: Brief gate
 
-**Link**:
-A reference from a Ticket to an asset kept elsewhere (a document, a prototype, a merge request); assets are linked, never pasted in.
+**Back to Brief**:
+The option that returns a ticket in Build or Verify to Brief with a note.
 
-**Attachment**:
-A file stored with a Ticket in the Ticket source, such as a screenshot; only available where the Ticket source supports it.
-_Avoid_: Upload, asset (an asset lives elsewhere and is Linked)
+**Risk area**:
+A named set of path globs a Product declares, such as `security`. A change that touches one needs the Bauherr's Brief approval.
 
-### History
+**Criterion**:
+One observable statement of a Brief. It names how to verify it (`test`, `command`, `screenshot`, `manual`) and has a status.
 
-**Ticket event**:
-One row of a Ticket's append-only history: the moment its stage or phase changed, with the cause, the Run and the Executor.
-_Avoid_: Audit entry, transition
+**Proof**:
+Evidence for a criterion. Exit-code proof comes only from CI checks on the pull request head or from the Runner.
 
-**Phase**:
-What a Ticket's time is spent on while in a stage: working (a Run runs), queued (waiting for the factory), human (waiting for the Bauherr), ci (waiting for checks, the merge queue or a deploy), closed.
-_Avoid_: State
+**Verification gate**:
+The server check that refuses a verdict without proof per criterion, from the author of the patch, for a stale patch or for a moved head.
 
-**Status**:
-The one label the Bauherr reads for an open Ticket (`ticketStatus`): In progress, Queued, Waiting for you, Waiting for CI / merge queue / deploy, Blocked, Failed or Done, with a detail line and who is doing it. A Phase refined by blockers and failed Runs; "Working" is not a Status.
+**Caps**:
+Three verify rounds, two reporter rounds, two failed runs. Then a Question card.
 
-**Lead time**:
-From a Ticket's first event to its first closed event.
+### Agents
 
-**Cycle time**:
-From a Ticket's first event outside the triage stage to its first closed event.
+**Role**:
+One of builder, reviewer, verifier. Verify is a review run, then a verifier run. Neither built the patch.
+_Avoid_: Agent (it names a client or a model)
 
 **Executor**:
-Who did a step: a session (an agent session), the runner (the autonomous Runner), CI, a human or the factory itself; a Run records its executor, client, model and provider.
-_Avoid_: Agent (it names the model or client, not who executed)
+What runs a role: a Claude Code session over MCP, or the headless Runner. A Product picks one.
 
-### Work
+**Agent session**:
+A connected Claude Code that `connect`s as a role and pulls runs with `next_work`. It shows as working, idle or offline.
+_Avoid_: Worker
 
-**Review artifact**:
-A typed piece of proof attached to a Ticket for a person to judge: a screenshot (alone or before and after), a recording, a preview link, a terminal session, a sample or a test or contract report. A Product's rules say which changes need which proof; the acceptance card shows it next to each acceptance criterion.
-_Avoid_: Attachment (a file a person adds to a request), screenshot (one kind of it)
-
-**Before and after**:
-For a visible Ticket, one pair of screenshots of each mockup screen: the before from the base branch, the after from the pull request head, taken the same way at the same width. The mockup screen is the caption up to its first " (". Verify cannot pass the Ticket without a pair per screen, and the Result card shows each pair beside its mockup (the Plan).
-_Avoid_: Screenshot proof (a screenshot that proves one criterion)
-
-**Job**:
-One unit of work in a Stage (Workflow → Stage → Job): it has `needs`, an optional `when`, `by` / `role`, a `kind`, `blocking` and `outcomes` that map to `done` or a Stage Outcome. Every Stage has one own Job; an agent Job is executed by a Run. Not a background task (Payload jobs in `src/jobs/`: say background task).
-_Avoid_: Task, step
+**Runner**:
+The headless executor in `packages/runner`: a shallow clone, the Claude Agent SDK, a credential proxy and hooks.
 
 **Run**:
-One agent execution on exactly one Ticket, of one agent Job. Work that starts without a Ticket first creates one.
-_Avoid_: execution, session
+One execution of one role on one ticket. Its result must match a schema before it counts.
+_Avoid_: Job (a background task)
 
-**AX (Agent experience engineer)**:
-The team role that keeps a Product easy and safe for agents to change: moves rules into code, checks and proof, and keeps the feature map and the verify skill current. Works inside the Ticket at hand; never files Tickets for findings.
-_Avoid_: DevEx engineer, platform engineer
+**Pack**:
+`pack/`: the roles, rules and skills handed to a run. A skill is an instruction package in the Agent Skills format.
 
-**Trust pyramid**:
-The order of investment for making agent changes safe: the codebase first, then static analysis, then verification, then prose, and human review least.
+**Context pack**:
+What code assembles for one run: the stage skill, the repository's `AGENTS.md`, the record, matching memories and three similar past tickets.
 
-**Guard**:
-A deterministic check (type, lint rule, guard test) recorded on a feature in the feature map as `guards[]: {check, because, since}`, that makes a past mistake fail instead of repeating.
-_Avoid_: Rule (prose a person must remember)
+### Memory
 
-**Debt note**:
-A `debt[]` entry on a feature in the feature map for an improvement too big for the Ticket at hand. Never becomes a Ticket by itself.
-_Avoid_: Finding Ticket, backlog item
+**Memory**:
+Three markdown documents: factory, workspace and product. Parts of them go to the runs of Brief, Build, Review and Verify. Only the owner or a Retro changes them. The old single memories are no longer handed out.
+_Avoid_: Statement (on screen), lesson, Learn
 
-**Step**:
-One recorded unit inside a Run (an agent turn or tool call), kept for audit and cost; it is not a Job.
-_Avoid_: Action, event
+**Retro**:
+A conversation the owner starts for one Product over a range of tickets. It proposes document changes or new tickets; the owner applies or drops each one.
+_Avoid_: Retrospective
 
-**Chat thread**:
-One person's stored conversation with the factory assistant in one Workspace; it remembers the page of its last message and at most one tool call awaiting confirmation. Private to its owner. It is not a Run and not an Intake session; the request conversation is not a thread: it reads and writes its Intake session directly.
-_Avoid_: Conversation, session
+### Onboarding
 
-**Page context**:
-What the assistant is told about the page the person is looking at, built on the server from the URL path alone (never from text the browser sends) and limited to the person's current Workspace.
-_Avoid_: Screen state, page content
+**Import**:
+Step two of connecting a project: all issues with comments and all open pull requests are mirrored. Nothing is written to the forge.
 
-**Request**:
-What a person asks the factory for: an Intake session that has been sent, with its Ticket(s). Before it is sent it is a draft with a request card (title, type, product, urgency, what is wrong or wanted, "It is done when", screenshots). The type is Bug, Feature, Change or Question; it becomes the label `bauherr:type:<kind>` on the issue and a chip on request rows, the Ticket page and the Workflow list. A Question is answered in the thread and files nothing.
-_Avoid_: Ticket (the factory's own record of it), order, wish
+**First look**:
+Intake and a repository check run on every open issue while the Product is `observing`. The forge writer refuses.
 
-**Urgent request**:
-A Bug marked "Urgent: something is broken for users now", with the reason (what is broken, for whom, since when). It is offered only while the Workspace's fast lane is on. An Admin who sends one puts it on the fast lane at once; anyone else's asks the Bauherr ("Fast lane for ...?" at the top of the Inbox).
-_Avoid_: Hotfix request, P1, emergency
+**Switch on**:
+The Bauherr makes the Product `active`. Briefs for old issues come one at a time, at most five waiting on the Bauherr.
 
-**Fast lane**:
-What the user sees of the expedite lane: a Ticket on it skips Triage and plan approval and jumps the queue, one at a time. The data names stay `expedite` (`tickets.expedite`, `bauherr:expedite`, `workspaces.expediteLane`).
-_Avoid_: Expedite (in text people read), hotfix lane
+**Adopted pull request**:
+An open pull request that closes an issue and comes from a trusted author. It enters at Verify. The factory never pushes to it.
 
-**Intake session**:
-A Product user's conversation with the factory about a Product; it ends with a created Ticket or is abandoned. It is not a Run. In the app it is the request conversation (the Factory assistant in the conversation shell, the request card as its artifact); the embeddable widget is its other surface.
-_Avoid_: Chat, interview, request
+**Repository readiness**:
+The checks of a Product's repository: required checks, CI runs, risk areas, `AGENTS.md`, issue forms, connected sessions, branch protection. A gap offers a fix.
+
+### Views
+
+**Factory view**:
+The home page: the stages as a board with counts, median time, who works, send-back loops and a hold strip. Dragging reorders within a stage.
+
+**Inbox**:
+The same tickets as a list by who has to act.
+
+**Hold**:
+A cause that stops several tickets, shown above the board: no agent for a role, a Product still observing, a failed sync, checks that never started.
+
+**Someday**:
+The label `bauherr:someday` parks an issue: no run, no card.
+
+**Insights**:
+Time per stage, how often tickets were sent back, and tokens and cost per ticket, model and role.
+
+### Planned, not built
+
+Ticket relations (#939 to #943), requests from Product owners (#840 to #848) and releases (#922 to #929).

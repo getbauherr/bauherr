@@ -111,10 +111,4 @@ export const seedInsights = async (payload: Payload): Promise<void> => {
     records.push(await seedTicket(payload, ids, shape))
     await item(shape.number, { title: shape.title })
   }
-  await payload.db.drizzle.execute(sql`
-    INSERT INTO "statements" ("workspace_id", "product_id", "record_id", "kind", "scope", "text", "source_kind",
-      "source_text", "updated_at", "created_at")
-    SELECT "workspace_id", "product_id", "id", 'learned', 'product', 'Check the year of every date.', 'finding',
-      'The year is wrong. Evidence: open the report', now(), now()
-    FROM "records" WHERE "id" = ${records[0]}`)
 }

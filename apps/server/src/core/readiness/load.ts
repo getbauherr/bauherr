@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { RepositoryFacts, ReadinessFacts } from './checks'
+import { releaseFactsSchema } from './release-facts'
 import { loadNotStarted, recentPulls } from './not-started'
 import { riskSuggestionsSchema, SUGGESTIONS_KEY } from './suggest'
 
@@ -21,6 +22,10 @@ const productRow = z.object({
     .string()
     .nullable()
     .transform((value) => (value === 'runner' ? ('runner' as const) : ('session' as const))),
+  release_mode: z
+    .string()
+    .nullable()
+    .transform((value) => (value === 'direct' ? ('direct' as const) : ('factory' as const))),
 })
 const sourceRow = z.object({
   repo: z.string(),
@@ -30,6 +35,7 @@ const sourceRow = z.object({
   issue_form_count: z.coerce.number().nullable(),
   facts_at: z.coerce.date().nullable(),
   risk_suggestions: riskSuggestionsSchema.nullable(),
+  release_facts: releaseFactsSchema.nullable(),
 })
 const roleRow = z.object({ role: z.string() })
 
@@ -54,7 +60,7 @@ const rolesSeen = async (payload: Payload, f: FactsFilter): Promise<string[]> =>
 
 const productOf = async (payload: Payload, f: FactsFilter) => {
   const found = await payload.db.drizzle.execute(sql`
-    SELECT "required_checks", "risk_areas", "executor" FROM "products"
+    SELECT "required_checks", "risk_areas", "executor", "release_mode" FROM "products"
     WHERE "id" = ${f.product} AND "workspace_id" = ${f.workspace}`)
   return found.rows[0] ? productRow.parse(found.rows[0]) : null
 }
@@ -62,6 +68,7 @@ const productOf = async (payload: Payload, f: FactsFilter) => {
 const sourceOf = async (payload: Payload, f: FactsFilter) => {
   const found = await payload.db.drizzle.execute(sql`
     SELECT s."repo", s."branch_protected", s."has_agents_file", s."agents_file", s."issue_form_count", s."facts_at",
+      s."release_facts",
       (SELECT st."value" FROM "instance_state" st WHERE st."key" = ${SUGGESTIONS_KEY} || s."id"::text)
         AS risk_suggestions
     FROM "ticket_sources" s
@@ -84,6 +91,8 @@ export const loadFacts = async (payload: Payload, f: FactsFilter): Promise<Loade
       repository: source ? repositoryOf(source) : null,
       executor: product.executor,
       rolesSeen: await rolesSeen(payload, f),
+      releaseMode: product.release_mode,
+      release: source?.release_facts ?? null,
       waiting: waiting.map(({ recordId, number, waitedMinutes }) => ({ recordId, number, waitedMinutes })),
     },
   }

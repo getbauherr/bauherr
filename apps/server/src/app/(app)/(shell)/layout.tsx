@@ -17,6 +17,7 @@ export default async function Layout({ children }: { children: ReactNode }) {
       defaultOpen={(await cookies()).get(SIDEBAR_COOKIE)?.value !== 'false'}
       email={user.email}
       admin={user.role === 'admin'}
+      productOwner={isProductOwner(user)}
       waitingOnYou={waitingOnYou}
       workspaces={isProductOwner(user) ? [] : workspaces.map(({ slug, name }) => ({ slug, name }))}
       current={workspace?.slug}

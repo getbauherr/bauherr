@@ -26,11 +26,19 @@ const settingsPage: Record<string, string> = {
 
 type Crumb = { label: string; href?: string }
 
-const DETAIL: Record<string, string> = { tickets: 'Ticket', runs: 'Run', memory: 'Memory' }
-const HOME_WORD: Record<string, string> = { inbox: 'Inbox', memory: 'Memory', insights: 'Insights' }
+const DETAIL: Record<string, string> = { tickets: 'Ticket', runs: 'Run', memory: 'Memory', requests: 'Request' }
+const HOME_WORD: Record<string, string> = {
+  inbox: 'Inbox',
+  memory: 'Memory',
+  insights: 'Insights',
+  requests: 'Requests',
+}
 
 const homeCrumbs = (first: string | undefined, second: string | undefined): Crumb[] => {
-  const home = { label: HOME_WORD[first ?? ''] ?? 'Factory', href: first === 'memory' ? '/memory' : '/' }
+  const home = {
+    label: HOME_WORD[first ?? ''] ?? 'Factory',
+    href: first === 'memory' ? '/memory' : first === 'requests' ? '/requests' : '/',
+  }
   const detail = DETAIL[first ?? '']
   return detail && second ? [home, { label: detail }] : [home]
 }

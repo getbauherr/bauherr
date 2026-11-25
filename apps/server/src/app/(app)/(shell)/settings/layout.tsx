@@ -1,17 +1,9 @@
 import type { ReactNode } from 'react'
-import { isProductOwner } from '../../../../lib/people'
 import { SettingsNav } from '../../components/SettingsNav'
-import { requirePerson } from '../../lib/session'
+import { requireBauherr } from '../../lib/session'
 
 export default async function Layout({ children }: { children: ReactNode }) {
-  const user = await requirePerson()
-  if (isProductOwner(user))
-    return (
-      <div className="flex flex-col gap-4">
-        <h1 className="sr-only">Settings</h1>
-        {children}
-      </div>
-    )
+  const user = await requireBauherr()
   return (
     <div
       className={

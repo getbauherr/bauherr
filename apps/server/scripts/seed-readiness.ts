@@ -19,9 +19,18 @@ export const seedReadiness = async (p: Payload): Promise<void> => {
   const sourceData = { repo: REPO, product, connection, cursor: '2026-10-30T09:00:00Z', workspace }
   const source = Number((await p.create({ collection: 'ticket_sources', data: sourceData, ...o })).id)
   const suggestions = [{ name: 'auth', paths: ['src/auth/**'] }]
+  const releaseFacts = {
+    stagingWorkflow: '.github/workflows/staging.yml',
+    productionWorkflow: '.github/workflows/production.yml',
+    versionInput: 'version',
+    stagingAddress: 'https://staging.example.com',
+    commitEndpoint: false,
+    lastVersion: 'v0.6.0',
+    canWrite: true,
+  }
   await p.db.drizzle.execute(sql`
     UPDATE "ticket_sources" SET "default_branch" = 'main', "branch_protected" = 'unknown', "has_agents_file" = false,
-      "issue_form_count" = 0, "facts_at" = now()
+      "issue_form_count" = 0, "facts_at" = now(), "release_facts" = ${JSON.stringify(releaseFacts)}::jsonb
     WHERE "id" = ${source}`)
   await p.db.drizzle.execute(sql`
     INSERT INTO "instance_state" ("key", "value")

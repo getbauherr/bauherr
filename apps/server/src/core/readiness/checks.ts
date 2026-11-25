@@ -1,4 +1,6 @@
 import type { BranchProtection } from '../mirror/facts'
+import { releaseChecks } from './release-checks'
+import type { ReleaseFacts } from './release-facts'
 import type { RiskSuggestion } from './suggest'
 
 export const CHECK_IDS = [
@@ -10,6 +12,13 @@ export const CHECK_IDS = [
   'sessions',
   'branch-protection',
   'checks-not-started',
+  'release-staging-deploy',
+  'release-staging-address',
+  'release-production-deploy',
+  'release-version-input',
+  'release-commit-endpoint',
+  'release-last-version',
+  'release-rights',
 ] as const
 export type CheckId = (typeof CHECK_IDS)[number]
 
@@ -46,6 +55,8 @@ export type ReadinessFacts = {
   executor: 'session' | 'runner'
   rolesSeen: string[]
   waiting: WaitingTicket[]
+  releaseMode: 'factory' | 'direct'
+  release: ReleaseFacts | null
 }
 
 const SETTINGS_RISK = '#gates'
@@ -208,6 +219,7 @@ export const evaluate = (f: ReadinessFacts): Finding[] =>
     sessions(f),
     branchProtection(f),
     checksNotStarted(f),
+    ...releaseChecks(f),
   ].filter((entry): entry is Finding => entry !== null)
 
 export const describeChange = (change: Change): string =>

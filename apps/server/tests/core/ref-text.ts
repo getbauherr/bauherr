@@ -1,11 +1,10 @@
-import { sql } from '@payloadcms/db-postgres'
 import { appendEvent, readRecord } from '../../src/core/record/store'
 import type { Engine } from './harness'
 import { edit } from './scenario'
 
 export const REFERENCING_TITLE = 'Result to read'
 
-export const referencing = async (e: Engine, ids: { result: number; statements: number; target: number }) => {
+export const referencing = async (e: Engine, ids: { result: number; target: number }) => {
   const { payload } = e.db
   const { source } = (await readRecord(payload, ids.target)).record
   const mention = `#${source.number}`
@@ -19,6 +18,4 @@ export const referencing = async (e: Engine, ids: { result: number; statements: 
     data: { note: `Compare with ${mention}.` },
     actor: 'owner',
   })
-  await payload.db.drizzle.execute(sql`
-    UPDATE "statements" SET "text" = "text" || ${` See ${mention}.`} WHERE "record_id" = ${ids.statements}`)
 }

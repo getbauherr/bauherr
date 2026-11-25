@@ -65,3 +65,13 @@ test('The hold strip names a ticket whose checks have not started and Why gives 
   await expect(page.getByText('Checks not started')).toBeVisible()
   await expect(page.getByText('CI is down or missing')).toBeVisible()
 })
+
+test('Product settings has a Releases section that names the missing version endpoint', async ({ page }) => {
+  await openProduct(page)
+  const section = page.getByRole('region', { name: 'Releases' })
+  await expect(section.getByText('Release blocked')).toBeVisible()
+  await expect(section.getByRole('radio', { name: /Released by the factory/ })).toBeChecked()
+  const row = section.getByRole('listitem').filter({ hasText: 'Version endpoint missing' })
+  await expect(row.getByRole('button', { name: 'Make it a ticket' })).toBeVisible()
+  await expect(section.getByText('Last version found')).toBeVisible()
+})

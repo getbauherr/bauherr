@@ -67,6 +67,30 @@ describe('pages', () => {
     }
   })
 
+  it('the Requests page renders for a Product owner and a request outside the assignment is a 404', async () => {
+    session.cookie = productOwnerCookie
+    const requests = await pageModules[`${APP}(app)/(shell)/requests/page.tsx`]()
+    await expect(requests.default({})).resolves.toBeTruthy()
+    const one = await pageModules[`${APP}(app)/(shell)/requests/[id]/page.tsx`]()
+    await expect(one.default({ params: Promise.resolve({ id: '999999' }) })).rejects.toSatisfy(notFound)
+  })
+
+  it('the Products of an account are only the assigned ones, none without an assignment', async () => {
+    const { productsOf } = await import('../src/app/(app)/lib/requests')
+    expect((await productsOf(guard.payload, guard.po.assignments)).map((p) => p.name)).toEqual(['a1'])
+    expect(await productsOf(guard.payload, [])).toEqual([])
+    expect(await productsOf(guard.payload, [{ workspace: 1, scope: 'products', products: [] }])).toEqual([])
+  })
+
+  it('a Bauherr gets a 404 on the Requests pages', async () => {
+    session.cookie = bauherrCookie
+    for (const file of ['requests/page.tsx', 'requests/[id]/page.tsx']) {
+      const page = await pageModules[`${APP}(app)/(shell)/${file}`]()
+      await expect(page.default({ params: Promise.resolve({ id: '1' }) })).rejects.toSatisfy(notFound)
+    }
+    session.cookie = productOwnerCookie
+  })
+
   it('the same render as a Bauherr is not a 404 (control for the harness)', async () => {
     session.cookie = bauherrCookie
     const page = await pageModules[`${APP}(app)/(shell)/settings/products/page.tsx`]()
