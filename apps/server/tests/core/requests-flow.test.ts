@@ -7,6 +7,7 @@ import { createConversation, storeFile } from '../../src/core/conversations/stor
 import { readEvents } from '../../src/core/record/store'
 import { chooseType, closeRequest, joinExisting } from '../../src/core/requests/actions'
 import { RequestInvalid } from '../../src/core/requests/errors'
+import { tokenFits } from '../../src/core/requests/markdown'
 import { sendRequest } from '../../src/core/requests/send'
 import { createDraft } from '../../src/core/requests/store'
 import { takeTurn, type TurnDeps } from '../../src/core/requests/turn'
@@ -70,7 +71,7 @@ const draft = async () => {
 }
 
 const deliver = (conversationId: number) =>
-  sendRequest(h.payload(), { writer, origin: 'https://b.test' }, { conversationId, reporter: 'anna' })
+  sendRequest(h.payload(), { writer, origin: 'https://b.test', key: 'test-key' }, { conversationId, reporter: 'anna' })
 
 const say = (deps: TurnDeps, conversationId: number, text: string) =>
   takeTurn(h.payload(), deps, { conversationId, text, fileIds: [] })
@@ -156,7 +157,12 @@ describe('sending', () => {
     expect(issue.body.startsWith(DISCLOSURE)).toBe(true)
     expect(issue.body).toContain('Type: Something is broken (bug)')
     expect(issue.body).toContain('The export of the CO2 balance stops.')
-    expect(issue.body).toContain(`[export-koeln.png](https://b.test/api/conversations/${id}/files/`)
+    const pattern = `!\\[export\\\\-koeln\\.png\\]\\(https://b\\.test/api/request-files/${id}/(\\d+)/([\\w-]+)\\)`
+    const link = new RegExp(pattern).exec(issue.body)
+    expect(link).not.toBeNull()
+    expect(issue.body).not.toContain('/api/conversations/')
+    expect(tokenFits('test-key', id, Number(link?.[1]), link?.[2] ?? '')).toBe(true)
+    expect(tokenFits('test-key', id, Number(link?.[1]) + 1, link?.[2] ?? '')).toBe(false)
     expect(await recordsOf(first.issueNumber)).toHaveLength(1)
     const events = (await readEvents(h.payload(), first.recordId)).filter((e) => e.type === 'intake.accepted')
     expect(events).toHaveLength(1)
@@ -183,9 +189,14 @@ describe('a similar open request', () => {
     const offered = await draftView(h.payload(), id)
     expect(offered?.offer).toMatchObject({ number: open.number })
     const before = await issueCount()
-    await joinExisting(h.payload(), id)
+    await joinExisting(h.payload(), { writer }, id)
     expect(await issueCount()).toBe(before)
     expect(await draftView(h.payload(), id)).toMatchObject({ state: 'joined', joined: { number: open.number } })
+    const linked = await fake.tickets(repo).listComments(String(open.number))
+    expect(linked).toHaveLength(1)
+    expect(linked[0]?.body).toContain('Another product owner has the same request')
+    const [stored] = await h.rows(sql`SELECT "issue_number" FROM "request_drafts" WHERE "conversation_id" = ${id}`)
+    expect(Number(stored?.issue_number)).toBe(open.number)
     await expect(say(real, id, 'more')).rejects.toBeInstanceOf(RequestInvalid)
   })
 })

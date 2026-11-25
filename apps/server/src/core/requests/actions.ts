@@ -1,5 +1,8 @@
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
+import type { ForgeWriter } from '../forge/writer'
 import { RequestInvalid } from './errors'
+import { inert } from './markdown'
 import { loadDraft, saveDraft, type Draft } from './store'
 import type { RecordType } from '../record/schema'
 
@@ -10,10 +13,29 @@ const openDraft = async (payload: Payload, conversationId: number): Promise<Draf
   return draft
 }
 
-export const joinExisting = async (payload: Payload, conversationId: number): Promise<void> => {
+export const joinExisting = async (
+  payload: Payload,
+  deps: { writer: Pick<ForgeWriter, 'commentOnIssue'> },
+  conversationId: number,
+): Promise<void> => {
   const draft = await openDraft(payload, conversationId)
-  if (!draft.data.offer) throw new RequestInvalid('There is no open request to join.')
-  await saveDraft(payload, conversationId, { state: 'joined', data: { ...draft.data, joined: draft.data.offer } })
+  const { offer } = draft.data
+  if (!offer) throw new RequestInvalid('There is no open request to join.')
+  await deps.writer.commentOnIssue(
+    { workspace: draft.workspace, product: draft.product },
+    offer.number,
+    `Another product owner has the same request: ${inert(draft.data.title || draft.data.summary)}`,
+  )
+  const known = await payload.db.drizzle.execute(sql`
+    SELECT "id" FROM "records" WHERE "product_id" = ${draft.product} AND "source_number" = ${offer.number}
+    ORDER BY "id" LIMIT 1`)
+  const found = known.rows[0] as { id: unknown } | undefined
+  await saveDraft(payload, conversationId, {
+    state: 'joined',
+    data: { ...draft.data, joined: offer },
+    issueNumber: offer.number,
+    ...(found ? { recordId: Number(found.id) } : {}),
+  })
 }
 
 export const closeRequest = async (payload: Payload, conversationId: number): Promise<void> => {

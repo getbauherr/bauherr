@@ -5,32 +5,34 @@ import type { Conn } from '../conn'
 import type { ForgeWriter } from '../forge/writer'
 import { appendEvent, createRecord, readEvents } from '../record/store'
 import { RequestInvalid } from './errors'
+import { inert, inertBlock, publicFileUrl } from './markdown'
 import { FIELDS, readiness, TYPE_WORDS, type Fields } from './fields'
 import { filesOf, loadDraft, saveDraft, type Draft, type DraftFile } from './store'
 
-export type SendDeps = { writer: Pick<ForgeWriter, 'openIssue'>; origin: string }
+export type SendDeps = { writer: Pick<ForgeWriter, 'openIssue' | 'commentOnIssue'>; origin: string; key: string }
 export type Sent = { issueNumber: number; recordId: number }
 
 export const referenceOf = (conversationId: number): string => `bauherr-request-${conversationId}`
 
 export const titleOf = (draft: Draft): string => {
   const first = Object.values(draft.data.fields).find((value) => value.trim() !== '') ?? 'New request'
-  return (draft.data.title || first).slice(0, 120)
+  return inert(draft.data.title || first).slice(0, 120)
 }
 
-export const bodyOf = (draft: Draft, files: DraftFile[], origin: string): string => {
+export const bodyOf = (draft: Draft, files: DraftFile[], origin: string, key: string): string => {
   const { type, fields, summary } = draft.data
   if (type === null) throw new RequestInvalid('The request has no type yet.')
   const sections = FIELDS[type].flatMap((field) => {
     const value = (fields as Fields)[field.key]?.trim()
-    return value ? [`## ${field.label}\n\n${value}`] : []
+    return value ? [`## ${field.label}\n\n${inertBlock(value)}`] : []
   })
-  const attached = files.map(
-    (file) => `- [${file.name}](${origin}/api/conversations/${draft.conversationId}/files/${file.id})`,
-  )
+  const attached = files.map((file) => {
+    const link = `[${inertBlock(file.name)}](${publicFileUrl(origin, key, draft.conversationId, file.id)})`
+    return `- ${file.contentType.startsWith('image/') ? `!${link}` : link}`
+  })
   return [
     `Type: ${TYPE_WORDS[type]}`,
-    `## Summary\n\n${summary || titleOf(draft)}`,
+    `## Summary\n\n${inertBlock(summary) || inertBlock(titleOf(draft))}`,
     ...sections,
     ...(attached.length > 0 ? [`## Files\n\n${attached.join('\n')}`] : []),
   ].join('\n\n')
@@ -69,7 +71,7 @@ export const sendRequest = async (
     const where = { workspace: draft.workspace, product: draft.product }
     const issue = await deps.writer.openIssue(where, {
       title: titleOf(draft),
-      body: bodyOf(draft, await filesOf(db, draft.conversationId), deps.origin),
+      body: bodyOf(draft, await filesOf(db, draft.conversationId), deps.origin, deps.key),
       reference: referenceOf(draft.conversationId),
     })
     const { kind, repo } = await sourceOf(db, draft.workspace, draft.product)

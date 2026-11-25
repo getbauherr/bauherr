@@ -38,6 +38,7 @@ export const PO_ROUTES: Record<string, string> = {
   'api/hooks/[connection] POST': 'forge webhook: no session, signature-verified',
   'api/health GET': 'unauthenticated health probe',
   'api/attachments/upload/[token] PUT': 'run image upload: no session, a one-time token',
+  'api/request-files/[id]/[fileId]/[token] GET': 'sent request file for forge readers: no session, an HMAC token',
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
 }

@@ -49,7 +49,7 @@ const perform = async ({ payload, id }: Granted, body: Body): Promise<void> => {
     case 'type':
       return chooseType(payload, id, body.type)
     case 'join':
-      return joinExisting(payload, id)
+      return joinExisting(payload, sendDeps(payload), id)
     case 'close':
       return closeRequest(payload, id)
     case 'send': {
