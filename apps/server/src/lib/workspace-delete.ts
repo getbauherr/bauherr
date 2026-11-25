@@ -169,7 +169,6 @@ export const PURGE_ORDER: { table: string; where: (ws: number) => ReturnType<typ
     'conversation_messages',
     'conversations',
     'stage_runs',
-    'statements',
     'memory_document_versions',
     'retro_messages',
     'retros',

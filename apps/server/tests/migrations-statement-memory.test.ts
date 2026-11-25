@@ -70,7 +70,7 @@ it(
       )
     }
 
-    await payload.db.migrate({ migrations: migrations.slice(i).map(forPayload) })
+    await payload.db.migrate({ migrations: migrations.slice(i, i + 1).map(forPayload) })
 
     const every = ['brief', 'build', 'review', 'verify']
     const kept = { applies: 'fit', area: null, stages: every, off: false, original_text: null }
