@@ -104,3 +104,18 @@ test('Group by parent shows each parent as a band with its parts done', async ({
   await expect(page.getByRole('region', { name: 'No parent' }).getByRole('link', { name: 'Chain head' })).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('group-by-parent-1280.png'), fullPage: true })
 })
+
+test('the open badge popover heading is not covered by the card controls at 1280px', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await enter(page, '/')
+  await card(page, 'Chain head').getByRole('button', { name: 'Blocks 2' }).focus()
+  const heading = page.getByRole('tooltip').getByText('Waiting for this ticket')
+  await expect(heading).toBeVisible()
+  const uncovered = await heading.evaluate((el) => {
+    const box = el.getBoundingClientRect()
+    const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+    return top !== null && el.contains(top)
+  })
+  expect(uncovered).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('badge-popover-1280.png') })
+})

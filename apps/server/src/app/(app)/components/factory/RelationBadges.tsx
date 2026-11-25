@@ -60,7 +60,7 @@ const badgesOf = ({ blocks, blockedBy, parts }: CardRelations): Badge[] => {
 
 export function RelationBadges({ recordId, relations }: Props) {
   return (
-    <div className="relative z-10 grid w-full gap-1">
+    <div className="relative z-20 grid w-full gap-1">
       {badgesOf(relations).map((badge) => {
         const id = `rel-${recordId}-${badge.key}`
         return (
