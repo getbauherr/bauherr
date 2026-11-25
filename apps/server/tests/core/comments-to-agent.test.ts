@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { handOver } from '../../src/core/requests/handover'
+import { advance } from '../../src/core/engine'
 import { postComment, requestConversation } from '../../src/core/requests/comments'
 import { AGENT_INSTRUCTIONS } from '../../src/core/run/mcp/instructions'
 import { heartbeat } from '../../src/core/run/mcp/heartbeat'
@@ -74,6 +75,20 @@ describe('comments handed to the agent working on the ticket', () => {
     const run = await m.claimed(m.alpha)
     expect(run.context.newComments.map((c) => c.text)).toEqual(['written while nobody worked'])
     expect(await beat(run.runId, run.leaseToken)).toEqual([])
+    await m.e.drain()
+  })
+
+  it('lists a comment left over from an earlier run as new in the next run, and not the delivered one', async () => {
+    await m.e.drain()
+    const record = await m.begin()
+    const first = await m.claimed(m.alpha)
+    await comment(record, 'delivered to the first run')
+    expect(await beat(first.runId, first.leaseToken)).toEqual(['delivered to the first run'])
+    await comment(record, 'left over')
+    await m.call('release', { runId: first.runId, leaseToken: first.leaseToken }, m.agent(m.alpha))
+    await advance(record, m.e.deps())
+    const second = await m.claimed(m.alpha)
+    expect(second.context.newComments.map((c) => c.text)).toEqual(['left over'])
     await m.e.drain()
   })
 

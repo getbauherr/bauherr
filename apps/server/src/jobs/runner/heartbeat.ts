@@ -1,19 +1,10 @@
-import type { NewComment } from '../../core/requests/handover'
-import { beat } from '../../core/run/beat'
-import type { Claimed } from '../../core/run/leases'
+import { heartbeat, type Claimed } from '../../core/run/leases'
 import type { RunnerDeps } from './types'
 
-export const keepAlive = (
-  deps: RunnerDeps,
-  claimed: Claimed,
-  onComments: (comments: NewComment[]) => void,
-): (() => void) => {
+export const keepAlive = (deps: RunnerDeps, claimed: Claimed): (() => void) => {
   const timer = setInterval(() => {
-    beat(deps.engine(), claimed.run.id, claimed.token)
-      .then(({ newComments }) => {
-        if (newComments.length > 0) onComments(newComments)
-      })
-      .catch(() => undefined)
+    const engine = deps.engine()
+    heartbeat(engine.payload, claimed.run.id, claimed.token, { now: engine.now }).catch(() => undefined)
   }, deps.beatMs)
   return () => clearInterval(timer)
 }

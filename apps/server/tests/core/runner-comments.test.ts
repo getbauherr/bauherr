@@ -1,6 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises'
 import { describe, expect, it } from 'vitest'
 import { postComment, requestConversation } from '../../src/core/requests/comments'
+import { unseenComments } from '../../src/core/requests/handover'
 import { runnerHarness } from './runner-harness'
 
 const r = runnerHarness('core_runner_comments')
@@ -23,6 +24,32 @@ const said = async (record: number, text: string) => {
 }
 
 describe('comments for a run by the Runner', () => {
+  it('leaves a comment written in the last allowed follow-up turn undelivered for the next run', async () => {
+    const s = await r.start()
+    r.state.behaviour = async (request) => {
+      await said(s.id, `comment in turn ${r.state.prompts.length}`)
+      await sleep(50)
+      r.write(request, ACCEPT)
+    }
+    await r.next()
+    expect(r.state.prompts).toHaveLength(6)
+    const left = await unseenComments(r.f.h.payload(), s.id)
+    expect(left.map((c) => c.text)).toEqual(['comment in turn 6'])
+  })
+
+  it('leaves a comment written during the fix turn undelivered for the next run', async () => {
+    const s = await r.start()
+    r.state.behaviour = async (request) => {
+      if (r.state.prompts.length === 1) return r.write(request, { outcome: 'accepted' })
+      await said(s.id, 'comment in the fix turn')
+      r.write(request, ACCEPT)
+    }
+    await r.next()
+    expect(r.state.prompts).toHaveLength(2)
+    const left = await unseenComments(r.f.h.payload(), s.id)
+    expect(left.map((c) => c.text)).toEqual(['comment in the fix turn'])
+  })
+
   it('takes another turn for a comment written during a follow-up turn', async () => {
     const s = await r.start()
     const files: string[] = []

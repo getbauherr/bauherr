@@ -5,7 +5,7 @@ import { moduleKey } from '../module'
 import { commentFilesOf, type CommentFile } from '../conversations/store'
 import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
-import { handOver, type NewComment } from '../requests/handover'
+import { handOver, unseenComments, type NewComment } from '../requests/handover'
 import type { MemoryPart } from '../memory-documents'
 import type { TicketRecord } from '../record/schema'
 import { readEvents, readRecord } from '../record/store'
@@ -41,7 +41,14 @@ const pendingNote = async (deps: SubmitDeps, run: Run): Promise<string | null> =
   return fold(started < 0 ? events : events.slice(0, started), options).note
 }
 
-export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPack> => {
+const newCommentsOf = (deps: SubmitDeps, run: Run, deliver: boolean): Promise<NewComment[]> =>
+  deliver ? handOver(deps.payload, run.recordId, run.id) : unseenComments(deps.payload, run.recordId)
+
+export const contextPack = async (
+  deps: SubmitDeps,
+  run: Run,
+  options: { deliver: boolean } = { deliver: true },
+): Promise<ContextPack> => {
   const module = deps.modules[moduleKey(run.stage, run.role)]
   if (!module) {
     throw new ModuleMissing(`No module is registered for stage ${run.stage} yet: nothing can be worked here.`)
@@ -59,7 +66,7 @@ export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPa
     resultSchema: z.toJSONSchema(module.resultSchema, { io: 'input' }),
     note: await pendingNote(deps, run),
     commentFiles: await commentFilesOf(deps.payload, run.recordId),
-    newComments: await handOver(deps.payload, run.recordId, run.id),
+    newComments: await newCommentsOf(deps, run, options.deliver),
     skill: (await deps.skills?.(run.stage, run.role)) ?? null,
     facts: run.stage === 'intake' ? await loadIntakeFacts(deps.payload, stored) : null,
     source: await loadSource(deps.payload, stored),
