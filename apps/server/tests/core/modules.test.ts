@@ -127,6 +127,20 @@ describe('the brief module', () => {
     ])
   })
 
+  it('takes proposed relations into the patch and defaults to none (c1)', () => {
+    const relations = [{ type: 'blocked-by', ticket: 843, reason: 'The table must exist first.' }]
+    expect(apply('brief', briefed(), { ...result, relations }).patch.relations).toEqual(relations)
+    expect(apply('brief', briefed(), result).patch.relations).toEqual([])
+  })
+
+  it.each([
+    ['an unknown relation type', { relations: [{ type: 'duplicates', ticket: 3, reason: 'x' }] }],
+    ['a relation without a reason', { relations: [{ type: 'part-of', ticket: 3, reason: ' ' }] }],
+    ['six relations', { relations: [1, 2, 3, 4, 5, 6].map((ticket) => ({ type: 'part-of', ticket, reason: 'x' })) }],
+  ])('refuses %s', (_name, change) => {
+    expect(() => apply('brief', briefed(), { ...result, ...change })).toThrow()
+  })
+
   it.each([
     ['two criteria', { criteria: result.criteria.slice(0, 2) }],
     ['eight criteria', { criteria: Array.from({ length: 8 }, () => result.criteria[0]) }],

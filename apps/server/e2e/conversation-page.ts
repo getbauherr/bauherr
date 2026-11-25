@@ -22,3 +22,21 @@ export const conversationTargets = {
   },
   '/conversations/[id]': aConversation,
 }
+
+const requestOf = (title: string) => async (page: Page) => {
+  const base = process.env.BASE_URL ?? 'http://localhost:3000'
+  await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url: base }])
+  await page.goto('/inbox')
+  const href = await page
+    .getByRole('link', { name: new RegExp(title) })
+    .first()
+    .getAttribute('href')
+  return (href ?? '').replace('/tickets/', '/requests/')
+}
+
+export const requestTargets = {
+  '/requests/[id]': {
+    'plan waiting': requestOf('Brief with a mockup'),
+    'ready to try': requestOf('Result to read'),
+  },
+}

@@ -33,6 +33,13 @@ export const loadMockups = async (payload: Conn, recordId: number): Promise<Atta
   return found.rows.map(viewOf)
 }
 
+export const loadRunMockups = async (payload: Payload, runId: number): Promise<AttachmentView[]> => {
+  const found = await payload.db.drizzle.execute(sql`
+    SELECT "id", "caption", "byte_size", "content_type" FROM "attachments"
+    WHERE "run_id" = ${runId} AND "kind" = 'mockup' AND "content" IS NOT NULL ORDER BY "id"`)
+  return found.rows.map(viewOf)
+}
+
 export const loadRunAttachments = async (payload: Payload, runId: number): Promise<AttachmentView[]> => {
   const found = await payload.db.drizzle.execute(sql`
     SELECT "id", "caption", "byte_size", "content_type" FROM "attachments"
@@ -40,17 +47,18 @@ export const loadRunAttachments = async (payload: Payload, runId: number): Promi
   return found.rows.map(viewOf)
 }
 
-const imageRow = z.object({ workspace_id: count, content: z.string() })
+const imageRow = z.object({ workspace_id: count, product_id: count.nullable(), content: z.string() })
 
-export type StoredImage = { workspace: number; contentType: string; bytes: Buffer }
+export type StoredImage = { workspace: number; product: number | null; contentType: string; bytes: Buffer }
 
 export const readImage = async (payload: Payload, id: number): Promise<StoredImage | null> => {
-  const found = await payload.db.drizzle.execute(
-    sql`SELECT "workspace_id", "content" FROM "attachments" WHERE "id" = ${id} AND "content" IS NOT NULL`,
-  )
+  const found = await payload.db.drizzle.execute(sql`
+    SELECT a."workspace_id", r."product_id", a."content" FROM "attachments" a
+    LEFT JOIN "records" r ON r."id" = a."record_id"
+    WHERE a."id" = ${id} AND a."content" IS NOT NULL`)
   if (!found.rows[0]) return null
   const row = imageRow.parse(found.rows[0])
   const bytes = Buffer.from(row.content, 'base64')
   const contentType = attachmentTypeOf(bytes)
-  return contentType === null ? null : { workspace: row.workspace_id, contentType, bytes }
+  return contentType === null ? null : { workspace: row.workspace_id, product: row.product_id, contentType, bytes }
 }

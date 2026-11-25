@@ -7,7 +7,7 @@ export const PO_PAGES: Record<string, string> = {
   login: 'public sign-in; a signed-in account is sent to its home',
   '': 'the Factory view for a Bauherr; a Product owner gets a static empty state that reads no data',
   requests: 'the Requests of the Products assigned to them, nothing else',
-  'requests/[id]': 'one request, only when its Product is assigned to them',
+  'requests/[id]': 'one request of an assigned Product; any other answers 404 (request-page-guard.test.ts)',
 }
 export const BAUHERR_PAGES = [
   'settings',

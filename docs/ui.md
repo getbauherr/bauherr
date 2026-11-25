@@ -27,6 +27,8 @@ A Product owner gets a smaller shell today. Requests from Product owners are pla
 |---|---|
 | `/` | See the Factory view: tickets by stage, filters, holds and loops. |
 | `/inbox` | Decide what waits for you. Keys: `j`/`k` move, `o`/`Enter` open, `Esc` clear, `?` help. |
+| `/requests` | Follow your requests in four sections, starting with Needs you. |
+| `/requests/<id>` | Read one request: whose turn it is, then its story. |
 | `/tickets/<id>` | Decide one ticket. Tabs Now, Brief, Result and Activity. |
 | `/memory` | Edit the factory, workspace or product document. `/memory/retro` starts a Retro. |
 | `/releases` | See what is live and ready to release. |

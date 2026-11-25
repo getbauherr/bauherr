@@ -3,6 +3,7 @@ import { useCallback, useRef, useState, useTransition, type ReactNode } from 're
 import { NOTE_MAX } from '../../../../core/limits'
 import { decideTicket } from '../../(shell)/tickets/actions'
 import { Button } from '../ui/button'
+import { DROP_PREFIX } from './RelationRow'
 import { conversationApi } from '../conversation/conversation-api'
 import { CommentRuntime } from './CommentRuntime'
 import { CommentToggle, DecisionComment } from './DecisionComment'
@@ -36,6 +37,23 @@ const answersOf = (form: HTMLFormElement): Record<string, string> => {
     if (key.startsWith(ANSWER_PREFIX) && typeof value === 'string') answers[key.slice(ANSWER_PREFIX.length)] = value
   })
   return answers
+}
+
+const droppedOf = (form: HTMLFormElement): number[] => {
+  const dropped: number[] = []
+  new FormData(form).forEach((_value, key) => {
+    if (key.startsWith(DROP_PREFIX)) dropped.push(Number(key.slice(DROP_PREFIX.length)))
+  })
+  return dropped
+}
+
+const approvalOf = (form: HTMLFormElement) => {
+  const answers = answersOf(form)
+  const dropRelations = droppedOf(form)
+  return {
+    ...(Object.keys(answers).length > 0 ? { answers } : {}),
+    ...(dropRelations.length > 0 ? { dropRelations } : {}),
+  }
 }
 
 const attachFiles = async (ensure: () => Promise<number>, note: string, fileIds: number[]): Promise<string | null> => {
@@ -106,9 +124,10 @@ function Form({ recordId, ask, seq, sentence, actions, pick, children, ensure, f
 
   const send = (action: DecisionAction) =>
     start(async () => {
-      const answers = form.current && action.choice === 'approve' ? answersOf(form.current) : {}
-      const note = comment.empty ? {} : { note: comment.note }
-      const extra = { ...note, ...(Object.keys(answers).length > 0 ? { answers } : {}) }
+      const extra = {
+        ...(comment.empty ? {} : { note: comment.note }),
+        ...(form.current && action.choice === 'approve' ? approvalOf(form.current) : {}),
+      }
       const result = await decideTicket({ recordId, ask, seq, choice: action.choice, ...extra })
       const attached = comment.fileIds
       if (result.error) return setError(result.error)
