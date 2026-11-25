@@ -114,6 +114,7 @@ export function RequestCard({
       meta={metaOf(draft)}
       state={stateOf(draft)}
       open
+      onOpenChange={() => undefined}
       className="max-w-none"
       actions={draft && <Actions draft={draft} busy={busy} act={act} />}
       result={draft ? <Result draft={draft} /> : <>Describe the request to start.</>}
