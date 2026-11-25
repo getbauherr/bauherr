@@ -214,6 +214,41 @@ test('an unsaved Repository change says so, asks before leaving and says Saved a
   })
 })
 
+test('Product settings stack the sections in one column to the right of the Settings nav', async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await ownProduct(page, async () => {
+    const ids = ['readiness', 'releases', 'repository', 'intake', 'gates', 'proof']
+    const boxes = await Promise.all(ids.map(async (id) => (await page.locator(`#${id}`).boundingBox())!))
+    for (const [i, b] of boxes.entries()) {
+      expect(b.x).toBe(boxes[0].x)
+      expect(b.width).toBe(boxes[0].width)
+      if (i) expect(b.y).toBeGreaterThan(boxes[i - 1].y + boxes[i - 1].height - 1)
+    }
+    const nav = (await page.getByRole('navigation', { name: 'Settings' }).boundingBox())!
+    expect(nav.x + nav.width).toBeLessThanOrEqual(boxes[0].x)
+  })
+})
+
+test('at 390 px Product, Workspace and Connect settings do not scroll sideways', async ({ page }) => {
+  test.setTimeout(120_000)
+  await ownProduct(page, async (path) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    for (const url of [path, '/settings/workspace', `${path}/connect`]) {
+      await page.goto(url)
+      const nav = (await page.getByRole('navigation', { name: 'Settings' }).boundingBox())!
+      const content = (await page.locator('h1', { hasText: /^Settings$/ }).locator('xpath=..').boundingBox())!
+      expect(nav.y + nav.height, url).toBeLessThanOrEqual(content.y + 1)
+      const { sw, cw } = await page.evaluate(() => ({
+        sw: document.documentElement.scrollWidth,
+        cw: document.documentElement.clientWidth,
+      }))
+      expect(sw, url).toBeLessThanOrEqual(cw)
+    }
+    await page.setViewportSize({ width: 1280, height: 900 })
+  })
+})
+
 test('the mirror state shows a sync error in plain words', async ({ page }) => {
   await signIn(page)
   await inConnect(page)

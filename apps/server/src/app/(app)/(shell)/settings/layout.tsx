@@ -12,7 +12,7 @@ export default async function Layout({ children }: { children: ReactNode }) {
       }
     >
       <SettingsNav admin={user.role === 'admin'} />
-      <div className="flex flex-col gap-4 [&>*:not([data-wide])]:max-w-180">
+      <div className="flex w-full max-w-210 min-w-0 flex-col gap-4">
         <h1 className="sr-only">Settings</h1>
         {children}
       </div>

@@ -27,7 +27,7 @@ export function ReleasesSection({ product, view, admin }: Props) {
   const items = view.items.filter((item) => RELEASE_CHECK_IDS.some((id) => id === item.id))
   const { release } = view
   return (
-    <section id="releases" aria-labelledby="releases-title" className="grid max-w-3xl scroll-mt-4 gap-3">
+    <section id="releases" aria-labelledby="releases-title" className="grid scroll-mt-4 gap-3">
       <div className="flex flex-wrap items-center gap-3">
         <h2 id="releases-title" className="heading">Releases</h2>
         {release.mode === 'factory' && release.blocked && <Badge variant="warn">Release blocked</Badge>}
