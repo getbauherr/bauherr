@@ -1,0 +1,24 @@
+name: Bug
+description: Something in Bauherr is broken
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What was expected
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Where
+      description: Page, version, and a link to the run or ticket if there is one.
+    validations:
+      required: true
