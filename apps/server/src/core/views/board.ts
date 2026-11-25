@@ -3,6 +3,7 @@ import type { Stage } from '../events'
 import type { HeldItem } from '../intake/held'
 import type { WaitingOn } from '../record/store'
 import { classifiedIn } from './classified'
+import { loadRelations, type CardRelations } from './relations'
 import { loadRows, type ClosedAs, type RowFilter, type TicketRow } from './rows'
 import { DAY_MS } from './sql'
 import { isStuck, stateOf, statusOf, type TicketState, type TicketStatus } from './status'
@@ -26,6 +27,7 @@ export type BoardCard = {
   closedAs: ClosedAs | null
   criteria: { met: number; total: number } | null
   adopted: { pr: number; author: string } | null
+  relations: CardRelations | null
 }
 
 export type Board = { stages: Record<Stage, BoardCard[]>; held: HeldItem[]; parked: BoardCard[] }
@@ -77,6 +79,7 @@ export const toCard = (row: TicketRow): BoardCard => {
     closedAs: row.closedAs,
     criteria: row.criteria.total > 0 ? row.criteria : null,
     adopted: row.adopted,
+    relations: null,
   }
 }
 
@@ -97,12 +100,16 @@ const recentlyEnded = (row: TicketRow, now: Date): boolean =>
   row.endedAt !== null && row.endedAt.getTime() >= now.getTime() - 7 * DAY_MS
 
 export const board = async (payload: Payload, filter: RowFilter): Promise<Board> => {
-  const rows = await loadRows(payload, filter)
+  const [rows, relations] = await Promise.all([loadRows(payload, filter), loadRelations(payload, filter.workspace)])
+  const toRelatedCard = (row: TicketRow): BoardCard => ({
+    ...toCard(row),
+    relations: relations.get(row.recordId) ?? null,
+  })
   const stages: Record<Stage, BoardCard[]> = { intake: [], brief: [], build: [], verify: [], ship: [], done: [] }
   const parked: BoardCard[] = []
   for (const row of rows) {
-    if (row.parked !== null) parked.push(toCard(row))
-    else if (row.stage !== 'done' || recentlyEnded(row, filter.now)) stages[row.stage].push(toCard(row))
+    if (row.parked !== null) parked.push(toRelatedCard(row))
+    else if (row.stage !== 'done' || recentlyEnded(row, filter.now)) stages[row.stage].push(toRelatedCard(row))
   }
   return { stages, held: await heldOf(payload, filter), parked }
 }

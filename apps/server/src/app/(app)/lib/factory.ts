@@ -4,6 +4,7 @@ import type { Stage } from '../../../core/events'
 import { board, type Board, type BoardCard } from '../../../core/views/board'
 import { holds } from '../../../core/views/holds'
 import { somedayCounts, type SomedayCount } from '../../../core/views/someday'
+import type { BoardView } from './board-relations'
 import { webOrigin } from '../../../lib/connection'
 import { stageStats, type StageStat } from '../../../core/views/stats'
 
@@ -49,10 +50,12 @@ export const whoOf = (card: Pick<BoardCard, 'state' | 'stage'>): Who | null => {
 export const isDimmed = (show: Show, who: Who | null): boolean =>
   show !== 'all' && who !== show && !(show === 'you' && who === 'stuck')
 
-export const filterHref = (show: Show, product?: number): string => {
+export const filterHref = (show: Show, product?: number, view: BoardView = { group: false }): string => {
   const query = new URLSearchParams()
   if (show !== 'all') query.set('show', show)
   if (product !== undefined) query.set('product', String(product))
+  if (view.relation !== undefined) query.set('relation', view.relation)
+  if (view.group) query.set('group', 'parent')
   const text = query.toString()
   return text ? `/?${text}` : '/'
 }
