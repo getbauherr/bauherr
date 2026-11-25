@@ -67,6 +67,9 @@ describe('ask options', () => {
     [['Close this modal on save', 'Send the payload back to the caller', 'Send back 404 for an unknown session']],
     [['Parking is out of scope', 'Send it back to the client as JSON', 'Discard it and recompute from source']],
     [['Wait for the nightly job', 'Wait 5 seconds before the retry', 'Hold the lock on item 7']],
+    [['Wait for 2 days', 'Pause for 10 minutes', 'Start after 5 minutes']],
+    [['Hold until 2027', 'Build after 2 more rounds', 'Wait for the owner']],
+    [['Wait for CI to finish', 'Keep going']],
   ])('accepts normal options %#', async (options) => {
     await m.e.drain()
     const record = await m.begin()

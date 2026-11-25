@@ -21,10 +21,16 @@ const refuseStageMoves = (options: string[]): void => {
   }
 }
 
+const TICKET_REF =
+  '(?:#\\d+|(?:ticket|issue|pr|pull\\s+request)\\s+#?\\d+|' +
+  '(?!(?:19|20)\\d\\d\\b)\\d{3,}\\b' +
+  '(?!\\s+(?:more|ms|milliseconds?|seconds?|minutes?|hours?|days?|weeks?|months?|years?|' +
+  'rounds?|times?|runs?|attempts?|retries)\\b))'
+
 const WAIT_FOR_TICKET = new RegExp(
   '\\b(?:wait(?:s|ing)?|hold(?:s|ing)?|pause|blocked)\\b(?:\\s+\\w+){0,3}?' +
-    '\\s+(?:for|on|until|by)\\s+(?:(?:ticket|issue|pr|pull\\s+request)\\s+)?#?\\d+|' +
-    '\\b(?:start|begin|resume|continue|build)\\b[^.]*?\\bafter\\s+(?:(?:ticket|issue|pr|pull\\s+request)\\s+)?#?\\d+',
+    '\\s+(?:for|on|until|by)\\s+' + TICKET_REF + '|' +
+    '\\b(?:start|begin|resume|continue|build)\\b[^.]*?\\bafter\\s+' + TICKET_REF,
   'i',
 )
 
