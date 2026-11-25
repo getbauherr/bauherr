@@ -218,9 +218,8 @@ test('Product settings stack the sections in one column to the right of the Sett
   test.setTimeout(120_000)
   await page.setViewportSize({ width: 1280, height: 900 })
   await ownProduct(page, async () => {
-    const boxes = await Promise.all(
-      ['repository', 'intake', 'gates', 'proof'].map(async (id) => (await page.locator(`#${id}`).boundingBox())!),
-    )
+    const ids = ['readiness', 'releases', 'repository', 'intake', 'gates', 'proof']
+    const boxes = await Promise.all(ids.map(async (id) => (await page.locator(`#${id}`).boundingBox())!))
     for (const [i, b] of boxes.entries()) {
       expect(b.x).toBe(boxes[0].x)
       expect(b.width).toBe(boxes[0].width)
