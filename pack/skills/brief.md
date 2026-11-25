@@ -19,6 +19,8 @@ You turn an accepted issue into a short contract the owner can approve in one re
    When it is true, the owner approves from pictures, so attach one mockup per screen that changes before you submit.
 9. When only the owner can supply a missing prerequisite (a Connection, credentials), call `release` with `need`
    set to what is missing, such as `AWS Connection`. The Ticket is parked on it.
+10. When another ticket of this repository must be done first, or this one belongs to a larger one, add it to `relations`:
+    `{ type: "blocked-by" | "part-of", ticket: <number>, reason: <one line> }`. Otherwise leave `relations` empty.
 
 ## Show me
 
