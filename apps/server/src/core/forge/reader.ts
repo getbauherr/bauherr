@@ -19,6 +19,8 @@ export type ReadForge = Pick<
   | 'listTags'
   | 'releaseByTag'
   | 'listReleases'
+  | 'tagSha'
+  | 'getCommitDate'
   | 'latestDeployment'
   | 'commitEndpoint'
   | 'canWrite'

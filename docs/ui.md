@@ -34,7 +34,7 @@ Only acceptance on staging closes a Ticket.
 | `/workflow/<stage>` | See the Jobs of one stage and the Tickets in each. |
 | `/requests` | Follow your requests in four sections, starting with Needs you. |
 | `/requests/<id>` | Read one request, its status and its timeline. Report a problem once it is released. |
-| `/releases` | Pick done Tickets, choose the version and edit the notes. |
+| `/releases` | See what is live and ready to release. |
 | `/insights` | Read time to done, time per stage and cost. Choose 7, 30 or 90 days. |
 | `/knowledge` | Search and read the documents the agents use. |
 | `/team` | Connect an agent session and see who works on what. |

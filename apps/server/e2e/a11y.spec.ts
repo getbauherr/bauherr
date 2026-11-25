@@ -166,7 +166,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
   '/memory': inRecord('/memory'),
   '/memory/statements': inRecord('/memory/statements'),
   '/memory/new': inRecord('/memory/new'),
-  ...retroTargets,
+  '/releases': inRecord('/releases'), ...retroTargets,
   '/memory/[id]': {
     'with a ticket': memoryOne,
     'with the cost of coming back': insightsMemory,

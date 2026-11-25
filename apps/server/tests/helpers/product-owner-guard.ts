@@ -21,6 +21,7 @@ export const BAUHERR_PAGES = [
   'memory/retro/[id]',
   'memory/retro/[id]/outcome',
   'memory/statements',
+  'releases',
   'runs/[id]',
   'tickets/[id]',
   'settings/api-key',

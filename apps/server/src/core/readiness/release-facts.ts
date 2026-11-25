@@ -94,6 +94,8 @@ const compareVersions = (a: RegExpExecArray, b: RegExpExecArray): number => {
   return a[4].localeCompare(b[4], 'en', { numeric: true })
 }
 
+export const isVersion = (name: string): boolean => SEMVER.test(name)
+
 export const highestVersion = (names: string[]): string | null => {
   const versions = names.flatMap((name) => {
     const match = SEMVER.exec(name)
