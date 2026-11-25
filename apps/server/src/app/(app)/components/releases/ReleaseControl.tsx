@@ -1,6 +1,5 @@
 import type { ReleasePanel, RunView } from '../../../../core/releases/panel'
 import type { Bump } from '../../../../core/releases/version'
-import { answerReleaseAction, releaseAction } from '../../(shell)/releases/actions'
 import { Check, CircleHelp, ExternalLink, TriangleAlert, X } from '../icons'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
@@ -41,10 +40,13 @@ function Step({ step }: { step: RunView['steps'][number] }) {
   )
 }
 
-function Question({ run, product }: { run: RunView; product: number }) {
+type Action = (form: FormData) => Promise<void>
+export type Actions = { release: Action; answer: Action }
+
+function Question({ run, product, answer }: { run: RunView; product: number; answer: Action }) {
   if (run.question === null) return null
   return (
-    <form action={answerReleaseAction} className="grid gap-2 rounded-md border border-border bg-secondary p-3">
+    <form action={answer} className="grid gap-2 rounded-md border border-border bg-secondary p-3">
       <input type="hidden" name="product" value={product} />
       <input type="hidden" name="run" value={run.id} />
       <p className="m-0 flex items-start gap-2 font-medium">
@@ -63,7 +65,7 @@ function Question({ run, product }: { run: RunView; product: number }) {
   )
 }
 
-function Running({ run, product }: { run: RunView; product: number }) {
+function Running({ run, product, answer }: { run: RunView; product: number; answer: Action }) {
   return (
     <section aria-labelledby="releasing" className="grid gap-3 rounded-md border border-border bg-card p-4">
       <h2 id="releasing" className="heading">
@@ -72,19 +74,21 @@ function Running({ run, product }: { run: RunView; product: number }) {
       <ol className="m-0 list-none p-0">
         {run.steps.map((step) => <Step key={step.id} step={step} />)}
       </ol>
-      <Question run={run} product={product} />
+      <Question run={run} product={product} answer={answer} />
     </section>
   )
 }
 
-function Start({ panel, product, refused }: { panel: ReleasePanel; product: number; refused: string | null }) {
+type StartProps = { panel: ReleasePanel; product: number; refused: string | null; release: Action }
+
+function Start({ panel, product, refused, release }: StartProps) {
   const { proposal, refusal } = panel
   const version = proposal.version ?? ''
   return (
     <section aria-labelledby="release" className="grid gap-3 rounded-md border border-border bg-card p-4">
       <h2 id="release" className="heading">Release {version}</h2>
       {(refused ?? refusal) !== null && <p className="small m-0 text-destructive">{refused ?? refusal}</p>}
-      <form action={releaseAction} className="grid max-w-sm gap-2">
+      <form action={release} className="grid max-w-sm gap-2">
         <input type="hidden" name="product" value={product} />
         <label className="small grid gap-1">
           Version
@@ -102,8 +106,9 @@ function Start({ panel, product, refused }: { panel: ReleasePanel; product: numb
   )
 }
 
-export function ReleaseControl(props: { panel: ReleasePanel; product: number; refused: string | null }) {
-  const { panel, product, refused } = props
-  if (panel.run) return <Running run={panel.run} product={product} />
-  return <Start panel={panel} product={product} refused={refused} />
+type Props = { panel: ReleasePanel; product: number; refused: string | null; actions: Actions }
+
+export function ReleaseControl({ panel, product, refused, actions }: Props) {
+  if (panel.run) return <Running run={panel.run} product={product} answer={actions.answer} />
+  return <Start panel={panel} product={product} refused={refused} release={actions.release} />
 }

@@ -1,5 +1,6 @@
 import { releasePanel } from '../../../../core/releases/panel'
 import type { ReleasesView } from '../../../../core/releases/view'
+import { answerReleaseAction, releaseAction } from '../../(shell)/releases/actions'
 import { payloadClient } from '../../lib/session'
 import { ReleaseControl } from './ReleaseControl'
 
@@ -10,5 +11,6 @@ export async function ReleaseSection({ workspace, view, refused }: Props) {
   if (product === undefined) return null
   const panel = await releasePanel(await payloadClient(), { workspace, product }, new Date())
   if (panel === null) return null
-  return <ReleaseControl panel={panel} product={product} refused={refused ?? null} />
+  const actions = { release: releaseAction, answer: answerReleaseAction }
+  return <ReleaseControl panel={panel} product={product} refused={refused ?? null} actions={actions} />
 }

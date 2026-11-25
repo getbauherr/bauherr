@@ -31,7 +31,7 @@ A Product owner gets a smaller shell today. Requests from Product owners are pla
 | `/requests/<id>` | Read one request: whose turn it is, then its story. |
 | `/tickets/<id>` | Decide one ticket. Tabs Now, Brief, Result and Activity. |
 | `/memory` | Edit the factory, workspace or product document. `/memory/retro` starts a Retro. |
-| `/releases` | See what is live and ready to release, and write the release notes for the next version. Before the repository was read it shows when the last readiness check ran, its error and, for an Admin, Check now. |
+| `/releases` | See what is live and ready to release, write the release notes, and release the next version with one button. Before the repository was read it shows when the last readiness check ran, its error and, for an Admin, Check now. |
 | `/insights` | Read time per stage and cost. Choose 7, 30 or 90 days. |
 | `/settings/products/<id>` | Read Repo readiness and set gates, intake and proof for a Product. |
 | `/settings/products/<id>/connect` | Connect a project: import, first look and switch on. |
