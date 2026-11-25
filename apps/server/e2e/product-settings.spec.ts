@@ -231,6 +231,22 @@ test('Product settings stack the sections in one column to the right of the Sett
   })
 })
 
+test('at 390 px Product, Workspace and Connect settings do not scroll sideways', async ({ page }) => {
+  test.setTimeout(120_000)
+  await ownProduct(page, async (path) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    for (const url of [path, '/settings/workspace', `${path}/connect`]) {
+      await page.goto(url)
+      const nav = (await page.getByRole('navigation', { name: 'Settings' }).boundingBox())!
+      const content = (await page.locator('h1', { hasText: /^Settings$/ }).locator('xpath=..').boundingBox())!
+      expect(nav.y + nav.height, url).toBeLessThanOrEqual(content.y + 1)
+      const { scrollWidth, clientWidth } = await page.evaluate(() => document.documentElement)
+      expect(scrollWidth, url).toBe(clientWidth)
+    }
+    await page.setViewportSize({ width: 1280, height: 900 })
+  })
+})
+
 test('the mirror state shows a sync error in plain words', async ({ page }) => {
   await signIn(page)
   await inConnect(page)
