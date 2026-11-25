@@ -92,7 +92,7 @@ describe('createRecord and readRecord', () => {
   it('is idempotent per source within a Workspace', async () => {
     const input = { workspace, product, source: { ...source, number: 5 }, type: 'bug' as const }
     const first = await createRecord(payload, input)
-    const second = await createRecord(payload, { ...input, type: 'feature' })
+    const second = await createRecord(payload, { ...input, type: 'change' })
     expect(second).toEqual(first)
     expect(await count('records', sql`"source_number" = 5 AND "workspace_id" = ${workspace}`)).toBe(1)
     const elsewhere = await createRecord(payload, { ...input, workspace: otherWorkspace })
@@ -231,7 +231,7 @@ describe('patchRecord', () => {
     })
 
     it('refuse a brief status change with the stage message unchanged', () => {
-      const current = { ...emptyRecord(source, 'feature'), criteria: [criterion(1), criterion(2)] }
+      const current = { ...emptyRecord(source, 'change'), criteria: [criterion(1), criterion(2)] }
       const next = {
         ...current,
         criteria: [criterion(1, { status: 'met', proof: ['t1'] }), criterion(2)],

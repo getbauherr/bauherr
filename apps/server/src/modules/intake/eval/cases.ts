@@ -37,7 +37,7 @@ export const CASES: EvalCase[] = [
   {
     name: 'complete feature',
     expected: 'accepted',
-    type: 'feature',
+    type: 'change',
     title: 'Let owners export the ticket list as CSV',
     body: [
       '### Who needs it',
@@ -58,7 +58,7 @@ export const CASES: EvalCase[] = [
   {
     name: 'feature without a reason',
     expected: 'needs-info',
-    type: 'feature',
+    type: 'change',
     title: 'Add dark mode',
     body: '### Who needs it\n\n### What\nA dark theme.\n### Why\n_No response_',
   },
@@ -76,7 +76,7 @@ export const CASES: EvalCase[] = [
   {
     name: 'same request as a closed issue',
     expected: 'duplicate',
-    type: 'feature',
+    type: 'change',
     title: 'Export tickets as CSV',
     body: [
       '### Who needs it',
@@ -91,7 +91,7 @@ export const CASES: EvalCase[] = [
   {
     name: 'request outside the product',
     expected: 'not-planned',
-    type: 'feature',
+    type: 'change',
     title: 'Add a built-in video call room to every ticket',
     body: [
       '### Who needs it',

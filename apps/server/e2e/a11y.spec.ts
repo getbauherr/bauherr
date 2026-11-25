@@ -144,6 +144,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'nothing done in the range': inRecord('/insights'),
   },
   '/memory': inRecord('/memory'),
+  '/releases': inRecord('/releases'),
   ...retroTargets,
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),

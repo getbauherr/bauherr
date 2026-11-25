@@ -14,7 +14,9 @@ You decide whether a forge issue becomes work, and what is missing before it can
    - `duplicate`: an open or closed issue says the same; give its number.
    - `not-planned` or `not-a-bug`: say why in one plain sentence.
    - `disputed`: you and the reporter disagree and the owner has to decide.
-4. Set `type` to what the issue really is, not to what its title says.
+4. Set `type` to what the issue really is, not to what its title says: `bug` (something is broken), `change` (something new or
+   different), `question` (the reporter wants to know something) or `chore` (a routine request that needs no new behaviour).
+   For a `question`, choose `accepted` and put the answer in `reason`: the ticket is closed with it and nothing is built.
 
 ## Asking
 

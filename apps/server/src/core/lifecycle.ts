@@ -67,7 +67,7 @@ const GATES: { reason: BriefReason; applies: (record: TicketRecord, riskAreas: s
   { reason: 'backlog', applies: (r) => r.source.backlog && r.source.adopted === undefined },
   {
     reason: 'external-request',
-    applies: (r) => r.source.external && (r.type === 'feature' || r.type === 'change'),
+    applies: (r) => r.source.external && r.type === 'change',
   },
   { reason: 'readiness', applies: (r) => r.source.readiness !== undefined },
 ]
