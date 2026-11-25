@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 import { conversationWorkspace, listMessages } from '../../../../../core/conversations/store'
 import { draftView } from '../../../../../core/requests/view'
-import { memoryProducts } from '../../../../../core/views/statement-records'
+import { memoryProducts } from '../../../../../core/views/memory-products'
 import { EmptyState } from '../../../components/EmptyState'
 import { PageTitle } from '../../../components/PageTitle'
 import { NewRequest } from '../../../components/request/NewRequest'
