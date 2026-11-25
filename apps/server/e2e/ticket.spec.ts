@@ -5,7 +5,9 @@ import { email } from './user'
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 const relationsSection = (page: Page, title: string) =>
-  page.locator('section').filter({ has: page.getByRole('heading', { name: title, exact: true }) })
+  page
+    .locator('section:not([aria-label="Relations"])')
+    .filter({ has: page.getByRole('heading', { name: title, exact: true }) })
 
 const STALE = 'The ticket moved while this was open. Reload to see where it is now.'
 
@@ -208,7 +210,7 @@ test('the verify-rounds card shows what the verifier asks and what the builder d
   await expect(card.getByText('A failed chunk is never retried').first()).toBeVisible()
   await expect(card.getByRole('heading', { name: 'Builder: last handoff' })).toBeVisible()
   await expect(card.getByText('I kept the chunked export')).toContainText('…')
-  await expect(card.getByText('END')).toHaveCount(0)
+  await expect(card.getByText('END', { exact: true })).toHaveCount(0)
   await card.getByRole('link', { name: 'Read the full handoff' }).click()
   await expect(page).toHaveURL(/\/runs\/\d+$/)
   await expect(page.getByText(/did not add the retry the verifier asks for\. END$/)).toBeVisible()

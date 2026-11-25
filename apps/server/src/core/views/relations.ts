@@ -33,7 +33,7 @@ const itemJson = z.object({
 })
 const edgeRow = z.object({ type: z.enum(['blocks', 'part-of']), from_item: itemJson, to_item: itemJson })
 
-const stageWord = (item: RelationItem): string => {
+export const stageWord = (item: Pick<RelationItem, 'open' | 'stage'>): string => {
   if (!item.open) return 'Closed'
   return item.stage === null ? 'Not on the board' : item.stage.charAt(0).toUpperCase() + item.stage.slice(1)
 }
