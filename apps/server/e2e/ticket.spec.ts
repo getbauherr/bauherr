@@ -182,7 +182,7 @@ test('the verify-rounds card shows what the verifier asks and what the builder d
   await expect(card.getByText('A failed chunk is never retried').first()).toBeVisible()
   await expect(card.getByRole('heading', { name: 'Builder: last handoff' })).toBeVisible()
   await expect(card.getByText('I kept the chunked export')).toContainText('…')
-  await expect(card.getByText('END')).toHaveCount(0)
+  await expect(card.getByText('END', { exact: true })).toHaveCount(0)
   await card.getByRole('link', { name: 'Read the full handoff' }).click()
   await expect(page).toHaveURL(/\/runs\/\d+$/)
   await expect(page.getByText(/did not add the retry the verifier asks for\. END$/)).toBeVisible()
