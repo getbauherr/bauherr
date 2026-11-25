@@ -110,7 +110,6 @@ const adopt = (state: State, data: EventOf<'pull.adopted'>['data'], options: Fol
     verdict: null,
     accepted: false,
     overridden: false,
-    productionHeld: false,
   }
 }
 
@@ -131,7 +130,6 @@ const patch: Reducer = (state, event, options) => {
         deployed: false,
         deployStalled: null,
         accepted: false,
-        productionHeld: false,
         overridden: false,
       }
       const latest = { id: event.data.patchId, pr: event.data.pr, headSha: event.data.headSha }
@@ -187,9 +185,7 @@ const shipped = (state: State, options: FoldOptions): boolean =>
   !state.adopted || (state.merged && (options.deployChecks !== true || state.deployed))
 
 const finished = (state: State, options: FoldOptions): State =>
-  state.accepted && shipped(state, options) && (!options.productionGate || state.productionApproved)
-    ? enter(state, 'done')
-    : state
+  state.accepted && shipped(state, options) ? enter(state, 'done') : state
 
 const merged = (state: State, sha: string, options: FoldOptions): State => {
   if (!state.adopted) return { ...state, merged: true, mergeSha: sha }
@@ -218,10 +214,6 @@ const ship: Reducer = (state, event, options) => {
       return finished({ ...state, accepted: true, sentBackAfterMerge: false }, options)
     case 'result.sent-back':
       return sentBack(state, event.data.note)
-    case 'production.approved':
-      return finished({ ...state, productionApproved: true }, options)
-    case 'production.held':
-      return { ...state, productionHeld: true }
     default:
       return null
   }
@@ -257,11 +249,18 @@ const REDUCERS: Reducer[] = [intake, runs, owner, brief, patch, verify, ship, qu
 
 const QUIET = new Set(['request.commented', 'run.comments.delivered'])
 
+const RETIRED_QUESTIONS = ['production']
+
+const isRetired = (event: AppEvent): boolean =>
+  event.type === 'production.approved' ||
+  event.type === 'production.held' ||
+  (event.type === 'question.asked' && RETIRED_QUESTIONS.includes(event.data.reason))
+
 export const reduce = (state: State, event: AppEvent, options: FoldOptions): State => {
-  if (QUIET.has(event.type) || event.type.startsWith('forge.write.')) return state
+  if (QUIET.has(event.type) || event.type.startsWith('forge.write.') || isRetired(event)) return state
   const next = REDUCERS.reduce<State | null>((found, reducer) => found ?? reducer(state, event, options), null)
   return { ...(next ?? state), last: event.type }
 }
 
-export const fold = (events: AppEvent[], options: FoldOptions = { productionGate: false }): State =>
+export const fold = (events: AppEvent[], options: FoldOptions = {}): State =>
   events.reduce((state, event) => reduce(state, event, options), initialState())

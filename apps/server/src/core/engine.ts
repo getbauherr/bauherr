@@ -49,8 +49,6 @@ const WAITING: Record<Extract<Step, { kind: 'wait' }>['on'], WaitingOn> = {
 
 const holding = (ctx: Ctx, on: WaitingOn): WaitingOn => (ctx.state.stage === 'done' ? 'nobody' : on)
 
-const HELD: Raised = { card: 'question', reason: 'production-held', options: ['approve-production'] }
-
 const append = (ctx: Ctx, event: AppEvent) =>
   appendEvent(ctx.deps.payload, ctx.stored.id, { ...event, actor: 'factory' })
 
@@ -112,7 +110,7 @@ const attemptMerge = async (ctx: Ctx): Promise<AppEvent> => {
 
 const waitStep = async (step: Extract<Step, { kind: 'wait' }>, ctx: Ctx): Promise<Outcome> => {
   const owner = step.on === 'owner'
-  await project(ctx, holding(ctx, WAITING[step.on]), owner ? (ctx.state.card ?? HELD) : null)
+  await project(ctx, holding(ctx, WAITING[step.on]), owner ? ctx.state.card : null)
   return 'stop'
 }
 

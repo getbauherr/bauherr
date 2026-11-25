@@ -1,5 +1,7 @@
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
-import { commitChecksUrl } from '../deploy'
+import { z } from 'zod'
+import { commitChecksUrl, STAGING_DEPLOYMENT, STAGING_VERSION } from '../deploy'
 import { loadNotStarted, type NotStarted } from '../readiness/not-started'
 import { productOfRecord } from '../readiness/tickets'
 import { canArchive, canGoBack, fold } from '../lifecycle'
@@ -57,6 +59,8 @@ export type PullView = {
   checks: CheckView[]
 }
 
+export type StagingView = { since: string; sha: string; url: string | null }
+
 export type DeployView = { reason: 'failed' | 'overdue'; checks: string[]; url: string }
 
 export type TicketView = {
@@ -90,6 +94,8 @@ export type TicketView = {
   adopted: { pr: number; author: string } | null
   otherPulls: OtherPull[]
   deploy: DeployView | null
+  staging: StagingView | null
+  deployUnconfirmed: boolean
   positions: Positions | null
   canGoBack: boolean
   canArchive: boolean
@@ -133,6 +139,41 @@ const deployOf = (stored: StoredRecord, events: StoredEvent[], pull: PullView | 
   if (merged?.type !== 'ship.merged' || pull === null) return null
   const { reason, checks } = stalled.data
   return { reason, checks, url: commitChecksUrl(stored.record.source.forge, pull.url, merged.data.sha) }
+}
+
+const stagingRow = z.object({ name: z.string(), conclusion: z.string().nullable(), url: z.string().nullable() })
+
+type Confirmed = { url: string | null }
+
+const stagingConfirmed = async (payload: Payload, pull: number, sha: string): Promise<Confirmed | null> => {
+  const result = await payload.db.drizzle.execute(sql`
+    SELECT "name", "conclusion", "url" FROM "mirror_checks"
+    WHERE "item_id" = ${pull} AND "sha" = ${sha} AND "name" IN (${STAGING_DEPLOYMENT}, ${STAGING_VERSION})`)
+  const rows = result.rows.map((row) => stagingRow.parse(row))
+  const passed = (name: string) => rows.find((row) => row.name === name && row.conclusion === 'success')
+  const deployment = passed(STAGING_DEPLOYMENT)
+  if (!deployment || !passed(STAGING_VERSION)) return null
+  return { url: deployment.url && /^https?:\/\//.test(deployment.url) ? deployment.url : null }
+}
+
+const stagingOf = async (
+  payload: Payload,
+  stored: StoredRecord,
+  events: StoredEvent[],
+  pull: PullView | null,
+): Promise<{ staging: StagingView | null; deployUnconfirmed: boolean }> => {
+  const merged = events.findLastIndex((event) => event.type === 'ship.merged')
+  const deployed = events.findLast((event, index) => index > merged && event.type === 'ship.deployed')
+  const mergeEvent = events[merged]
+  if (mergeEvent?.type !== 'ship.merged' || !deployed || pull === null) {
+    return { staging: null, deployUnconfirmed: false }
+  }
+  const where = { workspace: stored.workspace, repo: stored.record.source.repo, number: pull.number }
+  const item = await loadItem(payload, where)
+  const sha = mergeEvent.data.sha
+  const confirmed = item ? await stagingConfirmed(payload, item.id, sha) : null
+  if (!confirmed) return { staging: null, deployUnconfirmed: true }
+  return { staging: { since: deployed.createdAt, sha, url: confirmed.url }, deployUnconfirmed: false }
 }
 
 const verifySinceOf = (events: StoredEvent[]): string | null =>
@@ -230,6 +271,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     ...pulls,
     verifySince: verifySinceOf(events),
     deploy: deployOf(stored, events, pulls.pullRequest),
+    ...(await stagingOf(payload, stored, events, pulls.pullRequest)),
     positions: positionsOf({ card: stored.card, record: stored.record, runs, events }),
     canGoBack: canGoBack(folded),
     canArchive: canArchive(folded),

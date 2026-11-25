@@ -17,7 +17,7 @@ afterAll(async () => {
   await e?.drop()
 })
 beforeEach(async () => {
-  e.config = { ...e.config, caps: { verifyRounds: 2, reporterRounds: 2, failedRuns: 2 }, productionGate: false }
+  e.config = { ...e.config, caps: { verifyRounds: 2, reporterRounds: 2, failedRuns: 2 } }
   e.merges.length = 0
   await e.drain()
 })

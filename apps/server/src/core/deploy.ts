@@ -5,6 +5,9 @@ export const MINUTE_MS = 60_000
 export type DeployCheck = { name: string; status: string; conclusion: string | null; updatedAt: string }
 export type DeployWait = { names: string[]; since: string; limitMinutes: number; now: Date; checks: DeployCheck[] }
 
+export const STAGING_DEPLOYMENT = 'Staging deployment'
+export const STAGING_VERSION = 'Staging version'
+
 export const namesOf = (list: string | null | undefined): string[] => [
   ...new Set((list ?? '').split(',').map((name) => name.trim()).filter((name) => name !== '')),
 ]

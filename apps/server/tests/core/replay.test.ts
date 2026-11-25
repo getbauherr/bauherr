@@ -31,18 +31,6 @@ describe('replay', () => {
     })
     expect(steps).toEqual(HAPPY_PATH.map(([, step]) => step))
   })
-
-  it('gives the same steps when the production gate is on, up to the production question', () => {
-    const events = HAPPY_PATH.flatMap(([event]) => (event ? [event] : []))
-    const config = { ...CONFIG, productionGate: true }
-    const state = fold(events, { productionGate: true })
-    expect(next(briefed(), state, config)).toEqual({
-      kind: 'card',
-      card: 'question',
-      reason: 'production',
-      options: ['approve', 'hold'],
-    })
-  })
 })
 
 const seeded = (seed: number) => () => {
@@ -59,10 +47,10 @@ describe('fold and next', () => {
       const pick = () => POOL[Math.floor(random() * POOL.length)]
       const events = Array.from({ length: Math.floor(random() * 30) }, pick).flatMap((e) => (e ? [e] : []))
       const before = structuredClone(events)
-      for (const productionGate of [false, true]) {
-        const config = { ...CONFIG, productionGate, deployChecks: productionGate }
-        const first = fold(events, { productionGate })
-        expect(fold(events, { productionGate })).toEqual(first)
+      for (const deployChecks of [false, true]) {
+        const config = { ...CONFIG, deployChecks }
+        const first = fold(events, { deployChecks })
+        expect(fold(events, { deployChecks })).toEqual(first)
         const step = next(briefed(), first, config)
         expect(next(briefed(), first, config)).toEqual(step)
         expect(step.kind).toMatch(/^(run|card|emit|effect|wait|done)$/)

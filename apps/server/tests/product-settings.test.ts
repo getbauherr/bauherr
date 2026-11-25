@@ -46,7 +46,6 @@ it('productSettings answers null for a Product of another Workspace and reads th
       reporterSilentDays: 21,
       backlogBriefLimit: 5,
       autoClose: true,
-      productionGate: false,
       sources: [],
     },
   )
@@ -87,16 +86,12 @@ it("loadWorkspaceSettings offers the preset models and shows the first Connectio
 const base = {
   repositories: [{}],
   sources: [{}],
-  deploy: { stagingUrl: 'https://s.example.com', productionGate: true },
+  deploy: { stagingUrl: 'https://s.example.com' },
 }
 
-it('setupOf counts open steps and words the production approval', () => {
-  expect(setupOf(base)).toMatchObject({ open: 0, production: 'On' })
+it('setupOf counts open steps', () => {
+  expect(setupOf(base)).toMatchObject({ open: 0 })
   const open = setupOf({ ...base, repositories: [], deploy: { ...base.deploy, stagingUrl: '' } })
-  expect(open).toMatchObject({ open: 2, production: 'On' })
+  expect(open).toMatchObject({ open: 2 })
   expect(open.rows.map((r) => r.word)).toEqual(['Needs setup', 'Needs setup'])
-  expect(setupOf({ ...base, deploy: { ...base.deploy, productionGate: false } })).toMatchObject({
-    open: 0,
-    production: 'Off',
-  })
 })

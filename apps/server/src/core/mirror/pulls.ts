@@ -1,7 +1,8 @@
 import type { PullRequest } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import type { ReadForge, ReadTickets } from '../forge/reader'
-import { checkRow, itemFromPull, itemFromTicket, type ItemRow } from './map'
+import { STAGING_DEPLOYMENT, STAGING_VERSION } from '../deploy'
+import { checkRow, itemFromPull, itemFromTicket, type CheckRow, type ItemRow } from './map'
 import { pullsAwaitingMergeability, saveMergeability, type AwaitingMerge } from './merge-store'
 import {
   clearGone,
@@ -33,15 +34,39 @@ export const storePull = async (payload: Payload, context: PullContext, forge: R
   await upsertChecks(payload, context.workspace, item, checks.map((check) => checkRow(pull.headSha, check)))
 }
 
+const stagingChecks = async (context: PullContext, forge: ReadForge, sha: string, fallbackUrl: string) => {
+  const deployment = await forge.latestDeployment(context.repo, 'staging')
+  if (deployment?.sha !== sha) return []
+  const url = deployment.url ?? fallbackUrl
+  const pending = deployment.state === 'pending'
+  const rows: CheckRow[] = [
+    {
+      sha,
+      name: STAGING_DEPLOYMENT,
+      status: pending ? 'in_progress' : 'completed',
+      conclusion: pending ? null : deployment.state,
+      url,
+      forgeUpdatedAt: null,
+    },
+  ]
+  if (deployment.state !== 'success') return rows
+  const live = await forge.commitEndpoint(context.repo, { url, sha })
+  const status = live ? 'completed' : 'in_progress'
+  const conclusion = live ? 'success' : null
+  return [...rows, { sha, name: STAGING_VERSION, status, conclusion, url, forgeUpdatedAt: null }]
+}
+
 export const syncDeployChecks = async (
   payload: Payload,
   context: PullContext,
   forge: ReadForge,
   number: number | null = null,
 ): Promise<void> => {
-  for (const { itemId, sha } of await pullsAwaitingDeploy(payload, context.source, number)) {
+  for (const { itemId, sha, stagingUrl } of await pullsAwaitingDeploy(payload, context.source, number)) {
     const checks = await forge.listChecks(context.repo, sha)
-    await upsertChecks(payload, context.workspace, itemId, checks.map((check) => checkRow(sha, check)))
+    const url = (stagingUrl ?? '').trim()
+    const staging = url === '' ? [] : await stagingChecks(context, forge, sha, url)
+    await upsertChecks(payload, context.workspace, itemId, [...checks.map((check) => checkRow(sha, check)), ...staging])
     context.touched?.add(itemId)
   }
 }

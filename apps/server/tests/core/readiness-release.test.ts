@@ -24,7 +24,8 @@ const furnish = (fake: FakeBackend, repo: string, without: Piece[] = []) => {
   const lacks = (piece: Piece) => without.includes(piece)
   const sha = fake.commit(repo, 'main', '.github/workflows/staging.yml', lacks('staging-deploy') ? NOTHING : STAGING)
   fake.commit(repo, 'main', '.github/workflows/production.yml', lacks('version-input') ? WITHOUT_INPUT : WITH_VERSION)
-  fake.setDeployment(repo, 'staging', { sha, url: lacks('staging-address') ? null : 'https://staging.example.com' })
+  const url = lacks('staging-address') ? null : 'https://staging.example.com'
+  fake.setDeployment(repo, 'staging', { sha, url, state: 'success' })
   fake.setCommitEndpoint(repo, !lacks('commit-endpoint'))
   fake.setCanWrite(repo, !lacks('rights'))
   if (!lacks('last-version')) fake.addTag(repo, 'v0.6.0', sha)

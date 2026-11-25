@@ -64,7 +64,7 @@ Each card has the ask in one sentence, the reason you are asked, options and a f
 
 - **Brief**: Approve Brief, Request changes or Discard. It shows the goal, open decisions with a recommended option, the criteria, the risk and, for a visible change, mockups.
 - **Result**: Accept or Send back with note. It shows before and after per mockup screen, criteria with proof and what was not verified.
-- **Question**: what the factory cannot settle, for example failed runs, used-up verify rounds, a silent reporter or production approval. The options are in the card.
+- **Question**: what the factory cannot settle, for example failed runs, used-up verify rounds, a silent reporter or a deploy that did not finish. The options are in the card.
 
 ### Other actions
 

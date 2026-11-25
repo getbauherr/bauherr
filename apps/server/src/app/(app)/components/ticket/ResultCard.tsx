@@ -4,6 +4,7 @@ import { CommentList } from '../request/CommentList'
 import { RequestComposer } from '../request/RequestComposer'
 import { DecisionForm } from './DecisionForm'
 import { ResultBody } from './ResultBody'
+import { StagingNow } from './StagingNow'
 import { Card } from './Section'
 
 const ACCEPT = 'Accept the Result to finish the ticket.'
@@ -25,6 +26,8 @@ export function ResultCard({ view, seq, proof, may }: Props) {
           actions={may ? RESULT_ACTIONS : []}
         >
           <div className="grid gap-5 p-6">
+            {view.staging && <StagingNow staging={view.staging} />}
+            {view.deployUnconfirmed && <p className="m-0 text-muted-foreground">Deploy not confirmed.</p>}
             <ResultBody view={view} tab="now" proof={proof} />
             <CommentList comments={view.comments} />
           </div>

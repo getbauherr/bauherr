@@ -14,8 +14,9 @@ const EVENTS: Record<string, string[]> = {
     'Check runs',
     'Check suites',
     'Statuses',
+    'Deployment statuses',
   ],
-  gitlab: ['Issues events', 'Comments', 'Merge request events', 'Pipeline events'],
+  gitlab: ['Issues events', 'Comments', 'Merge request events', 'Pipeline events', 'Deployment events'],
 }
 
 const SECRET_FIELD: Record<string, string> = { github: 'Secret', gitlab: 'Secret token' }

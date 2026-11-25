@@ -102,7 +102,6 @@ export const ev = <T extends EventType>(type: T, data: Record<string, unknown> =
 export const CONFIG: Config = {
   caps: { verifyRounds: 2, reporterRounds: 2, failedRuns: 2 },
   riskAreas: ['security'],
-  productionGate: false,
   deployChecks: false,
   deployNames: [],
   deployWaitMinutes: 60,

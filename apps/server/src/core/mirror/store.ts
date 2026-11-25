@@ -244,9 +244,9 @@ export const pullsAwaitingChecks = async (payload: Payload, source: number): Pro
   return new Set(result.rows.map((row) => numberRowSchema.parse(row).number))
 }
 
-const awaitingDeployRow = z.object({ id: count, number: count, sha: z.string() })
+const awaitingDeployRow = z.object({ id: count, number: count, sha: z.string(), staging_url: z.string().nullable() })
 
-export type AwaitingDeploy = { itemId: number; number: number; sha: string }
+export type AwaitingDeploy = { itemId: number; number: number; sha: string; stagingUrl: string | null }
 
 export const pullsAwaitingDeploy = async (
   payload: Payload,
@@ -254,8 +254,9 @@ export const pullsAwaitingDeploy = async (
   number: number | null = null,
 ): Promise<AwaitingDeploy[]> => {
   const result = await payload.db.drizzle.execute(sql`
-    SELECT i."id", i."number", m."sha" FROM "records" r
-    JOIN "products" p ON p."id" = r."product_id" AND coalesce(p."deploy_checks", '') ~ '[^,[:space:]]'
+    SELECT i."id", i."number", m."sha", p."staging_url" FROM "records" r
+    JOIN "products" p ON p."id" = r."product_id"
+      AND (coalesce(p."deploy_checks", '') ~ '[^,[:space:]]' OR coalesce(p."staging_url", '') ~ '[^[:space:]]')
     JOIN "mirror_items" i ON i."workspace_id" = r."workspace_id" AND i."repo" = r."source_repo"
       AND i."number" = r."pr" AND i."kind" = 'pr'
     CROSS JOIN LATERAL (
@@ -265,7 +266,7 @@ export const pullsAwaitingDeploy = async (
       AND m."sha" IS NOT NULL AND (${number}::int IS NULL OR i."number" = ${number}::int)`)
   return result.rows.map((row) => {
     const parsed = awaitingDeployRow.parse(row)
-    return { itemId: parsed.id, number: parsed.number, sha: parsed.sha }
+    return { itemId: parsed.id, number: parsed.number, sha: parsed.sha, stagingUrl: parsed.staging_url }
   })
 }
 

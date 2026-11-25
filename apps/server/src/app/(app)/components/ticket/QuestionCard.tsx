@@ -15,7 +15,7 @@ const OPTION = [
   'has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring',
 ].join(' ')
 
-const askOf = (reason: string): string => (reason === 'production-held' ? reason : `question:${reason}`)
+const askOf = (reason: string): string => `question:${reason}`
 
 const textOf = (card: StoredCard): string => {
   if (card.reason === 'parked') return `${REASON_WORDS.parked}: ${card.text ?? ''}`

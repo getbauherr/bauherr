@@ -173,9 +173,12 @@ export interface Release {
   createdAt?: string;
 }
 
+export type DeploymentState = 'success' | 'failure' | 'pending';
+
 export interface Deployment {
   sha: string;
   url: string | null;
+  state: DeploymentState;
 }
 
 /** Thrown by `putFile` when `expectSha` no longer matches the file. */
