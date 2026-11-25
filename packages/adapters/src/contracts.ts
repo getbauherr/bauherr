@@ -98,6 +98,8 @@ export interface TicketSource {
   addSubTicket(parentId: string, childId: string): Promise<void>;
   listSubTickets(parentId: string): Promise<TicketSummary[]>;
   addBlockedBy(id: string, blockerId: string): Promise<void>;
+  removeSubTicket(parentId: string, childId: string): Promise<void>;
+  removeBlockedBy(id: string, blockerId: string): Promise<void>;
   addLink(id: string, url: string): Promise<void>;
   frontier(parentId: string): Promise<TicketSummary[]>;
 }
@@ -169,6 +171,11 @@ export interface Release {
   body: string;
   url: string;
   createdAt?: string;
+}
+
+export interface Deployment {
+  sha: string;
+  url: string | null;
 }
 
 /** Thrown by `putFile` when `expectSha` no longer matches the file. */
@@ -257,6 +264,9 @@ export interface Forge {
   updateRelease(repo: RepoRef, id: string, o: { body: string }): Promise<Release>;
   latestRelease(repo: RepoRef): Promise<Release | null>;
   listCommits(repo: RepoRef, o: { from?: string; to: string }): Promise<{ sha: string; message: string }[]>;
+  latestDeployment(repo: RepoRef, environment: string): Promise<Deployment | null>;
+  commitEndpoint(repo: RepoRef, o: { url: string; sha: string }): Promise<boolean>;
+  canWrite(repo: RepoRef): Promise<boolean>;
   webhooks?: Webhooks;
 }
 

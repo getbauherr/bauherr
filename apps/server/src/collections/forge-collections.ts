@@ -23,4 +23,5 @@ export const ticketSources = col('ticket_sources', [
   { name: 'agentsFileCut', type: 'checkbox' },
   { name: 'issueFormCount', type: 'number' },
   date('factsAt'),
+  json('releaseFacts'),
 ])

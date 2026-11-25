@@ -191,6 +191,16 @@ export class GitlabTickets implements TicketSource {
       r.blockedBy.push(blockerId);
     });
   }
+  async removeSubTicket(parentId: string, childId: string) {
+    await this.setRelations(childId, (r) => {
+      if (r.parent === parentId) r.parent = null;
+    });
+  }
+  async removeBlockedBy(id: string, blockerId: string) {
+    await this.setRelations(id, (r) => {
+      r.blockedBy = r.blockedBy.filter((b) => b !== blockerId);
+    });
+  }
   async addLink(id: string, url: string) {
     await this.setRelations(id, (r) => void r.links.push(url));
   }

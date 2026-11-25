@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 import type { ForgeReader } from '../forge/reader'
 import { storePull, syncDeployChecks } from './pulls'
-import { storeIssue } from './sync'
+import { storeIssue, storeRelations } from './sync'
 import type { SourceRow } from './store'
 
 export const refreshItem = async (
@@ -24,7 +24,8 @@ export const refreshItem = async (
     await storePull(payload, context, reader.forge, await reader.forge.getPullRequest(source.repo, item.number))
     await syncDeployChecks(payload, context, reader.forge, item.number)
   } else {
-    await storeIssue(payload, context, reader.tickets(source.repo), String(item.number))
+    const stored = await storeIssue(payload, context, reader.tickets(source.repo), String(item.number))
+    await storeRelations(payload, context, stored)
   }
   return [...touched]
 }

@@ -1,5 +1,6 @@
 import type { Ticket } from '@bauherr/adapters'
 import type { Payload } from 'payload'
+import { syncRelations } from '../relations/sync'
 import { connectionInput } from '../../lib/connection'
 import { readerFor, type ForgeReader, type ReadTickets } from '../forge/reader'
 import { refreshFacts } from './facts'
@@ -29,13 +30,24 @@ export type SyncDeps = {
 
 export type SyncResult = { synced: number; failed: number }
 
-export const storeIssue = async (payload: Payload, context: PullContext, tickets: ReadTickets, id: string) => {
+export type StoredIssue = { item: number; ticket: Ticket }
+
+export const storeIssue = async (
+  payload: Payload,
+  context: PullContext,
+  tickets: ReadTickets,
+  id: string,
+): Promise<StoredIssue> => {
   const ticket: Ticket = await tickets.get(id)
   const item = await upsertItem(payload, context, itemFromTicket(ticket), context.now)
   const since = await latestCommentAt(payload, item)
   const comments = await tickets.listComments(id, since ?? undefined)
   await upsertComments(payload, context.workspace, item, comments.map(commentRow))
+  return { item, ticket }
 }
+
+export const storeRelations = (payload: Payload, context: PullContext, stored: StoredIssue): Promise<void> =>
+  syncRelations(payload, context, stored.item, stored.ticket)
 
 const pollIssues = async (
   payload: Payload,
@@ -47,7 +59,9 @@ const pollIssues = async (
   const known = await knownItems(payload, context.source, changes.map((change) => change.number))
   const fresh = changes.filter((change) => !isCurrent(known.get(change.number), change.updatedAt))
   const { batch, truncated } = takeBatch(fresh, BATCH)
-  for (const change of batch) await storeIssue(payload, context, tickets, change.id)
+  const stored: StoredIssue[] = []
+  for (const change of batch) stored.push(await storeIssue(payload, context, tickets, change.id))
+  for (const issue of stored) await storeRelations(payload, context, issue)
   const reached = truncated ? batch.at(-1) : changes.at(-1)
   return { cursor: reached?.updatedAt ?? null, truncated, stored: batch.length }
 }

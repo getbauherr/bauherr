@@ -7,6 +7,7 @@ import { enterIssues } from '../../src/core/intake/enter'
 import type { Who } from '../../src/core/memory'
 import { appendEvent, readEvents, readRecord } from '../../src/core/record/store'
 import { NotAllowedToChangeReadiness, ReadinessInvalid } from '../../src/core/readiness/errors'
+import { RELEASE_CHECK_IDS } from '../../src/core/readiness/release-checks'
 import { refreshReadiness } from '../../src/core/readiness/refresh'
 import { openReadinessTicket } from '../../src/core/readiness/ticket'
 import { readiness } from '../../src/core/readiness/view'
@@ -184,6 +185,7 @@ describe('the daily check', () => {
       'agents-file',
       'issue-forms',
       'branch-protection',
+      ...RELEASE_CHECK_IDS,
     ])
     f.fake().commit(s.repo, 'main', 'src/auth/login.ts', 'x')
     const now = new Date('2026-11-24T08:00:00Z')

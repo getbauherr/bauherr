@@ -2,7 +2,14 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
-import { bootBlankPayload, forPayload, runSql, type MigrationDb } from './helpers/migration-db'
+import {
+  bootBlankPayload,
+  forPayload,
+  insertProduct,
+  insertSource,
+  runSql,
+  type MigrationDb,
+} from './helpers/migration-db'
 
 let db: MigrationDb
 let payload: Payload
@@ -36,16 +43,11 @@ it(
     expect(i).toBeGreaterThan(0)
     await payload.db.migrate({ migrations: migrations.slice(0, i).map(forPayload) })
     const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'W', slug: 'w' }, ...o })).id
-    const product = (await payload.create({ collection: 'products', data: { name: 'P', slug: 'p', workspace }, ...o }))
-      .id
+    const product = await insertProduct(payload, workspace, 'p')
     const connection = (
       await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace }, ...o })
     ).id
-    await payload.create({
-      collection: 'ticket_sources',
-      data: { repo: 'acme/app', product, connection, workspace },
-      ...o,
-    })
+    await insertSource(payload, { repo: 'acme/app', product, connection, workspace })
     await runSql(
       payload,
       sql`UPDATE "ticket_sources" SET "cursor" = '2026-11-19T08:00:00.000Z', "imported_at" = now(),

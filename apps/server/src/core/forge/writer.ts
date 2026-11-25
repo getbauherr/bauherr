@@ -13,10 +13,16 @@ import { backendFor } from '../../lib/adapters'
 import { connectionInput } from '../../lib/connection'
 import { appendEvent } from '../record/store'
 import { WRITE_KINDS, type Stage } from '../events'
+import { checkNewRelation } from '../relations/relate'
+import { forgeAdd, forgeRemove } from '../relations/forge-ops'
+import { normalised, type Edge } from '../relations/rules'
+import { deleteEdge, insertEdge, itemFacts } from '../relations/store'
+import { forgeNumbers } from '../relations/sync'
+import { RelationRefused, typeOf } from '../relations/types'
 import { commentRow, errorText, itemFromPull, itemFromTicket } from '../mirror/map'
 import { upsertComments, upsertItem } from '../mirror/store'
 import { disclosed, hashBody, planStageLabels } from './disclosure'
-import { HeadMoved, ProductObserving, WrongItemKind } from './errors'
+import { HeadMoved, ProductObserving, TargetNotFound, WrongItemKind } from './errors'
 import {
   findIssueByReference,
   loadProductRow,
@@ -183,6 +189,40 @@ const reopenIssue = async (ctx: Ctx, target: Target): Promise<void> => {
   })
 }
 
+const relationEnds = async (ctx: Ctx, input: Edge) => {
+  const type = typeOf(input.type)
+  const edge = normalised(input, type)
+  const facts = await itemFacts(ctx.payload, [edge.from, edge.to])
+  const from = facts.get(edge.from)
+  const to = facts.get(edge.to)
+  if (!from || !to) throw new TargetNotFound(`Tickets ${edge.from} and ${edge.to} must both be mirrored.`)
+  return { type, edge, from, to }
+}
+
+const changeRelation = async (ctx: Ctx, recordId: number, input: Edge, change: 'add' | 'remove'): Promise<void> => {
+  const { type, edge, from, to } = await relationEnds(ctx, input)
+  if (change === 'add') await checkNewRelation(ctx.payload, from.workspace, edge)
+  const save = () =>
+    change === 'add' ? insertEdge(ctx.payload, from.workspace, edge) : deleteEdge(ctx.payload, edge)
+  const { forge } = type
+  if (!forge) return save()
+  if (from.repo !== to.repo) {
+    throw new RelationRefused(`"${type.key}" is kept on the forge, which links tickets of one repository only.`)
+  }
+  const [mine, other] = forge.ticketIs === 'to' ? [to, from] : [from, to]
+  const target = { recordId, itemId: mine.id }
+  const session = await open(ctx, target, 'issue')
+  await perform(ctx, target, change === 'add' ? 'relation-add' : 'relation-remove', session, {
+    call: async ({ tickets, row }) => {
+      const linked = forgeNumbers(await tickets.get(ticketId(row)), type).includes(other.number)
+      if (linked === (change === 'add')) return
+      const write = change === 'add' ? forgeAdd : forgeRemove
+      await write(tickets, forge.field, ticketId(row), String(other.number))
+    },
+    mirror: save,
+  })
+}
+
 export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(payload)) => {
   const ctx: Ctx = { payload, deps }
   return {
@@ -195,6 +235,8 @@ export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(pa
     openIssue: (target: ProductTarget, input: NewIssue) => openIssue(ctx, target, input),
     closeIssue: (target: Target, reason: CloseReason) => closeIssue(ctx, target, reason),
     reopenIssue: (target: Target) => reopenIssue(ctx, target),
+    addRelation: (recordId: number, edge: Edge) => changeRelation(ctx, recordId, edge, 'add'),
+    removeRelation: (recordId: number, edge: Edge) => changeRelation(ctx, recordId, edge, 'remove'),
   }
 }
 

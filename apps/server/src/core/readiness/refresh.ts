@@ -3,6 +3,7 @@ import { refreshFacts } from '../mirror/facts'
 import { errorText } from '../mirror/map'
 import { liveSources } from '../mirror/store'
 import type { SyncDeps } from '../mirror/sync'
+import { refreshReleaseFacts } from './release-facts'
 
 export type RefreshDeps = Pick<SyncDeps, 'reader' | 'now'>
 export type Refreshed = { checked: number; errors: string[] }
@@ -20,8 +21,10 @@ export const refreshReadiness = async (
     try {
       const reader = await deps.reader(source)
       const error = await refreshFacts(payload, source, reader.forge, deps.now())
-      if (error === null) result.checked++
-      else result.errors.push(`${source.repo}: ${error}`)
+      if (error === null) {
+        await refreshReleaseFacts(payload, source, reader.forge)
+        result.checked++
+      } else result.errors.push(`${source.repo}: ${error}`)
     } catch (error) {
       result.errors.push(`${source.repo}: ${errorText(error)}`)
     }

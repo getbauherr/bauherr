@@ -47,3 +47,29 @@ export const forPayload = (m: RegisteredMigration): Migration => ({
 })
 
 export const runSql = (payload: Payload, q: ReturnType<typeof sql>) => payload.db.drizzle.execute(q)
+
+const idOf = (result: Awaited<ReturnType<typeof runSql>>): number => Number(result.rows[0]?.id)
+
+type Id = string | number
+
+export const insertProduct = async (payload: Payload, workspace: Id, slug: string): Promise<number> =>
+  idOf(
+    await runSql(
+      payload,
+      sql`INSERT INTO "products" ("name", "slug", "state", "workspace_id", "updated_at", "created_at")
+        VALUES (${slug}, ${slug}, 'observing', ${workspace}, now(), now()) RETURNING "id"`,
+    ),
+  )
+
+export const insertSource = async (
+  payload: Payload,
+  o: { repo: string; product: Id; connection: Id; workspace: Id },
+): Promise<number> =>
+  idOf(
+    await runSql(
+      payload,
+      sql`INSERT INTO "ticket_sources"
+          ("repo", "product_id", "connection_id", "workspace_id", "updated_at", "created_at")
+        VALUES (${o.repo}, ${o.product}, ${o.connection}, ${o.workspace}, now(), now()) RETURNING "id"`,
+    ),
+  )

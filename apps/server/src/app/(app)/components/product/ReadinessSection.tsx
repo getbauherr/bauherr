@@ -59,7 +59,7 @@ function Fix({ item, product, admin }: { item: ReadinessItem; product: number; a
   )
 }
 
-function Row({ item, product, admin }: { item: ReadinessItem; product: number; admin: boolean }) {
+export function Row({ item, product, admin }: { item: ReadinessItem; product: number; admin: boolean }) {
   const mark = MARK[item.status]
   return (
     <li className={`${ROW} grid-cols-[1.75rem_minmax(0,1fr)_auto]`}>

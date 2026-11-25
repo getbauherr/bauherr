@@ -1,8 +1,11 @@
-import type { RepoRef } from './contracts.js';
+import type { Deployment, RepoRef } from './contracts.js';
 import { GitlabError } from './gitlab.js';
 import { gitlabRelease, isGitlabPrerelease } from './gitlab-mappers.js';
 import { GitlabMergeTrain } from './gitlab-merge-train.js';
-import { field, get, list, text, wire } from './wire.js';
+import { probeCommit } from './release-probe.js';
+import { field, get, list, nullableText, num, text, wire } from './wire.js';
+
+const DEVELOPER = 30;
 
 const enc = encodeURIComponent;
 
@@ -76,5 +79,23 @@ export class GitlabReleases extends GitlabMergeTrain {
         ).reverse()
       : list(await this.h.json('GET', `/projects/${enc(repo)}/repository/commits?ref_name=${enc(o.to)}&per_page=100`));
     return commits.map((c) => ({ sha: field(c, 'id'), message: field(c, 'message') }));
+  }
+  async latestDeployment(repo: RepoRef, environment: string): Promise<Deployment | null> {
+    const query = `environment=${enc(environment)}&order_by=created_at&sort=desc&per_page=1`;
+    const path = `/projects/${enc(repo)}/deployments?${query}`;
+    const [d] = list(await this.h.json('GET', path));
+    if (!d) return null;
+    return {
+      sha: field(get(d, 'deployable', 'commit'), 'id') || field(d, 'sha'),
+      url: nullableText(wire(get(d, 'environment')).external_url),
+    };
+  }
+  async commitEndpoint(_repo: RepoRef, o: { url: string; sha: string }) {
+    return probeCommit(fetch, o);
+  }
+  async canWrite(repo: RepoRef) {
+    const access = get(await this.h.json('GET', `/projects/${enc(repo)}`), 'permissions');
+    const level = (key: string) => num(wire(get(access, key)).access_level);
+    return Math.max(level('project_access'), level('group_access')) >= DEVELOPER;
   }
 }
