@@ -1,15 +1,18 @@
 import { cloneRepo } from '@bauherr/runner'
+import { z } from 'zod'
 import { fold } from '../../core/fold'
 import { foldOptions } from '../../core/lifecycle'
 import { LeaseLost, ModuleMissing } from '../../core/run/errors'
 import { heartbeat, type Claimed } from '../../core/run/leases'
 import { contextPack, type ContextPack } from '../../core/run/pack'
-import { addCost, readRun } from '../../core/run/store'
+import { addCost, markRefused, readRun } from '../../core/run/store'
 import { readEvents, readRecord } from '../../core/record/store'
-import { failRun, releaseRun, submit } from '../../core/submit'
+import type { Problem } from '../../core/module'
+import { failRun, releaseRun, submit, type SubmitResult } from '../../core/submit'
 import { planFor, type Checkout, type Plan } from './plan'
 import { keepAlive } from './heartbeat'
 import type { AgentOutcome, Ended, RunnerDeps } from './types'
+import { recordProofs, withProofIds } from './proofs'
 import { FIX_PROMPT, PROMPT, readResult, writeContext, writeProblems } from './workdir'
 
 const READ_ONLY = new Set(['intake', 'brief', 'done'])
@@ -54,18 +57,53 @@ const result = async (working: Working, facts: Record<string, unknown>) => {
 
 const MISSING = 'the agent wrote no .bauherr/result.json'
 
+const headOf = z.object({ headSha: z.string() })
+
+const withProofs = async (working: Working, raw: Record<string, unknown>): Promise<Prepared> => {
+  const { claimed, deps } = working
+  const { run } = claimed
+  if (run.stage !== 'verify' || run.role !== 'verifier') return { result: raw }
+  const { payload } = deps.engine()
+  const stored = await readRecord(payload, run.recordId)
+  const recorded = await recordProofs({
+    checkout: working.checkout,
+    payload,
+    workspace: working.workspace,
+    recordId: run.recordId,
+    criteria: stored.record.criteria.map((criterion) => criterion.id),
+    headSha: headOf.parse(raw).headSha,
+  })
+  return 'problems' in recorded ? recorded : { result: withProofIds(raw, recorded.refs) }
+}
+
+type Prepared = { result: Record<string, unknown> } | { problems: Problem[] } | { reason: string }
+
+const prepared = async (working: Working, facts: Record<string, unknown>): Promise<Prepared> => {
+  const raw = await result(working, facts)
+  return raw === null ? { reason: MISSING } : withProofs(working, raw)
+}
+
+const textOf = (problems: Problem[]): string => problems.map((p) => `${p.path}: ${p.message}`).join('; ')
+
 const conclude = async (working: Working, facts: Record<string, unknown>): Promise<Ended> => {
   const { claimed, deps } = working
-  const first = await result(working, facts)
-  if (first === null) return fail(claimed, deps, MISSING)
-  const sent = await submit(claimed.run.id, claimed.token, first, deps.engine())
+  const first = await prepared(working, facts)
+  if ('reason' in first) return fail(claimed, deps, first.reason)
+  let sent: SubmitResult
+  if ('problems' in first) {
+    await markRefused(deps.engine().payload, claimed.run.id)
+    sent = { status: 'retry', problems: first.problems }
+  } else {
+    sent = await submit(claimed.run.id, claimed.token, first.result, deps.engine())
+  }
   if (sent.status !== 'retry') return sent.status === 'accepted' ? 'accepted' : 'failed'
   await writeProblems(working.checkout.dir, sent.problems)
   const fix = await turn(working, FIX_PROMPT)
   if (!fix.ok) return fail(claimed, deps, fix.reason)
-  const second = await result(working, facts)
-  if (second === null) return fail(claimed, deps, MISSING)
-  const again = await submit(claimed.run.id, claimed.token, second, deps.engine())
+  const second = await prepared(working, facts)
+  if ('reason' in second) return fail(claimed, deps, second.reason)
+  if ('problems' in second) return fail(claimed, deps, textOf(second.problems))
+  const again = await submit(claimed.run.id, claimed.token, second.result, deps.engine())
   return again.status === 'accepted' ? 'accepted' : 'failed'
 }
 
