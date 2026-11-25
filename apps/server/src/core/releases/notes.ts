@@ -116,13 +116,14 @@ const parseAnswer = (raw: string): unknown[] | null => {
   }
 }
 
-type Pool = { owner: Map<number, Candidate>; used: Set<number> }
+type Pool = { owner: Map<number, Candidate>; used: Set<number>; cut: number[] }
 
 const poolOf = (classified: Classified): Pool => ({
   owner: new Map(
     classified.listed.flatMap((entry) => [entry.number, ...entry.followUps].map((n) => [n, entry] as const)),
   ),
   used: new Set(),
+  cut: [],
 })
 
 const headingOf = (heading: string | null | undefined, first: Candidate): string => {
@@ -139,6 +140,7 @@ const fromEntry = (entry: unknown, pool: Pool): NoteItem | null => {
   const kindOf = (n: number): NoteItem['kind'] => (pool.owner.get(n)?.bug ? 'fixed' : 'new')
   const kind = known[0] === undefined ? 'new' : kindOf(known[0])
   const mine = known.filter((n) => kindOf(n) === kind)
+  pool.cut.push(...known.filter((n) => kindOf(n) !== kind))
   const body = sentence(text, MAX_SENTENCE_WORDS)
   if (!first || body === '') return null
   const withFollowUps = mine.flatMap((n) => [n, ...(pool.owner.get(n)?.followUps ?? [])])
@@ -152,7 +154,12 @@ export const limitNotes = (raw: string, classified: Classified): NoteItem[] | nu
   const answer = parseAnswer(raw)
   if (answer === null) return null
   const pool = poolOf(classified)
-  const limited = limits(answer.flatMap((entry) => fromEntry(entry, pool) ?? []))
+  const grouped = answer.flatMap((entry) => fromEntry(entry, pool) ?? [])
+  const cut = pool.cut.flatMap((n) => {
+    const entry = pool.owner.get(n)
+    return entry && !pool.used.has(n) ? [plainItem(entry)] : []
+  })
+  const limited = limits([...grouped, ...cut])
   return limited.length === 0 && classified.listed.length > 0 ? null : limited
 }
 
@@ -195,7 +202,7 @@ export const generate = async (classified: Classified, ask: AskModel): Promise<N
 }
 
 export const mergeNotes = (existing: NoteItem[], fresh: NoteItem[], release: number[]): NoteItem[] => {
-  const inRelease = (entry: NoteItem) => entry.added || entry.tickets.some((number) => release.includes(number))
+  const inRelease = (entry: NoteItem) => entry.tickets.some((number) => release.includes(number))
   const kept = existing.filter((entry) => (entry.edited || entry.added || entry.removed) && inRelease(entry))
   const covered = new Set(kept.filter((entry) => !entry.added).flatMap((entry) => entry.tickets))
   const open = (kind: NoteItem['kind']) => kept.filter((entry) => entry.kind === kind && !entry.removed).length

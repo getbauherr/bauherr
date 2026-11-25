@@ -50,9 +50,11 @@ export async function editNoteAction(form: FormData): Promise<void> {
 }
 
 export async function addNoteAction(form: FormData): Promise<void> {
-  const { payload, at } = await inProduct(form)
+  const { payload, at, view } = await inProduct(form)
   const chosen = kind.safeParse(textOf(form, 'kind'))
-  if (chosen.success) await addItem(payload, at, chosen.data, edit(form))
+  if (chosen.success) {
+    await addItem(payload, at, chosen.data, edit(form), view.ready?.tickets.map((ticket) => ticket.number) ?? [])
+  }
   revalidatePath('/releases')
 }
 

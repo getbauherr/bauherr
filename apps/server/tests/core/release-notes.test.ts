@@ -190,12 +190,13 @@ describe('release notes', () => {
     expect(text).toContain('\\[click\\]\\(')
   })
 
-  it('f1: drops edits whose tickets left the release, keeps owner-added items', () => {
+  it('f1: drops edits whose tickets left the release, drops added items of an earlier release', () => {
     const base = { kind: 'new' as const, area: 'Tickets' as const, title: 'A title', text: 'Text.', removed: false }
     const edited = { ...base, id: 'e', tickets: [5], edited: true, added: false }
-    const added = { ...base, id: 'a', tickets: [], edited: false, added: true }
+    const added = { ...base, id: 'a', tickets: [5], edited: false, added: true }
     const fresh = plainNotes(classify([fact(9)]))
-    expect(mergeNotes([edited, added], fresh, [9]).map((entry) => entry.id)).toEqual(['a', fresh[0]?.id])
+    expect(mergeNotes([edited, added], fresh, [9]).map((entry) => entry.id)).toEqual([fresh[0]?.id])
+    expect(mergeNotes([added], [], [5]).map((entry) => entry.id)).toEqual(['a'])
     expect(mergeNotes([edited], [], [5, 9]).map((entry) => entry.id)).toEqual(['e'])
   })
 
@@ -211,6 +212,18 @@ describe('release notes', () => {
         { kind: 'fixed', area: 'Tickets', title: null, text: 'Reports show.', tickets: [1] },
         { kind: 'new', area: 'Tickets', title: 'Bug gone now', text: 'It works.', tickets: [2] },
       ]),
+      classified,
+    )
+    expect(items?.map((entry) => [entry.kind, entry.tickets])).toEqual([
+      ['new', [1]],
+      ['fixed', [2]],
+    ])
+  })
+
+  it('f5: a ticket cut from a mixed item lands in its own item', () => {
+    const classified = classify([fact(1), fact(2, { bug: true })])
+    const items = limitNotes(
+      answer([{ kind: 'new', area: 'Tickets', title: 'Reports and fix', text: 'Both.', tickets: [1, 2] }]),
       classified,
     )
     expect(items?.map((entry) => [entry.kind, entry.tickets])).toEqual([

@@ -169,12 +169,13 @@ export const addItem = (
   at: Where,
   kind: NoteItem['kind'],
   edit: ItemEdit,
+  release: number[],
 ): Promise<void> => {
   const next = cleanEdit(kind, edit)
   return change(payload, at, (items) =>
     next.text === '' || (kind === 'new' && next.title === '')
       ? items
-      : [...items, { id: randomUUID(), kind, ...next, tickets: [], edited: false, added: true, removed: false }],
+      : [...items, { id: randomUUID(), kind, ...next, tickets: release, edited: false, added: true, removed: false }],
   )
 }
 

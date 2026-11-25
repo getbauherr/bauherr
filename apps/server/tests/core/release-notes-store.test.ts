@@ -58,18 +58,19 @@ describe('release notes store', () => {
     await editItem(h.payload(), at(), one.id, edit)
     await removeItem(h.payload(), at(), two.id)
     const added = { title: '', text: 'Sign-in works again after a reset.', area: 'Settings' }
-    await addItem(h.payload(), at(), 'fixed', added)
+    await addItem(h.payload(), at(), 'fixed', added, [1, 2, 3])
     const changed = [...first, await ticket(4, 'Release notes for people')]
     await writeNotesFor(h.payload(), at(), changed, junk)
     const after = await read()
     const visible = after.filter((entry) => !entry.removed)
+    const generated = visible.filter((entry) => !entry.added)
     expect(visible.find((entry) => entry.id === one.id)?.text).toBe('You own the three memory documents.')
     expect(visible.some((entry) => entry.added && entry.text === 'Sign-in works again after a reset.')).toBe(true)
-    expect(visible.some((entry) => entry.tickets.includes(2))).toBe(false)
+    expect(generated.some((entry) => entry.tickets.includes(2))).toBe(false)
     expect(after.some((entry) => entry.id === two.id && entry.removed)).toBe(true)
-    expect(visible.some((entry) => entry.tickets.includes(4))).toBe(true)
-    expect(visible.filter((entry) => entry.tickets.includes(1))).toHaveLength(1)
-    expect(visible.filter((entry) => entry.tickets.includes(3))).toHaveLength(1)
+    expect(generated.some((entry) => entry.tickets.includes(4))).toBe(true)
+    expect(generated.filter((entry) => entry.tickets.includes(1))).toHaveLength(1)
+    expect(generated.filter((entry) => entry.tickets.includes(3))).toHaveLength(1)
   })
 
   it('stores nothing visible for an internal-only release and counts the internal changes', async () => {
@@ -106,5 +107,13 @@ describe('release notes store', () => {
     await h.rows(sql`DELETE FROM "mirror_items"`)
     await insert('Same bug as other/repo#1 and fixes #1')
     expect((await ticketFacts(h.payload(), [feature, fix]))[1]?.names).toEqual([1])
+  })
+
+  it('f1: an added item does not carry into the next release', async () => {
+    await writeNotesFor(h.payload(), at(), [await ticket(1, 'Memory as documents')], junk)
+    await addItem(h.payload(), at(), 'fixed', { title: '', text: 'Sign-in works again.', area: 'Settings' }, [1])
+    await writeNotesFor(h.payload(), at(), [await ticket(9, 'Plans as pictures')], junk)
+    const texts = (await read()).map((entry) => entry.text)
+    expect(texts).not.toContain('Sign-in works again.')
   })
 })
