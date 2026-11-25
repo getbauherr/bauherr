@@ -9,10 +9,6 @@ import { queryWords } from '../../src/core/mirror/match'
 import { contextPack } from '../../src/core/run/pack'
 import { enqueue, claim } from '../../src/core/run/leases'
 import { recordFor } from '../../src/core/run/role-view'
-import { readRun } from '../../src/core/run/store'
-import { storeStatement } from '../../src/core/statements'
-import { runPage } from '../../src/core/views/run'
-import { ticket } from '../../src/core/views/ticket'
 import { briefed, source } from './fixtures'
 import { openEngine, type Engine } from './harness'
 import { mirrorSource } from './scenario'
@@ -77,7 +73,6 @@ afterAll(async () => {
 })
 beforeEach(async () => {
   await e.drain()
-  await rows(sql`DELETE FROM "statements"`)
 })
 
 const number = async (record: number) => {
@@ -110,101 +105,6 @@ const runOf = async (record: number, stage: Stage, role: Role = 'builder') => {
 
 const packOf = async (record: number, stage: Stage, role: Role = 'builder') =>
   contextPack(e.deps(), await runOf(record, stage, role))
-
-const said = (
-  record: number,
-  text: string,
-  kind: 'answer' | 'guidance' = 'answer',
-  scope: 'ticket' | 'product' = 'product',
-) => storeStatement(e.db.payload, record, { kind, text, scope })
-
-describe('matching owner statements', () => {
-  it('reach a brief, build and verify run from the Product\'s other tickets, best first, at most 5', async () => {
-    const other = await ticketWith('Unrelated')
-    const own = await ticketWith('Export timeout')
-    await said(other, 'Export notes without the other word')
-    await said(other, 'The export timeout is logged and the export timeout is retried')
-    for (let i = 0; i < 6; i++) await said(other, `Another export timeout note ${i}`)
-    await said(other, 'Something else entirely')
-    const pack = await packOf(own, 'brief')
-    expect(pack.statements).toHaveLength(5)
-    expect(pack.statements[0]?.text).toContain('is retried')
-    expect(pack.statements.every((s) => s.text.includes('timeout'))).toBe(true)
-    expect(Object.keys(pack.statements[0] ?? {}).sort()).toEqual(['at', 'id', 'kind', 'text', 'ticket', 'why'])
-    expect(pack.statements[0]).toMatchObject({ kind: 'answer', ticket: await number(other) })
-    expect((await packOf(own, 'build')).statements).toHaveLength(5)
-    expect((await packOf(own, 'verify', 'verifier')).statements).toHaveLength(5)
-  })
-
-  it('hands a ticket its own statements of any scope and only product statements of the others', async () => {
-    const a = await ticketWith('Export timeout')
-    const b = await ticketWith('Export timeout again')
-    await said(a, 'Export timeout one-off for a', 'guidance', 'ticket')
-    await said(a, 'Export timeout rule for the product', 'answer', 'product')
-    const texts = async (record: number) => (await packOf(record, 'build')).statements.map((s) => s.text).sort()
-    expect(await texts(a)).toEqual(['Export timeout one-off for a', 'Export timeout rule for the product'])
-    expect(await texts(b)).toEqual(['Export timeout rule for the product'])
-  })
-
-  it('leaves out other Products, the intake stage and ticket-scoped statements of other tickets', async () => {
-    const own = await ticketWith('Export timeout')
-    const foreign = await e.db.payload.create({
-      collection: 'products',
-      data: { name: 'q', slug: 'q', workspace: e.db.workspace },
-      overrideAccess: true,
-    })
-    const abroad = await ticketWith('Export timeout', '', { product: Number(foreign.id), number: 9001 })
-    await said(abroad, 'Export timeout rules of another Product')
-    expect((await packOf(own, 'brief')).statements).toEqual([])
-    const near = await ticketWith('Reports')
-    await said(near, 'Export timeout rules of a neighbour')
-    await said(near, 'Export timeout one-off of a neighbour', 'guidance', 'ticket')
-    expect((await packOf(own, 'intake')).statements).toEqual([])
-    expect((await packOf(own, 'build')).statements.map((s) => s.text)).toEqual(['Export timeout rules of a neighbour'])
-  })
-
-  it('stay the same for the run when a new matching statement is stored', async () => {
-    const other = await ticketWith('Reports')
-    const own = await ticketWith('Export timeout')
-    await said(other, 'First export timeout note')
-    const run = await runOf(own, 'build')
-    const first = await contextPack(e.deps(), run)
-    await said(other, 'Second export timeout note')
-    const second = await contextPack(e.deps(), run)
-    const third = await contextPack(e.deps(), await readRun(e.db.payload, run.id))
-    expect(first.statements.map((s) => s.text)).toEqual(['First export timeout note'])
-    expect(second.statements).toEqual(first.statements)
-    expect(third.statements).toEqual(first.statements)
-    expect((await readRun(e.db.payload, run.id)).context?.statements).toEqual(first.statements.map((s) => s.id))
-  })
-})
-
-describe('the shared-word rule for statements', () => {
-  it('needs two shared words, ranks more first, and lets one word match a one-word query', async () => {
-    const other = await ticketWith('Reports')
-    const own = await ticketWith('Export timeout', 'Exports finish')
-    await said(other, 'Export notes only')
-    await said(other, 'Export timeout notes')
-    await said(other, 'Export timeout, exports finish: three or more words')
-    await said(other, 'Timeout only')
-    expect((await packOf(own, 'build')).statements.map((s) => s.text)).toEqual([
-      'Export timeout, exports finish: three or more words',
-      'Export timeout notes',
-    ])
-    const single = await ticketWith('Billing is on')
-    await said(other, 'Billing rules')
-    await said(other, 'Invoices rules')
-    expect((await packOf(single, 'build')).statements.map((s) => s.text)).toEqual(['Billing rules'])
-    const quiet = await ticketWith('With that from this')
-    await said(other, 'With that from this and that')
-    expect((await packOf(quiet, 'build')).statements).toEqual([])
-    const german = await ticketWith('Das wird nicht eine Loesung')
-    await said(other, 'Wird nicht eine gute Idee')
-    expect((await packOf(german, 'build')).statements).toEqual([])
-    const none = await ticketWith('Fix it now')
-    expect((await packOf(none, 'build')).statements).toEqual([])
-  })
-})
 
 describe('similar tickets', () => {
   it('are up to 3 issues of the Product and only for a brief', async () => {
@@ -266,44 +166,3 @@ describe('the repository file and the author summary', () => {
     expect((await packOf(own, 'build')).record.handoff).toBe('built it')
   })
 })
-
-describe('what a run used is shown', () => {
-  it('lists the statements in the run view and in the ticket view, each once', async () => {
-    const other = await ticketWith('Reports')
-    const own = await ticketWith('Export timeout')
-    await said(other, 'Export timeout note one', 'guidance')
-    const brief = await runOf(own, 'brief')
-    await contextPack(e.deps(), brief)
-    await said(other, 'Export timeout note two')
-    const view = { workspace: e.db.workspace }
-    const before = await ticket(e.db.payload, { ...view, recordId: own })
-    expect(before.statementsUsed.brief.map((s) => s.text)).toEqual(['Export timeout note one'])
-    expect(before.statementsUsed.result).toEqual([])
-    await appendEvent(e.db.payload, own, { type: 'brief.approved', data: { by: 'owner' }, actor: 'owner' })
-    await contextPack(e.deps(), await runOf(own, 'build'))
-    await contextPack(e.deps(), await runOf(own, 'verify', 'verifier'))
-    const after = await ticket(e.db.payload, { ...view, recordId: own })
-    expect(after.statementsUsed.brief.map((s) => s.text)).toEqual(['Export timeout note one'])
-    expect(after.statementsUsed.result.map((s) => s.text).sort()).toEqual([
-      'Export timeout note one',
-      'Export timeout note two',
-    ])
-    expect(after.statementsUsed.brief[0]).toMatchObject({
-      kind: 'guidance',
-      scope: 'product',
-      scopeLabel: 'This product',
-      ticket: await number(other),
-      record: other,
-    })
-    const page = await runPage(e.db.payload, { ...view, runId: brief.id, withCost: false })
-    expect(page.parts).toContainEqual({ label: 'Memory', detail: '1' })
-  })
-
-  it('lists nothing for a ticket whose runs used no statements', async () => {
-    const own = await ticketWith('Export timeout')
-    await contextPack(e.deps(), await runOf(own, 'brief'))
-    const view = await ticket(e.db.payload, { workspace: e.db.workspace, recordId: own })
-    expect(view.statementsUsed).toEqual({ brief: [], result: [] })
-  })
-})
-

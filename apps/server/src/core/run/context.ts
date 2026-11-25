@@ -1,33 +1,16 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
+import { runStageOf } from '../memory'
 import type { AgentsFile } from '../mirror/facts'
-import { runStageOf, type Why } from '../memory'
-import { queryWords } from '../mirror/match'
 import { similarItems } from '../mirror/search'
 import type { StoredRecord } from '../record/store'
-import { SCOPE_LABEL, STATEMENT_SCOPES } from '../statement-scope'
-import { STATEMENT_KINDS } from '../statements'
 import { closedAsOf, endedOf } from '../views/rows'
 import { TERMINAL_LIST } from '../views/sql'
 import { selectDocumentParts } from '../memory-documents'
-import { selectMemories } from './memory-select'
 import { contextSchema, type Run, type StoredContext } from './schema'
 
 export const SIMILAR_TICKETS = 3
-
-export type UsedStatement = {
-  id: number
-  kind: (typeof STATEMENT_KINDS)[number]
-  scope: (typeof STATEMENT_SCOPES)[number]
-  scopeLabel: string
-  why: Why
-  area: string | null
-  text: string
-  ticket: number | null
-  at: string
-  record: number | null
-}
 
 export type PackSimilar = {
   number: number
@@ -39,22 +22,10 @@ export type PackSimilar = {
 
 export type ContextParts = {
   agentsFile: AgentsFile | null
-  statements: UsedStatement[]
   similar: PackSimilar[]
 }
 
 const count = z.coerce.number()
-
-const statementRow = z.object({
-  id: count,
-  kind: z.enum(STATEMENT_KINDS),
-  scope: z.enum(STATEMENT_SCOPES),
-  area: z.string().nullable(),
-  text: z.string(),
-  created_at: z.coerce.date(),
-  record_id: count.nullable(),
-  source_number: count.nullable(),
-})
 
 const similarRow = z.object({
   id: count,
@@ -76,34 +47,6 @@ const issueRow = z.object({ id: count.nullable(), title: z.string().nullable(), 
 const ids = (values: number[]) => sql.join(values.map((value) => sql`${value}`), sql`, `)
 const inOrder = <T extends { id: number }>(wanted: number[], found: T[]): T[] =>
   wanted.flatMap((id) => found.filter((row) => row.id === id))
-
-export const loadStatements = async (
-  payload: Payload,
-  wanted: number[],
-  reasons: Record<string, Why> = {},
-): Promise<UsedStatement[]> => {
-  if (wanted.length === 0) return []
-  const found = await payload.db.drizzle.execute(sql`
-    SELECT s."id", s."kind", s."scope", s."area", s."text", s."created_at", s."record_id", r."source_number"
-    FROM "statements" s LEFT JOIN "records" r ON r."id" = s."record_id"
-    WHERE s."id" IN (${ids(wanted)})`)
-  const rows = found.rows.map((raw) => {
-    const row = statementRow.parse(raw)
-    return {
-      id: row.id,
-      kind: row.kind,
-      scope: row.scope,
-      scopeLabel: SCOPE_LABEL[row.scope],
-      why: reasons[String(row.id)] ?? ('fit' as const),
-      area: row.area,
-      text: row.text,
-      ticket: row.source_number,
-      at: row.created_at.toISOString(),
-      record: row.record_id,
-    }
-  })
-  return inOrder(wanted, rows)
-}
 
 const loadSimilar = async (payload: Payload, wanted: number[]): Promise<PackSimilar[]> => {
   if (wanted.length === 0) return []
@@ -156,7 +99,7 @@ export const selectContext = async (
   stored: StoredRecord,
 ): Promise<StoredContext> => {
   const agents = await loadAgentsFile(payload, stored.workspace, stored.record.source.repo)
-  const none = { statements: [], similar: [], agentsFile: { given: agents !== null, cut: agents?.cut ?? false } }
+  const none = { similar: [], agentsFile: { given: agents !== null, cut: agents?.cut ?? false } }
   const found = await payload.db.drizzle.execute(sql`
     SELECT i."id", i."title", r."product_id" FROM "records" r
     LEFT JOIN "mirror_items" i ON i."workspace_id" = r."workspace_id" AND i."repo" = r."source_repo"
@@ -164,21 +107,12 @@ export const selectContext = async (
     WHERE r."id" = ${stored.id}`)
   const issue = issueRow.parse(found.rows[0])
   const stage = runStageOf(run.stage, run.role)
-  const memories = stage
-    ? await selectMemories(payload, {
-        product: issue.product_id,
-        record: stored.id,
-        stage,
-        areas: stored.record.risk?.areas ?? [],
-        words: queryWords(`${issue.title ?? ''} ${stored.record.goal}`),
-      })
-    : { ids: [], reasons: {} }
   const similar =
     run.stage === 'brief' && issue.id !== null ? await similarItems(payload, issue.id, SIMILAR_TICKETS, 'issue') : []
   const memory = stage
     ? await selectDocumentParts(payload, { workspace: stored.workspace, product: issue.product_id }, stage)
     : []
-  return { ...none, memory, statements: memories.ids, reasons: memories.reasons, similar: similar.map((hit) => hit.id) }
+  return { ...none, memory, similar: similar.map((hit) => hit.id) }
 }
 
 export const rememberContext = async (payload: Payload, runId: number, selected: StoredContext) => {
@@ -198,6 +132,5 @@ export const partsOf = async (
   agentsFile: context.agentsFile.given
     ? await loadAgentsFile(payload, stored.workspace, stored.record.source.repo)
     : null,
-  statements: await loadStatements(payload, context.statements, context.reasons),
   similar: await loadSimilar(payload, context.similar),
 })

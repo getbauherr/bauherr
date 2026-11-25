@@ -128,4 +128,19 @@ describe('releases page', () => {
     expect(view.ready?.tickets.map((t) => t.title)).toEqual(['Not released yet'])
     expect(view.past[0]?.tag).toBe('v0.25.0')
   })
+
+  it('counts the oldest listed version from the next older version, not from the beginning', async () => {
+    const s = await f.start('active')
+    const fake = f.fake()
+    for (let n = 1; n <= 25; n++) {
+      release(fake, s.repo, `v0.${n}.0`, new Date(Date.UTC(2026, 9, n, 10)).toISOString(), '')
+    }
+    await merged(s.repo, 1, 'Two', '2026-10-02T12:00:00Z', true, true)
+    await merged(s.repo, 2, 'Three', '2026-10-03T12:00:00Z', true, true)
+    await merged(s.repo, 3, 'Five', '2026-10-05T12:00:00Z', true, true)
+    await refresh()
+    const view = await page()
+    expect(view.past).toHaveLength(20)
+    expect(view.past.at(-1)).toMatchObject({ tag: 'v0.6.0', changes: 1 })
+  })
 })

@@ -7,8 +7,6 @@ import type { Criterion, Decision, Finding, TicketRecord } from '../../src/core/
 import { advance } from '../../src/core/engine'
 import { appendEvent, createRecord, readRecord } from '../../src/core/record/store'
 import { heartbeat } from '../../src/core/run/leases'
-import { rememberContext } from '../../src/core/run/context'
-import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
 import { claimed, runTickets } from './run-seed'
 import { source } from './fixtures'
@@ -222,27 +220,6 @@ const intakeTicket = async (e: Engine, item: (number: number, fields?: { title: 
   return id
 }
 
-const EARLIER_ANSWERS = [
-  'Uploads and generated files go to object storage, not local disk.',
-  'No new export formats before the reporting rework.',
-]
-
-const RESULT_ANSWERS = ['Run the old export tests before the new ones.', EARLIER_ANSWERS[1] ?? '']
-
-const answered = async (e: Engine, id: number, stages: string[], from: number, texts: string[]) => {
-  for (const text of texts) await storeStatement(e.db.payload, from, { kind: 'answer', scope: 'product', text })
-  const db = e.db.payload.db.drizzle
-  const found = await db.execute(sql`SELECT "id" FROM "statements" WHERE "record_id" = ${from} ORDER BY "id"`)
-  const statements = found.rows.map((row) => proofRow.parse(row).id)
-  const agentsFile = { given: false, cut: false }
-  for (const stage of stages) {
-    const runs = await db.execute(sql`SELECT "id" FROM "stage_runs" WHERE "record_id" = ${id} AND "stage" = ${stage}`)
-    for (const run of runs.rows) {
-      await rememberContext(e.db.payload, proofRow.parse(run).id, { statements, similar: [], agentsFile })
-    }
-  }
-}
-
 const pooled = async (make: (n: number) => Promise<number>): Promise<number[]> => {
   const ids: number[] = []
   for (let n = 1; n <= POOL_SIZE; n++) ids.push(await make(n))
@@ -297,9 +274,7 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   const adoptedWaiting = await adoptedTicket(e, ADOPTED_FIRST, false)
   const adoptedResult = await adoptedTicket(e, ADOPTED_FIRST + 1, true)
   titled.push([adoptedWaiting, TICKET_TITLES.adoptedWaiting], [adoptedResult, TICKET_TITLES.adoptedResult])
-  await answered(e, names.briefAnswers, ['brief'], names.resultReadonly, EARLIER_ANSWERS)
-  await answered(e, names.resultReadonly, ['build', 'verify'], names.briefTitle, RESULT_ANSWERS)
-  await referencing(e, { result: names.resultReadonly, statements: names.briefTitle, target: names.briefAnswers })
+  await referencing(e, { result: names.resultReadonly, target: names.briefAnswers })
   await reportedSteps(e, names.runSteps)
   for (let n = 11; n <= pr; n++) await mirror.item(n, { kind: 'pr', head: `h${n}`, title: `Pull request ${n}` })
   for (const [id, title] of titled) {

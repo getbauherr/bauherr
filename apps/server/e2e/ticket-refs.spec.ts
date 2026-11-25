@@ -74,18 +74,15 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 800 
       await expect(popover(page)).toBeVisible()
     })
 
-    test('a finding, a memory and a note name a ticket as a link that opens the box', async ({ page }) => {
+    test('a finding and a note name a ticket as a link that opens the box', async ({ page }) => {
       await signIn(page)
       await openFromInbox(page, 'Result to read')
       const named = new RegExp(`^#\\d+ ${LINKED}$`)
       const finding = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Review findings' }) })
-      const memory = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Memory used' }) })
-      for (const section of [finding, memory]) {
-        await section.getByRole('link', { name: named }).first().click()
-        await expect(popover(page)).toContainText(LINKED)
-        await page.keyboard.press('Escape')
-        await expect(popover(page)).toHaveCount(0)
-      }
+      await finding.getByRole('link', { name: named }).first().click()
+      await expect(popover(page)).toContainText(LINKED)
+      await page.keyboard.press('Escape')
+      await expect(popover(page)).toHaveCount(0)
       await page.goto(`${new URL(page.url()).pathname}?tab=activity`)
       await page.getByRole('main').getByRole('link', { name: named }).first().click()
       await expect(popover(page)).toContainText(LINKED)

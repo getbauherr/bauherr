@@ -40,6 +40,7 @@ beforeAll(async () => {
   process.env.OIDC_CLIENT_SECRET = 'client-secret'
   process.env.PUBLIC_URL = 'http://bauherr.test'
   process.env.OIDC_BAUHERR_ROLE = 'bauherr-user'
+  process.env.OIDC_PRODUCT_OWNER_ROLE = 'product-owner'
   const { getPayload } = await import('payload')
   payload = await getPayload({ config: (await import('../src/payload.config')).default })
   ;({ GET } = await import('../src/app/(app)/auth/oidc/callback/route'))
@@ -90,5 +91,23 @@ describe('oidc callback with OIDC_BAUHERR_ROLE set', () => {
     expect(res.cookies.get('bauherr-session')).toBeDefined()
     expect((await byEmail('ok@x.io')).oidcSubject).toBe(`${iss}|s-ok`)
     expect(warn).not.toHaveBeenCalled()
+  })
+})
+
+describe('oidc callback with a Product owner role', () => {
+  it('signs a new Product owner in with no assignment', async () => {
+    setClaims('s-po', 'po@x.io', ['product-owner'])
+    const res = await call()
+    expect(res.headers.get('location')).not.toContain('/login')
+    expect(res.cookies.get('bauherr-session')).toBeDefined()
+    expect(await byEmail('po@x.io')).toMatchObject({ role: 'product-owner', assignments: [] })
+  })
+
+  it('never raises an existing Product owner when the identity provider sends bauherr or admin', async () => {
+    for (const roles of [['bauherr-user'], ['bauherr-admin']]) {
+      setClaims('s-po', 'po@x.io', roles)
+      expect((await call()).cookies.get('bauherr-session')).toBeDefined()
+      expect((await byEmail('po@x.io')).role).toBe('product-owner')
+    }
   })
 })

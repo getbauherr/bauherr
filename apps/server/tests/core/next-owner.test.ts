@@ -54,6 +54,29 @@ const CASES: Case[] = [
   },
 ]
 
+const open = [{ number: 2, state: 'open' as const }]
+const OUTSIDE_BUILD: Case[] = [
+  {
+    name: 'production approval still asks the owner while a blocker is open',
+    events: [...merged, ev('result.accepted')],
+    config: gated,
+    expected: { kind: 'card', card: 'question', reason: 'production', options: ['approve', 'hold'] },
+  },
+  {
+    name: 'a disputed Intake still asks the owner while a blocker is open',
+    events: [start('intake'), ev('intake.disputed')],
+    expected: { kind: 'card', card: 'question', reason: 'disputed', options: ['not-a-bug', 'accept', 'ask-again'] },
+  },
+]
+
+describe('next with an open blocker outside Build', () => {
+  it.each(OUTSIDE_BUILD.map((c) => [c.name, c] as const))('%s', (_name, c) => {
+    const config = { ...CONFIG, ...c.config }
+    const state = fold(c.events, { productionGate: config.productionGate })
+    expect(next(briefed(), state, config, open)).toEqual(c.expected)
+  })
+})
+
 describe('next after owner decisions', () => {
   it.each(CASES.map((c) => [c.name, c] as const))('%s', (_name, c) => {
     const config = { ...CONFIG, ...c.config }

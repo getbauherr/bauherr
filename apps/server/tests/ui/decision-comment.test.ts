@@ -28,6 +28,7 @@ describe('the comment area of a ticket card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add a comment' }))
     const input = screen.getByLabelText('Comment')
     expect(input.tagName).toBe('TEXTAREA')
+    expect(screen.queryByLabelText('Applies to')).toBeNull()
     expect(screen.getByRole('button', { name: 'Add attachment' })).toBeTruthy()
     expect(input.closest('[data-dragging]')).toBeNull()
     fireEvent.dragEnter(input, { dataTransfer: { types: ['Files'], dropEffect: 'none' } })

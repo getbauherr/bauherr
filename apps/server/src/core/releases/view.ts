@@ -32,7 +32,7 @@ export const partition = (state: ReleaseState, merged: MergedTicket[]) => {
   const lastAt = state.versions.find((version) => version.tag === last)?.at ?? null
   const ascending = [...state.versions].sort((a, b) => timeOf(a.at) - timeOf(b.at))
   const past = ascending.map((version, index): PastVersion => {
-    const from = timeOf(ascending[index - 1]?.at ?? null)
+    const from = timeOf(index === 0 ? state.olderAt : (ascending[index - 1]?.at ?? null))
     const to = timeOf(version.at)
     return {
       tag: version.tag,
