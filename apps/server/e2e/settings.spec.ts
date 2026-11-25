@@ -133,8 +133,12 @@ test('at 390 px the Next step bar does not cover the last field of the Models & 
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
   const field = page.locator('main input:visible, main select:visible, main textarea:visible').last()
   await expect(field).toBeVisible()
-  const box = (await field.boundingBox())!
-  expect(box.y + box.height).toBeLessThanOrEqual((await bar.boundingBox())!.y)
+  await expect
+    .poll(async () => {
+      const [box, barBox] = [await field.boundingBox(), await bar.boundingBox()]
+      return box !== null && barBox !== null && box.y + box.height <= barBox.y
+    })
+    .toBe(true)
 })
 
 test('Models & budget: model tiers are selects with Other...', async ({ page }) => {
