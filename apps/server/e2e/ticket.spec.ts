@@ -86,10 +86,7 @@ test('sending a Result back asks for a comment in the card field and records it'
   await expect(alert).toHaveText('Say what should change, then press Send back with note again.')
   await expect(page.getByLabel('Comment')).toBeFocused()
   await page.getByLabel('Comment').fill('Add a test for the empty file.')
-  const scope = page.getByLabel('Applies to')
-  await expect(scope.getByRole('option')).toHaveText(['This ticket', 'This product', 'Do not remember'])
-  await expect(scope).toHaveValue('ticket')
-  await scope.selectOption('This product')
+  await expect(page.getByLabel('Applies to')).toHaveCount(0)
   await page.getByRole('button', { name: 'Send back with note' }).click()
   await expect(page.getByLabel('Comment')).toHaveCount(0)
   await page.goto(`${path}?tab=activity`)
@@ -199,15 +196,6 @@ test('the run page lists the reported steps oldest first', async ({ page }) => {
   await expect(steps.last()).toContainText('Plan step 3 of 4: screenshots of both report pages.')
   await expect(page.getByRole('heading', { name: 'Context given to the agent' })).toBeVisible()
   await expect(page.getByRole('heading', { name: /^Cost so far/ })).toBeVisible()
-})
-
-test('only a question whose answer is remembered says so', async ({ page }) => {
-  const sentence = 'Your answer is remembered for similar tickets.'
-  await enter(page, 'Question to read')
-  await expect(page.getByText(sentence)).toBeVisible()
-  await open(page, 'Deploy that did not finish')
-  await expect(page.getByText(sentence)).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Answer' })).toBeVisible()
 })
 
 test('the verify-rounds card shows what the verifier asks and what the builder did, and links to the handoff', async ({

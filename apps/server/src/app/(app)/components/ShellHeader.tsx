@@ -8,10 +8,12 @@ import { SidebarTrigger } from './ui/sidebar'
 export function ShellHeader({
   items,
   admin,
+  productOwner,
   logout,
 }: {
   items: Pick<NavItem, 'href' | 'label'>[]
   admin: boolean
+  productOwner: boolean
   logout: () => Promise<void>
 }) {
   return (
@@ -24,7 +26,7 @@ export function ShellHeader({
       <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-5 max-sm:hidden" />
       <Breadcrumbs />
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <CommandMenu items={items} admin={admin} logout={logout} />
+        <CommandMenu items={items} admin={admin} productOwner={productOwner} logout={logout} />
       </div>
     </header>
   )

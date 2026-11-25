@@ -11,7 +11,6 @@ import { DECISIONS } from '../../src/core/decisions'
 import { NOTE_MAX } from '../../src/core/limits'
 import { advance } from '../../src/core/engine'
 import { readEvents, readRecord } from '../../src/core/record/store'
-import { statementsFor } from '../../src/core/statements'
 import { openEngine, type Engine } from './harness'
 
 type Row = [ask: string, choice: string, types: string[]]
@@ -167,16 +166,12 @@ describe('answers to open decisions', () => {
     expect((await readRecord(e.db.payload, id)).record.decisions[0]?.answer).toBeUndefined()
   })
 
-  it('writes the answers to the record and stores them as owner statements with the approval', async () => {
+  it('writes the answers to the record with the approval', async () => {
     const id = await atOpenBrief()
     await approve(id, { d1: 'b' })
     const stored = await readRecord(e.db.payload, id)
     expect(stored.record.decisions[0]).toMatchObject({ answer: 'b', by: 'owner' })
     expect(stored.record.decisions[0]?.at).toBe(e.clock.now.toISOString())
-    const statements = await statementsFor(e.db.payload, e.db.product, 5)
-    expect(statements.filter((s) => s.record === id).map((s) => [s.kind, s.text])).toEqual([
-      ['answer', 'question 1: B'],
-    ])
     expect(await e.view(id)).toMatchObject({ stage: 'build', waitingOn: 'agents' })
   })
 

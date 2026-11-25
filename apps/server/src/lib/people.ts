@@ -56,7 +56,7 @@ export const assignmentRows = (raw: unknown): AssignmentRow[] =>
   })
 
 export const resyncRole = (stored: string | undefined, claimed: Role): Role =>
-  stored === 'product-owner' && claimed === 'bauherr' ? 'product-owner' : claimed
+  stored === 'product-owner' ? 'product-owner' : claimed
 
 export const assignmentWords = (
   rows: { workspace: string; scope: 'workspace' | 'products'; products: string[] }[],

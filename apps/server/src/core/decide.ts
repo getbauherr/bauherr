@@ -23,8 +23,6 @@ import type { Effect } from './module'
 import type { ProposedRelation, TicketRecord } from './record/schema'
 import { appendEvent, patchRecord, readEvents, readRecord, type StoredRecord } from './record/store'
 import { releaseLive } from './run/leases'
-import type { NoteScope } from './statement-scope'
-import { storeGiven } from './statements'
 
 
 const DISCARDING = ['brief', 'question:failed-runs', 'question:verify-rounds']
@@ -49,7 +47,6 @@ export type Decision = {
   choice: string
   seq: number
   note?: string
-  scope?: NoteScope
   answers?: Answers
   dropRelations?: number[]
 }
@@ -180,7 +177,6 @@ export const decide = async (
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
     await settle(tx, stored, { entry, answers }, deps.now)
     if (kept.length !== stored.record.relations.length) await keepOnly(tx, recordId, kept)
-    await storeGiven(tx, recordId, { asked, choice: decision.choice, note, card: state.card, scope: decision.scope })
     return {
       kept,
       backlogBrief: asked === 'brief' && stored.record.source.backlog,

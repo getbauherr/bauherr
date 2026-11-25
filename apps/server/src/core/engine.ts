@@ -15,6 +15,7 @@ import {
   type StoredRecord,
   type WaitingOn,
 } from './record/store'
+import { blockedByRecord, blockersOf } from './relations/blockers'
 import { enqueue, releaseLive } from './run/leases'
 
 export const MAX_ADVANCE_STEPS = 10
@@ -43,6 +44,7 @@ const WAITING: Record<Extract<Step, { kind: 'wait' }>['on'], WaitingOn> = {
   deploy: 'agents',
   owner: 'owner',
   author: 'author',
+  nobody: 'nobody',
 }
 
 const holding = (ctx: Ctx, on: WaitingOn): WaitingOn => (ctx.state.stage === 'done' ? 'nobody' : on)
@@ -144,14 +146,22 @@ const handle = async (step: Step, ctx: Ctx): Promise<Outcome> => {
   }
 }
 
-export const advance = async (recordId: number, deps: AdvanceDeps): Promise<void> => {
+const advanceOne = async (recordId: number, deps: AdvanceDeps): Promise<boolean> => {
   const config = await deps.configFor(recordId)
   for (let i = 0; i < MAX_ADVANCE_STEPS; i++) {
     const stored = await readRecord(deps.payload, recordId)
     const events = await readEvents(deps.payload, recordId)
     const state = fold(events, foldOptions(config))
     const ctx = { deps, stored, state, seq: events.length }
-    const outcome = await handle(next(stored.record, state, config), ctx)
-    if (outcome === 'stop') return
+    const blockers = await blockersOf(deps.payload, stored)
+    const outcome = await handle(next(stored.record, state, config, blockers), ctx)
+    if (outcome === 'stop') return state.merged
   }
+  return false
+}
+
+export const advance = async (recordId: number, deps: AdvanceDeps): Promise<void> => {
+  if (!(await advanceOne(recordId, deps))) return
+  const blocked = await blockedByRecord(deps.payload, await readRecord(deps.payload, recordId))
+  for (const id of blocked) await advance(id, deps)
 }

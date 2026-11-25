@@ -118,14 +118,14 @@ type Attach = { ensure: () => Promise<number>; forget: () => void }
 
 function Form({ recordId, ask, seq, sentence, actions, pick, children, ensure, forget }: Props & Attach) {
   const form = useRef<HTMLFormElement>(null)
-  const comment = useComment(ask.startsWith('question:') ? 'product' : 'ticket')
+  const comment = useComment()
   const [error, setError] = useState<string | null>(null)
   const [pending, start] = useTransition()
 
   const send = (action: DecisionAction) =>
     start(async () => {
       const extra = {
-        ...(comment.empty ? {} : { note: comment.note, scope: comment.scope }),
+        ...(comment.empty ? {} : { note: comment.note }),
         ...(form.current && action.choice === 'approve' ? approvalOf(form.current) : {}),
       }
       const result = await decideTicket({ recordId, ask, seq, choice: action.choice, ...extra })
@@ -170,8 +170,6 @@ function Form({ recordId, ask, seq, sentence, actions, pick, children, ensure, f
           hint={comment.hint}
           missing={comment.empty ? comment.missing : null}
           areaRef={comment.area}
-          scope={comment.scope}
-          onScope={comment.setScope}
         />
       ) : (
         <CommentToggle onOpen={() => comment.reveal(null)} />

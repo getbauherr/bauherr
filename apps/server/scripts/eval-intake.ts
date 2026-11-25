@@ -48,7 +48,6 @@ const packFor = async (evalCase: EvalCase, runId: number): Promise<ContextPack> 
   },
   agentsFile: null,
   memory: [],
-  statements: [],
   similar: [],
 })
 

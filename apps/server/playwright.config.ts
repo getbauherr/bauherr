@@ -16,6 +16,7 @@ const signInSpecs = [
   'people',
   'repo-files',
   'perf',
+  'product-owner',
   'product-settings',
   'selects',
   'settings',
