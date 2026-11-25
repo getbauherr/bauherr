@@ -26,12 +26,12 @@ describe('missing required fields', () => {
 
   it('reads labelled lines as well as headings', () => {
     const body = 'Who needs it: the support team\n**What:** a filter\n**Why:**'
-    expect(missingFields('feature', body)).toEqual(['why'])
+    expect(missingFields('change', body)).toEqual(['why'])
     expect(sectionsOf(body).get('what')).toBe('a filter')
   })
 
   it('has one constant with a list per type, and none are missing for a chore', () => {
-    expect(Object.keys(REQUIRED_FIELDS).sort()).toEqual(['bug', 'change', 'chore', 'feature'])
+    expect(Object.keys(REQUIRED_FIELDS).sort()).toEqual(['bug', 'change', 'chore', 'question'])
     expect(missingFields('chore', '')).toEqual([])
     expect(missingFields('change', '')).toEqual(REQUIRED_FIELDS.change)
   })

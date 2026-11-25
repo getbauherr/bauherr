@@ -43,6 +43,12 @@ const closing = (outcome: keyof typeof CLOSING, result: Result, autoClose: boole
   return { patch: { type: result.type }, events: [{ type: 'intake.closed', data: { reason } }], effects }
 }
 
+const answering = (result: Result, autoClose: boolean): Applied => {
+  const effects: Effect[] = [{ kind: 'question', body: `Answer: ${result.reason}` }]
+  if (autoClose) effects.push({ kind: 'close', reason: 'completed' })
+  return { patch: { type: result.type }, events: [{ type: 'intake.closed', data: { reason: 'answered' } }], effects }
+}
+
 export const intake = defineModule({
   stage: 'intake',
   role: 'builder',
@@ -52,6 +58,7 @@ export const intake = defineModule({
     const patch = { type: result.type }
     switch (result.outcome) {
       case 'accepted':
+        if (result.type === 'question') return answering(result, config.autoClose)
         return { patch, events: [{ type: 'intake.accepted', data: {} }] }
       case 'disputed':
         return { patch, events: [{ type: 'intake.disputed', data: {} }] }

@@ -16,7 +16,7 @@ test('shell: sidebar nav, Factory view, footer, user menu with theme, sign out',
   const bar = page.getByRole('banner')
   await expect(bar).toBeVisible()
   const nav = page.getByRole('navigation', { name: 'Main' })
-  await expect(nav.getByRole('link')).toHaveText([/^Factory$/, /^Inbox/, /^Memory$/, /^Insights$/])
+  await expect(nav.getByRole('link')).toHaveText([/^Factory$/, /^Inbox/, /^Releases$/, /^Memory$/, /^Insights$/])
   await expect(nav.getByRole('link', { name: 'Factory' })).toHaveAttribute('aria-current', 'page')
   await expect(nav.getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', '/inbox')
   await expect(bar.getByRole('navigation', { name: 'Breadcrumb' })).toHaveText('Factory')

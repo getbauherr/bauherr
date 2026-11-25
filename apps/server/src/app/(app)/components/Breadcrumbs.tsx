@@ -32,6 +32,7 @@ const HOME_WORD: Record<string, string> = {
   memory: 'Memory',
   insights: 'Insights',
   requests: 'Requests',
+  releases: 'Releases',
 }
 
 const homeCrumbs = (first: string | undefined, second: string | undefined): Crumb[] => {

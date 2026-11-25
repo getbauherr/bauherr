@@ -4,7 +4,7 @@ import { REQUIRED_FIELDS } from '../../../../core/intake/facts'
 import type { TicketView } from '../../../../core/views/ticket'
 import { Card, Facts, Section } from './Section'
 
-const TYPE_WORDS = { bug: 'Bug', feature: 'Feature', change: 'Change', chore: 'Chore' } as const
+const TYPE_WORDS = { bug: 'Bug', change: 'Change', question: 'Question', chore: 'Chore' } as const
 
 const fieldsOf = (view: TicketView): ReactNode => {
   const required = REQUIRED_FIELDS[view.record.type]

@@ -1,15 +1,17 @@
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export const GET = async (request: Request): Promise<Response> => {
+export const GET = async (req: Request): Promise<Response> => {
   if (process.env.BAUHERR_E2E_FAKE_FORGE !== '1') return new Response(null, { status: 404 })
-  const { fakeForge, forgeCalls } = await import('../../../lib/fake-forge')
-  const { searchParams } = new URL(request.url)
+  const { forgeCalls, fakeForge } = await import('../../../lib/fake-forge')
+  const { searchParams } = new URL(req.url)
   const repo = searchParams.get('repo')
   const number = searchParams.get('number')
   if (repo && number) {
     const { blockedBy, parent } = await fakeForge().tickets(repo).get(number)
     return Response.json({ blockedBy, parent })
   }
-  return Response.json({ calls: forgeCalls() })
+  const issues = repo ? await fakeForge().tickets(repo).list({ state: 'all' }) : []
+  const shown = issues.map(({ number, title, body }) => ({ number, title, body }))
+  return Response.json({ calls: forgeCalls(), issues: shown })
 }

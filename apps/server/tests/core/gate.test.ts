@@ -36,7 +36,7 @@ describe('briefGate', () => {
 
   it('flags an external feature or change, not an external bug or chore', () => {
     const external = { ...source, external: true }
-    expect(briefGate(briefed({ source: external, type: 'feature' }), config)).toBe('external-request')
+    expect(briefGate(briefed({ source: external, type: 'change' }), config)).toBe('external-request')
     expect(briefGate(briefed({ source: external, type: 'change' }), config)).toBe('external-request')
     expect(briefGate(briefed({ source: external, type: 'bug' }), config)).toBeNull()
     expect(briefGate(briefed({ source: external, type: 'chore' }), config)).toBeNull()
@@ -47,7 +47,7 @@ describe('briefGate', () => {
       decisions: [decision(1)],
       risk: risk('one-way', ['security']),
       source: { ...source, backlog: true, external: true },
-      type: 'feature',
+      type: 'change',
     })
     expect(briefGate(all, config)).toBe('open-decision')
     expect(briefGate({ ...all, decisions: [] }, config)).toBe('one-way-door')

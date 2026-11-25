@@ -40,6 +40,7 @@ const build = (): FakeBackend => {
   fake.commit('acme/web', 'main', 'README.md', '# Web\n')
   fake.commit('acme/picker', 'main', 'README.md', '# Picker\n')
   fake.commit('check/app', 'main', 'README.md', '# Check\n')
+  fake.commit('requests/app', 'main', 'README.md', '# Requests\n')
   fake.commit('ready/app', 'main', 'README.md', '# Ready\n')
   fake.commit('ready/app', 'main', 'src/auth/login.ts', 'export {}\n')
   openPull(fake, 'ready/app', 'Add a button').checks(['lint', 'test'])
