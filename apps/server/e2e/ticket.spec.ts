@@ -5,7 +5,9 @@ import { email } from './user'
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
 const relationsSection = (page: Page, title: string) =>
-  page.locator('section').filter({ has: page.getByRole('heading', { name: title, exact: true }) })
+  page
+    .locator('section:not([aria-label="Relations"])')
+    .filter({ has: page.getByRole('heading', { name: title, exact: true }) })
 
 const STALE = 'The ticket moved while this was open. Reload to see where it is now.'
 
