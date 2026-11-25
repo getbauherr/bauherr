@@ -8,7 +8,7 @@ import {
   ValidationError,
 } from 'payload'
 import { ACCOUNT_LOCKED, accountLocked, carriesPayloadCredential, lockedRequests } from '../lib/oidc-session'
-import { assignmentRows, tenantIds } from '../lib/people'
+import { assignmentRows, loginsOf, tenantIds } from '../lib/people'
 import { lockAccount } from './locks'
 
 const SELF_FIELDS = ['uiPrefs', 'password', 'githubLogin']
@@ -54,11 +54,6 @@ const assertOnlyOwnFields = (data: Record<string, unknown>, original: Record<str
     )
 }
 
-const loginsOf = (value: unknown): string[] =>
-  String(value)
-    .split(',')
-    .map((l) => l.trim().toLowerCase())
-
 const assertForgeLoginFree = async (req: Req, login: string, originalId: number | string | undefined) => {
   const mine = loginsOf(login).filter(Boolean)
   const others = await req.payload.find({
@@ -72,7 +67,10 @@ const assertForgeLoginFree = async (req: Req, login: string, originalId: number 
     select: { githubLogin: true },
     req,
   })
-  if (others.docs.some((u) => loginsOf(u.githubLogin).some((l) => mine.includes(l))))
+  const taken = others.docs.some((u) =>
+    loginsOf(typeof u.githubLogin === 'string' ? u.githubLogin : null).some((l) => mine.includes(l)),
+  )
+  if (taken)
     throw accountError('githubLogin', 'This forge login is already linked to another account')
 }
 

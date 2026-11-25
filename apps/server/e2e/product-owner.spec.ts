@@ -35,7 +35,7 @@ test('a Product owner signs in, lands on Requests and sees only their Product, a
   await signIn(page, 'po-factory@example.com')
   await expect(page).toHaveURL(/\/requests$/)
   await expect(page.getByRole('heading', { level: 1, name: 'Requests' })).toBeVisible()
-  await expect(page.getByRole('heading', { level: 2, name: 'Factory App' })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Product' })).toContainText('Factory App')
   const own = page.getByRole('link', { name: 'Add target-year check' })
   await expect(own).toHaveAttribute('href', /^\/requests\/\d+$/)
   await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveText(['Requests'])
@@ -80,5 +80,8 @@ test('a Bauherr gives a Product owner two Products and both show in Requests aft
   const owner = await (await browser.newContext()).newPage()
   await signIn(owner, added, temporary)
   await expect(owner).toHaveURL(/\/requests$/)
-  await expect(owner.getByRole('heading', { level: 2 })).toHaveText(['Acme Shop', 'Acme Web'])
+  await expect(owner.getByRole('combobox', { name: 'Product' }).getByRole('option')).toHaveText([
+    'Acme Shop',
+    'Acme Web',
+  ])
 })

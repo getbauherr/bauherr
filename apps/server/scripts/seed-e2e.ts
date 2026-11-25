@@ -12,10 +12,11 @@ import { seedConnect } from './seed-connect'
 import { seedBoardRelations } from './seed-board-relations'
 import { seedSomeday } from './seed-someday'
 import { seedReadiness } from './seed-readiness'
-import { seedRequests } from './seed-requests'
+import { seedRequestList } from './seed-requests-list'
 import { seedInsights } from './seed-insights'
 import { seedMemoryEditor } from './seed-memory-editor'
 import { seedRetro } from './seed-retro'
+import { seedRequests } from './seed-requests'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -192,6 +193,7 @@ if (!ticketsSeeded.docs.length) {
   await seedTickets(ticketsEngine)
   await seedMockupTicket(ticketsEngine)
 }
+await seedRequestList(payload, user)
 await seedConnect(payload)
 await seedSomeday(payload)
 await seedBoardRelations(payload)
