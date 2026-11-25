@@ -25,6 +25,7 @@ export const WRITE_KINDS = [
   'reopen',
   'relation-add',
   'relation-remove',
+  'comment',
 ] as const
 const target = z.object({ repo: id, number: z.number().int().positive() })
 const write = { kind: z.enum(WRITE_KINDS), target }
@@ -69,6 +70,16 @@ const eventSchema = z.discriminatedUnion('type', [
   event('production.approved', none),
   event('production.held', none),
   event('owner.note', z.object({ note: id })),
+  event(
+    'request.commented',
+    z.object({
+      messageId: z.number().int().positive(),
+      author: id,
+      role: z.enum(['product-owner', 'bauherr']),
+      text: z.string(),
+      files: z.number().int().min(0),
+    }),
+  ),
   event('ticket.closed', z.object({ reason: z.enum(['discarded', 'closed-on-forge', 'archived']) })),
   event('ticket.restored', none),
   event('ticket.blocked', z.object({ reason: z.string().min(1).nullable() })),

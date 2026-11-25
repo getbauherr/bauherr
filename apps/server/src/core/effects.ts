@@ -16,6 +16,7 @@ export type ForgePort = Pick<
   | 'setStageLabel'
   | 'upsertStatusComment'
   | 'postQuestion'
+  | 'commentOnIssue'
   | 'closeIssue'
   | 'reopenIssue'
   | 'reviewPullRequest'
@@ -33,7 +34,7 @@ const KINDS = {
 
 const idRow = z.object({ id: z.coerce.number() })
 
-const mirrorItem = async (
+export const mirrorItem = async (
   payload: Payload,
   stored: StoredRecord,
   kind: 'issue' | 'pr',
@@ -57,7 +58,8 @@ const waitingOnConflict = (state: State): string | null =>
 const statusOf = async (deps: AdvanceDeps, stored: StoredRecord, target: Target, writer: ForgePort) => {
   const events = await readEvents(deps.payload, stored.id)
   const state = fold(events, foldOptions(await deps.configFor(stored.id)))
-  const changed = events.findLast((event) => !event.type.startsWith('forge.write.'))
+  const quiet = (type: string) => type.startsWith('forge.write.') || type === 'request.commented'
+  const changed = events.findLast((event) => !quiet(event.type))
   const body = renderStatus({
     record: stored.record,
     stage: state.stage,

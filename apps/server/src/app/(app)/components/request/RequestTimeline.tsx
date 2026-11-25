@@ -41,6 +41,24 @@ function Lists({ event }: { event: StoryEvent }) {
   ))
 }
 
+function Files({ event }: { event: StoryEvent }) {
+  if (event.files.length === 0) return null
+  return (
+    <ul className="small m-0 flex list-none flex-wrap items-end gap-3 p-0">
+      {event.files.map((file) => (
+        <li key={file.url}>
+          <a href={file.url} target="_blank" rel="noreferrer" className="grid gap-1 text-primary hover:underline">
+            {file.image && (
+              <img src={file.url} alt={file.name} className="max-h-32 rounded-sm border border-border" />
+            )}
+            {file.name}
+          </a>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function Card({ event }: { event: StoryEvent }) {
   if (event.kind !== 'plan' && event.kind !== 'ready') return null
   const checks = event.lists[0]?.items.length ?? 0
@@ -56,6 +74,7 @@ function Body({ event, staging }: { event: StoryEvent; staging: string | null })
         {exactTime(event.at).slice(11)} · {event.who}
       </span>
       {event.text && <p className="m-0 whitespace-pre-wrap">{event.text}</p>}
+      <Files event={event} />
       {rich && <Card event={event} />}
       {rich && <Pictures event={event} />}
       {rich && <Lists event={event} />}

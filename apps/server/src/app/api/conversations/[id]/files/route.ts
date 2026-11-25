@@ -16,7 +16,7 @@ const nameOf = (req: Request): string => {
 }
 
 export const POST = async (req: Request, context: Context): Promise<Response> => {
-  const granted = await grantConversation((await context.params).id)
+  const granted = await grantConversation((await context.params).id, 'files')
   if (granted instanceof Response) return granted
   try {
     const bytes = await readCapped(req, FILE_MAX_BYTES)

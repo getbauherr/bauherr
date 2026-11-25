@@ -12,6 +12,8 @@ import { RequestTimeline } from '../../../components/request/RequestTimeline'
 import { REQUEST_WORDS } from '../../../lib/request-words'
 import { payloadClient, requirePerson } from '../../../lib/session'
 
+const DIFFERENT = 'Tell us what is different from what you asked for'
+
 export const dynamic = 'force-dynamic'
 
 type Props = { params: Promise<{ id: string }> }
@@ -39,7 +41,10 @@ export default async function RequestPage({ params }: Props) {
         <div className="grid min-w-0 gap-4">
           <NowBox story={story} />
           <RequestTimeline story={story} />
-          <RequestComposer />
+          <RequestComposer
+            recordId={recordId}
+            placeholder={story.status === 'result-ready' ? DIFFERENT : undefined}
+          />
         </div>
         <RequestAbout story={story} />
       </div>

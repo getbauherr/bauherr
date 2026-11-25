@@ -13,6 +13,16 @@ const WRITES: Record<EventOf<'forge.write.done'>['data']['kind'], string> = {
   review: 'a review comment',
   'relation-add': 'a ticket relation',
   'relation-remove': 'removing a ticket relation',
+  comment: 'a request comment',
+}
+
+const EXCERPT = 80
+
+const commentLabel = (data: EventOf<'request.commented'>['data']): string => {
+  const text = data.text.replace(/\s+/g, ' ').trim()
+  const excerpt = text.length > EXCERPT ? `${text.slice(0, EXCERPT)}…` : text
+  const files = data.files === 0 ? '' : ` (${data.files} ${data.files === 1 ? 'file' : 'files'})`
+  return `Comment by ${data.author}${excerpt ? `: ${excerpt}` : ''}${files}`
 }
 
 const article = (word: string): string => (/^[aeiou]/.test(word) ? 'An' : 'A')
@@ -66,6 +76,7 @@ const LABELS: Labels = {
   'production.approved': () => 'The owner approved production',
   'production.held': () => 'The owner holds production',
   'owner.note': (e) => `The owner left a note: ${e.data.note}`,
+  'request.commented': (e) => commentLabel(e.data),
   'ticket.closed': (e) => CLOSED_LABELS[e.data.reason],
   'ticket.restored': () => 'The ticket was restored and its stage runs again',
   'ticket.blocked': (e) => (e.data.reason === null ? 'The ticket is unblocked' : `Build waits: ${e.data.reason}`),

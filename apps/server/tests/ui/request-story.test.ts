@@ -13,6 +13,7 @@ const event = (partial: Partial<StoryEvent> & Pick<StoryEvent, 'id' | 'kind' | '
   who: 'Factory',
   text: '',
   images: [],
+  files: [],
   lists: [],
   ...partial,
 })

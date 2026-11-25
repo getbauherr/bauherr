@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import type { Payload } from 'payload'
-import { conversationWorkspace } from '../../../core/conversations/store'
+import { conversationRecord, conversationWorkspace } from '../../../core/conversations/store'
+import { mayOpenRequest, requestScope } from '../../../core/views/request-access'
 import { isBauherr, isProductOwner } from '../../../lib/people'
 import { getPerson, payloadClient, WS_COOKIE, workspacesOf } from './session'
 
@@ -26,13 +27,26 @@ export const grantWorkspace = async (asked: number | undefined): Promise<Granted
   return { payload: await payloadClient(), workspace }
 }
 
-export const grantConversation = async (rawId: string): Promise<(Granted & { id: number }) | Response> => {
+const mayUseFiles = async (person: Parameters<typeof mayOpenRequest>[0], payload: Payload, id: number) => {
+  const recordId = await conversationRecord(payload, id)
+  const scope = recordId === null ? null : await requestScope(payload, recordId)
+  return scope !== null && mayOpenRequest(person, scope)
+}
+
+export const grantConversation = async (
+  rawId: string,
+  access: 'files' | 'all' = 'all',
+): Promise<(Granted & { id: number }) | Response> => {
   const person = await getPerson()
   if (!person) return Response.json(NOT_SIGNED_IN, { status: 401 })
   const id = Number(rawId)
   if (!Number.isInteger(id) || id <= 0) return new Response(null, { status: 404 })
   const payload = await payloadClient()
   const workspace = await conversationWorkspace(payload, id)
-  if (workspace === null || !(await mayUse(person, workspace))) return new Response(null, { status: 404 })
-  return { payload, workspace, id }
+  if (workspace === null) return new Response(null, { status: 404 })
+  const allowed =
+    isProductOwner(person) && access === 'files'
+      ? await mayUseFiles(person, payload, id)
+      : await mayUse(person, workspace)
+  return allowed ? { payload, workspace, id } : new Response(null, { status: 404 })
 }

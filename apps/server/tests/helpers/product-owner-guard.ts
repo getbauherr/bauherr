@@ -56,6 +56,8 @@ export const BAUHERR_ROUTES: string[] = [
 export const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#login': 'sign-in',
   'lib/actions.ts#logout': 'sign-out',
+  '(shell)/requests/actions.ts#startRequestConversation': 'comment on a request of their own product',
+  '(shell)/requests/actions.ts#commentOnRequestAction': 'comment on a request of their own product',
 }
 export const BAUHERR_ACTIONS = [
   '(shell)/settings/profile/actions.ts#saveOwnLogin',
