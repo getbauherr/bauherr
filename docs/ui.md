@@ -33,7 +33,7 @@ Only acceptance on staging closes a Ticket.
 | `/` | See the workflow as a graph and the open Tickets by stage. Tabs Workflow, Graph and Epics. |
 | `/workflow/<stage>` | See the Jobs of one stage and the Tickets in each. |
 | `/requests` | Follow your requests in four sections, starting with Needs you. |
-| `/requests/<id>` | Read one request, its status and its timeline. Report a problem once it is released. |
+| `/requests/<id>` | Read one request: whose turn it is, then its story. |
 | `/releases` | Pick done Tickets, choose the version and edit the notes. |
 | `/insights` | Read time to done, time per stage and cost. Choose 7, 30 or 90 days. |
 | `/knowledge` | Search and read the documents the agents use. |
