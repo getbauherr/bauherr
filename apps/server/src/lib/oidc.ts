@@ -1,10 +1,15 @@
 import * as client from 'openid-client'
 import type { Role } from './people'
+import { fakeAllowed, TEST_BUILD } from './fake-guard'
 import { secret } from './secrets'
+
+const insecureIssuer = (): boolean =>
+  process.env.BAUHERR_E2E_OIDC_INSECURE === '1' && fakeAllowed(process.env, TEST_BUILD)
 
 const httpsUrl = (v?: string): boolean => {
   try {
-    return new URL(v ?? '').protocol === 'https:'
+    const { protocol } = new URL(v ?? '')
+    return protocol === 'https:' || (protocol === 'http:' && insecureIssuer())
   } catch {
     return false
   }
@@ -121,6 +126,7 @@ const discover = () =>
       process.env.OIDC_CLIENT_ID!,
       undefined,
       client.ClientSecretPost(secret('OIDC_CLIENT_SECRET')),
+      insecureIssuer() ? { execute: [client.allowInsecureRequests] } : undefined,
     )
     .catch((e) => {
       config = undefined

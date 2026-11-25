@@ -33,15 +33,15 @@ const scan = async (page: Page) => {
 }
 
 const setTheme = (page: Page, id: 'light' | 'dark') =>
-  page.evaluate((t) => {
+  page.evaluate(async (t) => {
     localStorage.setItem('bauherr-theme', t)
     document.documentElement.dataset.theme = t
-    return Promise.all(
-      document
-        .getAnimations()
-        .filter((a) => Number.isFinite(a.effect?.getComputedTiming().endTime))
-        .map((a) => a.finished.catch(() => {})),
-    )
+    const finite = (a: Animation) => Number.isFinite(a.effect?.getComputedTiming().endTime)
+    const unfinished = () => document.getAnimations().filter((a) => finite(a) && a.playState !== 'finished')
+    for (const end = Date.now() + 20_000; unfinished().length && Date.now() < end; )
+      await new Promise((r) => setTimeout(r, 50))
+    const stuck = unfinished().map((a) => `${a.playState} ${(a.effect as KeyframeEffect).target?.className}`)
+    if (stuck.length) throw new Error(`animations unfinished after 20s: ${stuck.join(' || ')}`)
   }, id)
 
 const signIn = async (page: Page) => {

@@ -208,3 +208,23 @@ describe('oidc strategy against the database', () => {
     for (const k of ['hash', 'salt', 'loginAttempts', 'lockUntil']) expect(user).not.toHaveProperty(k)
   })
 })
+
+describe('http issuer for the e2e fake provider', () => {
+  const missingIssuer = async (extra: Record<string, string>) => {
+    vi.resetModules()
+    const vars = { OIDC_ISSUER: 'http://localhost:4010', OIDC_CLIENT_ID: 'x', PUBLIC_URL: 'http://a' }
+    vi.stubEnv('OIDC_CLIENT_SECRET', 's')
+    for (const [k, v] of Object.entries({ ...vars, ...extra })) vi.stubEnv(k, v)
+    return (await import('../src/lib/oidc')).oidcMissing()
+  }
+  afterAll(() => vi.unstubAllEnvs())
+
+  it('is refused by default and in production', async () => {
+    expect(await missingIssuer({})).toBe('OIDC_ISSUER')
+    const production = { BAUHERR_E2E_OIDC_INSECURE: '1', NODE_ENV: 'production', BAUHERR_TEST_BUILD: '' }
+    expect(await missingIssuer(production)).toBe('OIDC_ISSUER')
+  })
+  it('is accepted with the flag outside production', async () => {
+    expect(await missingIssuer({ BAUHERR_E2E_OIDC_INSECURE: '1', NODE_ENV: 'test' })).toBeUndefined()
+  })
+})

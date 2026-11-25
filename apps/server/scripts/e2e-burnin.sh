@@ -8,7 +8,8 @@ for pass in 1 2 3; do
   # the parent `next start` forks `next-server`, which keeps the port and its in-memory fake forge (answers of earlier specs) when only the parent is killed: stop both so every pass starts a clean server
   pkill -9 -f 'next start' || true
   pkill -9 -f 'next-server' || true
-  fuser -k -9 3000/tcp || true
+  pkill -9 -f 'fake-oidc' || true
+  fuser -k -9 3000/tcp 3001/tcp 4010/tcp || true
   for _ in $(seq 1 30); do pgrep -f 'next start|next-server' > /dev/null || break; sleep 1; done
   pgrep -af 'next start|next-server' || true
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
@@ -16,9 +17,10 @@ for pass in 1 2 3; do
   pnpm --filter server start >> apps/server/e2e/app.log 2>&1 &
   curl --fail --silent --retry 60 --retry-delay 2 --retry-connrefused -o /dev/null http://localhost:3000/login
   pnpm --filter server seed:e2e
+  apps/server/scripts/e2e-oidc.sh
   echo "::endgroup::"
   docker run --rm --network host --ipc=host --user "$(id -u):$(id -g)" \
     -v "$PWD:/work" -v "$E2E_PASSWORD_FILE:/pw:ro" -w /work/apps/server \
-    -e BASE_URL=http://localhost:3000 -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e HOME=/tmp -e E2E_WORKERS=3 \
+    -e BASE_URL=http://localhost:3000 -e E2E_EMAIL -e E2E_PASSWORD_FILE=/pw -e E2E_FAKE_FORGE -e E2E_OIDC=http://localhost:3001 -e HOME=/tmp -e E2E_WORKERS=3 \
     mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test "$@" --pass-with-no-tests --reporter=line
 done

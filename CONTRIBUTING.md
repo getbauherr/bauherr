@@ -14,6 +14,7 @@ Rules every e2e test follows (the mechanical ones are pinned by `apps/server/tes
 - **A mutating test is repeatable.** The e2e-fake job retries once: the retry must not fail on what the first attempt changed (a name made unique with `Date.now()`).
 - **Wait on an end signal, never on time.** The visible result of the step (`Saved`, the checks list loaded), not a longer timeout or `waitForTimeout`. Counts of rows that other specs change are read in one `page.evaluate`, and a count that moves with other specs' work is asserted as a direction (`toBeLessThan(before)`), not an exact number.
 - **Signed-in API calls come from the page**: `page.evaluate(() => fetch('/api/...'))`. `page.request` sends no `Origin`/`Sec-Fetch-Site`, which Payload's cookie check treats as anonymous on the production image; a deliberate anonymous probe goes through a const named `anonymousApiProbe`.
+- **OIDC sign-in specs** (`@oidc`, `apps/server/e2e/oidc.spec.ts`) run against a second server on :3001 with OIDC on and a fake provider on :4010 (`apps/server/e2e/fake-oidc.ts`, started by `apps/server/scripts/e2e-oidc.sh` in `e2e-fake` and the burn-in; Playwright gets `E2E_OIDC=http://localhost:3001`). The http issuer is allowed only by `BAUHERR_E2E_OIDC_INSECURE=1` in a `BAUHERR_TEST_BUILD=1` build or outside production.
 - **Prove a change to a spec the way CI does**: `BAUHERR_TEST_BUILD=1` production build, `apps/server/scripts/e2e-burnin.sh <spec files>` (3 passes, 3 workers, no retries, fresh DB each).
 
 ## UI rules for agents

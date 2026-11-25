@@ -36,7 +36,7 @@ Authorization code flow with PKCE, `state` and `nonce`. Endpoints come from disc
 | `OIDC_CLIENT_SECRET` / `OIDC_CLIENT_SECRET_FILE` | | Client secret of a confidential client; the file wins |
 | `OIDC_ROLE_CLAIM` | `realm_access.roles` | Dot path into the ID token or userinfo |
 | `OIDC_ADMIN_ROLE` | `bauherr-admin` | Claim value that grants role `admin`. Anyone else is `bauherr`, or `product-owner` with `OIDC_PRODUCT_OWNER_ROLE`. |
-| `OIDC_PRODUCT_OWNER_ROLE` | unset | Claim value that grants `product-owner`, see `docs/spec/people.md`. Admin wins. |
+| `OIDC_PRODUCT_OWNER_ROLE` | unset | Claim value that grants `product-owner`, see `docs/spec/people.md`. Admin wins on first sign-in; an existing Product owner is never raised by a later sign-in. |
 | `OIDC_BAUHERR_ROLE` | unset | Claim value that grants `bauherr`. When set, a sign-in with none of the three values is refused. Unset: every realm user gets `bauherr`. |
 | `OIDC_WORKSPACE_CLAIM` | `groups` | Claim of Workspace slugs; a leading `/` is stripped |
 | `OIDC_DISPLAY_NAME` | issuer host | Label on the button |

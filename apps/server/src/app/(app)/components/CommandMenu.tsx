@@ -53,10 +53,12 @@ function ActionGroup({ actions }: { actions: Action[] }) {
 export function CommandMenu({
   items,
   admin,
+  productOwner,
   logout,
 }: {
   items: Pick<NavItem, 'href' | 'label'>[]
   admin: boolean
+  productOwner: boolean
   logout: () => Promise<void>
 }) {
   const router = useRouter()
@@ -80,7 +82,7 @@ export function CommandMenu({
   const needle = q.trim().toLowerCase()
   const pages = [
     ...items.map(({ href, label }) => ({ href, label })),
-    ...settingsPages(admin).map(([label, href]) => ({ href, label: `Settings: ${label}` })),
+    ...(productOwner ? [] : settingsPages(admin)).map(([label, href]) => ({ href, label: `Settings: ${label}` })),
   ].filter((p) => p.label.toLowerCase().includes(needle))
   const actions = [
     { label: 'Toggle theme', Icon: Moon, run: () => run(toggleTheme) },
