@@ -10,7 +10,7 @@ const answered = (option: string) => ev('question.answered', { option })
 const resultCard: Step = { kind: 'card', card: 'result', reason: 'result', options: [] }
 
 const stepOf = (events: AppEvent[], config: Config = deploying) =>
-  next(briefed(), fold(events, { productionGate: false, deployChecks: config.deployChecks }), config)
+  next(briefed(), fold(events, { deployChecks: config.deployChecks }), config)
 
 describe('next after a merge with deploy checks', () => {
   it('waits on the deploy', () => {

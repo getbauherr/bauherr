@@ -11,6 +11,30 @@ const openPull = (fake: FakeBackend, repo: string, title: string) => {
   }
 }
 
+export const RELATION_REPO = 'rel/app'
+export const RELATION_TITLES = [
+  'Box subject',
+  'Box parent',
+  'Box blocker',
+  'Box dependent',
+  'Box peer',
+  'Box newcomer',
+  'Box remover',
+  'Box old blocker',
+  'Box ancient blocker',
+  ...Array.from({ length: 210 }, (_, i) => `Box filler ${i + 1}`),
+]
+
+const relationTickets = (fake: FakeBackend): void => {
+  fake.commit(RELATION_REPO, 'main', 'README.md', '# Relations\n')
+  const tickets = fake.tickets(RELATION_REPO)
+  for (const title of RELATION_TITLES) void tickets.create({ title, body: title })
+  void tickets.addSubTicket('2', '1')
+  void tickets.addBlockedBy('1', '3')
+  void tickets.addBlockedBy('4', '1')
+  void tickets.addBlockedBy('7', '8')
+}
+
 const build = (): FakeBackend => {
   const fake = new FakeBackend({ native: true, users: ['fake', 'e2e-admin'] })
   fake.commit('acme/web', 'main', 'README.md', '# Web\n')
@@ -22,6 +46,7 @@ const build = (): FakeBackend => {
   openPull(fake, 'ready/app', 'Add a button').checks(['lint', 'test'])
   void fake.tickets('ready/wait').create({ title: 'Add a button', body: 'The page needs a button.' })
   openPull(fake, 'ready/wait', 'Add a button')
+  relationTickets(fake)
   const checks = fake.commit('acme/checks', 'main', 'README.md', '# Checks\n')
   fake.setCommits('acme/checks', [{ sha: checks, message: 'Deploy to production' }])
   fake.setChecks('acme/checks', checks, [

@@ -61,7 +61,7 @@ const INTAKE = {
   reporterSilentDays: '10',
   excludedLabels: 'wontfix, , question, wontfix',
 }
-const UNTOUCHED = { backlogBriefLimit: 5, executor: 'session', productionGate: false, riskAreas: [] }
+const UNTOUCHED = { backlogBriefLimit: 5, executor: 'session', riskAreas: [] }
 
 describe('saveIntake', () => {
   it('saves the intake fields, trims and de-duplicates labels, and touches nothing else', async () => {
@@ -105,20 +105,19 @@ describe('saveIntake', () => {
 })
 
 describe('saveGates', () => {
-  it('saves risk areas, the production switch and the Brief limit, and touches nothing else', async () => {
+  it('saves risk areas and the Brief limit, and touches nothing else', async () => {
     const { saveGates } = await actions()
     const { product } = await setup('sec-gates')
-    const chosen = { riskAreas: ['security', 'ui'], productionGate: 'on', backlogBriefLimit: '9' }
+    const chosen = { riskAreas: ['security', 'ui'], backlogBriefLimit: '9' }
     expect((await saveGates({}, form({ id: String(product), ...chosen }))).saved).toBe(true)
     expect(await read(product)).toMatchObject({
       riskAreas: ['security', 'ui'],
-      productionGate: true,
       backlogBriefLimit: 9,
       outsideIssuesPerDay: 5,
       autoClose: true,
     })
     await saveGates({}, form({ id: String(product), backlogBriefLimit: '9' }))
-    expect(await read(product)).toMatchObject({ riskAreas: [], productionGate: false })
+    expect(await read(product)).toMatchObject({ riskAreas: [], backlogBriefLimit: 9 })
   })
 
   it('refuses a risk area that is not a path set and a limit out of bounds', async () => {

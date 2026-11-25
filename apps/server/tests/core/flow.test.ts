@@ -19,7 +19,7 @@ afterAll(async () => {
   await e?.drop()
 })
 beforeEach(async () => {
-  e.config = { ...e.config, caps: { verifyRounds: 3, reporterRounds: 2, failedRuns: 2 }, productionGate: false }
+  e.config = { ...e.config, caps: { verifyRounds: 3, reporterRounds: 2, failedRuns: 2 } }
   e.merges.length = 0
   await e.drain()
 })
@@ -176,22 +176,4 @@ describe('a ticket from intake to done', () => {
     await expectView(id, 'ship', 'owner', resultCard)
   })
 
-  it('holds production after acceptance until the owner approves it', async () => {
-    e.config = { ...e.config, productionGate: true }
-    const id = await toResult()
-    await answer(id, { ask: 'result', choice: 'accept' })
-    const ask = { card: 'question', reason: 'production', options: ['approve', 'hold'] }
-    await expectView(id, 'ship', 'owner', ask)
-    await answer(id, { ask: 'question:production', choice: 'hold' })
-    const held = { card: 'question', reason: 'production-held', options: ['approve-production'], seq: 17 }
-    await expectView(id, 'ship', 'owner', held)
-    await expect(answer(id, { ask: 'question:production', choice: 'approve' })).rejects.toThrow(
-      StaleDecision,
-    )
-    await answer(id, { ask: 'production-held', choice: 'approve-production' })
-    await expectView(id, 'done', 'nobody')
-    expect((await e.view(id)).types.slice(-5)).toEqual([
-      'result.accepted', 'question.asked', 'question.answered', 'production.held', 'production.approved',
-    ])
-  })
 })

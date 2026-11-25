@@ -119,7 +119,7 @@ export function ReadinessSection({ product, view, admin }: { product: number; vi
           {admin && <><span aria-hidden>·</span><CheckNow product={product} /></>}
         </span>
       </div>
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="flex flex-col gap-4">
         <ul className="m-0 list-none overflow-hidden rounded-md border border-border bg-card p-0">
           {open.map((item) => <Row key={item.id} item={item} product={product} admin={admin} />)}
           {ready.length > 0 && (

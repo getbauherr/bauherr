@@ -21,7 +21,6 @@ describe('lifecycleConfig', () => {
     expect(await lifecycleConfig(db.payload, record)).toEqual({
       caps: { verifyRounds: 3, reporterRounds: 2, failedRuns: 2 },
       riskAreas: [],
-      productionGate: false,
       deployChecks: false,
       deployNames: [],
       deployWaitMinutes: 60,
@@ -33,12 +32,11 @@ describe('lifecycleConfig', () => {
 
   it('reads the gate, risk areas and deploy checks from the Product', async () => {
     const record = await db.fresh()
-    const fields = sql`"production_gate" = true, "risk_areas" = '["security","billing"]'::jsonb,
+    const fields = sql`"risk_areas" = '["security","billing"]'::jsonb,
       "deploy_checks" = 'ci, deploy'`
     await setProduct(fields)
     expect(await lifecycleConfig(db.payload, record)).toMatchObject({
       riskAreas: ['security', 'billing'],
-      productionGate: true,
       deployChecks: true,
       deployNames: ['ci', 'deploy'],
     })
