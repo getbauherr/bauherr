@@ -5,7 +5,7 @@ import { MarkdownText } from '../assistant-ui/elements/markdown-text'
 import { UserMessageAttachments } from '../assistant-ui/elements/attachment.aui'
 import { Composer } from './Composer'
 
-function UserMessage() {
+export function UserMessage() {
   return (
     <MessagePrimitive.Root data-role="user" className="ml-auto flex max-w-[85%] flex-col items-end gap-2">
       <UserMessageAttachments />
@@ -16,7 +16,7 @@ function UserMessage() {
   )
 }
 
-function AssistantMessage() {
+export function AssistantMessage() {
   return (
     <MessagePrimitive.Root data-role="assistant" className="max-w-[85%]">
       <MessagePrimitive.Parts components={{ Text: MarkdownText }} />

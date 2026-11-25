@@ -42,7 +42,7 @@ const eventSchema = z.discriminatedUnion('type', [
   event('reporter.replied', none),
   event('reporter.reminded', none),
   event('reporter.silent', none),
-  event('intake.closed', z.object({ reason: z.enum(['duplicate', 'not-planned', 'not-a-bug']) })),
+  event('intake.closed', z.object({ reason: z.enum(['duplicate', 'not-planned', 'not-a-bug', 'answered']) })),
   event('intake.disputed', none),
   event('run.started', z.object({ ...run, fingerprint: id })),
   event('run.failed', z.object({ ...run, reason: id })),

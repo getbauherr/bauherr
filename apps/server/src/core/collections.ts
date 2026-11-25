@@ -171,6 +171,20 @@ export const coreCollections: CollectionConfig[] = [
     ],
   },
   {
+    slug: 'request_drafts',
+    admin: { useAsTitle: 'state' },
+    access: { read: readable, create: closed, update: closed, delete: closed },
+    fields: [
+      { name: 'conversation', type: 'relationship', relationTo: 'conversations', required: true, unique: true },
+      { name: 'product', type: 'relationship', relationTo: 'products', required: true, index: true },
+      { name: 'state', type: 'text', required: true },
+      { name: 'data', type: 'json', required: true },
+      { name: 'issueNumber', type: 'number' },
+      { name: 'record', type: 'relationship', relationTo: 'records' },
+      { name: 'createdBy', type: 'text', required: true },
+    ],
+  },
+  {
     slug: 'retros',
     admin: { useAsTitle: 'state' },
     access: { read: readable, create: closed, update: closed, delete: closed },

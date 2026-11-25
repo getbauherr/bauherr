@@ -178,7 +178,7 @@ const CASES: Case[] = [
   {
     name: 'an external feature becomes a card',
     events: briefWritten,
-    record: briefed({ source: external, type: 'feature' }),
+    record: briefed({ source: external, type: 'change' }),
     expected: briefCard('external-request'),
   },
   {

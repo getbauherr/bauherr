@@ -36,3 +36,5 @@ export const tierFor = async (role: Role): Promise<Tier> => {
 }
 
 export const retroSkill = (): Promise<string> => readFile(join(SKILLS_DIR, 'retro.md'), 'utf8')
+
+export const requestSkill = (): Promise<string> => readFile(join(SKILLS_DIR, 'request.md'), 'utf8')
