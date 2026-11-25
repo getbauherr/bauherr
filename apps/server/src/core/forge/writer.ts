@@ -13,6 +13,7 @@ import { backendFor } from '../../lib/adapters'
 import { connectionInput } from '../../lib/connection'
 import { appendEvent } from '../record/store'
 import { WRITE_KINDS, type Stage } from '../events'
+import { settleMerge } from './merge-pending'
 import { checkNewRelation } from '../relations/relate'
 import { edgeOf } from '../relations/proposal'
 import { syncForgeLink } from '../relations/forge-link'
@@ -143,7 +144,9 @@ const mergePullRequest = async (ctx: Ctx, target: Target, expectedHeadSha: strin
       if (pull.headSha !== expectedHeadSha) {
         throw new HeadMoved(`${row.repo}#${row.number} head is ${pull.headSha}, not ${expectedHeadSha}.`)
       }
-      return forge.mergePullRequest(row.repo, row.number, { method: 'squash', expectSha: expectedHeadSha })
+      return forge
+        .mergePullRequest(row.repo, row.number, { method: 'squash', expectSha: expectedHeadSha })
+        .catch((error: unknown) => settleMerge(forge, row.repo, row.number, error))
     },
     mirror: () => saveClosed(ctx.payload, target.itemId, 'merged', ctx.deps.now()),
   })

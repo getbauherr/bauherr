@@ -97,12 +97,6 @@ const EXCEPTIONS = [
       'collections cannot declare expression indexes.',
   },
   {
-    prefix: 'index statements_fts_idx ',
-    reason:
-      'The full-text GIN index over the statement text exists only through its migration; ' +
-      'collections cannot declare expression indexes.',
-  },
-  {
     prefix: 'enum enum_payload_jobs_',
     reason:
       'Migrated databases keep the slugs of removed job tasks in the job-slug enums; ' +
