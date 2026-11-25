@@ -1,149 +1,110 @@
 # UI
 
-The Bauherr UI is served at `/`. Everything an Admin configures is a page here, and every feature with its page is listed in the feature map. This is the short guide.
+The Bauherr UI is served at `/`. A Bauherr or Admin decides on tickets here and sets up Products. This is the short guide.
 
 ## Shell
 
 Every signed-in page has this frame.
 
-- **Sidebar**: Inbox, Memory, Insights, Tickets, Agent team, Requests, Releases, Knowledge, and Runs for an Admin. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
-- **Header**: breadcrumb, "New request", the agent presence pill (who is working, who is idle) and the command palette on `Ctrl/Cmd+K`. The palette jumps to any page and finds Tickets.
-- **Holding up work strip**: one line for each cause that stops several Tickets, shown only while runs wait. "No builder session is connected: 2 runs wait (Build 2)" links to Connect a session. "The Runner has not picked up a run for 10 minutes" covers a Runner Product.
-- **Ask button**: opens the [chat](#chat) dock on `Ctrl/Cmd+J`.
+- **Sidebar**: Factory, Inbox, Memory and Insights. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
+- **Header**: breadcrumb and Search on `Ctrl/Cmd+K`. Search jumps to any page and finds tickets.
 - **Workspace switcher**: appears with two or more Workspaces.
 
-A Product owner gets a smaller shell: Requests and Profile, no chat.
+A Product owner gets a smaller shell today. Requests from Product owners are planned, not built.
 
-## Get a Ticket through
+## Get a ticket through
 
-1. **Request**: open `/requests/new` and answer the assistant's questions until the request card is complete. Then File request.
-2. **Triage and plan**: the factory reads the request and may ask questions. You answer them in the Ticket's conversation. It then writes a plan.
-3. **Approve the plan**: the Inbox shows one card with the ask, a recommendation and the options. Approve it, or send it back with a note.
-4. **Build and review**: agents build and review without you. A Run that needs you appears in the Inbox.
-5. **Accept on staging**: open staging from the Ticket page and press Accept, or Request changes with a note.
-6. **Release**: the Releases page collects done Tickets into a version and its notes. Production may ask for one more approval.
-
-Only acceptance on staging closes a Ticket.
+1. **Connect a project**: add a repository to a Product and switch it on. See Connect a project below.
+2. **Intake**: code selects the issue. The factory may ask the reporter one numbered round of questions.
+3. **Approve the Brief**: a ticket that needs you shows the Brief card. Approve it, request changes or discard it. A low-risk Brief is approved by the risk rule and never reaches you.
+4. **Build and Verify**: agents build, then a reviewer and a verifier check the patch. You are not asked.
+5. **Accept the Result**: the Result card shows before and after pictures and proof per criterion. Accept it, or send it back with a note.
+6. **Done**: the ticket closes. Production approval is a switch per Product.
 
 ## Pages
 
 | Path | What you do |
 |---|---|
-| `/inbox` | Decide what waits for you, Waiting on you first. Keys: `j`/`k` move, `o`/`Enter` open, `Esc` clear, `?` help. The list refreshes every 5 s and keeps the focus. |
-| `/` | See the workflow as a graph and the open Tickets by stage. Tabs Workflow, Graph and Epics. |
-| `/workflow/<stage>` | See the Jobs of one stage and the Tickets in each. |
-| `/requests` | Follow your requests in four sections, starting with Needs you. |
-| `/requests/<id>` | Read one request, its status and its timeline. Report a problem once it is released. |
+| `/` | See the Factory view: tickets by stage, filters, holds and loops. |
+| `/inbox` | Decide what waits for you. Keys: `j`/`k` move, `o`/`Enter` open, `Esc` clear, `?` help. |
+| `/tickets/<id>` | Decide one ticket. Tabs Now, Brief, Result and Activity. |
+| `/memory` | Edit the factory, workspace or product document. `/memory/retro` starts a Retro. |
 | `/releases` | See what is live and ready to release. |
-| `/insights` | Read time to done, time per stage and cost. Choose 7, 30 or 90 days. |
-| `/knowledge` | Search and read the documents the agents use. |
-| `/team` | Connect an agent session and see who works on what. |
-| `/runs` | Admin only. The newest Runs with stage and status. |
-| `/setup` | Admin only. Five steps from forge connection to the first request. |
+| `/insights` | Read time per stage and cost. Choose 7, 30 or 90 days. |
+| `/settings/products/<id>` | Read Repo readiness and set gates, intake and proof for a Product. |
+| `/settings/products/<id>/connect` | Connect a project: import, first look and switch on. |
+| `/runs/<id>` | Read one run: its steps, handoff and links. |
+| `/settings/...` | Profile, API keys, General, Products, Connections, Models and budget, People, Health, Audit. |
 
-## Overview
+## Factory view
 
-The `/` page shows the workflow of your factory file. Tickets are listed by stage, "Needs you" first. The Graph tab orders Tickets by blockers. A Ticket with sub-tickets is an epic and shows its progress on the Epics tab.
+The six stages are fixed: Intake, Brief, Build, Verify, Ship and Done. Each shows its count, a bar by state, who works there and the median time in the stage. Tickets sit as cards under their stage.
 
-Every Ticket has one status. The labels are Done, Split, In progress, Queued, Waiting for you, Waiting for CI, Blocked and Failed. The first matching label wins, and every page shows it the same way.
+- **Filters**: All, Waiting on you, Agents working, Stuck and Waiting on others. With several Products, a Product filter joins them.
+- **Holding up work**: one line per cause that stops several tickets. Examples are no connected session for a role, a Product that is still observing and a repository whose sync failed.
+- **Loops**: dashed lines count tickets sent back from Verify and from Ship in the last 7 days.
+- **Order**: drag a card, press `Alt` and an arrow key, or use the card menu. Priority changes inside a stage only. A stage changes through the card's actions.
+- **Someday**: the label `bauherr:someday` parks an issue. The view shows how many are parked and links to them.
 
-## Someday
+The page refreshes from the database on its own.
 
-Label an issue `bauherr:someday` to park an idea: no Intake Run, no Inbox item. It is excluded by default (Product settings, Intake). The Factory view shows `Someday: N`, linked to those issues.
+## Inbox
+
+The same tickets as a list, grouped by who has to act: Waiting on you, Agents working, Waiting on others and Done. The badge on the sidebar counts what waits on you.
 
 ## Ticket page
 
-The left half is the conversation with the factory, ending in a comment box. The right is the Now pane with four tabs: Now, Plan, Proof and History.
+The header shows the title, the status and the six stages with the current one marked. The Now tab holds the card that waits for you and a comment box. The side column shows the source issue, time and cost, and the verdict.
 
-The action bar atop the Now pane holds the next step: one sentence and one primary button naming it, such as Approve plan or Re-run Build.
+### The three cards
 
-- **Approve plan** is refused while critical decisions are unanswered.
-- **Send back** asks for a note and returns the Ticket to Build or the Backlog. Every comment has an Applies to choice: This ticket (default), This product or Do not remember. The Ticket page lists used memories.
-- **Fast lane** skips Triage and plan approval and jumps the queue. It is available for one Ticket at a time when the Workspace allows it.
-- **Round cap**: when review reaches its cap you grant one more round or stop.
-- **Close as done**: when Build reports another pull request or Ticket covers the work, Close #n as done by #m moves the Ticket to done; Re-run build queues Build again.
+Each card has the ask in one sentence, the reason you are asked, options and a free comment. The factory acts on the option you choose, not on the comment text.
 
-- **Archive** (before Ship, after a dialog): releases the Run, hides the Ticket, closes the issue as not planned.
-- **Restore** reopens the issue and reruns the stage; so does reopening it on the forge.
+- **Brief**: Approve Brief, Request changes or Discard. It shows the goal, open decisions with a recommended option, the criteria, the risk and, for a visible change, mockups.
+- **Result**: Accept or Send back with note. It shows before and after per mockup screen, criteria with proof and what was not verified.
+- **Question**: what the factory cannot settle, for example failed runs, used-up verify rounds, a silent reporter or production approval. The options are in the card.
 
-### Decision card
+### Other actions
 
-Every human checkpoint uses one card. It has the ask in one sentence, a recommendation, at most three reasons, the options and a collapsed details section. The Inbox and the Ticket page show the same card. A decided card does not come back.
+- **Back to Brief** returns a ticket in Build or Verify to Brief with a note.
+- **Archive** hides a ticket before Ship, releases its run and closes the issue as not planned. **Restore** reverses it.
+- A note you give with a decision is kept as a memory.
 
-## Request conversation
+## Connect a project
 
-`/requests/new` opens an interview with the Factory assistant. The request card fills in beside the stream.
+An existing project comes in four steps. The page shows where you are.
 
-- Pick Report a bug, Ask for a feature or Change something, or describe it.
-- Click a suggested answer or type your own.
-- Edit any field of the card by hand. Your edit is kept.
-- Several problems in one message become several Tickets.
-- File request is enabled when the card is complete or the question limit is reached.
+1. **Connect**: attach a repository to the Product.
+2. **Import**: all issues with comments and all open pull requests are mirrored. Nothing is written to the forge.
+3. **First look**: Intake runs on every open issue and a repository check runs. The Product is `observing` and the forge writer refuses.
+4. **Switch on**: the Product becomes `active`. Briefs for old issues come one at a time, at most five waiting on you.
 
-After filing, the conversation is read-only history.
+You decide what is built: every issue that existed before connecting gets a Brief card. An open pull request that closes an issue and comes from a trusted author enters at Verify.
 
-## Conversation parts
+## Repo readiness
 
-Conversation parts:
+The Product page lists what the repository lacks: required checks, CI runs, risk areas, `AGENTS.md`, issue forms, connected sessions and branch protection. Each row says ready, gap or unknown. A gap offers a fix: set a value, open a ticket or follow a link. GitLab cannot report required checks, so that row shows unknown.
 
-- Thread: `conversation/Thread.tsx`
-- Composer: `conversation/Composer.tsx`
-- Attachments: `assistant-ui/elements/attachment.aui.tsx`
-- Option list: `assistant-ui/elements/option-list.tsx`
-- Task card: `assistant-ui/elements/task-card.tsx`
-- Artifact card: `assistant-ui/elements/artifact-card.tsx`
-- Gallery: `assistant-ui/elements/image-gallery.tsx`
-- Timeline: `assistant-ui/elements/timeline.tsx`
+## Agent sessions
 
-`/conversations` starts a test conversation. Files may be up to 10 MB. Comment files show on Activity and reach the next run.
-
-## Parked Tickets
-
-A Run missing a prerequisite only the owner can supply releases with that need. The Inbox and Ticket page show `Parked: <need>` with the stage. Resume queues the stage again; Discard closes the Ticket. Not Stuck, no Re-run.
-
-## Run page
-
-`/runs/<id>` shows one attempt of a stage. The header gives one word (Working, Waiting for a session, Stuck, Failed, Finished) and a sentence that says why.
-
-One primary button at most: Connect an agent for a queued Run without a session, Open ticket for a failed or expired Run.
-
-Below: timed steps, the handoff, Links (pull request, Ticket, session), Admin-only cost and the agent's context.
-
-## Agent team
-
-`/team` is where a session joins the factory.
-
-1. Choose a role in the Connect panel.
-2. Press Copy prompt and paste it into a Claude Code session that has the Bauherr MCP server.
-3. The session appears as Idle, then Working when it claims a Run.
-
-Rows show the status, the Ticket and today's cost. Open a row for the agent view with current Run, milestones and cost. An Admin edits a role's model and agent limit in the role drawer. Commands are in session mode.
-
-## Chat
-
-One assistant is docked on every page. It answers questions about the factory and the page you are on. Ticket numbers like `#123` in answers are links.
-
-- Actions such as approving show a confirmation card first. Nothing runs until you press Approve.
-- Paste or drop images into the composer.
-- Rate answers with thumbs. Admins read the ratings at `/settings/chat-feedback`.
-- Slash commands: `/context`, `/new`, `/request`, `/help`. On a Ticket thread, `/comment <text>` posts to the issue.
-
-## Settings
-
-Settings are grouped by scope. Account is for everyone, with Profile and API keys. Factory has Workflow, Templates, Models and budget, and AI usage. Workspace has General, Products, Connections, People and Knowledge. Admin has Audit and Health.
-
-API keys lists each session with its live Runs and slots, for example "2 of 3 working": a session connected with a capacity of 1 to 4 holds that many Runs at once, one subagent each.
-
-Only an Admin edits, except Profile and API keys. Members read the rest.
+A Product's executor is `session` or `runner`. For `session`, create an agent key under API keys and add the MCP server to Claude Code. The session connects as builder, reviewer or verifier and pulls runs. With a capacity of 1 to 4 it holds that many runs, one subagent each. API keys lists each session with its live runs.
 
 ## Memory
 
-`/memory` edits one document (Factory, Workspace or Product) in a markdown editor with preview; a Product's side column lists its agent instruction files. `/memory/statements` lists memories. A run page lists its memory.
+`/memory` edits one document at a time in a markdown editor with preview. Pick factory, workspace or a Product. Headings are fixed: All stages, Brief, Build, Review and Verify. A Product's side column lists its repository instruction files and the document's versions. A run page lists the memory it was given.
+
+**Retro** starts a conversation for one Product over a range of tickets. It proposes document changes or new tickets. You apply or drop each one.
+
+## Conversations
+
+Conversations are built on assistant-ui. The Thread, Composer, attachments, option lists and cards share one set of parts in `assistant-ui/`. `/conversations` starts a test conversation. Files may be up to 10 MB.
+
+## Settings
+
+Settings are grouped by scope. Account holds Profile and API keys. Workspace holds General, Products, People and, for an Admin, Connections and Models and budget. Admin holds Health and Audit. Only an Admin edits Product settings. Members read them.
 
 ## Not in the UI, by design
 
-- `return_to_build`: the agent repair for a dead Ticket. People use Back to Build.
-- Connection slug: derived from the name and used in model ids.
 - `/api/health`: a probe for monitoring. The same facts are in Settings, Health.
 - Payload `/admin`: a developer escape hatch behind `BAUHERR_ENABLE_ADMIN=1`.
-- CLI commands, environment flags and background jobs: deployment configuration. Their effects show on Tickets, Runs and Health.
+- CLI commands, environment flags and background jobs: deployment configuration. Their effects show on tickets, runs and Health.
