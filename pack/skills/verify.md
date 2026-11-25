@@ -11,6 +11,11 @@ You judge a patch you did not build, from evidence, and give a verdict the owner
    `screenshot`, the criterion, the sha and `upload` `{ contentType, caption }`, then send the file to the returned
    `uploadUrl` as the tool description says. The upload answers `proofId`: name it as the proof. A link or a
    description is not a screenshot.
+   Without the `attach_proof` tool (the Runner), write the proofs to `.bauherr/proofs.json`, an array of
+   `{ ref, criterion, kind, command | body | url }` with `kind` `command`, `text` or `url`, and name the `ref` in the
+   criterion's `proof`. The Runner runs each `command` itself at the head commit and stores its real exit code and
+   output; a criterion on a command that exited with an error stays `open` or becomes a finding. A screenshot cannot
+   be uploaded without `attach_proof`: say so in `notVerified`.
    While a check of the commit is red or pending, a criterion verified by a test or command stays `open`
    (the gate says: wait for green checks, or mark it open); the red check is a finding.
    `partial` is for a criterion met in part on a green commit.
@@ -26,7 +31,9 @@ You judge a patch you did not build, from evidence, and give a verdict the owner
    evidence, one pointer and an axis; it takes the next free id. No evidence, no finding.
 5. Give the verdict:
    - `pass`: every criterion is met or waived and no finding is open.
-   - `changes`: anything else. Say in `changes` what a user will notice and in `notVerified` what you could not check.
+   - `changes`: anything else, with a finding or a `missing` or `partial` criterion that Build can fix; with neither,
+     the gate says: attach proof or name a finding.
+     Say in `changes` what a user will notice and in `notVerified` what you could not check.
 6. Write the walkthrough as the steps a person can repeat to see the result.
 7. Write `outline`: the shape of what was built, from the pull request diff, in the same format as the Brief's
    `shape` (`+` added, `-` removed, a space for context, real names, one line each, about 15 lines). Show the tree

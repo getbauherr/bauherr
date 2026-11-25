@@ -13,6 +13,7 @@ export type GateFacts = {
   headCommit: string | null
   checks: ChecksState
   proofIds: string[]
+  failedProofIds: string[]
   screens: string[]
   shots: Shot[]
 }
@@ -69,6 +70,28 @@ const proof: Rule = ({ result, facts }) =>
       return refusal('proof', `criteria.${c.id}`, `${why}: attach a proof and name its id.`)
     })
 
+const failedProof: Rule = ({ result, facts }) =>
+  result.criteria
+    .filter((c) => claims(c.status) && c.proof.some((p) => facts.failedProofIds.includes(p)))
+    .map((c) => {
+      const why = `${c.id} is ${c.status} on a command that exited with an error`
+      return refusal('proof', `criteria.${c.id}`, `${why}: fix the cause as a finding, or mark it open.`)
+    })
+
+export const UNPROVEN_FIX = 'attach proof or name a finding'
+
+const UNPROVEN_WHY = 'changes with no finding and no missing or partial criterion'
+
+const unproven: Rule = ({ result, record }) => {
+  if (result.verdict !== 'changes') return []
+  const findings = new Map([...record.findings, ...result.findings].map((f) => [f.id, f]))
+  const live = [...findings.values()].some((f) => f.status === 'open' || f.status === 'fixing')
+  const broken = result.criteria.some((c) => c.status === 'missing' || c.status === 'partial')
+  return live || broken
+    ? []
+    : [refusal('unproven', 'verdict', `${UNPROVEN_WHY}: ${UNPROVEN_FIX}.`)]
+}
+
 const known: Rule = ({ result, record }) =>
   result.criteria
     .filter((c) => !record.criteria.some((criterion) => criterion.id === c.id))
@@ -101,7 +124,19 @@ const pairs: Rule = ({ result, record, facts }) =>
       )
     : []
 
-const RULES: Rule[] = [author, stalePatch, headMoved, checks, proof, known, evidence, verdict, pairs]
+const RULES: Rule[] = [
+  author,
+  stalePatch,
+  headMoved,
+  checks,
+  proof,
+  failedProof,
+  known,
+  evidence,
+  unproven,
+  verdict,
+  pairs,
+]
 
 const REVIEW_RULES: ReviewRule[] = [author, stalePatch, headMoved, evidence]
 
