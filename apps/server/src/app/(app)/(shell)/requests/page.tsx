@@ -12,6 +12,7 @@ import {
   REQUEST_FILTERS,
   type RequestFilter,
 } from '../../../../core/views/request-status'
+import { isBauherr, loginsOf } from '../../../../lib/people'
 import { payloadClient } from '../../lib/session'
 import { readableProducts, requestsOf, requireRequestsReader } from '../../lib/requests'
 
@@ -38,7 +39,7 @@ export default async function Requests({
       </>
     )
   }
-  const list = listRequests(await requestsOf(payload, product), person.email)
+  const list = listRequests(await requestsOf(payload, product), loginsOf(person.githubLogin))
   const filter = filterOf(query.show)
   return (
     <>
@@ -59,7 +60,7 @@ export default async function Requests({
           {applyFilter(list, filter).length === 0 ? (
             <p className="small text-muted-foreground">Nothing here.</p>
           ) : (
-            <RequestRows list={applyFilter(list, filter)} />
+            <RequestRows list={applyFilter(list, filter)} staff={isBauherr(person)} />
           )}
         </>
       )}

@@ -14,7 +14,7 @@ const MARK_TONE = {
 }
 const GRID = 'grid grid-cols-[28px_52px_minmax(0,1fr)_170px_100px_110px] items-center gap-3 px-4 py-2.5'
 
-export function RequestRows({ list }: { list: RequestListRow[] }) {
+export function RequestRows({ list, staff }: { list: RequestListRow[]; staff: boolean }) {
   return (
     <div role="table" aria-label="Requests" className="border border-border bg-card">
       <div role="row" className={cn(GRID, 'label bg-secondary text-muted-foreground')}>
@@ -36,7 +36,7 @@ export function RequestRows({ list }: { list: RequestListRow[] }) {
             #{row.number}
           </span>
           <span role="cell" className="min-w-0">
-            <Link href={`/requests/${row.recordId}`} className="font-medium hover:underline">
+            <Link href={`${staff ? '/tickets' : '/requests'}/${row.recordId}`} className="font-medium hover:underline">
               {row.title}
             </Link>
             <br />

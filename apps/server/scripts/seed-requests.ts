@@ -7,6 +7,7 @@ import { seedScenario, type ScenarioNames } from '../tests/core/scenario'
 const o = { overrideAccess: true } as const
 
 export const REQUESTS_OWNER = 'po-requests@example.com'
+const OWNER_LOGIN = 'po-requests-gh'
 
 const TITLES: Record<keyof ScenarioNames, string> = {
   intakeQueued: 'Request just received',
@@ -58,6 +59,7 @@ export const seedRequests = async (
   const withRequests = await productOf(payload, workspace, 'requests-app', 'Requests App')
   const empty = await productOf(payload, workspace, 'requests-empty', 'Requests Empty')
   await user(REQUESTS_OWNER, 'product-owner', {
+    githubLogin: OWNER_LOGIN,
     assignments: [{ workspace, scope: 'products', products: [withRequests, empty] }],
   })
   const inWorkspace = { workspace: { equals: workspace } }
@@ -69,7 +71,7 @@ export const seedRequests = async (
   for (const [name, type] of Object.entries(MINE)) {
     const id = scenario.names[name as keyof ScenarioNames]
     await payload.db.drizzle.execute(sql`UPDATE "records"
-      SET "data" = jsonb_set(jsonb_set("data", '{source,reporter}', to_jsonb(${REQUESTS_OWNER}::text)),
+      SET "data" = jsonb_set(jsonb_set("data", '{source,reporter}', to_jsonb(${OWNER_LOGIN}::text)),
         '{type}', to_jsonb(${type}::text)) WHERE "id" = ${id}`)
   }
 }

@@ -15,7 +15,7 @@ const base: Input = {
   questionDrafted: false,
 }
 const card = (kind: 'brief' | 'result' | 'question', reason = 'r') => ({ card: kind, reason, options: [], seq: 1 })
-const word = (patch: Partial<Input>) => requestStatus({ ...base, ...patch }).word
+const word = (patch: Partial<Input>, mine = true) => requestStatus({ ...base, ...patch }, mine).word
 
 describe('the status words of a request', () => {
   it.each<[string, Partial<Input>, string]>([
@@ -64,9 +64,24 @@ describe('the status words of a request', () => {
   })
 
   it('puts each status into one bucket', () => {
-    expect(requestStatus({ ...base, ended: 'accepted' }).bucket).toBe('live')
-    expect(requestStatus({ ...base, ended: 'closed' }).bucket).toBe('closed')
-    expect(requestStatus(base).bucket).toBe('open')
+    expect(requestStatus({ ...base, ended: 'accepted' }, false).bucket).toBe('live')
+    expect(requestStatus({ ...base, ended: 'closed' }, false).bucket).toBe('closed')
+    expect(requestStatus(base, false).bucket).toBe('open')
+  })
+})
+
+describe('who a waiting request waits for', () => {
+  const waiting = { stage: 'intake', waitingOn: 'reporter', run: null } as const
+
+  it('says Waiting for you only to the creator', () => {
+    expect(word(waiting, true)).toBe('Waiting for you')
+    expect(word(waiting, false)).toBe('Waiting for the requester')
+  })
+
+  it('lists the same request by viewer', () => {
+    const rows = [{ ...base, ...waiting, recordId: 1, reporter: 'jo', changedAt: new Date() } as TicketRow]
+    expect(listRequests(rows, ['jo'])[0]?.status.word).toBe('Waiting for you')
+    expect(listRequests(rows, ['other'])[0]?.status.word).toBe('Waiting for the requester')
   })
 })
 
@@ -81,13 +96,19 @@ describe('the filters of the Requests page', () => {
     }) as TicketRow
 
   const rows = [
-    row(1, { reporter: 'Me@Example.com' }),
+    row(1, { reporter: 'Me-Login' }),
     row(2, { ended: 'accepted', stage: 'done', run: null }),
-    row(3, { ended: 'closed', stage: 'done', run: null, reporter: 'me@example.com' }),
+    row(3, { ended: 'closed', stage: 'done', run: null, reporter: 'me-login' }),
   ]
 
+  it('matches the creator on the forge login, not on a request by someone else', () => {
+    const list = listRequests(rows, ['someone'])
+    expect(list.filter((r) => r.mine).map((r) => r.row.recordId)).toEqual([2])
+    expect(listRequests(rows, [])).toSatisfy((l: ReturnType<typeof listRequests>) => l.every((r) => !r.mine))
+  })
+
   it('counts and filters Open, Live, Closed and Only mine, newest change first', () => {
-    const list = listRequests(rows, 'me@example.com')
+    const list = listRequests(rows, ['me-login'])
     expect(list.map((r) => r.row.recordId)).toEqual([3, 2, 1])
     expect(filterCounts(list)).toEqual({ open: 1, live: 1, closed: 1, mine: 2 })
     expect(applyFilter(list, 'live').map((r) => r.row.recordId)).toEqual([2])

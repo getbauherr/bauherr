@@ -31,7 +31,6 @@ const open = (word: string, tone: RequestTone, mark: RequestMark): RequestStatus
 })
 
 const OPEN_STATUS: Partial<Record<TicketStatus, RequestStatus>> = {
-  'reporter-asked': open('Waiting for you', 'warn', '!'),
   'brief-needs-approval': open('Plan waiting for approval', 'neutral', '·'),
   'result-ready': open('Ready to try', 'ok', '✓'),
   triaging: open('Received', 'neutral', '·'),
@@ -43,7 +42,7 @@ const closedStatus = (row: Input): RequestStatus => {
   return { word: reason ? `Closed: ${reason}` : 'Closed', tone: 'neutral', mark: '×', bucket: 'closed' }
 }
 
-export const requestStatus = (row: Input): RequestStatus => {
+export const requestStatus = (row: Input, mine: boolean): RequestStatus => {
   if (row.ended === 'accepted') return { word: 'Live', tone: 'ok', mark: '✓', bucket: 'live' }
   if (row.ended === 'closed') return closedStatus(row)
   const status = statusOf({
@@ -53,6 +52,7 @@ export const requestStatus = (row: Input): RequestStatus => {
     claimed: row.run?.leasedBy != null,
   })
   if (status === 'queued' && row.stage === 'intake') return open('Received', 'neutral', '·')
+  if (status === 'reporter-asked') return open(mine ? 'Waiting for you' : 'Waiting for the requester', 'warn', '!')
   return OPEN_STATUS[status] ?? open('In progress', 'accent', '◐')
 }
 
@@ -61,13 +61,12 @@ export type RequestFilter = (typeof REQUEST_FILTERS)[number]
 
 export type RequestListRow = { row: TicketRow; status: RequestStatus; mine: boolean }
 
-export const listRequests = (rows: TicketRow[], email: string): RequestListRow[] =>
+export const listRequests = (rows: TicketRow[], forgeLogins: string[]): RequestListRow[] =>
   rows
-    .map((row) => ({
-      row,
-      status: requestStatus(row),
-      mine: row.reporter.toLowerCase() === email.toLowerCase(),
-    }))
+    .map((row) => {
+      const mine = forgeLogins.includes(row.reporter.toLowerCase())
+      return { row, status: requestStatus(row, mine), mine }
+    })
     .sort((a, b) => +b.row.changedAt - +a.row.changedAt)
 
 export const filterCounts = (list: RequestListRow[]): Record<RequestFilter, number> => ({
