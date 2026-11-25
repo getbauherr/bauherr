@@ -161,6 +161,18 @@ export function contractSuite(name: string, env: ContractEnv): void {
       await assert.rejects(ts.addSubTicket((await mk('other-parent')).id, c.id));
     });
 
+    void it('removes a sub-ticket link and a blocked-by link', async () => {
+      const p = await mk('rm-parent');
+      const c = await mk('rm-child');
+      await ts.addSubTicket(p.id, c.id);
+      await ts.addBlockedBy(c.id, p.id);
+      await ts.removeSubTicket(p.id, c.id);
+      await ts.removeBlockedBy(c.id, p.id);
+      const g = await ts.get(c.id);
+      assert.equal(g.parent, null);
+      assert.deepEqual(g.blockedBy, []);
+    });
+
     void it('frontier excludes blocked and closed sub-tickets', async () => {
       const p = await mk('f-parent');
       const a = await mk('f-a');

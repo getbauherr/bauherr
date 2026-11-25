@@ -96,14 +96,15 @@ const compareVersions = (a: RegExpExecArray, b: RegExpExecArray): number => {
 
 export const isVersion = (name: string): boolean => SEMVER.test(name)
 
-export const highestVersion = (names: string[]): string | null => {
+export const sortVersions = (names: string[]): string[] => {
   const versions = names.flatMap((name) => {
     const match = SEMVER.exec(name)
     return match ? [{ name, match }] : []
   })
-  versions.sort((a, b) => compareVersions(b.match, a.match))
-  return versions[0]?.name ?? null
+  return versions.sort((a, b) => compareVersions(b.match, a.match)).map((version) => version.name)
 }
+
+export const highestVersion = (names: string[]): string | null => sortVersions(names)[0] ?? null
 
 const readWorkflows = async (repo: string, branch: string, forge: ReadForge): Promise<Workflow[]> => {
   const { paths } = await forge.listFiles(repo, branch)

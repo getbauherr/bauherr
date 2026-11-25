@@ -77,6 +77,13 @@ export const mirrorCollections: CollectionConfig[] = [
     indexes: [{ fields: ['item', 'sha', 'name'], unique: true }],
   },
   {
+    slug: 'ticket_relations',
+    admin: { useAsTitle: 'type' },
+    access,
+    fields: [relation('fromItem', 'mirror_items'), relation('toItem', 'mirror_items'), text('type', true)],
+    indexes: [{ fields: ['fromItem', 'toItem', 'type'], unique: true }],
+  },
+  {
     slug: 'repo_instruction_files',
     admin: { useAsTitle: 'path' },
     access,

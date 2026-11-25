@@ -23,6 +23,8 @@ export const WRITE_KINDS = [
   'pull-request',
   'review',
   'reopen',
+  'relation-add',
+  'relation-remove',
 ] as const
 const target = z.object({ repo: id, number: z.number().int().positive() })
 const write = { kind: z.enum(WRITE_KINDS), target }

@@ -3,7 +3,7 @@ import type { Check, Release } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { ReadForge } from '../forge/reader'
-import { isVersion } from '../readiness/release-facts'
+import { sortVersions } from '../readiness/release-facts'
 import type { SourceRow } from '../mirror/store'
 
 const MAX_VERSIONS = 20
@@ -35,7 +35,7 @@ const versionsOf = async (repo: string, forge: ReadForge): Promise<(Version & { 
   const releases = await forge.listReleases(repo)
   const tags = [...new Set([...(await forge.listTags(repo)), ...releases.map((release) => release.tag)])]
   const found: (Version & { sha: string | null })[] = []
-  for (const tag of tags.filter(isVersion).slice(0, MAX_VERSIONS)) {
+  for (const tag of sortVersions(tags).slice(0, MAX_VERSIONS)) {
     const release = releases.find((entry) => entry.tag === tag)
     const sha = release?.sha ?? (await forge.tagSha(repo, tag))
     const at = await stampOf(repo, forge, release, sha)

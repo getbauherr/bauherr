@@ -101,7 +101,14 @@ export const mirrorHarness = (suite: string) => {
   })
 
   beforeEach(async () => {
-    const tables = ['mirror_checks', 'mirror_comments', 'mirror_items', 'repo_instruction_files', 'ticket_sources']
+    const tables = [
+      'ticket_relations',
+      'mirror_checks',
+      'mirror_comments',
+      'mirror_items',
+      'repo_instruction_files',
+      'ticket_sources',
+    ]
     for (const table of tables) {
       await rows(sql`DELETE FROM ${sql.identifier(table)}`)
     }

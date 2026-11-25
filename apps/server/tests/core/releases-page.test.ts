@@ -113,4 +113,19 @@ describe('releases page', () => {
     expect(view.ready?.visible).toBe(1)
     expect(view.past).toEqual([{ tag: 'v0.3.0', at: '2026-11-10T10:00:00.000Z', changes: 1, notes: null, url: null }])
   })
+
+  it('picks the highest version when the forge has more than twenty tags', async () => {
+    const s = await f.start('active')
+    const fake = f.fake()
+    for (let n = 1; n <= 25; n++) {
+      release(fake, s.repo, `v0.${n}.0`, new Date(Date.UTC(2026, 9, n, 10)).toISOString(), '')
+    }
+    await merged(s.repo, 1, 'Already released', '2026-10-24T12:00:00Z', true, true)
+    await merged(s.repo, 2, 'Not released yet', '2026-11-20T12:00:00Z', true, true)
+    await refresh()
+    const view = await page()
+    expect(view.ready?.since).toBe('v0.25.0')
+    expect(view.ready?.tickets.map((t) => t.title)).toEqual(['Not released yet'])
+    expect(view.past[0]?.tag).toBe('v0.25.0')
+  })
 })
