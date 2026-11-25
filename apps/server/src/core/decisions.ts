@@ -116,20 +116,6 @@ export const QUESTION_REASONS = [
 
 export type QuestionReason = (typeof QUESTION_REASONS)[number]
 
-export const REMEMBERED: Record<QuestionReason, boolean> = {
-  'failed-runs': false,
-  'reporter-silent': false,
-  disputed: true,
-  'verify-rounds': false,
-  'already-done': false,
-  'deploy-stalled': false,
-  production: false,
-  agent: true,
-  parked: false,
-}
-
-export const isRemembered = (reason: string): boolean => REMEMBERED[reason as QuestionReason] === true
-
 export const agentNote = (question: string, answer: string, comment: string): AppEvent => ({
   type: 'owner.note',
   data: { note: [`Question: ${question}`, `Answer: ${answer}`, comment].filter((l) => l !== '').join('\n') },

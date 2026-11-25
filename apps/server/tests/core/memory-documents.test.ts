@@ -9,7 +9,6 @@ import {
   saveDocument,
   type DocumentTarget,
 } from '../../src/core/memory-documents'
-import { addMemory } from '../../src/core/memory-store'
 import { sectionsOf } from '../../src/core/memory-sections'
 import { createRecord } from '../../src/core/record/store'
 import { claim, enqueue } from '../../src/core/run/leases'
@@ -94,15 +93,15 @@ describe('what a run is told', () => {
     expect(JSON.stringify([review, verify])).not.toContain('notes')
   })
 
-  it('still hands the old single memories after the three documents', async () => {
+  it('hands a run the three documents and none of the old single memories', async () => {
     await seed()
-    await addMemory(e.db.payload, bauherr(), {
-      product: e.db.product,
-      input: { text: 'Old memory.', reach: 'always', stages: ['build'] },
-    })
+    await e.db.payload.db.drizzle.execute(sql`
+      INSERT INTO "statements" ("workspace_id", "product_id", "kind", "scope", "text", "updated_at", "created_at")
+      VALUES (${e.db.workspace}, ${e.db.product}, 'written', 'product', 'Old memory.', now(), now())`)
     const pack = await packOf('build', 'builder')
-    expect(pack.memory).toHaveLength(3)
-    expect(pack.statements.map((s) => s.text)).toEqual(['Old memory.'])
+    expect(pack.memory.map((part) => part.scope)).toEqual(['factory', 'workspace', 'product'])
+    expect(pack).not.toHaveProperty('statements')
+    expect(JSON.stringify(pack)).not.toContain('Old memory.')
   })
 })
 

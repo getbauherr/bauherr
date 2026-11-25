@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { InvalidDecision } from '../../src/core/decide'
 import { readEvents } from '../../src/core/record/store'
-import { statementsFor } from '../../src/core/statements'
 import { failRun } from '../../src/core/submit'
 import { claim } from '../../src/core/run/leases'
 import { openMcp, type Mcp } from './mcp-harness'
@@ -54,10 +53,6 @@ describe('a free answer to an agent question', () => {
     expect((await types(record)).slice(-3)).toEqual(['question.answered', 'owner.note', 'run.started'])
     expect(await notes(record)).toEqual(['Question: Which?\nAnswer: Neither: use a queue'])
     expect((await m.claimed(m.alpha)).context.note).toBe('Question: Which?\nAnswer: Neither: use a queue')
-    const statements = await statementsFor(m.e.db.payload, m.e.db.product, 50)
-    expect(statements.filter((s) => s.record === record).map((s) => [s.kind, s.text])).toEqual([
-      ['answer', 'Which?: Neither: use a queue'],
-    ])
   })
 
   it('is not an option of a factory question', async () => {

@@ -77,25 +77,6 @@ const insightsTicket = async (page: Page) => {
   return linkOn('/insights', /^\/tickets\/\d+$/)(page)
 }
 
-const insightsMemory = async (page: Page) => {
-  await inInsights('/memory/statements')(page)
-  return linkOn('/memory/statements', /^\/memory\/\d+$/)(page)
-}
-
-const memoryOne = async (page: Page) => {
-  await inRecord('/memory/statements')(page)
-  return linkOn('/memory/statements', /^\/memory\/\d+$/)(page)
-}
-
-const memoryRun = async (page: Page) => {
-  await inRecord('/memory')(page)
-  await page.goto('/memory/statements')
-  await page.getByRole('link', { name: 'Say what changed in the handoff.' }).click()
-  const href = await page.locator('main a[href^="/runs/"]').first().getAttribute('href')
-  expect(href, 'a run link on the memory').toBeTruthy()
-  return href!
-}
-
 const withHoldStrip = (url: string) => async (page: Page) => {
   await inFactory(url)(page)
   await page.goto(url)
@@ -164,13 +145,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'nothing done in the range': inRecord('/insights'),
   },
   '/memory': inRecord('/memory'),
-  '/memory/statements': inRecord('/memory/statements'),
-  '/memory/new': inRecord('/memory/new'),
   ...retroTargets,
-  '/memory/[id]': {
-    'with a ticket': memoryOne,
-    'with the cost of coming back': insightsMemory,
-  },
   '/tickets/[id]': {
     'Brief card': inTickets('Brief with a decision for the tabs'),
     'Brief card with earlier answers': inTickets('Large export needs earlier answers'),
@@ -191,7 +166,6 @@ const routes: Record<string, Target | Record<string, Target>> = {
     queued: runOf('Build waiting for an agent'),
     failed: runOf('Build that failed'),
     'claimed, no step': runOf('Build that has not reported'),
-    'run with memory': memoryRun,
   },
   '/settings': '/settings',
   '/settings/api-key': '/settings/api-key',
