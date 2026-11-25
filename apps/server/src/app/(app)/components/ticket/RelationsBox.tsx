@@ -8,7 +8,7 @@ import {
 import type { Candidate, RelatedTicket, RelationGroup, TicketRelations } from '../../../../core/views/ticket-relations'
 import { TicketRefPopover } from '../TicketRefPopover'
 import { Button } from '../ui/button'
-import { Command, CommandInput, CommandItem, CommandList } from '../ui/command'
+import { Input } from '../ui/input'
 import { NativeSelect } from '../ui/native-select'
 import { CARD } from './Section'
 
@@ -94,25 +94,31 @@ function TicketPicker({
     )
   }
   return (
-    <Command shouldFilter={false} className="min-w-0 rounded-md border">
-      <CommandInput
+    <div className="grid min-w-0 gap-1">
+      <Input
         aria-label="Search tickets"
         placeholder="Search by number or title"
         value={query}
-        onValueChange={setQuery}
+        onChange={(e) => setQuery(e.target.value)}
       />
-      {results.length > 0 ? (
-        <CommandList className="max-h-48">
+      {!query ? null : results.length > 0 ? (
+        <ul aria-label="Matching tickets" className="m-0 grid max-h-48 list-none gap-0 overflow-y-auto p-0">
           {results.map((candidate) => (
-            <CommandItem key={candidate.itemId} value={String(candidate.itemId)} onSelect={() => choose(candidate)}>
-              #{candidate.number} {candidate.title}
-            </CommandItem>
+            <li key={candidate.itemId}>
+              <button
+                type="button"
+                className="small w-full truncate rounded px-2 py-1 text-left hover:bg-secondary"
+                onClick={() => choose(candidate)}
+              >
+                #{candidate.number} {candidate.title}
+              </button>
+            </li>
           ))}
-        </CommandList>
+        </ul>
       ) : (
-        query && <p className="small m-0 p-2 text-muted-foreground">No ticket found</p>
+        <p className="small m-0 text-muted-foreground">No ticket found</p>
       )}
-    </Command>
+    </div>
   )
 }
 
