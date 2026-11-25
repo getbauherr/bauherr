@@ -1,6 +1,6 @@
 "use client";
 
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { mono, paper } from "./surfaces";
 import { take } from "../utils/range";
@@ -13,6 +13,7 @@ export interface TimelineEvent {
   time: string;
   title: string;
   detail?: string;
+  body?: ReactNode;
 }
 
 const dotClass = (when: TimelineWhen) =>
@@ -23,6 +24,22 @@ const dotClass = (when: TimelineWhen) =>
     when === "past" && "bg-muted-foreground forced-colors:bg-[CanvasText]",
     when === "future" && "border-muted-foreground border bg-transparent",
   );
+
+function Rail({ when, last }: { when: TimelineWhen; last: boolean }) {
+  return (
+    <span className="flex flex-col items-center">
+      <span className={dotClass(when)} />
+      {!last && (
+        <span
+          className={cn(
+            "w-px flex-1",
+            when === "future" ? "bg-foreground/[0.08]" : "bg-foreground/15",
+          )}
+        />
+      )}
+    </span>
+  );
+}
 
 function TimelineRow({
   event,
@@ -47,19 +64,7 @@ function TimelineRow({
         {event.time}
       </span>
 
-      <span className="flex flex-col items-center">
-        <span className={dotClass(event.when)} />
-        {!last && (
-          <span
-            className={cn(
-              "w-px flex-1",
-              event.when === "future"
-                ? "bg-foreground/[0.08]"
-                : "bg-foreground/15",
-            )}
-          />
-        )}
-      </span>
+      <Rail when={event.when} last={last} />
 
       <div className={cn("flex flex-col gap-0.5", !last && "pb-3")}>
         <span
@@ -73,6 +78,7 @@ function TimelineRow({
         >
           {event.title}
         </span>
+        {event.body}
         {event.detail && (
           <span
             className={cn(
