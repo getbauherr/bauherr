@@ -37,7 +37,14 @@ const rowSchema = z.object({
   adopted_by: z.string().nullable(),
 })
 
-export type ClosedAs = 'not-a-bug' | 'duplicate' | 'not-planned' | 'discarded' | 'closed-on-forge' | 'archived'
+export type ClosedAs =
+  | 'answered'
+  | 'not-a-bug'
+  | 'duplicate'
+  | 'not-planned'
+  | 'discarded'
+  | 'closed-on-forge'
+  | 'archived'
 
 export type TicketRow = {
   recordId: number
@@ -64,7 +71,15 @@ export type TicketRow = {
 
 const ACCEPTED = ['result.accepted', 'production.approved', 'ticket.done-elsewhere']
 
-const CLOSED_AS: ClosedAs[] = ['not-a-bug', 'duplicate', 'not-planned', 'discarded', 'closed-on-forge', 'archived']
+const CLOSED_AS: ClosedAs[] = [
+  'answered',
+  'not-a-bug',
+  'duplicate',
+  'not-planned',
+  'discarded',
+  'closed-on-forge',
+  'archived',
+]
 
 export const closedAsOf = (type: string | null, reason: string | null): ClosedAs | null => {
   if (type === 'brief.discarded') return 'discarded'

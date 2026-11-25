@@ -6,7 +6,6 @@ import { commentsOf, postComment, requestConversation, type NewComment } from '.
 import { commentOnRequest, issueCommentBody, sendToIssue } from '../../src/core/requests/issue-comment'
 import { storeFile } from '../../src/core/conversations/store'
 import { createWriter } from '../../src/core/forge/writer'
-import { inertBlock } from '../../src/core/forge/inert'
 import { readEvents, readRecord } from '../../src/core/record/store'
 import { requestStory } from '../../src/core/views/request-story'
 import { PNG } from './images'
@@ -102,7 +101,7 @@ describe('the issue comment', () => {
     await db.execute(sql`UPDATE "products" SET "state" = 'active' WHERE "id" = ${e.db.product}`)
     const backend = vi.fn(() => Promise.resolve(fake))
     const forge = createWriter(payload(), { backend, now: () => new Date('2026-11-25T10:00:00Z') })
-    const deps = { payload: payload(), forge, baseUrl: 'https://bauherr.test' }
+    const deps = { payload: payload(), forge, origin: 'https://bauherr.test', key: 'test-key' }
     return { fake, issue, record, deps }
   }
   const bodies = async (fake: FakeBackend, number: string) =>
@@ -116,8 +115,9 @@ describe('the issue comment', () => {
     await sendToIssue(deps, comment, event.data.messageId)
     const written = await bodies(fake, String(issue.number))
     expect(written).toHaveLength(1)
-    expect(written[0]).toContain('Please keep the old @team layout. Closes #1')
-    expect(written[0]).toMatch(/\[screen\.png\]\(https:\/\/bauherr\.test\/api\/conversations\/\d+\/files\/\d+\)/)
+    expect(written[0]).toContain('Please keep the old @\u200bteam layout. Closes\u200b \\#1')
+    expect(written[0]).not.toMatch(/@team|Closes #1/)
+    expect(written[0]).toMatch(/\[screen\.png\]\(https:\/\/bauherr\.test\/api\/request-files\/\d+\/\d+\/\S+\)/)
     const picture = /Picture it refers to: \[Export page, new: progress bar\]\(\S+\/api\/attachments\/\d+\)/
     expect(written[0]).toMatch(picture)
   })
@@ -135,14 +135,11 @@ describe('owner text in an issue comment', () => {
     const body = issueCommentBody({
       author: 'x [evil](http://e.test) @team',
       role: 'product-owner',
-      text: 'cc @team fixes #3 <img src=x> [click](http://e.test) ```` end',
+      text: 'cc @team fixes #3 <img src=x> [click](http://e.test)',
       files: [{ name: 'a](http://e.test).png', url: 'https://bauherr.test/f/1' }],
       picture: null,
     })
-    const outside = body.replace(/`{5}text\n[\s\S]*?\n`{5}/, '')
-    expect(outside).not.toMatch(/@team|\[evil\]|\]\(http:\/\/e\.test\)/)
-    expect(body).toContain('`````text\ncc @team fixes #3')
-    const fenced = inertBlock('a ```` b')
-    expect(fenced.startsWith('`````text')).toBe(true)
+    expect(body).not.toMatch(/@team|fixes #3|(?<!\\)<img|(?<!\\)\[(evil|click)\]\(|(?<!\\)\]\(http:\/\/e\.test/)
+    expect(body).toContain('\\<img')
   })
 })

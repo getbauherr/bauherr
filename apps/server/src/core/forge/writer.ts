@@ -117,7 +117,7 @@ const upsertStatusComment = async (ctx: Ctx, target: Target, body: string): Prom
   })
 }
 
-const commentOnIssue = async (ctx: Ctx, target: Target, input: { key: string; body: string }): Promise<void> => {
+const commentOnTicket = async (ctx: Ctx, target: Target, input: { key: string; body: string }): Promise<void> => {
   const session = await open(ctx, target, 'issue')
   const marker = `<!-- bauherr:comment:${input.key} -->`
   const earlier = await session.tickets.listComments(ticketId(session.row))
@@ -184,6 +184,14 @@ const openIssue = async (ctx: Ctx, target: ProductTarget, input: NewIssue): Prom
   const { source, repo } = row
   await upsertItem(ctx.payload, { ...target, source, repo }, itemFromTicket(issue), ctx.deps.now())
   return issue
+}
+
+const commentOnIssue = async (ctx: Ctx, target: ProductTarget, number: number, body: string): Promise<void> => {
+  const row = await loadProductRow(ctx.payload, target)
+  if (row.productState !== 'active') {
+    throw new ProductObserving(`Product ${row.productName} is observing: nothing is written to the forge.`)
+  }
+  await (await ctx.deps.backend(row.connection)).tickets(row.repo).comment(String(number), disclosed(body))
 }
 
 const closeIssue = async (ctx: Ctx, target: Target, reason: CloseReason): Promise<void> => {
@@ -284,11 +292,13 @@ export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(pa
     setStageLabel: (target: Target, stage: Stage) => setStageLabel(ctx, target, stage),
     upsertStatusComment: (target: Target, body: string) => upsertStatusComment(ctx, target, body),
     postQuestion: (target: Target, body: string) => postQuestion(ctx, target, body),
-    commentOnIssue: (target: Target, input: { key: string; body: string }) => commentOnIssue(ctx, target, input),
+    commentOnTicket: (target: Target, input: { key: string; body: string }) => commentOnTicket(ctx, target, input),
     mergePullRequest: (target: Target, expectedHeadSha: string) => mergePullRequest(ctx, target, expectedHeadSha),
     openPullRequest: (target: Target, input: NewPullRequest) => openPullRequest(ctx, target, input),
     reviewPullRequest: (target: Target, body: string) => reviewPullRequest(ctx, target, body),
     openIssue: (target: ProductTarget, input: NewIssue) => openIssue(ctx, target, input),
+    commentOnIssue: (target: ProductTarget, number: number, body: string) =>
+      commentOnIssue(ctx, target, number, body),
     openIssues: (target: ProductTarget, inputs: SeriesIssue[]) => openIssues(ctx, target, inputs),
     closeIssue: (target: Target, reason: CloseReason) => closeIssue(ctx, target, reason),
     reopenIssue: (target: Target) => reopenIssue(ctx, target),

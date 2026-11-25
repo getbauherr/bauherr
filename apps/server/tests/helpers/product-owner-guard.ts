@@ -7,6 +7,7 @@ export const PO_PAGES: Record<string, string> = {
   login: 'public sign-in; a signed-in account is sent to its home',
   '': 'the Factory view for a Bauherr; a Product owner gets a static empty state that reads no data',
   requests: 'the Requests of the Products assigned to them, nothing else',
+  'requests/new': 'the new request screen; only the Products assigned to them are offered (request-new-guard.test.ts)',
   'requests/[id]': 'one request of an assigned Product; any other answers 404 (request-page-guard.test.ts)',
 }
 export const BAUHERR_PAGES = [
@@ -19,6 +20,7 @@ export const BAUHERR_PAGES = [
   'memory/retro',
   'memory/retro/[id]',
   'memory/retro/[id]/outcome',
+  'releases',
   'runs/[id]',
   'tickets/[id]',
   'settings/api-key',
@@ -37,6 +39,10 @@ export const PO_ROUTES: Record<string, string> = {
   'api/hooks/[connection] POST': 'forge webhook: no session, signature-verified',
   'api/health GET': 'unauthenticated health probe',
   'api/attachments/upload/[token] PUT': 'run image upload: no session, a one-time token',
+  'api/request-files/[id]/[fileId]/[token] GET': 'sent request file for forge readers: no session, an HMAC token',
+  'api/requests POST': 'starts a request draft; only for an assigned Product (request-new-guard.test.ts)',
+  'api/requests/[id] GET': 'reads a request draft of an assigned Product (request-new-guard.test.ts)',
+  'api/requests/[id] POST': 'acts on a request draft of an assigned Product (request-new-guard.test.ts)',
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
 }
@@ -154,6 +160,7 @@ export const BAUHERR_COLLECTIONS = [
   'retro_messages',
   'records',
   'repo_instruction_files',
+  'request_drafts',
   'repositories',
   'stage_runs',
   'statements',

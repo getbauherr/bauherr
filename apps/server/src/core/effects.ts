@@ -16,7 +16,7 @@ export type ForgePort = Pick<
   | 'setStageLabel'
   | 'upsertStatusComment'
   | 'postQuestion'
-  | 'commentOnIssue'
+  | 'commentOnTicket'
   | 'closeIssue'
   | 'reopenIssue'
   | 'reviewPullRequest'

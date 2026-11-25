@@ -40,7 +40,7 @@ export type RequestStory = {
 
 const TYPE_WORDS: Record<TicketRecord['type'], string> = {
   bug: 'Problem',
-  feature: 'New feature',
+  question: 'Question',
   change: 'Change',
   chore: 'Upkeep',
 }

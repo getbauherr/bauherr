@@ -9,6 +9,7 @@ import { commentOnRequest } from '../../../../core/requests/issue-comment'
 import { mayOpenRequest, requestScope } from '../../../../core/views/request-access'
 import { engineDeps } from '../../../../jobs/engine-deps'
 import { publicUrl } from '../../../../lib/oidc'
+import { secret } from '../../../../lib/secrets'
 import { isProductOwner } from '../../../../lib/people'
 import { personOf } from '../../../../lib/person'
 import { payloadClient, requirePerson } from '../../lib/session'
@@ -47,7 +48,8 @@ export async function commentOnRequestAction(raw: unknown): Promise<CommentResul
     actorId: String(person.id),
   }
   try {
-    await commentOnRequest({ payload, forge: engineDeps(payload).forge, baseUrl: publicUrl() }, comment)
+    const deps = { payload, forge: engineDeps(payload).forge, origin: publicUrl(), key: secret('PAYLOAD_SECRET') }
+    await commentOnRequest(deps, comment)
   } catch (error) {
     if (error instanceof UploadRefused || error instanceof CommentRefused) return { error: error.message }
     throw error
