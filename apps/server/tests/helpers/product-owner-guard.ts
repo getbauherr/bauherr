@@ -40,6 +40,8 @@ export const PO_ROUTES: Record<string, string> = {
   'api/health GET': 'unauthenticated health probe',
   'api/attachments/upload/[token] PUT': 'run image upload: no session, a one-time token',
   'api/request-files/[id]/[fileId]/[token] GET': 'sent request file for forge readers: no session, an HMAC token',
+  'api/request-pictures/[id]/[attachment]/[token] GET':
+    'request picture for forge readers: no session, an HMAC token bound to the request',
   'api/requests POST': 'starts a request draft; only for an assigned Product (request-new-guard.test.ts)',
   'api/requests/[id] GET': 'reads a request draft of an assigned Product (request-new-guard.test.ts)',
   'api/requests/[id] POST': 'acts on a request draft of an assigned Product (request-new-guard.test.ts)',

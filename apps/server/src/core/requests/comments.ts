@@ -38,21 +38,26 @@ const fileRow = z.object({
   content_type: z.string(),
 })
 
-export const requestConversation = async (payload: Payload, workspace: number, recordId: number): Promise<number> => {
-  const title = `Request ${recordId} comments`
+const commentsTitle = (recordId: number): string => `Request ${recordId} comments`
+
+export const findRequestConversation = async (
+  payload: Conn,
+  workspace: number,
+  recordId: number,
+): Promise<number | null> => {
   const found = await payload.db.drizzle.execute(sql`
     SELECT "id" FROM "conversations"
-    WHERE "record_id" = ${recordId} AND "workspace_id" = ${workspace} AND "title" = ${title}
+    WHERE "record_id" = ${recordId} AND "workspace_id" = ${workspace} AND "title" = ${commentsTitle(recordId)}
     ORDER BY "id" LIMIT 1`)
-  if (found.rows[0]) return idRow.parse(found.rows[0]).id
-  return createConversation(payload, workspace, title, recordId)
+  return found.rows[0] ? idRow.parse(found.rows[0]).id : null
 }
 
+export const requestConversation = async (payload: Payload, workspace: number, recordId: number): Promise<number> =>
+  (await findRequestConversation(payload, workspace, recordId)) ??
+  createConversation(payload, workspace, commentsTitle(recordId), recordId)
+
 const ownsConversation = async (db: Conn, input: NewComment): Promise<boolean> => {
-  const found = await db.db.drizzle.execute(sql`
-    SELECT 1 FROM "conversations"
-    WHERE "id" = ${input.conversationId} AND "record_id" = ${input.recordId} AND "workspace_id" = ${input.workspace}`)
-  return found.rows.length > 0
+  return (await findRequestConversation(db, input.workspace, input.recordId)) === input.conversationId
 }
 
 export class CommentRefused extends Error {}

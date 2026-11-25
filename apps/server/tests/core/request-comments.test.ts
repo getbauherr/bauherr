@@ -3,8 +3,10 @@ import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { fold } from '../../src/core/fold'
 import { commentsOf, postComment, requestConversation, type NewComment } from '../../src/core/requests/comments'
+import { pictureTokenFits } from '../../src/core/requests/markdown'
+import { readImage } from '../../src/core/views/attachments'
 import { commentOnRequest, issueCommentBody, sendToIssue } from '../../src/core/requests/issue-comment'
-import { storeFile } from '../../src/core/conversations/store'
+import { createConversation, storeFile } from '../../src/core/conversations/store'
 import { createWriter } from '../../src/core/forge/writer'
 import { readEvents, readRecord } from '../../src/core/record/store'
 import { requestStory } from '../../src/core/views/request-story'
@@ -81,6 +83,14 @@ describe('a comment in any stage', () => {
     expect(shown[0]?.text).toBe('Does it also export PDF?')
   })
 
+  it('refuses another conversation of the same request', async () => {
+    const record = names.briefCard
+    const other = await createConversation(payload(), e.db.workspace, 'Decision form', record)
+    await expect(postComment(payload(), { ...(await commentOn(record)), conversationId: other })).rejects.toThrow(
+      /does not belong/,
+    )
+  })
+
   it('refuses a conversation of another request', async () => {
     const other = await commentOn(names.building)
     await expect(postComment(payload(), { ...other, recordId: names.accepted })).rejects.toThrow(/does not belong/)
@@ -118,8 +128,42 @@ describe('the issue comment', () => {
     expect(written[0]).toContain('Please keep the old @\u200bteam layout. Closes\u200b \\#1')
     expect(written[0]).not.toMatch(/@team|Closes #1/)
     expect(written[0]).toMatch(/\[screen\.png\]\(https:\/\/bauherr\.test\/api\/request-files\/\d+\/\d+\/\S+\)/)
-    const picture = /Picture it refers to: \[Export page, new: progress bar\]\(\S+\/api\/attachments\/\d+\)/
-    expect(written[0]).toMatch(picture)
+    const picture =
+      /Picture it refers to: \[Export page, new: progress bar\]\(\S+\/api\/request-pictures\/(\d+)\/(\d+)\/([\w-]+)\)/
+    const link = picture.exec(written[0] ?? '')
+    expect(link).not.toBeNull()
+    expect(written[0]).not.toContain('/api/attachments/')
+    expect(written[0]).not.toContain('@example.com')
+    const [, recordId, attachmentId, token] = link ?? []
+    expect(pictureTokenFits('test-key', Number(recordId), Number(attachmentId), token ?? '')).toBe(true)
+    expect(pictureTokenFits('test-key', Number(recordId), Number(attachmentId) + 1, token ?? '')).toBe(false)
+    expect(pictureTokenFits('test-key', Number(recordId) + 1, Number(attachmentId), token ?? '')).toBe(false)
+    expect((await readImage(payload(), Number(attachmentId)))?.record).toBe(record)
+  })
+
+  it('records a failure with the message id and delivers exactly once on retry', async () => {
+    const { fake, issue, record, deps } = await setup(2)
+    const comment = await commentOn(record, { text: 'retry me' })
+    const event = await postComment(payload(), comment)
+    const messageId = event.data.messageId
+    const failing = vi.spyOn(fake.tickets('acme/app'), 'comment').mockRejectedValueOnce(new Error('502 Bad Gateway'))
+    await sendToIssue(deps, comment, messageId)
+    failing.mockRestore()
+    const failed = (await readEvents(payload(), record)).filter((x) => x.type === 'forge.write.failed')
+    const named = failed.some((x) => x.type === 'forge.write.failed' && x.data.reason.includes(`message ${messageId}`))
+    expect(named).toBe(true)
+    expect(await bodies(fake, String(issue.number))).toHaveLength(0)
+    await sendToIssue(deps, comment, messageId)
+    await sendToIssue(deps, comment, messageId)
+    expect(await bodies(fake, String(issue.number))).toHaveLength(1)
+  })
+
+  it('never shows an email address in the issue comment', async () => {
+    const { fake, issue, record, deps } = await setup(3)
+    await commentOnRequest(deps, await commentOn(record, { role: 'bauherr', author: 'bauherr@example.com' }))
+    const [written] = await bodies(fake, String(issue.number))
+    expect(written).not.toMatch(/@/)
+    expect(written).toContain('Comment by The Bauherr in Bauherr:')
   })
 
   it('is written once by the whole flow, as one comment per comment', async () => {

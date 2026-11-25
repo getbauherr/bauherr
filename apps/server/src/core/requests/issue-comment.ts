@@ -1,28 +1,28 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { mirrorItem } from '../effects'
-import { ProductObserving, TargetNotFound, WrongItemKind } from '../forge/errors'
 import type { ForgeWriter } from '../forge/writer'
 import { appendEvent, readRecord } from '../record/store'
 import { requestStory } from '../views/request-story'
 import { postComment, type CommentRole, type NewComment } from './comments'
-import { inertBlock, publicFileUrl } from './markdown'
+import { inertBlock, publicFileUrl, publicPictureUrl } from './markdown'
 
 export type CommentForge = Pick<ForgeWriter, 'commentOnTicket'>
 export type Link = { name: string; url: string }
 type Signer = (conversationId: number, fileId: number) => string
 
+const NAMELESS: Record<CommentRole, string> = { 'product-owner': 'A product owner', bauherr: 'The Bauherr' }
 const ROLE_WORDS: Record<CommentRole, string> = { 'product-owner': 'product owner', bauherr: 'Bauherr' }
-const REFUSALS = [ProductObserving, TargetNotFound, WrongItemKind]
 
 export const issueCommentBody = (comment: {
-  author: string
+  author: string | null
   role: CommentRole
   text: string
   files: Link[]
   picture: Link | null
 }): string => {
-  const parts = [`Comment by ${inertBlock(comment.author)} (${ROLE_WORDS[comment.role]}) in Bauherr:`]
+  const who = comment.author ? `${inertBlock(comment.author)} (${ROLE_WORDS[comment.role]})` : NAMELESS[comment.role]
+  const parts = [`Comment by ${who} in Bauherr:`]
   if (comment.text.trim() !== '') parts.push(inertBlock(comment.text.trim()))
   if (comment.files.length > 0) {
     parts.push(['Files:', ...comment.files.map((file) => `- [${inertBlock(file.name)}](${file.url})`)].join('\n'))
@@ -35,12 +35,12 @@ const pictureOf = async (
   payload: Payload,
   workspace: number,
   recordId: number,
-  origin: string,
+  sign: (attachmentId: number) => string,
 ): Promise<Link | null> => {
   const story = await requestStory(payload, { workspace, recordId })
   const latest = story.events.findLast((event) => (event.kind === 'plan' || event.kind === 'ready') && event.images[0])
   const image = latest?.images[0]
-  return image ? { name: image.caption, url: `${origin}/api/attachments/${image.id}` } : null
+  return image ? { name: image.caption, url: sign(image.id) } : null
 }
 
 const filesOf = async (payload: Payload, messageId: number, link: Signer): Promise<Link[]> => {
@@ -62,18 +62,20 @@ export const sendToIssue = async (deps: CommentDeps, comment: NewComment, messag
   if (itemId === null) return
   const signer: Signer = (conversation, file) => publicFileUrl(origin, key, conversation, file)
   const body = issueCommentBody({
-    author: comment.author,
+    author: null,
     role: comment.role,
     text: comment.text,
     files: await filesOf(payload, messageId, signer),
-    picture: await pictureOf(payload, comment.workspace, comment.recordId, origin),
+    picture: await pictureOf(payload, comment.workspace, comment.recordId, (id) =>
+      publicPictureUrl(origin, key, comment.recordId, id),
+    ),
   })
   try {
     await forge.commentOnTicket({ recordId: comment.recordId, itemId }, { key: String(messageId), body })
   } catch (error) {
-    if (!(error instanceof Error) || !REFUSALS.some((refusal) => error instanceof refusal)) return
     const { repo, number } = stored.record.source
-    const data = { kind: 'comment' as const, target: { repo, number }, reason: error.message.trim() || error.name }
+    const text = error instanceof Error ? error.message.trim() || error.name : String(error)
+    const data = { kind: 'comment' as const, target: { repo, number }, reason: `Comment message ${messageId}: ${text}` }
     await appendEvent(payload, comment.recordId, { type: 'forge.write.failed', data, actor: 'factory' })
   }
 }

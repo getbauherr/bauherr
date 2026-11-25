@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import type { Payload } from 'payload'
 import { conversationRecord, conversationWorkspace } from '../../../core/conversations/store'
+import { findRequestConversation } from '../../../core/requests/comments'
 import { loadDraft } from '../../../core/requests/store'
 import { mayOpenRequest, requestScope } from '../../../core/views/request-access'
 import { isBauherr, isProductOwner } from '../../../lib/people'
@@ -31,7 +32,8 @@ export const grantWorkspace = async (asked: number | undefined): Promise<Granted
 const mayUseFiles = async (person: Parameters<typeof mayOpenRequest>[0], payload: Payload, id: number) => {
   const recordId = await conversationRecord(payload, id)
   const scope = recordId === null ? null : await requestScope(payload, recordId)
-  return scope !== null && mayOpenRequest(person, scope)
+  if (recordId === null || scope === null || !mayOpenRequest(person, scope)) return false
+  return (await findRequestConversation(payload, scope.workspace, recordId)) === id
 }
 
 export const grantConversation = async (
