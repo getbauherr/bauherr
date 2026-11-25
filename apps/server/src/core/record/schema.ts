@@ -31,6 +31,14 @@ export const riskSchema = z.object({
   rollback: text(200),
 })
 
+export const RELATION_KINDS = ['blocked-by', 'part-of'] as const
+
+export const relationSchema = z.object({
+  type: z.enum(RELATION_KINDS),
+  ticket: z.number().int().positive(),
+  reason: text(160),
+})
+
 export const PREVIEW_MAX = 600
 export const SHAPE_MAX = 2000
 export const OUTLINE_MAX = 3000
@@ -96,6 +104,7 @@ const shape = z.object({
   risk: riskSchema.nullable(),
   decisions: z.array(decision).max(12),
   plan: z.object({ steps: z.array(text(160)).max(7) }),
+  relations: z.array(relationSchema).max(5).default([]),
   shape: z.string().trim().max(SHAPE_MAX).default(''),
   flow: z.string().trim().max(SHAPE_MAX).default(''),
   findings: z.array(findingSchema).max(20),
@@ -130,6 +139,8 @@ export type RecordSource = TicketRecord['source']
 export type RecordType = TicketRecord['type']
 export type Criterion = TicketRecord['criteria'][number]
 export type Decision = TicketRecord['decisions'][number]
+export type RelationKind = (typeof RELATION_KINDS)[number]
+export type ProposedRelation = z.infer<typeof relationSchema>
 export type Finding = TicketRecord['findings'][number]
 export type RecordField = keyof TicketRecord
 export const RECORD_FIELDS = Object.keys(shape.shape) as RecordField[]
@@ -145,6 +156,7 @@ export const emptyRecord = (recordSource: RecordSource, type: RecordType): Ticke
   risk: null,
   decisions: [],
   plan: { steps: [] },
+  relations: [],
   shape: '',
   flow: '',
   findings: [],

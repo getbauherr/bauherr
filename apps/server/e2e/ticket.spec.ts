@@ -4,6 +4,9 @@ import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
+const relationsSection = (page: Page, title: string) =>
+  page.locator('section').filter({ has: page.getByRole('heading', { name: title, exact: true }) })
+
 const STALE = 'The ticket moved while this was open. Reload to see where it is now.'
 
 const signIn = async (page: Page) => {
@@ -51,6 +54,29 @@ test('approving a Brief stores the chosen option and the ticket moves on to Buil
   await page.goto(`${new URL(page.url()).pathname}?tab=brief`)
   await expect(page.getByText('Stream the file to disk or to object storage?')).toBeVisible()
   await expect(page.getByRole('listitem').filter({ hasText: 'Stream the file' })).toContainText('Disk by you')
+})
+
+test('a Brief card lists the relations the factory proposes, each with a remove cross', async ({ page }) => {
+  await enterOpen(page, 'Brief with proposed relations')
+  const proposed = relationsSection(page, 'Proposed relations')
+  await expect(proposed.getByRole('listitem')).toHaveCount(2)
+  await expect(proposed.getByRole('listitem').first()).toContainText('Blocked by')
+  await expect(proposed.getByRole('listitem').first()).toContainText('(The export needs its storage first.)')
+  await expect(proposed.getByRole('listitem').last()).toContainText('Part of')
+  await expect(proposed.getByRole('button', { name: /^Remove:/ })).toHaveCount(2)
+})
+
+test('removing one proposed relation before approving keeps only the other', async ({ page }) => {
+  await enterOpen(page, 'Brief with proposed relations')
+  await page.getByRole('button', { name: /^Remove: Blocked by/ }).click()
+  await expect(relationsSection(page, 'Proposed relations').getByRole('listitem')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Approve Brief' }).click()
+  await expect(page.getByRole('button', { name: 'Approve Brief' })).toHaveCount(0)
+  await page.goto(`${new URL(page.url()).pathname}?tab=brief`)
+  const kept = relationsSection(page, 'Relations')
+  await expect(kept.getByRole('listitem')).toHaveCount(1)
+  await expect(kept).toContainText('Part of')
+  await expect(kept).not.toContainText('Blocked by')
 })
 
 test('sending a Result back asks for a comment in the card field and records it', async ({ page }) => {
