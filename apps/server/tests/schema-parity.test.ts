@@ -67,6 +67,12 @@ const EXCEPTIONS = [
       'Payload relationships always generate ON DELETE SET NULL and have no option for it.',
   },
   {
+    prefix: 'constraint ticket_relations ticket_relations_',
+    reason:
+      'A relation goes with its Workspace and with either ticket it joins (ON DELETE CASCADE); ' +
+      'Payload relationships always generate ON DELETE SET NULL and have no option for it.',
+  },
+  {
     prefix: 'index bauherren_oidc_subject_idx ',
     reason:
       'The migration makes it unique and partial (WHERE oidc_subject IS NOT NULL); ' +

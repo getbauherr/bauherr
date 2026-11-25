@@ -46,10 +46,8 @@ export class FakeTickets implements TicketSource {
   }
   private setRel(t: FakeTicket, r: Relations): void {
     if (this.b.opts.native) t.rel = r;
-    else {
-      t.body = renderRelations(t.body, r);
-      this.touch(t);
-    }
+    else t.body = renderRelations(t.body, r);
+    this.touch(t);
   }
   private summary(t: FakeTicket): TicketSummary {
     return {
@@ -227,6 +225,17 @@ export class FakeTickets implements TicketSource {
     const r = this.rel(t);
     if (r.blockedBy.includes(blockerId)) throw new Error('already blocked');
     this.setRel(t, { ...r, blockedBy: [...r.blockedBy, blockerId] });
+  }
+  async removeSubTicket(parentId: string, childId: string) {
+    const c = this.t(childId);
+    const r = this.rel(c);
+    if (r.parent === parentId) this.setRel(c, { ...r, parent: null });
+  }
+  async removeBlockedBy(id: string, blockerId: string) {
+    const t = this.t(id);
+    const r = this.rel(t);
+    if (!r.blockedBy.includes(blockerId)) return;
+    this.setRel(t, { ...r, blockedBy: r.blockedBy.filter((b) => b !== blockerId) });
   }
   async addLink(id: string, url: string) {
     const t = this.t(id);
