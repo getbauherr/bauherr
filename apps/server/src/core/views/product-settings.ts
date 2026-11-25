@@ -22,7 +22,6 @@ export type ProductSettings = {
   releaseMode: 'factory' | 'direct'
   riskAreas: string[]
   pathSets: Record<string, string[]>
-  productionGate: boolean
   requiredChecks: string
   deployChecks: string
   deployWaitMinutes: number
@@ -56,7 +55,6 @@ const productRow = z.object({
   release_mode: z.string().nullable(),
   risk_areas: list,
   path_sets: z.record(z.string(), z.array(z.string())).nullable().transform((value) => value ?? {}),
-  production_gate: flag(false),
   required_checks: text,
   deploy_checks: text,
   deploy_wait_minutes: amount(60),
@@ -126,7 +124,6 @@ const settingsOf = (row: z.output<typeof productRow>) => ({
   releaseMode: row.release_mode === 'direct' ? ('direct' as const) : ('factory' as const),
   riskAreas: row.risk_areas,
   pathSets: row.path_sets,
-  productionGate: row.production_gate,
   requiredChecks: row.required_checks,
   deployChecks: row.deploy_checks,
   deployWaitMinutes: row.deploy_wait_minutes,
@@ -141,7 +138,7 @@ const settingsOf = (row: z.output<typeof productRow>) => ({
 
 export const productSettings = async (payload: Payload, f: ProductFilter): Promise<ProductSettings | null> => {
   const result = await payload.db.drizzle.execute(sql`
-    SELECT "id", "name", "slug", "state", "executor", "release_mode", "risk_areas", "path_sets", "production_gate",
+    SELECT "id", "name", "slug", "state", "executor", "release_mode", "risk_areas", "path_sets",
       "required_checks", "deploy_checks", "deploy_wait_minutes", "staging_url", "auto_close", "intake_excluded_labels",
       "outside_issues_per_day", "reporter_remind_days", "reporter_silent_days", "backlog_brief_limit"
     FROM "products" WHERE "id" = ${f.product} AND "workspace_id" = ${f.workspace}`)

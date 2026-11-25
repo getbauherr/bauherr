@@ -30,14 +30,12 @@ export type State = {
   deployed: boolean
   deployStalled: { reason: 'failed' | 'overdue'; checks: string[] } | null
   accepted: boolean
-  productionApproved: boolean
-  productionHeld: boolean
   note: string | null
   blockedReason: string | null
   last: EventType | null
 }
 
-export type FoldOptions = { productionGate: boolean; requiredChecks?: boolean; deployChecks?: boolean }
+export type FoldOptions = { requiredChecks?: boolean; deployChecks?: boolean }
 
 export const initialState = (): State => ({
   stage: 'intake',
@@ -65,8 +63,6 @@ export const initialState = (): State => ({
   deployed: false,
   deployStalled: null,
   accepted: false,
-  productionApproved: false,
-  productionHeld: false,
   note: null,
   blockedReason: null,
   last: null,

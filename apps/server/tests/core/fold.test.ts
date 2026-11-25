@@ -19,8 +19,6 @@ describe('fold', () => {
       merged: false,
       deployed: false,
       accepted: false,
-      productionApproved: false,
-      productionHeld: false,
       overridden: false,
       note: null,
     })
@@ -87,8 +85,8 @@ describe('fold', () => {
   })
 
   it('has no pending checks when the Product requires none', () => {
-    expect(fold(inVerify, { productionGate: false, requiredChecks: false }).checks).toBe('none')
-    expect(fold(inVerify, { productionGate: false, requiredChecks: true }).checks).toBe('pending')
+    expect(fold(inVerify, { requiredChecks: false }).checks).toBe('none')
+    expect(fold(inVerify, { requiredChecks: true }).checks).toBe('pending')
     expect(fold(inVerify).checks).toBe('pending')
   })
 
@@ -147,12 +145,6 @@ describe('fold', () => {
     expect(fold([...merged, ev('result.accepted')]).accepted).toBe(true)
   })
 
-  it('keeps the ticket in ship until production is approved when the gate is on', () => {
-    const accepted = [...merged, ev('result.accepted')]
-    expect(fold(accepted, { productionGate: true }).stage).toBe('ship')
-    expect(fold([...accepted, ev('production.approved')], { productionGate: true }).stage).toBe('done')
-    expect(fold([ev('production.approved'), ...accepted], { productionGate: true }).stage).toBe('done')
-  })
 
   it('sends a ticket back to build after ship and starts the ship facts over with the next patch', () => {
     const back = fold([...merged, ev('ship.deployed'), ev('result.sent-back')])
@@ -222,13 +214,19 @@ describe('fold', () => {
     expect(fold([...changes, ...patched])).toMatchObject({ stage: 'verify', overridden: false })
   })
 
-  it('remembers a held production until a new patch', () => {
-    const held = [...merged, ev('result.accepted'), ev('production.held')]
-    expect(fold(held, { productionGate: true })).toMatchObject({ productionHeld: true, stage: 'ship' })
-    const back = fold([...held, ev('result.sent-back')], { productionGate: true })
-    expect(back.productionHeld).toBe(true)
-    const patched = [start('build', 'r3'), ev('build.submitted', { runId: 'r3', patchId: 'p2' })]
-    expect(fold([...held, ev('result.sent-back'), ...patched], { productionGate: true }).productionHeld).toBe(false)
+
+  it('folds a history with the retired production events to the same state as without them', () => {
+    const accepted = [...merged, ev('result.accepted')]
+    const retired = [
+      ev('question.asked', { reason: 'production', options: ['approve', 'hold'] }),
+      ev('production.held'),
+      ev('production.approved'),
+    ]
+    const { last: acceptedLast, ...plain } = fold(accepted)
+    const { last, ...replayed } = fold([...accepted, ...retired])
+    expect(replayed).toEqual(plain)
+    expect(plain).toMatchObject({ stage: 'done', card: null })
+    expect(last).toBe(acceptedLast)
   })
 
   it('opens a question card until it is answered', () => {

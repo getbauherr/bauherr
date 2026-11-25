@@ -39,9 +39,6 @@ const ROWS: Row[] = [
   ['question:already-done', 're-run-build', ['question.answered']],
   ['question:deploy-stalled', 'check-again', ['question.answered']],
   ['question:deploy-stalled', 'continue', ['question.answered', 'ship.deployed']],
-  ['question:production', 'approve', ['question.answered', 'production.approved']],
-  ['question:production', 'hold', ['question.answered', 'production.held']],
-  ['production-held', 'approve-production', ['production.approved']],
   ['question:agent', 'back-to-brief', ['question.answered', 'brief.changes-requested']],
   ['question:agent', 'own-answer', ['question.answered', 'owner.note']],
   ['working', 'back-to-brief', ['brief.changes-requested']],
@@ -101,7 +98,7 @@ describe('decide', () => {
     const before = await eventCount(id)
     const stale = { ask: 'brief', choice: 'approve' }
     await expect(answer(id, stale)).rejects.toThrow(StaleDecision)
-    await expect(answer(id, { ask: 'question:production', choice: 'approve' })).rejects.toThrow(
+    await expect(answer(id, { ask: 'question:deploy-stalled', choice: 'approve' })).rejects.toThrow(
       StaleDecision,
     )
     expect(await eventCount(id)).toBe(before)

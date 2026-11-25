@@ -18,10 +18,10 @@ const BRIEF_REASONS = [
 
 describe('the words of a card', () => {
   it('has a sentence for every Brief gate reason and every question reason', () => {
-    for (const reason of [...BRIEF_REASONS, ...QUESTIONS, 'production-held', 'agent']) {
+    for (const reason of [...BRIEF_REASONS, ...QUESTIONS, 'agent']) {
       expect(REASON_WORDS[reason as keyof typeof REASON_WORDS], reason).toMatch(/\S/)
     }
-    const all = [...BRIEF_REASONS, ...QUESTIONS, 'production-held', 'agent']
+    const all = [...BRIEF_REASONS, ...QUESTIONS, 'agent']
     expect(Object.keys(REASON_WORDS).sort()).toEqual(all.sort())
   })
 

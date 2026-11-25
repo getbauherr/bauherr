@@ -31,6 +31,7 @@ const issueEvent = z.object({ repository, issue: z.object({ number, pull_request
 const pullEvent = z.object({ repository, pull_request: pullRequest })
 const checkRunEvent = z.object({ repository, check_run: z.object({ pull_requests: pulls }) })
 const checkSuiteEvent = z.object({ repository, check_suite: z.object({ pull_requests: pulls }) })
+const deploymentStatusEvent = z.object({ repository, deployment: z.object({ sha: z.string().min(1) }) })
 const statusEvent = z.object({ repository, sha: z.string().min(1) })
 
 const GITHUB = new Map<string, Handler>()
@@ -55,6 +56,10 @@ GITHUB.set(
   handler(checkSuiteEvent, ({ repository: repo, check_suite: suite }) =>
     items(repo.full_name, 'pr', suite.pull_requests.map((pull) => pull.number)),
   ),
+)
+GITHUB.set(
+  'deployment_status',
+  handler(deploymentStatusEvent, ({ repository: repo, deployment }) => head(repo.full_name, deployment.sha)),
 )
 GITHUB.set('status', handler(statusEvent, ({ repository: repo, sha }) => head(repo.full_name, sha)))
 
@@ -104,6 +109,14 @@ GITLAB.set(
     mergeRequest
       ? items(repo.path_with_namespace, 'pr', [mergeRequest.iid])
       : head(repo.path_with_namespace, attributes.sha),
+  ),
+)
+
+GITLAB.set(
+  'Deployment Hook',
+  handler(
+    z.object({ project, commit_url: z.string().regex(/\/commit\/[0-9a-f]{7,64}$/) }),
+    ({ project: repo, commit_url: url }) => head(repo.path_with_namespace, url.slice(url.lastIndexOf('/') + 1)),
   ),
 )
 

@@ -22,7 +22,6 @@ export type TicketTime = {
 
 type Step = { from: number; state: State; next: AppEvent | undefined }
 
-const OPTIONS = { productionGate: false }
 const ACCEPTING = ['result.accepted', 'ticket.done-elsewhere']
 const DEPLOYING = ['ship.deployed', 'ship.deploy-stalled']
 
@@ -43,7 +42,7 @@ const stepsOf = (createdAt: Date, events: TimedEvent[]): { steps: Step[]; last: 
   let state = initialState()
   const steps: Step[] = [{ from: createdAt.getTime(), state, next: events[0]?.event }]
   events.forEach((entry, index) => {
-    state = reduce(state, entry.event, OPTIONS)
+    state = reduce(state, entry.event, {})
     steps.push({ from: entry.at.getTime(), state, next: events[index + 1]?.event })
   })
   return { steps, last: state }
