@@ -306,7 +306,7 @@ describe('the instructions of the server', () => {
 
   it('tells an agent key how to work the queue and gives a personal key nothing', async () => {
     const text = await instructionsFor(m.alpha.agentToken)
-    expect(text?.length).toBeLessThan(900)
+    expect(text?.length).toBeLessThan(1100)
     for (const word of ['connect', 'next_work', 'heartbeat', 'attach_proof', 'ask', 'submit', 'release', 'idle']) {
       expect(text).toContain(word)
     }

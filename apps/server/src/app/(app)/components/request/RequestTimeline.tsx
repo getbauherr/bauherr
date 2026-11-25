@@ -75,6 +75,11 @@ function Body({ event, staging }: { event: StoryEvent; staging: string | null })
       </span>
       {event.text && <p className="m-0 whitespace-pre-wrap">{event.text}</p>}
       <Files event={event} />
+      {event.seen && (
+        <span className="small text-muted-foreground" data-seen title={exactTime(event.seen)}>
+          Seen by the team · {exactTime(event.seen).slice(11)}
+        </span>
+      )}
       {rich && <Card event={event} />}
       {rich && <Pictures event={event} />}
       {rich && <Lists event={event} />}

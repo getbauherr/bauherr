@@ -17,6 +17,7 @@ import { seedInsights } from './seed-insights'
 import { seedMemoryEditor } from './seed-memory-editor'
 import { seedRetro } from './seed-retro'
 import { seedRequests } from './seed-requests'
+import { seedHandover } from './seed-handover'
 
 const env = (k: string): string => {
   const v = process.env[k]
@@ -200,6 +201,7 @@ await seedBoardRelations(payload)
 await seedMemoryEditor(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
 await seedReadiness(payload)
 await seedRequests(payload)
+await seedHandover(payload, user)
 await seedInsights(payload)
 await seedRetro(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
 

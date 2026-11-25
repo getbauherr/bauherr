@@ -34,6 +34,7 @@ const packFor = async (evalCase: EvalCase, runId: number): Promise<ContextPack> 
   resultSchema: z.toJSONSchema(intake.resultSchema, { io: 'input' }),
   note: null,
   commentFiles: [],
+  newComments: [],
   skill: await skillFor('intake', 'builder'),
   source: {
     issue: { number: 500 + runId, title: evalCase.title, author: 'outsider', body: evalCase.body, bodyCut: false },

@@ -25,6 +25,7 @@ export type StoryEvent = {
   images: StoryImage[]
   files: StoryFile[]
   lists: StoryList[]
+  seen: string | null
 }
 
 export type RequestStory = {
@@ -61,6 +62,7 @@ const base = (event: Pick<StoryEvent, 'id' | 'kind' | 'at' | 'who' | 'title'>): 
   images: [],
   files: [],
   lists: [],
+  seen: null,
   ...event,
 })
 
@@ -81,7 +83,10 @@ const loadComments = async (payload: Payload, workspace: number, view: TicketVie
   })
 }
 
-const commentEvent = (comment: RequestComment): StoryEvent => ({
+const seenAt = (comment: RequestComment, stored: StoredEvent[]): string | null =>
+  stored.find((event) => event.type === 'run.comments.delivered' && event.data.through >= comment.id)?.createdAt ?? null
+
+const commentEvent = (comment: RequestComment, seen: string | null): StoryEvent => ({
   ...base({
     id: `request-comment-${comment.id}`,
     kind: 'comment',
@@ -89,6 +94,7 @@ const commentEvent = (comment: RequestComment): StoryEvent => ({
     who: comment.author,
     title: 'Comment',
   }),
+  seen,
   text: comment.text,
   files: comment.files.map((file) => ({
     name: file.name,
@@ -181,7 +187,9 @@ export const requestStory = async (
     text: view.title,
   }
   const comments = await loadComments(payload, filter.workspace, view)
-  const requested = (await commentsOf(payload, view.recordId, stored)).map(commentEvent)
+  const requested = (await commentsOf(payload, view.recordId, stored)).map((comment) =>
+    commentEvent(comment, seenAt(comment, stored)),
+  )
   const events = [sent, ...(await eventsOf(payload, stored, view)), ...comments, ...requested].sort(byTime)
   return {
     recordId: view.recordId,

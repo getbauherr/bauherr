@@ -3,7 +3,9 @@ import { z } from 'zod'
 import { fold } from '../../core/fold'
 import { foldOptions } from '../../core/lifecycle'
 import { LeaseLost, ModuleMissing } from '../../core/run/errors'
-import { heartbeat, type Claimed } from '../../core/run/leases'
+import type { NewComment } from '../../core/requests/handover'
+import { beat } from '../../core/run/beat'
+import type { Claimed } from '../../core/run/leases'
 import { contextPack, type ContextPack } from '../../core/run/pack'
 import { addCost, markRefused, readRun } from '../../core/run/store'
 import { readEvents, readRecord } from '../../core/record/store'
@@ -13,22 +15,40 @@ import { planFor, type Checkout, type Plan } from './plan'
 import { keepAlive } from './heartbeat'
 import type { AgentOutcome, Ended, RunnerDeps } from './types'
 import { recordProofs, withProofIds } from './proofs'
-import { FIX_PROMPT, PROMPT, readResult, writeContext, writeProblems } from './workdir'
+import { COMMENTS_PROMPT, FIX_PROMPT, PROMPT, readResult, writeComments, writeContext, writeProblems } from './workdir'
 
 const READ_ONLY = new Set(['intake', 'brief', 'done'])
 
-type Working = { claimed: Claimed; deps: RunnerDeps; checkout: Checkout; workspace: number; model: string }
+type Working = {
+  claimed: Claimed
+  deps: RunnerDeps
+  checkout: Checkout
+  workspace: number
+  model: string
+  received: NewComment[]
+  unread: NewComment[]
+}
 
-const note = (working: Working, step: string) => {
+const receive = async (working: Working, comments: NewComment[]) => {
+  if (comments.length === 0) return
+  working.received.push(...comments)
+  working.unread.push(...comments)
+  await writeComments(working.checkout.dir, working.received)
+}
+
+const note = async (working: Working, step: string) => {
   const { run, token } = working.claimed
-  const { engine } = working.deps
-  return heartbeat(engine().payload, run.id, token, { now: engine().now, step })
+  const { newComments } = await beat(working.deps.engine(), run.id, token, step)
+  await receive(working, newComments)
 }
 
 const turn = async (working: Working, prompt: string): Promise<AgentOutcome> => {
   const { run } = working.claimed
   await note(working, prompt === PROMPT ? 'the agent started' : 'the agent corrects its result')
-  const stop = keepAlive(working.deps, working.claimed)
+  working.unread = []
+  const stop = keepAlive(working.deps, working.claimed, (comments) => {
+    receive(working, comments).catch(() => undefined)
+  })
   const outcome = await working.deps
     .agent({
       runId: run.id,
@@ -124,9 +144,14 @@ const run = async (claimed: Claimed, deps: RunnerDeps, checkout: Checkout, setup
   const { plan, workspace, pack } = setup
   await writeContext(checkout.dir, pack)
   const model = await deps.model(workspace, claimed.run.role)
-  const working = { claimed, deps, checkout, workspace, model }
+  const working: Working = { claimed, deps, checkout, workspace, model, received: [...pack.newComments], unread: [] }
+  if (pack.newComments.length > 0) await writeComments(checkout.dir, pack.newComments)
   const outcome = await turn(working, PROMPT)
   if (!outcome.ok) return fail(claimed, deps, outcome.reason)
+  if (working.unread.length > 0) {
+    const followUp = await turn(working, COMMENTS_PROMPT)
+    if (!followUp.ok) return fail(claimed, deps, followUp.reason)
+  }
   const sealed = await plan.seal(checkout)
   return sealed.ok ? conclude(working, sealed.facts) : fail(claimed, deps, sealed.reason)
 }

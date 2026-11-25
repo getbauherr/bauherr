@@ -5,6 +5,7 @@ import { moduleKey } from '../module'
 import { commentFilesOf, type CommentFile } from '../conversations/store'
 import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
+import { handOver, type NewComment } from '../requests/handover'
 import type { MemoryPart } from '../memory-documents'
 import type { TicketRecord } from '../record/schema'
 import { readEvents, readRecord } from '../record/store'
@@ -24,6 +25,7 @@ export type ContextPack = {
   resultSchema: unknown
   note: string | null
   commentFiles: CommentFile[]
+  newComments: NewComment[]
   skill: string | null
   facts: IntakeFacts | null
   source: PackSource | null
@@ -57,6 +59,7 @@ export const contextPack = async (deps: SubmitDeps, run: Run): Promise<ContextPa
     resultSchema: z.toJSONSchema(module.resultSchema, { io: 'input' }),
     note: await pendingNote(deps, run),
     commentFiles: await commentFilesOf(deps.payload, run.recordId),
+    newComments: await handOver(deps.payload, run.recordId, run.id),
     skill: (await deps.skills?.(run.stage, run.role)) ?? null,
     facts: run.stage === 'intake' ? await loadIntakeFacts(deps.payload, stored) : null,
     source: await loadSource(deps.payload, stored),

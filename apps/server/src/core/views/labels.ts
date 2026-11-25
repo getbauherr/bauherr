@@ -77,6 +77,8 @@ const LABELS: Labels = {
   'production.held': () => 'The owner holds production',
   'owner.note': (e) => `The owner left a note: ${e.data.note}`,
   'request.commented': (e) => commentLabel(e.data),
+  'run.comments.delivered': (e) =>
+    `${e.data.count === 1 ? 'A new comment was' : `${e.data.count} new comments were`} handed to the agent`,
   'ticket.closed': (e) => CLOSED_LABELS[e.data.reason],
   'ticket.restored': () => 'The ticket was restored and its stage runs again',
   'ticket.blocked': (e) => (e.data.reason === null ? 'The ticket is unblocked' : `Build waits: ${e.data.reason}`),

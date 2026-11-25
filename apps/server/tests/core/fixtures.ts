@@ -83,6 +83,7 @@ export const SAMPLES: Record<EventType, unknown> = {
   'production.held': {},
   'owner.note': { note: 'try the other way' },
   'request.commented': { messageId: 1, author: 'maria', role: 'product-owner', text: 'Does it export PDF', files: 0 },
+  'run.comments.delivered': { runId: '1', through: 1, count: 1 },
   'ticket.closed': { reason: 'discarded' },
   'ticket.restored': {},
   'ticket.blocked': { reason: 'Waiting for #1' },
