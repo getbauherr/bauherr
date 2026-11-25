@@ -17,7 +17,7 @@ const event = (partial: Partial<StoryEvent> & Pick<StoryEvent, 'id' | 'kind' | '
   ...partial,
 })
 
-const LONG = 'Please top left, that is where the Klimapakt logo sits on our paper reports. '.repeat(5).trim()
+const LONG = 'Please top left, that is where the Acme logo sits on our paper reports. '.repeat(5).trim()
 
 const story = (status: RequestStory['status'], events: StoryEvent[]): RequestStory => ({
   recordId: 1,
@@ -26,7 +26,7 @@ const story = (status: RequestStory['status'], events: StoryEvent[]): RequestSto
   status,
   ended: null,
   events,
-  about: { type: 'Change', by: 'Anna', created: '2026-11-24T16:40:00Z', product: 'Klimaportal' },
+  about: { type: 'Change', by: 'Anna', created: '2026-11-24T16:40:00Z', product: 'Shop' },
   links: { issue: 'https://forge/848', staging: 'https://staging.example.com/x' },
 })
 
@@ -101,6 +101,11 @@ describe('the story', () => {
     expect(sources).toEqual(['/api/attachments/11', '/api/attachments/12'])
     expect(getByText('What was checked')).toBeTruthy()
     expect(getByText('✓ the year is in the title')).toBeTruthy()
+  })
+
+  it('links to staging from the ready to try event', () => {
+    const { getByRole } = render(createElement(RequestTimeline, { story: ready }))
+    expect(getByRole('link', { name: 'Open on staging' }).getAttribute('href')).toBe('https://staging.example.com/x')
   })
 
   it('names no runs, agents, review rounds, cost or code', () => {

@@ -48,7 +48,7 @@ function Card({ event }: { event: StoryEvent }) {
   return <ArtifactCard title={event.title} meta={`${WORDS(checks, 'check', 'checks')}, ${pictures}`} />
 }
 
-function Body({ event }: { event: StoryEvent }) {
+function Body({ event, staging }: { event: StoryEvent; staging: string | null }) {
   const rich = event.kind === 'plan' || event.kind === 'ready'
   return (
     <div className="mt-1 grid gap-2" data-event={event.kind}>
@@ -59,20 +59,25 @@ function Body({ event }: { event: StoryEvent }) {
       {rich && <Card event={event} />}
       {rich && <Pictures event={event} />}
       {rich && <Lists event={event} />}
+      {event.kind === 'ready' && staging && (
+        <a href={staging} target="_blank" rel="noreferrer" className="w-fit text-primary hover:underline">
+          Open on staging
+        </a>
+      )}
     </div>
   )
 }
 
-const timelineEvent = (event: StoryEvent): TimelineEvent => ({
+const timelineEvent = (event: StoryEvent, staging: string | null): TimelineEvent => ({
   id: event.id,
   when: 'past',
   time: shortDate(event.at),
   title: event.kind === 'comment' ? `Comment by ${event.who}` : event.title,
-  body: <Body event={event} />,
+  body: <Body event={event} staging={staging} />,
 })
 
 export function RequestTimeline({ story }: { story: RequestStory }) {
-  const events = story.events.map(timelineEvent)
+  const events = story.events.map((event) => timelineEvent(event, story.links.staging))
   return (
     <section aria-label="Story">
       <Timeline events={events} visibleCount={events.length} className="max-w-none rounded-md" />

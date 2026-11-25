@@ -30,7 +30,7 @@ test('a plan that waits shows the Now box, the story and its pictures', async ({
   await expect(now).toContainText("A Bauherr's turn")
   await expect(page.getByText('Plan waiting for approval')).toBeVisible()
   await expect(page.getByText('Request sent')).toBeVisible()
-  await expect(page.getByText('The plan', { exact: true })).toBeVisible()
+  await expect(page.getByText('The plan', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('What will be checked')).toBeVisible()
   await expect(page.getByRole('button', { name: /Open image: Export page, new: progress bar/ })).toBeVisible()
   await expect(page.getByText(/\b(runs?|cost|agents?)\b/i)).toHaveCount(0)
