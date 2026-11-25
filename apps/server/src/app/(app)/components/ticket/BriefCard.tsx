@@ -34,6 +34,7 @@ export function BriefCard({ view, seq, reason, may }: Props) {
             mockups={view.mockups}
             missing={view.noMockup}
             reason={why}
+            removableRelations={may}
             decisions={<OpenDecisions decisions={view.record.decisions} repo={view.record.source.repo} />}
           />
         </div>

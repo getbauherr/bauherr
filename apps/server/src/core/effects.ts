@@ -13,7 +13,13 @@ import { appendEvent, readEvents, readRecord, type StoredRecord } from './record
 
 export type ForgePort = Pick<
   ForgeWriter,
-  'setStageLabel' | 'upsertStatusComment' | 'postQuestion' | 'closeIssue' | 'reopenIssue' | 'reviewPullRequest'
+  | 'setStageLabel'
+  | 'upsertStatusComment'
+  | 'postQuestion'
+  | 'closeIssue'
+  | 'reopenIssue'
+  | 'reviewPullRequest'
+  | 'addRelation'
 >
 
 const REFUSALS = [ProductObserving, TargetNotFound, WrongItemKind]

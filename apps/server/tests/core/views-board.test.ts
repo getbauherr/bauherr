@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { appendEvent, setProjection } from '../../src/core/record/store'
+import { insertEdge } from '../../src/core/relations/store'
+import { appendEvent, readRecord, setProjection } from '../../src/core/record/store'
 import { board } from '../../src/core/views/board'
 import { waitingOnOwner } from '../../src/core/views/owner'
 import { stageStats } from '../../src/core/views/stats'
@@ -136,6 +137,32 @@ describe('stageStats counts', () => {
   })
 })
 
+describe('relations on the cards', () => {
+  const mirrorOf = async (recordId: number): Promise<number> => {
+    const { source } = (await readRecord(s.e.db.payload, recordId)).record
+    const found = await s.e.db.payload.db.drizzle.execute(sql`
+      SELECT "id" FROM "mirror_items" WHERE "workspace_id" = ${s.e.db.workspace}
+        AND "repo" = ${source.repo} AND "number" = ${source.number}`)
+    return Number(found.rows[0]?.id)
+  }
+
+  it('counts what a ticket blocks down the chain and what it waits for', async () => {
+    const { building, briefQueued, intakeQueued } = s.names
+    const edge = async (from: number, to: number) => {
+      const ends = { from: await mirrorOf(from), to: await mirrorOf(to), type: 'blocks' }
+      await insertEdge(s.e.db.payload, s.e.db.workspace, ends)
+    }
+    await edge(building, briefQueued)
+    await edge(briefQueued, intakeQueued)
+    const cards = Object.values((await view()).stages).flat()
+    const of = (id: number) => cards.find((card) => card.recordId === id)?.relations
+    expect(of(building)?.blocks.map((t) => t.recordId)).toEqual([briefQueued, intakeQueued].sort((a, b) => a - b))
+    expect(of(briefQueued)?.blockedBy.map((t) => [t.recordId, t.stage])).toEqual([[building, 'Build']])
+    expect(of(intakeQueued)?.blocks).toEqual([])
+    expect(of(s.names.resultCard)).toBeNull()
+  })
+})
+
 describe('query counts with 200 more open tickets', () => {
   beforeAll(crowd, 120_000)
 
@@ -147,8 +174,8 @@ describe('query counts with 200 more open tickets', () => {
     return calls
   }
 
-  it('makes three queries for the board', async () => {
-    expect(await count(view)).toBeLessThanOrEqual(3)
+  it('makes four queries for the board, relations included', async () => {
+    expect(await count(view)).toBeLessThanOrEqual(4)
   })
 
   it('makes four queries for the stage statistics', async () => {

@@ -14,13 +14,14 @@ import {
 import type { AppEvent } from './events'
 import { runEffects } from './effects'
 import { advance, type AdvanceDeps } from './engine'
+import { createKept } from './relations/keep'
 import { resumeParked } from './intake/pacing'
 import { fold } from './fold'
 import { NOTE_MAX } from './limits'
 import { canGoBack, foldOptions, next, type State, type Step } from './lifecycle'
 import type { Effect } from './module'
-import type { TicketRecord } from './record/schema'
-import { appendEvent, readEvents, readRecord, type StoredRecord } from './record/store'
+import type { ProposedRelation, TicketRecord } from './record/schema'
+import { appendEvent, patchRecord, readEvents, readRecord, type StoredRecord } from './record/store'
 import { releaseLive } from './run/leases'
 
 
@@ -47,6 +48,7 @@ export type Decision = {
   seq: number
   note?: string
   answers?: Answers
+  dropRelations?: number[]
 }
 
 const noteSchema = z.string().trim().min(1).max(NOTE_MAX)
@@ -94,6 +96,18 @@ const answersOf = (asked: string | null, decision: Decision, record: TicketRecor
   return answers
 }
 
+const keptRelations = (asked: string | null, decision: Decision, record: TicketRecord): ProposedRelation[] => {
+  const dropped = decision.dropRelations ?? []
+  if (asked !== 'brief' || decision.choice !== 'approve') {
+    if (dropped.length === 0) return []
+    throw new InvalidDecision(`Only approving a Brief drops relations: leave dropRelations out of ${decision.choice}.`)
+  }
+  if (dropped.some((i) => !Number.isInteger(i) || i < 0 || i >= record.relations.length)) {
+    throw new InvalidDecision('dropRelations names a relation this Brief does not propose: drop only listed ones.')
+  }
+  return record.relations.filter((_, i) => !dropped.includes(i))
+}
+
 const eventsOf = (entry: DecisionEntry, state: State, note: string): AppEvent[] => {
   const input = {
     note,
@@ -113,6 +127,16 @@ const sentBackReview = (asked: string | null, choice: string, state: State, note
 const settle = async (tx: Conn, stored: StoredRecord, chosen: Settled, now: Date): Promise<void> => {
   if (chosen.entry.endsRun) await releaseLive(tx, stored.id, now)
   if (chosen.answers) await storeAnswers(tx, stored.id, stored, chosen.answers, now)
+}
+
+const keepOnly = async (tx: Conn, recordId: number, relations: ProposedRelation[]): Promise<void> => {
+  const current = await readRecord(tx, recordId)
+  await patchRecord(tx, recordId, {
+    expectedVersion: current.version,
+    writes: ['relations'],
+    patch: { relations },
+    by: { stage: 'brief', runId: 'owner' },
+  })
 }
 
 const closedAsDone = (asked: string | null, choice: string, state: State): Effect[] => {
@@ -139,7 +163,7 @@ export const decide = async (
   deps: AdvanceDeps,
 ): Promise<void> => {
   const config = await deps.configFor(recordId)
-  const { backlogBrief, review } = await inLockedRecord(deps.payload, recordId, async (tx) => {
+  const { backlogBrief, review, kept } = await inLockedRecord(deps.payload, recordId, async (tx) => {
     const stored = await readRecord(tx, recordId)
     if (!mayDecide(person, stored.workspace)) {
       throw new NotAllowedToDecide(`Person ${person.id} may not decide on record ${recordId}: ask a Bauherr of it.`)
@@ -148,10 +172,13 @@ export const decide = async (
     const asked = askedOf(next(stored.record, state, config), state)
     const { entry, note } = entryOf(asked, stored.card?.seq ?? 0, decision, state)
     const answers = answersOf(asked, decision, stored.record)
+    const kept = keptRelations(asked, decision, stored.record)
     const events = eventsOf(entry, state, note)
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
     await settle(tx, stored, { entry, answers }, deps.now)
+    if (kept.length !== stored.record.relations.length) await keepOnly(tx, recordId, kept)
     return {
+      kept,
       backlogBrief: asked === 'brief' && stored.record.source.backlog,
       review: [
         ...sentBackReview(asked, decision.choice, state, note),
@@ -161,6 +188,7 @@ export const decide = async (
     }
   })
   await advance(recordId, deps)
+  await createKept(deps, recordId, kept)
   await runEffects(deps, recordId, review)
   if (backlogBrief) await resumeParked(deps, recordId)
 }
