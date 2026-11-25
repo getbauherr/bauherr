@@ -157,7 +157,7 @@ describe('sending', () => {
     expect(issue.body.startsWith(DISCLOSURE)).toBe(true)
     expect(issue.body).toContain('Type: Something is broken (bug)')
     expect(issue.body).toContain('The export of the CO2 balance stops.')
-    const pattern = `!\\[export\\\\-koeln\\.png\\]\\(https://b\\.test/api/request-files/${id}/(\\d+)/([\\w-]+)\\)`
+    const pattern = `!\\[export-koeln\\.png\\]\\(https://b\\.test/api/request-files/${id}/(\\d+)/([\\w-]+)\\)`
     const link = new RegExp(pattern).exec(issue.body)
     expect(link).not.toBeNull()
     expect(issue.body).not.toContain('/api/conversations/')
