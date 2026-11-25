@@ -53,7 +53,7 @@ function AddRelation({ relations, add, disabled }: { relations: TicketRelations;
   const [other, setOther] = useState('')
   return (
     <form
-      className="grid gap-2"
+      className="grid min-w-0 gap-2"
       onSubmit={(event) => {
         event.preventDefault()
         if (other) add(group, Number(other))
@@ -62,6 +62,7 @@ function AddRelation({ relations, add, disabled }: { relations: TicketRelations;
     >
       <NativeSelect
         aria-label="Relation type"
+        className="w-full min-w-0"
         value={group}
         onChange={(e) => setGroup(e.target.value as RelationGroup)}
       >
@@ -71,7 +72,12 @@ function AddRelation({ relations, add, disabled }: { relations: TicketRelations;
           </option>
         ))}
       </NativeSelect>
-      <NativeSelect aria-label="Ticket" value={other} onChange={(e) => setOther(e.target.value)}>
+      <NativeSelect
+        aria-label="Ticket"
+        className="w-full min-w-0"
+        value={other}
+        onChange={(e) => setOther(e.target.value)}
+      >
         <option value="">Choose a ticket</option>
         {relations.candidates.map((candidate) => (
           <option key={candidate.itemId} value={candidate.itemId}>
@@ -94,7 +100,7 @@ export function RelationsBox({ recordId, relations, may }: BoxProps) {
   const run = (act: typeof addTicketRelation) => (group: RelationGroup, other: number) =>
     start(async () => setError((await act({ recordId, group, other })).error ?? null))
   return (
-    <section aria-label="Relations" className={`${CARD} grid gap-3 p-4`}>
+    <section aria-label="Relations" className={`${CARD} grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 p-4`}>
       <h2 className="label m-0 text-muted-foreground">Relations</h2>
       {GROUPS.map(([key, label]) => {
         const tickets = relations.groups[key]
