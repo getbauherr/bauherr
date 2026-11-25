@@ -79,7 +79,7 @@ test('a new Product lands on the Connect page, opens its settings and is deleted
   const name = `E2E Widgets ${Date.now()}`
   await signIn(page)
   await page.goto('/settings/products')
-  await expect(page.getByRole('row', { name: /Acme Web/ })).toContainText('Off')
+  await expect(page.getByRole('row', { name: /Acme Web/ })).toContainText('Ready')
   await expect(page.getByRole('button', { name: 'Delete' })).toHaveCount(0)
   const path = await addProduct(page, name)
   await expect(page.getByRole('heading', { name: `Connect ${name}` })).toBeVisible()
