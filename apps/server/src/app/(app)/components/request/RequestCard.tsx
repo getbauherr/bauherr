@@ -80,8 +80,6 @@ function Result({ draft }: { draft: DraftView }) {
   return draft.type === null ? <>Describe the request to start.</> : <>Complete: you can send it.</>
 }
 
-const metaOf = (draft: DraftView | null): string => (draft === null || draft.state === 'open' ? 'Draft' : draft.state)
-
 function Details({ draft }: { draft: DraftView | null }) {
   return (
     <dl className="m-0 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-2 text-sm">
@@ -111,7 +109,6 @@ export function RequestCard({
     <TaskCard
       aria-label="Your request"
       label="Your request"
-      meta={metaOf(draft)}
       state={stateOf(draft)}
       open
       onOpenChange={() => undefined}
