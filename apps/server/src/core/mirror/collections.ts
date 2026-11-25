@@ -111,4 +111,22 @@ export const mirrorCollections: CollectionConfig[] = [
     ],
     indexes: [{ fields: ['product', 'version'], unique: true }],
   },
+  {
+    slug: 'product_releases',
+    admin: { useAsTitle: 'version' },
+    access,
+    fields: [
+      relation('product', 'products'),
+      text('version', true),
+      text('sha', true),
+      text('state', true),
+      { name: 'steps', type: 'json', required: true },
+      text('body'),
+      { name: 'tickets', type: 'json', required: true },
+      text('forgeRelease'),
+      text('failure'),
+      date('claimedAt'),
+    ],
+    indexes: [{ fields: ['version', 'product'], unique: true }],
+  },
 ]

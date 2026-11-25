@@ -2,6 +2,7 @@ import type { Forge } from './contracts.js';
 import { linkLabel } from './contracts.js';
 import type { FakeBackend } from './fake.js';
 import { fakeBranchOps } from './fake-forge-branches.js';
+import { fakeDraftOps } from './fake-forge-drafts.js';
 import { fakeFactOps } from './fake-forge-facts.js';
 import { fakeFileOps } from './fake-forge-files.js';
 import { makeFakeKit } from './fake-forge-kit.js';
@@ -24,5 +25,6 @@ export const makeFakeForge = (b: FakeBackend, access: FakeAccess): Forge => {
     ...fakeReviewOps(kit),
     ...fakeMergeOps(kit),
     ...fakeReleaseOps(kit),
+    ...fakeDraftOps(kit),
   };
 };

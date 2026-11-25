@@ -47,6 +47,7 @@ export interface FakeRepo {
   requiredChecks: string[];
   branchProtected: boolean | null;
   deployments: Map<string, Deployment>;
+  deployStarts: { workflow: string; ref: string; inputs: Record<string, string> }[];
   commitEndpoint: boolean;
   canWrite: boolean;
   queue: number[];

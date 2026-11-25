@@ -1,7 +1,9 @@
 'use server'
 import { revalidatePath } from 'next/cache'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
+import { createReleaser, ReleaseRefused } from '../../../../core/releases/run'
+import { OPTIONS } from '../../../../core/releases/run-steps'
 import { releasesPage } from '../../../../core/releases/view'
 import {
   addItem,
@@ -11,6 +13,7 @@ import {
   writeNotesFor,
   type Where,
 } from '../../../../core/releases/notes-store'
+import { publicUrl } from '../../../../lib/oidc'
 import { gatewayModel } from '../../../../lib/retro-model'
 import { textOf } from '../../lib/form-data'
 import { held } from '../../lib/retro-wiring'
@@ -61,5 +64,36 @@ export async function addNoteAction(form: FormData): Promise<void> {
 export async function removeNoteAction(form: FormData): Promise<void> {
   const { payload, at } = await inProduct(form)
   await removeItem(payload, at, textOf(form, 'item'))
+  revalidatePath('/releases')
+}
+
+export async function releaseAction(form: FormData): Promise<void> {
+  const { payload, at, view } = await inProduct(form)
+  const notesLink = `${publicUrl()}/releases?product=${at.product}#notes`
+  if (view.notes === null) {
+    const model = gatewayModel(payload)
+    await writeNotesFor(payload, at, view.ready?.tickets ?? [], (system, user) =>
+      model(at.workspace, system, [{ role: 'user', content: user }]),
+    )
+  }
+  try {
+    await createReleaser(payload).start({
+      workspace: at.workspace,
+      product: at.product,
+      version: textOf(form, 'version').trim(),
+      notesLink,
+    })
+  } catch (error) {
+    if (!(error instanceof ReleaseRefused)) throw error
+    redirect(`/releases?product=${at.product}&refused=${encodeURIComponent(error.message)}`)
+  }
+  revalidatePath('/releases')
+}
+
+export async function answerReleaseAction(form: FormData): Promise<void> {
+  const { payload } = await inProduct(form)
+  const run = id.safeParse(textOf(form, 'run'))
+  const option = z.enum(OPTIONS).safeParse(textOf(form, 'option'))
+  if (run.success && option.success) await createReleaser(payload).answer(run.data, option.data)
   revalidatePath('/releases')
 }

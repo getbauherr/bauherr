@@ -1,5 +1,7 @@
-import type { Forge, RepoRef } from './contracts.js';
+import type { Forge, Release, RepoRef } from './contracts.js';
 import type { FakeKit } from './fake-forge-kit.js';
+
+const isPublic = (release: Release): boolean => !release.draft;
 
 export const fakeReleaseOps = (
   kit: FakeKit,
@@ -17,8 +19,10 @@ export const fakeReleaseOps = (
 > => ({
   findRelease: async (repo: RepoRef, o: { sha: string }) => {
     return (
-      kit.repoOf(repo).releases.find((r) => r.sha === o.sha || kit.repoOf(repo).contains.get(r.tag)?.includes(o.sha)) ??
-      null
+      kit
+        .repoOf(repo)
+        .releases.filter(isPublic)
+        .find((r) => r.sha === o.sha || kit.repoOf(repo).contains.get(r.tag)?.includes(o.sha)) ?? null
     );
   },
   createRelease: async (
@@ -32,10 +36,10 @@ export const fakeReleaseOps = (
     return kit.b.addRelease(repo, { ...o, sha, createdAt: r.commitDates.get(sha) });
   },
   listReleases: async (repo: RepoRef) => {
-    return [...kit.repoOf(repo).releases].reverse();
+    return kit.repoOf(repo).releases.filter(isPublic).reverse();
   },
   releaseByTag: async (repo: RepoRef, tag: string) => {
-    return kit.repoOf(repo).releases.find((r) => r.tag === tag) ?? null;
+    return kit.repoOf(repo).releases.filter(isPublic).find((r) => r.tag === tag) ?? null;
   },
   updateRelease: async (repo: RepoRef, id: string, o: { body: string }) => {
     const rel = kit.repoOf(repo).releases.find((r) => r.id === id);
@@ -44,12 +48,7 @@ export const fakeReleaseOps = (
     return { ...rel };
   },
   latestRelease: async (repo: RepoRef) => {
-    return (
-      kit
-        .repoOf(repo)
-        .releases.filter((r) => !r.prerelease)
-        .at(-1) ?? null
-    );
+    return kit.repoOf(repo).releases.findLast((r) => !r.prerelease && isPublic(r)) ?? null;
   },
   tagSha: async (repo: RepoRef, tag: string) => {
     return kit.repoOf(repo).releases.find((r) => r.tag === tag)?.sha ?? kit.repoOf(repo).tagShas.get(tag) ?? null;

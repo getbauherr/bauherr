@@ -74,6 +74,42 @@ export class GithubReleases extends GithubMergeQueue {
       createdAt: maybeText(wire(r).created_at),
     };
   }
+  async draftRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }) {
+    const known = list(await this.h.json('GET', `/repos/${repo}/releases?per_page=100`)).find(
+      (x) => wire(x).tag_name === o.tag,
+    );
+    const release = known ?? (await this.createDraft(repo, o));
+    return { ...githubRelease(release, o.sha), draft: !!wire(release).draft };
+  }
+  private async createDraft(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }) {
+    await this.h
+      .json('POST', `/repos/${repo}/git/refs`, { ref: `refs/tags/${o.tag}`, sha: o.sha })
+      .catch((e: unknown) => {
+        if (!(e instanceof GithubError && e.status === 422)) throw e;
+      });
+    return this.h.json('POST', `/repos/${repo}/releases`, {
+      tag_name: o.tag,
+      target_commitish: o.sha,
+      name: o.name,
+      body: o.body,
+      draft: true,
+    });
+  }
+  async publishRelease(repo: RepoRef, id: string, o: { body: string }) {
+    const r = await this.h.json('PATCH', `/repos/${repo}/releases/${id}`, {
+      draft: false,
+      body: o.body,
+      make_latest: 'true',
+    });
+    return (await this.releaseOf(repo, r))!;
+  }
+  async startDeploy(repo: RepoRef, o: { workflow: string; ref: string; inputs: Record<string, string> }) {
+    const file = o.workflow.split('/').at(-1) ?? o.workflow;
+    await this.h.json('POST', `/repos/${repo}/actions/workflows/${enc(file)}/dispatches`, {
+      ref: o.ref,
+      inputs: o.inputs,
+    });
+  }
   async listTags(repo: RepoRef) {
     return (await this.h.paginate(`/repos/${repo}/tags?per_page=100`)).map((t) => field(t, 'name'));
   }

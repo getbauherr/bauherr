@@ -158,6 +158,7 @@ export class FakeBackend implements Backend {
       body?: string;
       contains?: string[];
       prerelease?: boolean;
+      draft?: boolean;
       createdAt?: number | string;
     },
   ): Release {
@@ -171,6 +172,7 @@ export class FakeBackend implements Backend {
       body: o.body ?? '',
       url: `https://fake/${repo}/releases/tag/${o.tag}`,
       prerelease: !!o.prerelease,
+      ...(o.draft ? { draft: true } : {}),
       createdAt: new Date(o.createdAt ?? Date.now()).toISOString(),
     };
     r.releases.push(rel);
@@ -185,6 +187,10 @@ export class FakeBackend implements Backend {
 
   listReleases(repo: RepoRef): Release[] {
     return [...this.repo(repo).releases];
+  }
+
+  deployStarts(repo: RepoRef): { workflow: string; ref: string; inputs: Record<string, string> }[] {
+    return [...this.repo(repo).deployStarts];
   }
 
   setAncestors(repo: RepoRef, head: string, shas: string[]): void {
@@ -252,6 +258,7 @@ export class FakeBackend implements Backend {
         requiredChecks: [],
         branchProtected: false,
         deployments: new Map(),
+        deployStarts: [],
         commitEndpoint: false,
         canWrite: true,
         queue: [],

@@ -164,6 +164,7 @@ export interface NewPullRequest {
 
 export interface Release {
   prerelease?: boolean;
+  draft?: boolean;
   id: string;
   tag: string;
   sha: string;
@@ -261,6 +262,12 @@ export interface Forge {
   ): Promise<Release>;
   listReleases(repo: RepoRef): Promise<Release[]>;
   releaseByTag(repo: RepoRef, tag: string): Promise<Release | null>;
+  /** Creates the tag at `sha` and a release that is not public yet; returns the existing one for a known tag. */
+  draftRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }): Promise<Release>;
+  /** Makes a drafted release public with `body`; the same call again changes nothing. */
+  publishRelease(repo: RepoRef, id: string, o: { body: string }): Promise<Release>;
+  /** Starts the product's own production workflow or pipeline at `ref` with `inputs`; the forge deploys. */
+  startDeploy(repo: RepoRef, o: { workflow: string; ref: string; inputs: Record<string, string> }): Promise<void>;
   isAncestor(repo: RepoRef, base: string, head: string): Promise<boolean>;
   listTags(repo: RepoRef): Promise<string[]>;
   tagSha(repo: RepoRef, tag: string): Promise<string | null>;

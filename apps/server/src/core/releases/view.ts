@@ -64,7 +64,7 @@ const productsOf = async (payload: Payload, workspace: number) => {
   return found.rows.map((entry) => productRow.parse(entry))
 }
 
-const sourceOf = async (payload: Payload, workspace: number, product: number) => {
+export const sourceOf = async (payload: Payload, workspace: number, product: number) => {
   const found = await payload.db.drizzle.execute(sql`
     SELECT "id", "release_state", "facts_at" FROM "ticket_sources"
     WHERE "product_id" = ${product} AND "workspace_id" = ${workspace} ORDER BY "id" LIMIT 1`)

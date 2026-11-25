@@ -73,6 +73,12 @@ const EXCEPTIONS = [
       'Payload relationships always generate ON DELETE SET NULL and have no option for it.',
   },
   {
+    prefix: 'constraint product_releases product_releases_',
+    reason:
+      'A release goes with its Workspace and Product (ON DELETE CASCADE); ' +
+      'Payload relationships always generate ON DELETE SET NULL and have no option for it.',
+  },
+  {
     prefix: 'constraint release_notes release_notes_',
     reason:
       'Release notes go with their Workspace and Product (ON DELETE CASCADE); ' +

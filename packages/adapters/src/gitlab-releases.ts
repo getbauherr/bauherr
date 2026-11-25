@@ -6,6 +6,7 @@ import { probeCommit } from './release-probe.js';
 import { field, get, list, nullableText, num, text, wire } from './wire.js';
 
 const DEVELOPER = 30;
+const UPCOMING_MS = 365 * 86_400_000;
 
 const enc = encodeURIComponent;
 
@@ -51,6 +52,36 @@ export class GitlabReleases extends GitlabMergeTrain {
         description: o.body,
       }),
     );
+  }
+  async draftRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }) {
+    const known = await this.releaseByTag(repo, o.tag);
+    if (known) return known;
+    await this.h
+      .json('POST', `/projects/${enc(repo)}/repository/tags`, { tag_name: o.tag, ref: o.sha })
+      .catch((e: unknown) => {
+        if (!(e instanceof GitlabError && e.status === 400)) throw e;
+      });
+    const upcoming = new Date(Date.now() + UPCOMING_MS).toISOString();
+    const created = await this.h.json('POST', `/projects/${enc(repo)}/releases`, {
+      tag_name: o.tag,
+      ref: o.sha,
+      name: o.name,
+      description: o.body,
+      released_at: upcoming,
+    });
+    return { ...gitlabRelease(created), draft: true };
+  }
+  async publishRelease(repo: RepoRef, id: string, o: { body: string }) {
+    return gitlabRelease(
+      await this.h.json('PUT', `/projects/${enc(repo)}/releases/${enc(id)}`, {
+        description: o.body,
+        released_at: new Date().toISOString(),
+      }),
+    );
+  }
+  async startDeploy(repo: RepoRef, o: { workflow: string; ref: string; inputs: Record<string, string> }) {
+    const variables = Object.entries(o.inputs).map(([key, value]) => ({ key, value }));
+    await this.h.json('POST', `/projects/${enc(repo)}/pipeline`, { ref: o.ref, variables });
   }
   async listTags(repo: RepoRef) {
     return (await this.h.paginate(`/projects/${enc(repo)}/repository/tags?per_page=100`)).map((t) => field(t, 'name'));
