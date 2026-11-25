@@ -38,7 +38,8 @@ You decide whether a forge issue becomes work, and what is missing before it can
 ## Handoff
 
 Your `reason` is the handoff. Write it for a stranger who has not seen this run: what you checked,
-what you decided and why, and what the next stage should read first.
+what you decided and why, and what the next stage should read first. Keep it within 300 characters: a longer
+`reason` is refused and costs a fix turn.
 
 ## Writing for the owner
 
