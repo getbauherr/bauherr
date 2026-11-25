@@ -24,4 +24,30 @@ void describe('github relation removal', () => {
       'DELETE /repos/o/r/issues/2/dependencies/blocked_by/777 null',
     ]);
   });
+
+  void it('ignores a blocker or parent from another repository', async () => {
+    const issue = (parent: string) => ({
+      id: 1,
+      number: 1,
+      title: 't',
+      state: 'open',
+      body: '',
+      labels: [],
+      user: { login: 'u' },
+      parent_issue_url: `https://api.github.com/repos/${parent}/issues/7`,
+    });
+    const blockers = [
+      { number: 5, repository_url: 'https://api.github.com/repos/acme/other' },
+      { number: 6, repository_url: 'https://api.github.com/repos/o/r' },
+    ];
+    const fake = (parent: string) =>
+      new GithubBackend({
+        auth: patAuth('t'),
+        fetch: async (u) => json(urlOf(u).includes('blocked_by') ? blockers : issue(parent)),
+      }).tickets('o/r');
+    const foreign = await fake('acme/other').get('1');
+    assert.equal(foreign.parent, null);
+    assert.deepEqual(foreign.blockedBy, ['6']);
+    assert.equal((await fake('o/r').get('1')).parent, '7');
+  });
 });
