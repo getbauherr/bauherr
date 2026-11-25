@@ -14,11 +14,15 @@ export type ExecuteOptions = Omit<AgentOptions, 'proxyUrl' | 'instructions'> & {
 
 export type Executed = { ok: true; costUsd: number } | { ok: false; reason: string };
 
-const failure = (state: AgentState, timedOut: boolean, timeoutMs: number): string | null => {
+const failure = (state: AgentState, timedOut: boolean, timeoutMs: number, crash: string | null): string | null => {
   if (timedOut) return `the agent timed out after ${Math.round(timeoutMs / 60_000)} minutes`;
   if (state.budgetExhausted) return 'the Workspace budget is exhausted';
   if (state.stuck) return state.stuck;
-  if (!state.result) return 'the agent ended without a result message';
+  if (!state.result) {
+    return crash
+      ? `the agent ended without a result message: ${crash}`.slice(0, 300)
+      : 'the agent ended without a result message';
+  }
   if (state.result.subtype !== 'success') return `the agent stopped: ${state.result.subtype}`;
   return state.result.is_error ? `the agent reported an error: ${state.result.result}`.slice(0, 300) : null;
 };
@@ -52,7 +56,7 @@ export async function execute(o: ExecuteOptions): Promise<Executed> {
     clearTimeout(timer);
     await proxy.close();
   }
-  const reason = failure(state, timedOut, o.timeoutMs) ?? crash;
+  const reason = failure(state, timedOut, o.timeoutMs, crash) ?? crash;
   if (reason !== null || !state.result) return { ok: false, reason: reason ?? 'the agent did not run' };
   return { ok: true, costUsd: state.result.total_cost_usd };
 }
