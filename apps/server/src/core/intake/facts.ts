@@ -4,8 +4,8 @@ import { QUESTIONS_HEADING } from './questions'
 
 export const REQUIRED_FIELDS: Record<RecordType, string[]> = {
   bug: ['what happened', 'what was expected', 'steps to reproduce', 'where'],
-  feature: ['who needs it', 'what', 'why'],
   change: ['who needs it', 'what', 'why'],
+  question: [],
   chore: [],
 }
 

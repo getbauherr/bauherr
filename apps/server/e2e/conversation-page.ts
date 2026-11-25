@@ -21,4 +21,9 @@ export const conversationTargets = {
     return '/conversations'
   },
   '/conversations/[id]': aConversation,
+  '/requests/new': async (page: Page): Promise<string> => {
+    const base = process.env.BASE_URL ?? 'http://localhost:3000'
+    await page.context().addCookies([{ name: 'bauherr-ws', value: 'requests', url: base }])
+    return '/requests/new'
+  },
 }

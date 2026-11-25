@@ -11,6 +11,7 @@ import { seedTickets } from '../tests/core/ticket-scenario'
 import { seedConnect } from './seed-connect'
 import { seedSomeday } from './seed-someday'
 import { seedReadiness } from './seed-readiness'
+import { seedRequests } from './seed-requests'
 import { seedInsights } from './seed-insights'
 import { seedMemoryEditor } from './seed-memory-editor'
 import { seedRetro } from './seed-retro'
@@ -194,6 +195,7 @@ await seedConnect(payload)
 await seedSomeday(payload)
 await seedMemoryEditor(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
 await seedReadiness(payload)
+await seedRequests(payload)
 await seedInsights(payload)
 await seedRetro(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
 

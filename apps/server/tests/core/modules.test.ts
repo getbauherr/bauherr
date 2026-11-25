@@ -52,10 +52,20 @@ describe('the intake module', () => {
   const ask = { text: 'a', suggested: 'b' }
 
   it('accepts', () => {
-    const applied = apply('intake', briefed(), { ...base, outcome: 'accepted', type: 'feature' })
-    expect(applied.patch).toEqual({ type: 'feature' })
+    const applied = apply('intake', briefed(), { ...base, outcome: 'accepted', type: 'change' })
+    expect(applied.patch).toEqual({ type: 'change' })
     expect(applied.events).toEqual([{ type: 'intake.accepted', data: {} }])
     expect(applied.effects).toBeUndefined()
+  })
+
+  it('answers a question without a build: closes as answered and closes on the forge', () => {
+    const accepted = { ...base, type: 'question', outcome: 'accepted', reason: 'Exports run nightly.' } as const
+    const applied = apply('intake', briefed(), accepted, context({ autoClose: true }, 0))
+    expect(applied.events).toEqual([{ type: 'intake.closed', data: { reason: 'answered' } }])
+    expect(applied.effects).toEqual([
+      { kind: 'question', body: 'Answer: Exports run nightly.' },
+      { kind: 'close', reason: 'completed' },
+    ])
   })
 
   it('asks the next round with numbered questions and a question effect', () => {
