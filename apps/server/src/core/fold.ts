@@ -33,6 +33,7 @@ export type State = {
   productionApproved: boolean
   productionHeld: boolean
   note: string | null
+  blockedReason: string | null
   last: EventType | null
 }
 
@@ -66,6 +67,7 @@ export const initialState = (): State => ({
   productionApproved: false,
   productionHeld: false,
   note: null,
+  blockedReason: null,
   last: null,
 })
 
@@ -126,6 +128,8 @@ const owner: Reducer = (state, event) => {
       return state.closed === 'archived' ? { ...state, closed: null, card: null, run: null, failedRuns: 0 } : state
     case 'ticket.done-elsewhere':
       return enter(state, 'done')
+    case 'ticket.blocked':
+      return { ...state, blockedReason: event.data.reason }
     default:
       return null
   }
