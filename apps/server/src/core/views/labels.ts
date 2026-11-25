@@ -68,6 +68,7 @@ const LABELS: Labels = {
   'owner.note': (e) => `The owner left a note: ${e.data.note}`,
   'ticket.closed': (e) => CLOSED_LABELS[e.data.reason],
   'ticket.restored': () => 'The ticket was restored and its stage runs again',
+  'ticket.blocked': (e) => (e.data.reason === null ? 'The ticket is unblocked' : `Build waits: ${e.data.reason}`),
   'verify.overridden': () => 'The owner accepted the patch without a passing verification',
   'question.asked': (e) => `The factory asked the owner a question (${e.data.reason.replace(/-/g, ' ')})`,
   'question.answered': (e) => `The owner answered: ${e.data.option.replace(/-/g, ' ')}`,

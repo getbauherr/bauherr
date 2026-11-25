@@ -21,6 +21,23 @@ const refuseStageMoves = (options: string[]): void => {
   }
 }
 
+const WAIT_FOR_TICKET = new RegExp(
+  '\\b(?:wait(?:s|ing)?|hold(?:s|ing)?|pause|blocked)\\b(?:\\s+\\w+){0,3}?' +
+    '\\s+(?:for|on|until|by)\\s+(?:ticket\\s+|issue\\s+)?#\\d+',
+  'i',
+)
+
+const refuseWaiting = (options: string[]): void => {
+  const offending = options.find((option) => WAIT_FOR_TICKET.test(option))
+  if (offending) {
+    throw new OptionRefused(
+      `Option "${offending}" offers waiting for another ticket: ` +
+        'a blocked ticket already waits by itself before Build. ' +
+        'Write options as answers for your next run.',
+    )
+  }
+}
+
 export const ask = defineTool({
   name: 'ask',
   description:
@@ -36,6 +53,7 @@ export const ask = defineTool({
   run: async (input, context) => {
     await ownRun(context, input.runId)
     refuseStageMoves(input.options)
+    refuseWaiting(input.options)
     await askOwner(input.runId, input.leaseToken, { text: input.question, options: input.options }, context.deps)
     return { status: 'asked' as const }
   },

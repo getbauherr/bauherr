@@ -37,9 +37,27 @@ describe('ask options', () => {
     await m.e.drain()
   })
 
+  it.each([['Wait for #842'], ['Waiting on ticket #842 to land first'], ['Hold until #12']])(
+    'refuses the option "%s" that offers waiting for another ticket',
+    async (option) => {
+      await m.e.drain()
+      const record = await m.begin()
+      const run = await m.claimed(m.alpha)
+      const ids = { runId: run.runId, leaseToken: run.leaseToken }
+      const options = [option, 'Keep going']
+      await expect(m.call('ask', { ...ids, question: 'How?', options }, m.agent(m.alpha))).rejects.toThrow(
+        /offers waiting for another ticket/,
+      )
+      expect(await status(run.runId)).toBe('claimed')
+      expect((await m.e.view(record)).waitingOn).toBe('agents')
+      await m.e.drain()
+    },
+  )
+
   it.each([
     [['Close this modal on save', 'Send the payload back to the caller', 'Send back 404 for an unknown session']],
     [['Parking is out of scope', 'Send it back to the client as JSON', 'Discard it and recompute from source']],
+    [['Wait for the nightly job', 'Wait 5 seconds before the retry', 'Hold the lock on item 7']],
   ])('accepts normal options %#', async (options) => {
     await m.e.drain()
     const record = await m.begin()
