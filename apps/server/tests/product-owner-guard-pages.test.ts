@@ -82,12 +82,12 @@ describe('pages', () => {
     expect(await productsOf(guard.payload, [{ workspace: 1, scope: 'products', products: [] }])).toEqual([])
   })
 
-  it('a Bauherr gets a 404 on the Requests pages', async () => {
+  it('a Bauherr gets a 404 on one request, and the Requests page lists their workspace', async () => {
     session.cookie = bauherrCookie
-    for (const file of ['requests/page.tsx', 'requests/[id]/page.tsx']) {
-      const page = await pageModules[`${APP}(app)/(shell)/${file}`]()
-      await expect(page.default({ params: Promise.resolve({ id: '1' }) })).rejects.toSatisfy(notFound)
-    }
+    const one = await pageModules[`${APP}(app)/(shell)/requests/[id]/page.tsx`]()
+    await expect(one.default({ params: Promise.resolve({ id: '1' }) })).rejects.toSatisfy(notFound)
+    const requests = await pageModules[`${APP}(app)/(shell)/requests/page.tsx`]()
+    await expect(requests.default({})).resolves.toBeTruthy()
     session.cookie = productOwnerCookie
   })
 

@@ -15,6 +15,7 @@ export type Workspace = {
 }
 export type Person = TypedUser & {
   email: string
+  githubLogin?: string | null
   role: Role
   tenants?: { tenant: Workspace | number | null }[]
   assignments?: unknown[]
