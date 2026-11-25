@@ -1,6 +1,7 @@
 import { mayDecide } from '../../../../../core/decide'
 import { RecordNotFound } from '../../../../../core/record/errors'
 import { ticket } from '../../../../../core/views/ticket'
+import { loadTicketRelations } from '../../../../../core/views/ticket-relations'
 import { AutoRefresh } from '../../../components/AutoRefresh'
 import { EmptyState } from '../../../components/EmptyState'
 import { PageTitle } from '../../../components/PageTitle'
@@ -30,13 +31,14 @@ export default async function TicketPage({ params, searchParams }: Props) {
     throw error
   })
   if (!view) return <EmptyState text="This ticket does not exist." action={GONE} />
+  const relations = await loadTicketRelations(await payloadClient(), workspace.id, recordId)
   const { tab, proof } = await searchParams
   const current = parseTab(tab)
   const may = mayDecide({ id: String(user.id), role: user.role, workspaceIds: [workspace.id] }, workspace.id)
   return (
     <>
       <PageTitle>{`#${view.number}`}</PageTitle>
-      <TicketHeader view={view} />
+      <TicketHeader view={view} relations={relations} />
       <TicketTabs recordId={recordId} current={current} />
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid min-w-0 gap-4">
@@ -46,7 +48,7 @@ export default async function TicketPage({ params, searchParams }: Props) {
           {current === 'result' && <ResultTab view={view} proof={proof} />}
           {current === 'activity' && <ActivityTab view={view} />}
         </div>
-        <SideColumn view={view} />
+        <SideColumn view={view} relations={relations} may={may} />
       </div>
       <AutoRefresh />
     </>

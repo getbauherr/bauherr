@@ -22,6 +22,7 @@ const signInSpecs = [
   'selects',
   'settings',
   'shell',
+  'ticket-relations',
   'workspace-delete',
 ].map((name) => `${name}.spec.ts`)
 
@@ -34,6 +35,7 @@ const grepInvert = [
 ]
 
 const countsForgeCalls = ['repo-files.spec.ts', 'requests-page.spec.ts']
+const writesForge = 'ticket-relations.spec.ts'
 
 export default defineConfig({
   testDir: 'e2e',
@@ -44,7 +46,8 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: { baseURL: env.BASE_URL ?? 'http://localhost:3000', screenshot: 'on' },
   projects: [
-    { name: 'parallel', testIgnore: [...testIgnore, ...countsForgeCalls] },
+    { name: 'parallel', testIgnore: [...testIgnore, ...countsForgeCalls, writesForge] },
     { name: 'forge-calls', testIgnore, testMatch: countsForgeCalls, dependencies: ['parallel'] },
+    { name: 'forge-writes', testIgnore, testMatch: writesForge, dependencies: ['forge-calls'] },
   ],
 })
