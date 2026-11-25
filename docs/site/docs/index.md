@@ -9,18 +9,18 @@ hide:
 
 # An open-source AI software factory
 
-**Agents take your tickets through gated stages. You approve the plan, not every keystroke.**
+**Agents take your tickets from issue to verified pull request. You decide on three cards.**
 
-Bauherr connects to the issue tracker and repositories you already use. Agents plan, build, review and release; you decide at the checkpoints. Self-hosted, with an audit trail and a budget per Workspace.
+Bauherr connects to the forge you already use. Agents write a Brief, build, review and verify. You approve the Brief, accept the Result and answer Questions. Self-hosted, with an audit trail and a budget per Workspace.
 
 [Get started](#install){ .md-button .md-button--primary }
-Read the docs{ .md-button }
+[Read the guide](ui.md){ .md-button }
 [Source on GitHub](https://github.com/getbauherr/bauherr){ .md-button }
 
-<img class="bh-shot bh-shot--hero bh-light" src="screenshots/screenshot-workflow.png" alt="The Workflow view: the stages as a graph with open Tickets, who waits on whom and the human checkpoints">
-<img class="bh-shot bh-shot--hero bh-dark" src="screenshots/screenshot-workflow-dark.png" alt="The Workflow view: the stages as a graph with open Tickets, who waits on whom and the human checkpoints (dark theme)">
+<img class="bh-shot bh-shot--hero bh-light" src="screenshots/screenshot-factory.png" alt="The Factory view: tickets by stage from Intake to Done, filters, a strip of what holds up work and send-back loops">
+<img class="bh-shot bh-shot--hero bh-dark" src="screenshots/screenshot-factory-dark.png" alt="The Factory view: tickets by stage from Intake to Done, filters, a strip of what holds up work and send-back loops (dark theme)">
 
-Pre-release: the data model and the workflow can still change between versions. Back up the database before you upgrade.
+Pre-release: the data model can still change between versions. Back up the database before you upgrade.
 
 </section>
 
@@ -34,32 +34,32 @@ Pre-release: the data model and the workflow can still change between versions. 
 
 <div markdown>
 ### You decide, the factory works
-Tickets move through stages by themselves. You are asked at a few checkpoints, and the Inbox shows each one as a prepared card: the ask, a recommendation, the facts and the real options.
+Tickets move by themselves. You are asked on three cards: Brief, Result and Question. Each shows the ask, a recommendation and the real options, and takes a free comment.
 </div>
 
 <div markdown>
-### Your tickets stay yours
-They live in GitHub. Bauherr keeps a pointer and what it derives, and writes the stage as a label.
+### Pictures before prose
+A Brief for a visible change carries mockups. A Result shows before and after per screen. Plans and results are drawn, not described.
 </div>
 
 <div markdown>
-### Everything is on the record
-Runs, steps, tool calls, human touches and cost are stored. Every step of a Ticket shows who or what did it, with which model, for how much.
+### Low risk goes through
+A rule in code approves a Brief with no open decision, no one-way door, no risk area and no visible change. Everything else waits for you.
 </div>
 
 <div markdown>
-### Cost is capped
-Each Workspace has its own provider key and a rolling 30-day budget in a bundled gateway. An exhausted budget ends the Run.
+### Nobody checks their own work
+A review run and a verifier run check every patch. Neither built it. A verdict needs proof per criterion, and the server refuses one without.
 </div>
 
 <div markdown>
-### Use your own session
-A stage can wait for your Claude Code to claim it, so you work in your own worktree with your own credentials. See Session mode.
+### Your tickets stay in your forge
+GitHub or GitLab is mirrored into the factory database. The factory database is the truth for factory state. One module writes to the forge.
 </div>
 
 <div markdown>
 ### Small to run
-Docker and Postgres 17. No Redis, no external service.
+Docker and Postgres 17. Agents run as your own Claude Code sessions over MCP, or in the headless Runner.
 </div>
 
 </div>
@@ -70,103 +70,100 @@ Docker and Postgres 17. No Redis, no external service.
 
 ## How it works
 
-A Ticket moves through the stages Triage, Plan, Build, Review, Staging and Done. Each stage has named outcomes: a failed review sends the Ticket back to Build, and a split plan turns it into a parent with sub-tickets.
+A ticket moves through six fixed stages. Three roles work them: builder, reviewer and verifier.
 
 | Stage | What happens |
 |---|---|
-| Triage | An agent checks the Ticket and asks what is unclear. You answer in a short chat with recommended defaults. |
-| Plan | An agent writes the plan and a decision sheet. |
-| Build | An agent implements the plan on a branch and opens a merge request with evidence: commands, exit codes, test results. |
-| Review | A reviewer agent without memory of the change reads the diff. The factory merges when it is clean. |
-| Staging | The Product's own CI deploys. |
-| Done | The Ticket is closed on merge. Release notes group done Tickets per release. |
+| Intake | Code selects the issue. A model checks it and asks the reporter one numbered round of questions when something is missing. |
+| Brief | The builder writes the goal, up to seven criteria a user can observe, the risk and the plan. You approve it, or the risk rule does. |
+| Build | The builder implements the Brief and opens a pull request. |
+| Verify | A reviewer reads the diff. Then a verifier checks each criterion against proof. |
+| Ship | The factory merges. You accept the Result. Production approval is a switch per Product. |
+| Done | The ticket is closed. |
 
-You are asked at **Answer questions**, **Approve plan** and **Approve production** by default. **Accept on staging** is an optional gate. The full workflow: Workflow spec.
+After three failed verify rounds, two failed runs or a silent reporter, the ticket stops on a Question card. **Back to Brief** returns a ticket from Build or Verify with a note.
 
 </section>
 
 <section class="bh-feature" markdown>
 <div markdown>
 
-## Inbox: each decision as a card
+## Factory view: the whole line at a glance
 
-One prepared card per decision, grouped by checkpoint: the ask, a recommendation, the facts and the real options. Approve a plan, accept on staging, approve production, or give a review one more round. More in Features.
+Every ticket as a card under its stage, with who has the turn and how long it has waited. Filter by what waits on you, what agents work on, what is stuck and what waits on others. A strip above the board names what holds up work, for example a role with no connected agent.
 
 </div>
-<img class="bh-shot bh-light" src="screenshots/screenshot-inbox.png" alt="Inbox with decision cards: approve the plan for a Ticket, with a recommendation and three facts">
-<img class="bh-shot bh-dark" src="screenshots/screenshot-inbox-dark.png" alt="Inbox with decision cards: approve the plan for a Ticket, with a recommendation and three facts (dark theme)">
+<img class="bh-shot bh-light" src="screenshots/screenshot-factory.png" alt="The Factory view with filters, the holding strip and tickets under six stages">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-factory-dark.png" alt="The Factory view with filters, the holding strip and tickets under six stages (dark theme)">
 </section>
 
 <section class="bh-feature bh-feature--flip" markdown>
 <div markdown>
 
-## Ticket: the path it took
+## Inbox: who has to act
 
-The stages a Ticket visited on the same graph, and a Steps timeline with every wait and every piece of work, with its executor, model, outcome and cost. More in Features.
+The same tickets as a list. Waiting on you comes first, then agents working, then waiting on others.
 
 </div>
-<img class="bh-shot bh-light" src="screenshots/screenshot-ticket.png" alt="Ticket page with the Path through the stages and the Steps timeline">
-<img class="bh-shot bh-dark" src="screenshots/screenshot-ticket-dark.png" alt="Ticket page with the Path through the stages and the Steps timeline (dark theme)">
+<img class="bh-shot bh-light" src="screenshots/screenshot-inbox.png" alt="Inbox grouped into waiting on you and agents working">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-inbox-dark.png" alt="Inbox grouped into waiting on you and agents working (dark theme)">
 </section>
 
 <section class="bh-feature" markdown>
 <div markdown>
 
-## Requests: ask in plain words
+## Ticket: one card at a time
 
-A chat fills a request card with the type, the problem, what is done when it works and how urgent it is. Every field stays editable, and you send it to the factory when it is ready. The Requests page lists your drafts and your sent requests. See Chat.
-
-</div>
-<img class="bh-shot bh-light" src="screenshots/screenshot-request-card.png" alt="Request card for an urgent bug: title, what is broken, for whom and since when, and what is still missing before it can be sent">
-<img class="bh-shot bh-dark" src="screenshots/screenshot-request-card-dark.png" alt="Request card for an urgent bug: title, what is broken, for whom and since when, and what is still missing before it can be sent (dark theme)">
-</section>
-
-<section class="bh-feature" markdown>
-<div markdown>
-
-## Insights: where time goes
-
-Lead time, cycle time and time per stage with the bottleneck, and tokens and cost per model, role, session, stage and Ticket.
+The ticket page shows the card that waits for you, with the criteria, the risk and why you are asked. Tabs hold the Brief, the Result and the activity. Back to Brief is one click.
 
 </div>
-<img class="bh-shot bh-light" src="screenshots/screenshot-insights.png" alt="Insights with lead time, cycle time and time per stage with the bottleneck">
-<img class="bh-shot bh-dark" src="screenshots/screenshot-insights-dark.png" alt="Insights with lead time, cycle time and time per stage with the bottleneck (dark theme)">
+<img class="bh-shot bh-light" src="screenshots/screenshot-ticket.png" alt="A ticket with a Brief card: the goal, a decision with a recommended option and the Approve Brief button">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-ticket-dark.png" alt="A ticket with a Brief card: the goal, a decision with a recommended option and the Approve Brief button (dark theme)">
 </section>
 
 <section class="bh-feature bh-feature--flip" markdown>
 <div markdown>
 
-## Chat: ask, then confirm
+## Insights: time and cost
 
-A chat on every page that knows the page, with stored threads. An action such as approve, accept or stop is shown as a card and runs only when you confirm it. See Chat.
+Time per stage, how often tickets were sent back, and tokens and cost per ticket, model and role.
 
 </div>
-<img class="bh-shot bh-light" src="screenshots/screenshot-chat.png" alt="Docked chat with an answer and a confirm card for approving a plan">
-<img class="bh-shot bh-dark" src="screenshots/screenshot-chat-dark.png" alt="Docked chat with an answer and a confirm card for approving a plan (dark theme)">
+<img class="bh-shot bh-light" src="screenshots/screenshot-insights.png" alt="Insights with time per stage and cost per stage">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-insights-dark.png" alt="Insights with time per stage and cost per stage (dark theme)">
 </section>
 
 <section class="bh-feature" markdown>
 <div markdown>
 
-## Templates: edit what the factory writes
+## Repo readiness: fix the gaps first
 
-The texts the factory writes are editable templates, with a live preview. Settings are grouped by scope in the [UI](ui.md).
+Each Product shows what its repository lacks: required checks, risk areas, an `AGENTS.md`, issue forms, connected sessions. Most gaps offer a fix.
 
 </div>
-<img class="bh-shot bh-light" src="screenshots/screenshot-templates.png" alt="Template editor with the text on the left and a live preview on the right">
-<img class="bh-shot bh-dark" src="screenshots/screenshot-templates-dark.png" alt="Template editor with the text on the left and a live preview on the right (dark theme)">
+<img class="bh-shot bh-light" src="screenshots/screenshot-readiness.png" alt="Product page with the readiness list: gaps, unknowns and one passed check">
+<img class="bh-shot bh-dark" src="screenshots/screenshot-readiness-dark.png" alt="Product page with the readiness list: gaps, unknowns and one passed check (dark theme)">
 </section>
 
-<section class="bh-feature bh-feature--flip" markdown>
-<div markdown>
+<section class="bh-section" markdown>
 
-## Agent team: who is working
+## Memory: what the factory knows
 
-An Agent team page to pick a role and see its profile, skills and model, and which sessions are working on what and which are idle. See Session mode.
+Three documents hold what agents are told: factory, workspace and product. Parts of them go to the runs of Brief, Build, Review and Verify. Only you or a Retro change them. A Retro is a conversation about a range of tickets that proposes changes; you apply or drop each one.
 
-</div>
-<img class="bh-shot bh-light" src="screenshots/screenshot-team.png" alt="Agent team page: the roster with the Reviewer selected, one session working on a Ticket and one idle">
-<img class="bh-shot bh-dark" src="screenshots/screenshot-team-dark.png" alt="Agent team page: the roster with the Reviewer selected, one session working on a Ticket and one idle (dark theme)">
+## Bring a project you already have
+
+1. **Connect** the repositories.
+2. **Import** all issues and open pull requests. Nothing is written to the forge.
+3. **First look**: Intake and a repository check run on every open issue.
+4. **Switch on**: briefs for old issues come one at a time, at most five waiting on you.
+
+An open pull request that closes an issue and comes from a trusted author enters at Verify. The factory never pushes to it.
+
+## Planned
+
+Ticket relations, requests from Product owners and releases are planned, not built.
+
 </section>
 
 <section class="bh-section" id="install" markdown>

@@ -18,6 +18,10 @@ describe('the read-only forge view', () => {
       | 'listFiles'
       | 'listTags'
       | 'releaseByTag'
+      | 'listReleases'
+      | 'latestDeployment'
+      | 'commitEndpoint'
+      | 'canWrite'
     >()
     expectTypeOf<ReadTickets>().not.toHaveProperty('comment')
     expectTypeOf<ReadTickets>().not.toHaveProperty('addLabels')

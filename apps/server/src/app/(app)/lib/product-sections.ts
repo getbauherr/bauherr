@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { isWebUrl } from './url'
 
 export const EXECUTORS = ['session', 'runner'] as const
+export const RELEASE_MODES = ['factory', 'direct'] as const
 
 export const DAYS = { min: 1, max: 90 } as const
 export const LIMIT = { min: 1, max: 50 } as const
@@ -62,6 +63,10 @@ const proofSchema = z.object({
 
 const executorSchema = z.object({ executor: z.enum(EXECUTORS, { error: 'Choose a session or the Runner.' }) })
 
+const releaseModeSchema = z.object({
+  releaseMode: z.enum(RELEASE_MODES, { error: 'Choose how releases happen.' }),
+})
+
 const backlogSchema = z.object({ backlogBriefLimit: whole(LIMIT.min, LIMIT.max) })
 
 const textOf = (fd: FormData, key: string): string => {
@@ -80,6 +85,8 @@ const parse = <T extends z.ZodType>(schema: T, input: Record<string, string>): z
 }
 
 export const parseExecutor = (fd: FormData) => parse(executorSchema, valuesOf(fd, ['executor']))
+
+export const parseReleaseMode = (fd: FormData) => parse(releaseModeSchema, valuesOf(fd, ['releaseMode']))
 
 export const parseIntake = (fd: FormData) => {
   const values = parse(intakeSchema, valuesOf(fd, Object.keys(intakeSchema.shape)))

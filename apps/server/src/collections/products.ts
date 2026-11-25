@@ -108,6 +108,12 @@ export const products = col(
       defaultValue: 5,
       admin: { description: 'Brief cards of backlog tickets waiting on the owner at one time.' },
     },
+    text('releaseMode', {
+      defaultValue: 'factory',
+      admin: {
+        description: 'factory: staging on every merge, production on Release. direct: every merge goes to production.',
+      },
+    }),
     text('requiredChecks', {
       admin: { description: 'Comma-separated check names a patch must pass before Verify; empty skips the wait.' },
     }),
