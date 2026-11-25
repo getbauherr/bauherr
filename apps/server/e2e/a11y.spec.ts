@@ -116,8 +116,7 @@ const inboxAt = (width: number) => async (page: Page) => {
 const inTickets =
   (title: string, query = '') =>
   async (page: Page) => {
-    const base = process.env.BASE_URL ?? 'http://localhost:3000'
-    await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url: base }])
+    await inWorkspace('tickets', '/inbox')(page)
     await page.goto('/inbox')
     const href = await page
       .getByRole('link', { name: new RegExp(title) })
@@ -143,8 +142,7 @@ const redirects: Record<string, RegExp> = { '/settings': /^\/settings\/profile$/
 const connectOf =
   (product: string, path = '/connect') =>
   async (page: Page) => {
-    const base = process.env.BASE_URL ?? 'http://localhost:3000'
-    await page.context().addCookies([{ name: 'bauherr-ws', value: 'connect', url: base }])
+    await inWorkspace('connect', '/settings/products')(page)
     await page.goto('/settings/products')
     const href = await page.getByRole('link', { name: product, exact: true }).getAttribute('href')
     return `${href}${path}`
@@ -156,6 +154,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
   '/': {
     Factory: inFactory('/'),
     'cannot-run line': withHoldStrip('/'),
+    'with relations': inWorkspace('relations', '/'), 'grouped by parent': inWorkspace('relations', '/?group=parent'),
   },
   ...conversationTargets,
   '/inbox': { desktop: inboxAt(1280), 'at 390 px': inboxAt(390) },
