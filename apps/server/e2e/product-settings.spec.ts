@@ -239,8 +239,11 @@ test('at 390 px Product, Workspace and Connect settings do not scroll sideways',
       const nav = (await page.getByRole('navigation', { name: 'Settings' }).boundingBox())!
       const content = (await page.locator('h1', { hasText: /^Settings$/ }).locator('xpath=..').boundingBox())!
       expect(nav.y + nav.height, url).toBeLessThanOrEqual(content.y + 1)
-      const { scrollWidth, clientWidth } = await page.evaluate(() => document.documentElement)
-      expect(scrollWidth, url).toBe(clientWidth)
+      const { sw, cw } = await page.evaluate(() => ({
+        sw: document.documentElement.scrollWidth,
+        cw: document.documentElement.clientWidth,
+      }))
+      expect(sw, url).toBeLessThanOrEqual(cw)
     }
     await page.setViewportSize({ width: 1280, height: 900 })
   })
