@@ -8,6 +8,7 @@ export const PO_PAGES: Record<string, string> = {
   '': 'the Factory view for a Bauherr; a Product owner gets a static empty state that reads no data',
   settings: 'redirects to the profile',
   'settings/profile': 'the profile',
+  'requests/[id]': 'one request of an assigned Product; any other answers 404 (request-page-guard.test.ts)',
 }
 export const BAUHERR_PAGES = [
   'conversations',
@@ -37,12 +38,12 @@ export const BAUHERR_PAGES = [
 export const PO_ROUTES: Record<string, string> = {
   'api/hooks/[connection] POST': 'forge webhook: no session, signature-verified',
   'api/health GET': 'unauthenticated health probe',
+  'api/attachments/[id] GET': 'a picture of a request the account may open; any other 404 (request-page-guard.test.ts)',
   'api/attachments/upload/[token] PUT': 'run image upload: no session, a one-time token',
   'auth/oidc/login GET': 'sign-in flow',
   'auth/oidc/callback GET': 'sign-in flow',
 }
 export const BAUHERR_ROUTES: string[] = [
-  'api/attachments/[id] GET',
   'api/conversations POST',
   'api/conversations/[id] GET',
   'api/conversations/[id] POST',
