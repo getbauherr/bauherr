@@ -44,7 +44,7 @@ export default buildConfig({
   db: postgresAdapter({
     pool: { connectionString: process.env.DATABASE_URL, ...poolOptions() },
     push: !process.env.BAUHERR_TEST_SCHEMA_READY,
-    prodMigrations: migrations,
+    prodMigrations: process.env.BAUHERR_TEST_SCHEMA_READY ? undefined : migrations,
   }),
   collections,
   onInit: async (payload) => {
