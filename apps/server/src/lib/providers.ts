@@ -5,6 +5,7 @@ export type Preset =
   | 'openai'
   | 'gemini'
   | 'greenpt'
+  | 'mistral'
   | 'bedrock'
   | 'vertex'
   | 'foundry'
@@ -132,6 +133,25 @@ export const PRESETS: Record<Preset, Def> = {
     defaultModels: { cheap: 'glm-5.3-flash', standard: 'glm-5.3', strong: 'kimi-k3' },
     render: (slug, _c, file) =>
       entry(slug, custom('completions', 'greenpt'), { apiKey: { file }, baseUrl: 'https://api.greenpt.ai/v1' }),
+  },
+  mistral: {
+    auth: 'file',
+    required: [],
+    secret: {
+      ext: 'key',
+      hint:
+        'Mistral API key (Studio or Vibe key; draws the plan allowance, then pay-as-you-go). ' +
+        'Reasoning models (mistral-large, magistral) are not supported by the gateway yet',
+    },
+    catalog: true,
+    defaultModels: { cheap: 'mistral-small-latest', standard: 'codestral-latest', strong: 'mistral-vibe-cli-latest' },
+    render: (slug, _c, file) =>
+      entry(
+        slug,
+        custom('completions', 'mistral'),
+        { apiKey: { file }, baseUrl: 'https://api.mistral.ai/v1' },
+        { overrides: { metadata: {} } },
+      ),
   },
   bedrock: {
     auth: 'file',
