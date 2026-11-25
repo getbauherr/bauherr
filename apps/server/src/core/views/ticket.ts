@@ -91,6 +91,7 @@ export type TicketView = {
   canGoBack: boolean
   canArchive: boolean
   archived: boolean
+  restorable: boolean
   timing: { time: TicketTime; cost: TicketCost }
 }
 
@@ -229,6 +230,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     canGoBack: canGoBack(folded),
     canArchive: canArchive(folded),
     archived: folded.closed === 'archived',
+    restorable: folded.closed === 'archived' || folded.closed === 'closed-on-forge',
     timing: await timingOf(payload, stored.id),
     similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT, 'issue') : [],
   }

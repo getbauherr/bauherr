@@ -17,8 +17,8 @@ const archiving: Plan = {
 
 const restoring: Plan = {
   events: [{ type: 'ticket.restored', data: {} }],
-  allowed: (state) => state.closed === 'archived',
-  refusal: 'Only an archived ticket can be restored: reload the page.',
+  allowed: (state) => state.closed === 'archived' || state.closed === 'closed-on-forge',
+  refusal: 'Only an archived or forge-closed ticket can be restored: reload the page.',
 }
 
 const inState = async (deps: AdvanceDeps, recordId: number, person: Person, plan: Plan) => {

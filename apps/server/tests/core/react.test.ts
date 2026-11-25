@@ -142,7 +142,30 @@ describe('issueClosed', () => {
   })
 })
 
+describe('a ticket sent back after its merge', () => {
+  const sentBack = [...inShip, ev('ship.merged', { sha: 'm1' }), ev('result.sent-back', { note: 'again' })]
+
+  it('is not closed by a closed issue, also after the rebuild is submitted', () => {
+    expect(react(input(sentBack, { issue: closedIssue }))).toEqual([])
+    const rebuilt = [...sentBack, ev('build.submitted')]
+    expect(react(input(rebuilt, { issue: closedIssue }))).toEqual([])
+  })
+
+  it('forgets the send-back once the owner accepted it', () => {
+    const accepted = [...sentBack, ev('build.submitted'), ev('result.accepted')]
+    expect(fold(accepted).sentBackAfterMerge).toBe(false)
+  })
+})
+
 describe('issueReopened', () => {
+  it('restores a closed-on-forge ticket whose issue is open again, and not one whose pull request is closed', () => {
+    const closedOnForge = [...inBuild, ev('ticket.closed', { reason: 'closed-on-forge' })]
+    expect(react(input(closedOnForge))).toEqual([{ type: 'ticket.restored', data: {} }])
+    expect(react(input(closedOnForge, { issue: closedIssue }))).toEqual([])
+    const restored = [...closedOnForge, ev('ticket.restored')]
+    expect(react(input(restored))).not.toContainEqual({ type: 'ticket.closed', data: { reason: 'closed-on-forge' } })
+  })
+
   const archived = [...inBuild, ev('ticket.closed', { reason: 'archived' })]
 
   it('restores an archived ticket whose closed issue is open again', () => {

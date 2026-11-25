@@ -145,7 +145,8 @@ export const openRecords = async (conn: Conn): Promise<number[]> => {
   const result = await conn.db.drizzle.execute(sql`
     SELECT "id" FROM "records" WHERE "stage" <> 'done' AND ("waiting_on" <> 'nobody' OR "parked" IS NOT NULL
       OR (SELECT e."data"->>'reason' FROM "events" e WHERE e."record_id" = "records"."id"
-        AND e."type" IN ('ticket.closed', 'ticket.restored') ORDER BY e."id" DESC LIMIT 1) = 'archived')
+        AND e."type" IN ('ticket.closed', 'ticket.restored') ORDER BY e."id" DESC LIMIT 1)
+        IN ('archived', 'closed-on-forge'))
     ORDER BY "id"`)
   return result.rows.map((row) => idRow.parse(row).id)
 }
