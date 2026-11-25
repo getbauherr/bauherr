@@ -8,7 +8,7 @@ import {
 import type { Candidate, RelatedTicket, RelationGroup, TicketRelations } from '../../../../core/views/ticket-relations'
 import { TicketRefPopover } from '../TicketRefPopover'
 import { Button } from '../ui/button'
-import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '../ui/command'
+import { Command, CommandInput, CommandItem, CommandList } from '../ui/command'
 import { NativeSelect } from '../ui/native-select'
 import { CARD } from './Section'
 
@@ -101,14 +101,17 @@ function TicketPicker({
         value={query}
         onValueChange={setQuery}
       />
-      <CommandList className="max-h-48">
-        <CommandEmpty>No ticket found</CommandEmpty>
-        {results.map((candidate) => (
-          <CommandItem key={candidate.itemId} value={String(candidate.itemId)} onSelect={() => choose(candidate)}>
-            #{candidate.number} {candidate.title}
-          </CommandItem>
-        ))}
-      </CommandList>
+      {results.length > 0 ? (
+        <CommandList className="max-h-48">
+          {results.map((candidate) => (
+            <CommandItem key={candidate.itemId} value={String(candidate.itemId)} onSelect={() => choose(candidate)}>
+              #{candidate.number} {candidate.title}
+            </CommandItem>
+          ))}
+        </CommandList>
+      ) : (
+        query && <p className="small m-0 p-2 text-muted-foreground">No ticket found</p>
+      )}
     </Command>
   )
 }
