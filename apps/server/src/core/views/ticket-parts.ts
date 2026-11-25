@@ -179,3 +179,10 @@ export const loadOtherPulls = async (
     return { number: r.number, title: r.title, url: r.url ?? '', author: r.author ?? '', state }
   })
 }
+
+export const closedByAdoptedPull = async (payload: Payload, stored: StoredRecord): Promise<boolean> => {
+  const { repo, adopted } = stored.record.source
+  if (adopted === undefined) return false
+  const item = await loadItem(payload, { workspace: stored.workspace, repo, number: adopted.pr })
+  return item?.state === 'closed'
+}

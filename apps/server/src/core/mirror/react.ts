@@ -82,7 +82,12 @@ export const pullMerged: Reaction = ({ state, pull }) => {
 export const issueClosed: Reaction = ({ state, issue, pull }) => {
   const mergedPull = state.adopted && pull?.state === 'merged'
   const settled =
-    state.closed !== null || state.merged || mergedPull || state.stage === 'ship' || state.stage === 'done'
+    state.closed !== null ||
+    state.merged ||
+    state.sentBackAfterMerge ||
+    mergedPull ||
+    state.stage === 'ship' ||
+    state.stage === 'done'
   if (settled || issue.state !== 'closed') return []
   return [{ type: 'ticket.closed', data: { reason: 'closed-on-forge' } }]
 }
@@ -90,8 +95,13 @@ export const issueClosed: Reaction = ({ state, issue, pull }) => {
 export const pullClosed: Reaction = ({ state, pull }) =>
   state.adopted && pull?.state === 'closed' ? [{ type: 'ticket.closed', data: { reason: 'closed-on-forge' } }] : []
 
-export const issueReopened: Reaction = ({ state, issue, closeWritten }) =>
-  state.closed === 'archived' && closeWritten && issue.state === 'open' ? [{ type: 'ticket.restored', data: {} }] : []
+const reopenable = ({ state, pull, closeWritten }: ReactInput): boolean => {
+  if (state.closed === 'archived') return closeWritten
+  return state.closed === 'closed-on-forge' && !(state.adopted && pull?.state === 'closed')
+}
+
+export const issueReopened: Reaction = (input) =>
+  reopenable(input) && input.issue.state === 'open' ? [{ type: 'ticket.restored', data: {} }] : []
 
 export const headMoved: Reaction = ({ state, pull }) => {
   const patch = state.patch
@@ -124,7 +134,7 @@ export const deployFinished: Reaction = ({ deploy }) => {
 const REACTIONS: Reaction[] = [reporterReplied, checksFinished, pullConflicted, pullMerged, headMoved, deployFinished]
 
 export const react = (input: ReactInput): AppEvent[] => {
-  if (input.state.closed === 'archived') return issueReopened(input)
+  if (input.state.closed === 'archived' || input.state.closed === 'closed-on-forge') return issueReopened(input)
   const closed = [...pullClosed(input), ...issueClosed(input)]
   if (closed.length > 0) return closed.slice(0, 1)
   return REACTIONS.flatMap((reaction) => reaction(input))

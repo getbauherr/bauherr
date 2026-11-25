@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { describe, expect, it } from 'vitest'
 import { archive, restore } from '../../src/core/archive'
 import { decide, InvalidDecision, NotAllowedToDecide } from '../../src/core/decide'
+import { ticket } from '../../src/core/views/ticket'
 import { BRIEF, flowHarness } from './modules-harness'
 
 const f = flowHarness('core_archive_flow')
@@ -19,6 +20,8 @@ const live = (id: number) =>
   f.h.rows(
     sql`SELECT "stage", "status" FROM "stage_runs" WHERE "record_id" = ${id} AND "status" IN ('queued', 'claimed')`,
   )
+
+const page = (id: number) => ticket(f.h.payload(), { workspace: f.h.ids.workspace, recordId: id })
 
 const issue = (repo: string) => f.fake().tickets(repo).get('1')
 
@@ -103,6 +106,33 @@ describe('reopening an archived issue on the forge', () => {
     await s.sync()
     await s.sync()
     expect(await f.types(s.id)).not.toContain('ticket.restored')
+  })
+})
+
+describe('restoring a ticket closed on the forge', () => {
+  const closedOnForge = async () => {
+    const s = await inBuild()
+    await f.fake().tickets(s.repo).close('1', 'completed')
+    await s.sync()
+    expect(await f.types(s.id)).toContain('ticket.closed')
+    return s
+  }
+
+  it('reopens the issue and keeps the stage', async () => {
+    const s = await closedOnForge()
+    await restore(s.id, owner(), f.subDeps())
+    expect(await issue(s.repo)).toMatchObject({ state: 'open' })
+    expect(await f.view(s.id)).toMatchObject({ stage: 'build', waitingOn: 'agents' })
+    expect(await page(s.id)).toMatchObject({ restorable: false })
+    await s.sync()
+    await s.sync()
+    expect((await f.types(s.id)).filter((t) => t === 'ticket.closed')).toHaveLength(1)
+    expect(await f.view(s.id)).toMatchObject({ stage: 'build', waitingOn: 'agents' })
+  })
+
+  it('shows Restore on the page only for the closed ticket', async () => {
+    const s = await closedOnForge()
+    expect(await page(s.id)).toMatchObject({ restorable: true, archived: false })
   })
 })
 

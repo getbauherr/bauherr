@@ -13,6 +13,12 @@ const id = (v: unknown): number | undefined => {
   return Number.isFinite(n) && v != null && v !== '' ? n : undefined
 }
 
+export const loginsOf = (value: string | null | undefined): string[] =>
+  (value ?? '')
+    .split(',')
+    .map((l) => l.trim().toLowerCase())
+    .filter(Boolean)
+
 export const isBauherr = (user: Doc | null | undefined): boolean => {
   const role = ROLES.find((r) => r === (user && field(user, 'role')))
   return role !== undefined && RANK[role] >= RANK.bauherr

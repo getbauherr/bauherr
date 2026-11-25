@@ -23,6 +23,7 @@ export function ResultCard({ view, seq, proof, may }: Props) {
       >
         <div className="grid gap-5 p-6">
           {view.staging && <StagingNow staging={view.staging} />}
+          {view.deployUnconfirmed && <p className="m-0 text-muted-foreground">Deploy not confirmed.</p>}
           <ResultBody view={view} tab="now" proof={proof} />
         </div>
       </DecisionForm>

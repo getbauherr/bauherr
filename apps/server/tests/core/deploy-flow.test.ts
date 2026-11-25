@@ -126,6 +126,8 @@ describe('the deploy after a merge, against the fake forge', () => {
     const types = await f.types(s.id)
     expect(types.slice(-2)).toEqual(['question.answered', 'ship.deployed'])
     expect(await f.view(s.id)).toMatchObject({ stage: 'ship', waitingOn: 'owner', card: { card: 'result' } })
+    const view = await ticket(f.h.payload(), { workspace: f.h.ids.workspace, recordId: s.id })
+    expect(view).toMatchObject({ staging: null, deployUnconfirmed: true })
   })
 
   it('asks when no check arrived within the limit, not one minute before', async () => {
@@ -254,6 +256,7 @@ describe('the deploy to staging, against the fake forge', () => {
     expect(await f.view(s.id)).toMatchObject({ stage: 'ship', waitingOn: 'owner', card: { card: 'result' } })
     const view = await ticket(f.h.payload(), { workspace: f.h.ids.workspace, recordId: s.id })
     expect(view.staging).toMatchObject({ sha, url: URL })
+    expect(view.deployUnconfirmed).toBe(false)
     expect(Date.parse(view.staging?.since ?? '')).not.toBeNaN()
   })
 
@@ -284,5 +287,17 @@ describe('the deploy to staging, against the fake forge', () => {
     const asked = (await readEvents(f.h.payload(), s.id)).filter((e) => e.type === 'question.asked')
     expect(asked).toHaveLength(0)
     expect(await f.types(s.id)).not.toContain('production.approved')
+  })
+})
+
+describe('the deploy to staging when the owner said it is deployed', () => {
+  it('does not claim the change runs on staging', async () => {
+    await f.product(sql`"deploy_checks" = NULL, "staging_url" = 'https://staging.example.com'`)
+    const { s, sha } = await waitingOnDeploy()
+    f.fake().setDeployment(s.repo, 'staging', { sha, url: 'https://staging.example.com', state: 'failure' })
+    await s.sync()
+    await answer(s.id, 'continue')
+    const view = await ticket(f.h.payload(), { workspace: f.h.ids.workspace, recordId: s.id })
+    expect(view).toMatchObject({ staging: null, deployUnconfirmed: true })
   })
 })
