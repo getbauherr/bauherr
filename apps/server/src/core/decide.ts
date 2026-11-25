@@ -119,9 +119,10 @@ const eventsOf = (entry: DecisionEntry, state: State, note: string): AppEvent[] 
 }
 
 const sentBackReview = (asked: string | null, choice: string, state: State, note: string): Effect[] => {
-  const adoptedPatch = state.adopted && !state.merged ? state.patch : null
-  if (asked !== 'result' || choice !== 'send-back' || adoptedPatch === null) return []
-  return [{ kind: 'review', pr: adoptedPatch.pr, body: note }]
+  if (asked !== 'result' || choice !== 'send-back') return []
+  if (state.merged) return [{ kind: 'reopen' }]
+  const adoptedPatch = state.adopted ? state.patch : null
+  return adoptedPatch === null ? [] : [{ kind: 'review', pr: adoptedPatch.pr, body: note }]
 }
 
 const settle = async (tx: Conn, stored: StoredRecord, chosen: Settled, now: Date): Promise<void> => {

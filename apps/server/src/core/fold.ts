@@ -1,75 +1,9 @@
 import { conflictNote } from './conflict-note'
-import type { AppEvent, EventOf, EventType, Stage } from './events'
+import type { AppEvent, EventOf, Stage } from './events'
+import { initialState, type FoldOptions, type State, type Verdict } from './state'
 
-export type Card = { card: 'question'; reason: string; options: string[]; text?: string }
-export type Verdict = { patchId: string; headSha: string }
-export type LiveRun = { stage: Stage; runId: string; fingerprint: string }
-
-export type State = {
-  stage: Stage
-  closed: string | null
-  card: Card | null
-  run: LiveRun | null
-  reporter: { rounds: number; waiting: boolean; reminded: boolean }
-  verifyRounds: number
-  extraRounds: number
-  failedRuns: number
-  brief: 'none' | 'submitted' | 'approved'
-  returned: boolean
-  adopted: boolean
-  waitingAuthor: boolean
-  patch: { id: string; pr: number; headSha: string } | null
-  reviewed: string | null
-  conflict: { patchId: string; base: string } | null
-  alreadyDone: { by: string; evidence: string } | null
-  checks: 'none' | 'pending' | 'passed' | 'failed'
-  verdict: Verdict | null
-  overridden: boolean
-  merged: boolean
-  mergeSha: string | null
-  deployed: boolean
-  deployStalled: { reason: 'failed' | 'overdue'; checks: string[] } | null
-  accepted: boolean
-  productionApproved: boolean
-  productionHeld: boolean
-  note: string | null
-  blockedReason: string | null
-  last: EventType | null
-}
-
-export type FoldOptions = { productionGate: boolean; requiredChecks?: boolean; deployChecks?: boolean }
-
-export const initialState = (): State => ({
-  stage: 'intake',
-  closed: null,
-  card: null,
-  run: null,
-  reporter: { rounds: 0, waiting: false, reminded: false },
-  verifyRounds: 0,
-  extraRounds: 0,
-  failedRuns: 0,
-  brief: 'none',
-  returned: false,
-  adopted: false,
-  waitingAuthor: false,
-  patch: null,
-  reviewed: null,
-  conflict: null,
-  alreadyDone: null,
-  checks: 'none',
-  verdict: null,
-  overridden: false,
-  merged: false,
-  mergeSha: null,
-  deployed: false,
-  deployStalled: null,
-  accepted: false,
-  productionApproved: false,
-  productionHeld: false,
-  note: null,
-  blockedReason: null,
-  last: null,
-})
+export { initialState }
+export type { Card, FoldOptions, LiveRun, State, Verdict } from './state'
 
 type Reducer = (state: State, event: AppEvent, options: FoldOptions) => State | null
 
@@ -125,7 +59,9 @@ const owner: Reducer = (state, event) => {
     case 'ticket.closed':
       return { ...state, closed: event.data.reason }
     case 'ticket.restored':
-      return state.closed === 'archived' ? { ...state, closed: null, card: null, run: null, failedRuns: 0 } : state
+      return state.closed === 'archived' || state.closed === 'closed-on-forge'
+        ? { ...state, closed: null, card: null, run: null, failedRuns: 0, sentBackAfterMerge: false }
+        : state
     case 'ticket.done-elsewhere':
       return enter(state, 'done')
     case 'ticket.blocked':
@@ -262,8 +198,9 @@ const merged = (state: State, sha: string, options: FoldOptions): State => {
 }
 
 const sentBack = (state: State, note: string): State => {
-  if (!state.adopted) return { ...enter(state, 'build'), accepted: false, note }
-  if (state.merged) return { ...enter(state, 'build'), adopted: false, accepted: false, verdict: null, note }
+  const after = { sentBackAfterMerge: state.sentBackAfterMerge || state.merged }
+  if (!state.adopted) return { ...enter(state, 'build'), ...after, accepted: false, note }
+  if (state.merged) return { ...enter(state, 'build'), ...after, adopted: false, accepted: false, verdict: null, note }
   return { ...enter(state, 'verify'), accepted: false, verdict: null, waitingAuthor: true, note }
 }
 
@@ -278,7 +215,7 @@ const ship: Reducer = (state, event, options) => {
       return state.adopted ? finished(deployed, options) : deployed
     }
     case 'result.accepted':
-      return finished({ ...state, accepted: true }, options)
+      return finished({ ...state, accepted: true, sentBackAfterMerge: false }, options)
     case 'result.sent-back':
       return sentBack(state, event.data.note)
     case 'production.approved':

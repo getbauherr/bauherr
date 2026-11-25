@@ -72,10 +72,14 @@ function Archive({ recordId, number }: { recordId: number; number: number }) {
 }
 
 export function ArchiveControl({ view, may }: { view: TicketView; may: boolean }) {
-  if (view.archived) {
+  if (view.restorable) {
     return (
       <Card>
-        <p>Archived. The ticket is out of the lists and its issue is closed on the forge.</p>
+        <p>
+          {view.archived
+            ? 'Archived. The ticket is out of the lists and its issue is closed on the forge.'
+            : 'Closed on the forge. The ticket is out of the lists; restoring reopens its issue.'}
+        </p>
         {may && (
           <div className="flex flex-wrap items-center gap-3">
             <Restore recordId={view.recordId} />

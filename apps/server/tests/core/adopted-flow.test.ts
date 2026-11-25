@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import { describe, expect, it } from 'vitest'
-import { decide } from '../../src/core/decide'
+import { restore } from '../../src/core/archive'
+import { decide, InvalidDecision } from '../../src/core/decide'
 import { fold } from '../../src/core/lifecycle'
 import { readEvents } from '../../src/core/record/store'
 import { heartbeat } from '../../src/core/run/leases'
@@ -157,6 +158,22 @@ describe('an adopted pull request against the fake forge', () => {
     expect(comments.filter((c) => c.body.includes(note))).toEqual([])
   })
 
+  it('reopens the issue a merge closed when the owner sends the ticket back, and keeps it open', async () => {
+    const s = await toVerify()
+    await f.work(s.id, 'reviewer', reviewOf(s.headSha))
+    await f.fake().forge.mergePullRequest(s.repo, s.pr, { method: 'squash', expectSha: s.headSha })
+    f.h.later(DAY)
+    await s.sync()
+    await f.work(s.id, 'verifier', await verifyResult(s.id, s.headSha, {}))
+    await f.fake().tickets(s.repo).close('1', 'completed')
+    const seq = (await f.view(s.id)).card?.seq ?? -1
+    await decide(s.id, owner(), { ask: 'result', choice: 'send-back', note: 'Not done', seq }, f.subDeps())
+    expect(await f.fake().tickets(s.repo).get('1')).toMatchObject({ state: 'open' })
+    expect(await f.view(s.id)).toMatchObject({ stage: 'build', waitingOn: 'agents' })
+    await s.sync()
+    expect(await f.types(s.id)).not.toContain('ticket.closed')
+  })
+
   it('posts the note of a send-back as a review comment and waits on the author', async () => {
     const s = await toVerify()
     await f.work(s.id, 'verifier', await verifyResult(s.id, s.headSha, {}))
@@ -179,6 +196,19 @@ describe('an adopted pull request against the fake forge', () => {
     await s.sync()
     expect(await f.types(s.id)).toContain('ticket.closed')
     expect(await f.view(s.id)).toMatchObject({ waitingOn: 'nobody' })
+  })
+
+  it('offers no Restore for a ticket whose adopted pull request was closed, and refuses it', async () => {
+    const s = await toVerify()
+    await f.fake().forge.closePullRequest(s.repo, s.pr)
+    f.h.later(DAY)
+    await s.sync()
+    expect(await ticket(f.h.payload(), { workspace: f.h.ids.workspace, recordId: s.id })).toMatchObject({
+      restorable: false,
+    })
+    await expect(restore(s.id, owner(), f.subDeps())).rejects.toBeInstanceOf(InvalidDecision)
+    await s.sync()
+    expect((await f.types(s.id)).filter((t) => t === 'ticket.restored')).toHaveLength(0)
   })
 
   it('counts a merge by a person as merged and still asks the owner at the Result card', async () => {
