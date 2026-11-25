@@ -150,3 +150,21 @@ export const ExternalLink = icon(
   </>,
 )
 export const Release = icon(<path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6z" />)
+export const TriangleAlert = icon(
+  <>
+    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01" />
+  </>,
+)
+export const Lock = icon(
+  <>
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </>,
+)
+export const GitBranch = icon(
+  <>
+    <path d="M6 3v12M18 9a9 9 0 0 1-9 9" />
+    <circle cx="18" cy="6" r="3" />
+    <circle cx="6" cy="18" r="3" />
+  </>,
+)
