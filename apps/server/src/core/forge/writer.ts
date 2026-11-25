@@ -14,11 +14,13 @@ import { connectionInput } from '../../lib/connection'
 import { appendEvent } from '../record/store'
 import { WRITE_KINDS, type Stage } from '../events'
 import { checkNewRelation } from '../relations/relate'
+import { edgeOf } from '../relations/proposal'
 import { forgeAdd, forgeRemove } from '../relations/forge-ops'
 import { normalised, type Edge } from '../relations/rules'
-import { deleteEdge, insertEdge, itemFacts } from '../relations/store'
+import { deleteEdge, insertEdge, itemFacts, itemsByNumber } from '../relations/store'
 import { forgeNumbers } from '../relations/sync'
-import { RelationRefused, typeOf } from '../relations/types'
+import { RelationRefused, typeOf, type ForgeField, type RelationType } from '../relations/types'
+import type { RelationKind } from '../record/schema'
 import { commentRow, errorText, itemFromPull, itemFromTicket } from '../mirror/map'
 import { upsertComments, upsertItem } from '../mirror/store'
 import { disclosed, hashBody, planStageLabels } from './disclosure'
@@ -207,6 +209,18 @@ const relationEnds = async (ctx: Ctx, input: Edge) => {
   return { type, edge, from, to }
 }
 
+const syncForgeLink = async (
+  tickets: TicketSource,
+  type: RelationType,
+  link: { field: ForgeField; mine: number; other: number },
+  change: 'add' | 'remove',
+): Promise<void> => {
+  const linked = forgeNumbers(await tickets.get(String(link.mine)), type).includes(link.other)
+  if (linked === (change === 'add')) return
+  const write = change === 'add' ? forgeAdd : forgeRemove
+  await write(tickets, link.field, String(link.mine), String(link.other))
+}
+
 const changeRelation = async (ctx: Ctx, recordId: number, input: Edge, change: 'add' | 'remove'): Promise<void> => {
   const { type, edge, from, to } = await relationEnds(ctx, input)
   if (change === 'add') await checkNewRelation(ctx.payload, from.workspace, edge)
@@ -221,14 +235,44 @@ const changeRelation = async (ctx: Ctx, recordId: number, input: Edge, change: '
   const target = { recordId, itemId: mine.id }
   const session = await open(ctx, target, 'issue')
   await perform(ctx, target, change === 'add' ? 'relation-add' : 'relation-remove', session, {
-    call: async ({ tickets, row }) => {
-      const linked = forgeNumbers(await tickets.get(ticketId(row)), type).includes(other.number)
-      if (linked === (change === 'add')) return
-      const write = change === 'add' ? forgeAdd : forgeRemove
-      await write(tickets, forge.field, ticketId(row), String(other.number))
+    call: ({ tickets }) => {
+      const link = { field: forge.field, mine: mine.number, other: other.number }
+      return syncForgeLink(tickets, type, link, change)
     },
     mirror: save,
   })
+}
+
+export type SeriesIssue = NewIssue & { relations?: { type: RelationKind; with: number }[] }
+
+const linkSeries = async (ctx: Ctx, tickets: TicketSource, input: Edge): Promise<void> => {
+  const { type, edge, from, to } = await relationEnds(ctx, input)
+  await checkNewRelation(ctx.payload, from.workspace, edge)
+  if (type.forge) {
+    const [mine, other] = type.forge.ticketIs === 'to' ? [to, from] : [from, to]
+    await syncForgeLink(tickets, type, { field: type.forge.field, mine: mine.number, other: other.number }, 'add')
+  }
+  await insertEdge(ctx.payload, from.workspace, edge)
+}
+
+const openIssues = async (ctx: Ctx, target: ProductTarget, inputs: SeriesIssue[]): Promise<Ticket[]> => {
+  const issues: Ticket[] = []
+  for (const input of inputs) issues.push(await openIssue(ctx, target, input))
+  const row = await loadProductRow(ctx.payload, target)
+  const numbers = issues.map((issue) => issue.number)
+  const ids = await itemsByNumber(ctx.payload, target.workspace, row.repo, numbers)
+  const tickets = (await ctx.deps.backend(row.connection)).tickets(row.repo)
+  const itemAt = (index: number) => ids.get(numbers[index] ?? 0)
+  for (const [index, input] of inputs.entries()) {
+    for (const relation of input.relations ?? []) {
+      const [self, other] = [itemAt(index), itemAt(relation.with)]
+      if (self === undefined || other === undefined) {
+        throw new TargetNotFound(`Series tickets ${index} and ${relation.with} must both be mirrored.`)
+      }
+      await linkSeries(ctx, tickets, edgeOf(relation.type, self, other))
+    }
+  }
+  return issues
 }
 
 export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(payload)) => {
@@ -243,6 +287,7 @@ export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(pa
     openIssue: (target: ProductTarget, input: NewIssue) => openIssue(ctx, target, input),
     commentOnIssue: (target: ProductTarget, number: number, body: string) =>
       commentOnIssue(ctx, target, number, body),
+    openIssues: (target: ProductTarget, inputs: SeriesIssue[]) => openIssues(ctx, target, inputs),
     closeIssue: (target: Target, reason: CloseReason) => closeIssue(ctx, target, reason),
     reopenIssue: (target: Target) => reopenIssue(ctx, target),
     addRelation: (recordId: number, edge: Edge) => changeRelation(ctx, recordId, edge, 'add'),
