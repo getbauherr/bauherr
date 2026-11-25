@@ -108,7 +108,10 @@ function TicketPicker({
               <button
                 type="button"
                 className="small w-full truncate rounded px-2 py-1 text-left hover:bg-secondary"
-                onClick={() => choose(candidate)}
+                onClick={() => {
+                  setQuery('')
+                  choose(candidate)
+                }}
               >
                 #{candidate.number} {candidate.title}
               </button>
