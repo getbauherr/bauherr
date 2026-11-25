@@ -6,7 +6,7 @@ import { chooseType, closeRequest, joinExisting } from '../../../../core/request
 import { sendRequest } from '../../../../core/requests/send'
 import { takeTurn } from '../../../../core/requests/turn'
 import { draftView } from '../../../../core/requests/view'
-import { grantConversation } from '../../../(app)/lib/conversation-access'
+import { grantRequest } from '../../../(app)/lib/conversation-access'
 import { refusal, sendDeps, turnDeps } from '../../../(app)/lib/request-wiring'
 import { getPerson } from '../../../(app)/lib/session'
 
@@ -33,14 +33,14 @@ const state = async (payload: Parameters<typeof listMessages>[0], id: number) =>
 })
 
 export const GET = async (_req: Request, context: Context): Promise<Response> => {
-  const granted = await grantConversation((await context.params).id)
+  const granted = await grantRequest((await context.params).id)
   if (granted instanceof Response) return granted
   const current = await state(granted.payload, granted.id)
   return current.draft ? Response.json(current) : new Response(null, { status: 404 })
 }
 
 type Body = z.infer<typeof action>
-type Granted = Exclude<Awaited<ReturnType<typeof grantConversation>>, Response>
+type Granted = Exclude<Awaited<ReturnType<typeof grantRequest>>, Response>
 
 const perform = async ({ payload, id }: Granted, body: Body): Promise<void> => {
   switch (body.action) {
@@ -60,7 +60,7 @@ const perform = async ({ payload, id }: Granted, body: Body): Promise<void> => {
 }
 
 export const POST = async (req: Request, context: Context): Promise<Response> => {
-  const granted = await grantConversation((await context.params).id)
+  const granted = await grantRequest((await context.params).id)
   if (granted instanceof Response) return granted
   const parsed = action.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return Response.json({ error: 'Send an action.' }, { status: 400 })

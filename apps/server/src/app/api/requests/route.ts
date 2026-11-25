@@ -2,7 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import { z } from 'zod'
 import { createConversation } from '../../../core/conversations/store'
 import { createDraft } from '../../../core/requests/store'
-import { grantWorkspace } from '../../(app)/lib/conversation-access'
+import { grantNewRequest } from '../../(app)/lib/conversation-access'
 import { getPerson } from '../../(app)/lib/session'
 
 export const runtime = 'nodejs'
@@ -12,11 +12,16 @@ const input = z.object({ workspace: z.number().optional(), product: z.number().i
 
 export const POST = async (req: Request): Promise<Response> => {
   const parsed = input.safeParse(await req.json().catch(() => null))
-  const granted = await grantWorkspace(parsed.data?.workspace)
-  if (granted instanceof Response) return granted
-  if (!parsed.success) return Response.json({ error: 'Send the product.' }, { status: 400 })
-  const { payload, workspace } = granted
+  if (!parsed.success) {
+    const signedIn = await getPerson()
+    return signedIn
+      ? Response.json({ error: 'Send the product.' }, { status: 400 })
+      : Response.json({ error: 'Sign in first.' }, { status: 401 })
+  }
   const { product } = parsed.data
+  const granted = await grantNewRequest(parsed.data.workspace, product)
+  if (granted instanceof Response) return granted
+  const { payload, workspace } = granted
   const found = await payload.db.drizzle.execute(
     sql`SELECT 1 FROM "products" WHERE "id" = ${product} AND "workspace_id" = ${workspace}`,
   )

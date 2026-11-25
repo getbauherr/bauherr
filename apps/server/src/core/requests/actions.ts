@@ -2,7 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import type { ForgeWriter } from '../forge/writer'
 import { RequestInvalid } from './errors'
-import { inert } from './markdown'
+import { inertBlock } from './markdown'
 import { loadDraft, saveDraft, type Draft } from './store'
 import type { RecordType } from '../record/schema'
 
@@ -24,7 +24,7 @@ export const joinExisting = async (
   await deps.writer.commentOnIssue(
     { workspace: draft.workspace, product: draft.product },
     offer.number,
-    `Another product owner has the same request: ${inert(draft.data.title || draft.data.summary)}`,
+    `Another product owner has the same request: ${inertBlock(draft.data.title || draft.data.summary)}`,
   )
   const known = await payload.db.drizzle.execute(sql`
     SELECT "id" FROM "records" WHERE "product_id" = ${draft.product} AND "source_number" = ${offer.number}

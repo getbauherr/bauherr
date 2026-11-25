@@ -9,7 +9,7 @@ import { chooseType, closeRequest, joinExisting } from '../../src/core/requests/
 import { RequestInvalid } from '../../src/core/requests/errors'
 import { tokenFits } from '../../src/core/requests/markdown'
 import { sendRequest } from '../../src/core/requests/send'
-import { createDraft } from '../../src/core/requests/store'
+import { createDraft, loadDraft, saveDraft } from '../../src/core/requests/store'
 import { takeTurn, type TurnDeps } from '../../src/core/requests/turn'
 import { draftView } from '../../src/core/requests/view'
 import { PNG } from './images'
@@ -198,6 +198,25 @@ describe('a similar open request', () => {
     const [stored] = await h.rows(sql`SELECT "issue_number" FROM "request_drafts" WHERE "conversation_id" = ${id}`)
     expect(Number(stored?.issue_number)).toBe(open.number)
     await expect(say(real, id, 'more')).rejects.toBeInstanceOf(RequestInvalid)
+  })
+
+  it('writes the join comment with the title as inert text', async () => {
+    const open = await fake.tickets(repo).create({ title: 'Receipt export hangs for large accounts' })
+    const evil = '[log in again](https://evil.example) <img src=x onerror=alert(1)> @everyone'
+    const { deps } = scripted(() => BUG)
+    const real: TurnDeps = { ...deps }
+    delete real.similar
+    const id = await draft()
+    await say(real, id, 'The receipt export hangs for large accounts')
+    const stored = await loadDraft(h.payload(), id)
+    if (!stored) throw new Error('no draft')
+    await saveDraft(h.payload(), id, { data: { ...stored.data, title: evil } })
+    await joinExisting(h.payload(), { writer }, id)
+    const body = (await fake.tickets(repo).listComments(String(open.number)))[0]?.body ?? ''
+    expect(body).not.toContain('](https://evil.example)')
+    expect(body).not.toMatch(/(?<!\\)<img/)
+    expect(body).toContain('\\[log in again\\]\\(https://evil.example\\)')
+    expect(body).not.toMatch(/@everyone/)
   })
 })
 
