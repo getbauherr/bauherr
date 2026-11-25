@@ -15,6 +15,7 @@ const signInSpecs = [
   'retro',
   'people',
   'repo-files',
+  'requests-page',
   'perf',
   'product-owner',
   'product-settings',
@@ -33,7 +34,7 @@ const grepInvert = [
   ...(hasOidc ? [] : [/@oidc/]),
 ]
 
-const countsForgeCalls = 'repo-files.spec.ts'
+const countsForgeCalls = ['repo-files.spec.ts', 'requests-page.spec.ts']
 const writesForge = 'ticket-relations.spec.ts'
 
 export default defineConfig({
@@ -45,7 +46,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   use: { baseURL: env.BASE_URL ?? 'http://localhost:3000', screenshot: 'on' },
   projects: [
-    { name: 'parallel', testIgnore: [...testIgnore, countsForgeCalls, writesForge] },
+    { name: 'parallel', testIgnore: [...testIgnore, ...countsForgeCalls, writesForge] },
     { name: 'forge-calls', testIgnore, testMatch: countsForgeCalls, dependencies: ['parallel'] },
     { name: 'forge-writes', testIgnore, testMatch: writesForge, dependencies: ['forge-calls'] },
   ],
