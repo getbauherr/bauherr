@@ -1,0 +1,21 @@
+name: Change
+description: Something new or different in Bauherr
+body:
+  - type: textarea
+    attributes:
+      label: Who needs it
+      description: The person or role, and what they are trying to do.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What
+      description: The change, in plain words, with one example.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Why
+      description: What happened that shows the need (link the ticket, run, incident or report) and what it costs that it is not done.
+    validations:
+      required: true
