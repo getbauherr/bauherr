@@ -17,6 +17,11 @@ const EXPECTED: Record<Preset, object> = {
     provider: { custom: { formats: [{ type: 'completions' }], providerOverride: 'greenpt' } },
     params: { apiKey: { file: FILE }, baseUrl: 'https://api.greenpt.ai/v1' },
   },
+  mistral: {
+    provider: { custom: { formats: [{ type: 'completions' }], providerOverride: 'mistral' } },
+    params: { apiKey: { file: FILE }, baseUrl: 'https://api.mistral.ai/v1' },
+    overrides: { metadata: {} },
+  },
   bedrock: { provider: 'bedrock', params: { apiKey: { file: FILE }, awsRegion: 'us-east-1' } },
   vertex: {
     provider: 'vertex',
