@@ -29,6 +29,7 @@ export const STATUS_WORDS: Record<TicketStatus, StatusWord> = {
 }
 
 export const CLOSED_WORDS: Record<ClosedAs, string> = {
+  answered: 'Answered',
   'not-a-bug': 'Not a bug',
   duplicate: 'Duplicate',
   'not-planned': 'Not planned',

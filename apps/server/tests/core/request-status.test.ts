@@ -80,8 +80,9 @@ describe('who a waiting request waits for', () => {
 
   it('lists the same request by viewer', () => {
     const rows = [{ ...base, ...waiting, recordId: 1, reporter: 'jo', changedAt: new Date() } as TicketRow]
-    expect(listRequests(rows, ['jo'])[0]?.status.word).toBe('Waiting for you')
-    expect(listRequests(rows, ['other'])[0]?.status.word).toBe('Waiting for the requester')
+    expect(listRequests(rows, { forgeLogins: ['jo'], sentRecordIds: [] })[0]?.status.word).toBe('Waiting for you')
+    const other = listRequests(rows, { forgeLogins: ['other'], sentRecordIds: [] })
+    expect(other[0]?.status.word).toBe('Waiting for the requester')
   })
 })
 
@@ -102,13 +103,18 @@ describe('the filters of the Requests page', () => {
   ]
 
   it('matches the creator on the forge login, not on a request by someone else', () => {
-    const list = listRequests(rows, ['someone'])
+    const list = listRequests(rows, { forgeLogins: ['someone'], sentRecordIds: [] })
     expect(list.filter((r) => r.mine).map((r) => r.row.recordId)).toEqual([2])
-    expect(listRequests(rows, [])).toSatisfy((l: ReturnType<typeof listRequests>) => l.every((r) => !r.mine))
+    expect(listRequests(rows, { forgeLogins: [], sentRecordIds: [] }).some((r) => r.mine)).toBe(false)
+  })
+
+  it('counts a request the viewer sent through a conversation, whatever its forge author', () => {
+    const list = listRequests(rows, { forgeLogins: [], sentRecordIds: [2] })
+    expect(list.filter((r) => r.mine).map((r) => r.row.recordId)).toEqual([2])
   })
 
   it('counts and filters Open, Live, Closed and Only mine, newest change first', () => {
-    const list = listRequests(rows, ['me-login'])
+    const list = listRequests(rows, { forgeLogins: ['me-login'], sentRecordIds: [] })
     expect(list.map((r) => r.row.recordId)).toEqual([3, 2, 1])
     expect(filterCounts(list)).toEqual({ open: 1, live: 1, closed: 1, mine: 2 })
     expect(applyFilter(list, 'live').map((r) => r.row.recordId)).toEqual([2])

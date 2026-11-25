@@ -14,7 +14,7 @@ import {
 } from '../../../../core/views/request-status'
 import { isBauherr, loginsOf } from '../../../../lib/people'
 import { payloadClient } from '../../lib/session'
-import { readableProducts, requestsOf, requireRequestsReader } from '../../lib/requests'
+import { readableProducts, requestsOf, requireRequestsReader, sentRecordIdsOf } from '../../lib/requests'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,7 +39,10 @@ export default async function Requests({
       </>
     )
   }
-  const list = listRequests(await requestsOf(payload, product), loginsOf(person.githubLogin))
+  const list = listRequests(await requestsOf(payload, product), {
+    forgeLogins: loginsOf(person.githubLogin),
+    sentRecordIds: await sentRecordIdsOf(payload, person.email),
+  })
   const filter = filterOf(query.show)
   return (
     <>

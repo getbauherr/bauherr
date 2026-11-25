@@ -61,10 +61,13 @@ export type RequestFilter = (typeof REQUEST_FILTERS)[number]
 
 export type RequestListRow = { row: TicketRow; status: RequestStatus; mine: boolean }
 
-export const listRequests = (rows: TicketRow[], forgeLogins: string[]): RequestListRow[] =>
+export type Viewer = { forgeLogins: string[]; sentRecordIds: number[] }
+
+export const listRequests = (rows: TicketRow[], viewer: Viewer): RequestListRow[] =>
   rows
     .map((row) => {
-      const mine = forgeLogins.includes(row.reporter.toLowerCase())
+      const mine =
+        viewer.forgeLogins.includes(row.reporter.toLowerCase()) || viewer.sentRecordIds.includes(row.recordId)
       return { row, status: requestStatus(row, mine), mine }
     })
     .sort((a, b) => +b.row.changedAt - +a.row.changedAt)

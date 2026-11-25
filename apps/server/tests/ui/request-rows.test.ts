@@ -29,7 +29,7 @@ const ticket = (recordId: number, title: string, reporter: string) =>
 const rows = [ticket(7, 'Mine', 'Jo'), ticket(8, 'Theirs', 'al')]
 
 const show = (staff: boolean) => {
-  render(createElement(RequestRows, { list: listRequests(rows, ['jo']), staff }))
+  render(createElement(RequestRows, { list: listRequests(rows, { forgeLogins: ['jo'], sentRecordIds: [] }), staff }))
   return (title: string) => screen.getByRole('link', { name: title }).getAttribute('href')
 }
 

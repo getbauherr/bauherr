@@ -12,6 +12,7 @@ import { seedConnect } from './seed-connect'
 import { seedBoardRelations } from './seed-board-relations'
 import { seedSomeday } from './seed-someday'
 import { seedReadiness } from './seed-readiness'
+import { seedRequestList } from './seed-requests-list'
 import { seedInsights } from './seed-insights'
 import { seedMemoryEditor } from './seed-memory-editor'
 import { seedRetro } from './seed-retro'
@@ -192,12 +193,13 @@ if (!ticketsSeeded.docs.length) {
   await seedTickets(ticketsEngine)
   await seedMockupTicket(ticketsEngine)
 }
-await seedRequests(payload, user)
+await seedRequestList(payload, user)
 await seedConnect(payload)
 await seedSomeday(payload)
 await seedBoardRelations(payload)
 await seedMemoryEditor(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
 await seedReadiness(payload)
+await seedRequests(payload)
 await seedInsights(payload)
 await seedRetro(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
 

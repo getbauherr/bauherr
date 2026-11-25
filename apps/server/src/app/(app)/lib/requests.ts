@@ -1,3 +1,4 @@
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { loadRows, type TicketRow } from '../../../core/views/rows'
 import { notFound } from 'next/navigation'
@@ -50,6 +51,13 @@ export const readableProducts = async (payload: Payload, person: Person): Promis
 
 export const requestsOf = (payload: Payload, product: ListedProduct): Promise<TicketRow[]> =>
   loadRows(payload, { workspace: product.workspace, product: product.id, now: new Date(), history: 'all' })
+
+export const sentRecordIdsOf = async (payload: Payload, email: string): Promise<number[]> => {
+  const found = await payload.db.drizzle.execute(
+    sql`SELECT "record_id" FROM "request_drafts" WHERE "created_by" = ${email} AND "record_id" IS NOT NULL`,
+  )
+  return found.rows.map((r) => Number(r.record_id))
+}
 
 export const requireRequestsReader = async (): Promise<Person> => {
   const person = await requirePerson()
