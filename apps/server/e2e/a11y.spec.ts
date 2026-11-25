@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { conversationTargets } from './conversation-page'
+import { conversationTargets, requestTargets } from './conversation-page'
 import { retroTargets } from './retro-targets'
 import { email } from './user'
 
@@ -137,7 +137,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'cannot-run line': withHoldStrip('/'),
     'with relations': inWorkspace('relations', '/'), 'grouped by parent': inWorkspace('relations', '/?group=parent'),
   },
-  ...conversationTargets,
+  ...{ ...conversationTargets, ...requestTargets },
   '/inbox': { desktop: inboxAt(1280), 'at 390 px': inboxAt(390) },
   '/insights': {
     'with time and cost': inInsights('/insights'),
