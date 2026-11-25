@@ -19,6 +19,8 @@ describe('the read-only forge view', () => {
       | 'listTags'
       | 'releaseByTag'
       | 'listReleases'
+      | 'tagSha'
+      | 'getCommitDate'
       | 'latestDeployment'
       | 'commitEndpoint'
       | 'canWrite'

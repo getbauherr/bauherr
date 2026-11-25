@@ -24,4 +24,5 @@ export const ticketSources = col('ticket_sources', [
   { name: 'issueFormCount', type: 'number' },
   date('factsAt'),
   json('releaseFacts'),
+  json('releaseState'),
 ])
