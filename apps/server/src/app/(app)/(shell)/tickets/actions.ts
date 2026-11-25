@@ -18,6 +18,7 @@ const input = z.object({
   note: z.string().optional(),
   scope: z.enum(NOTE_SCOPES).optional(),
   answers: z.record(z.string(), z.string()).optional(),
+  dropRelations: z.array(z.number().int().min(0)).optional(),
 })
 
 export type DecisionResult = { error?: string }
@@ -29,6 +30,7 @@ const decisionOf = (given: z.infer<typeof input>): Decision => ({
   ...(given.note === undefined ? {} : { note: given.note }),
   ...(given.scope === undefined ? {} : { scope: given.scope }),
   ...(given.answers === undefined ? {} : { answers: given.answers }),
+  ...(given.dropRelations === undefined ? {} : { dropRelations: given.dropRelations }),
 })
 
 export async function decideTicket(raw: unknown): Promise<DecisionResult> {

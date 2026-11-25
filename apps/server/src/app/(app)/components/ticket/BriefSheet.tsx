@@ -6,6 +6,7 @@ import { CriteriaTable } from './CriteriaTable'
 import { DiffBlock } from './DiffBlock'
 import { MermaidBlock } from './MermaidBlock'
 import { MockupRow } from './MockupRow'
+import { ProposedRelations } from './ProposedRelations'
 import { Collapsible, Facts, Section } from './Section'
 import { RefText } from '../RefText'
 
@@ -22,9 +23,10 @@ type Props = {
   missing: boolean
   reason?: string
   decisions?: ReactNode
+  removableRelations?: boolean
 }
 
-export function BriefSheet({ record, mockups, missing, reason, decisions }: Props) {
+export function BriefSheet({ record, mockups, missing, reason, decisions, removableRelations = false }: Props) {
   const { repo } = record.source
   const rows: [string, ReactNode][] = [
     [
@@ -50,6 +52,7 @@ export function BriefSheet({ record, mockups, missing, reason, decisions }: Prop
       )}
       <MockupRow mockups={mockups} missing={missing} />
       {decisions}
+      <ProposedRelations relations={record.relations} repo={repo} removable={removableRelations} />
       <Collapsible title="Acceptance criteria">
         <CriteriaTable criteria={record.criteria} repo={repo} mode="brief" />
       </Collapsible>

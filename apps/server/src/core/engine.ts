@@ -2,6 +2,7 @@ import type { Payload } from 'payload'
 import { runEffects, type ForgePort } from './effects'
 import type { AppEvent, Stage } from './events'
 import { fingerprint, fold, foldOptions, next, type Config, type State, type Step } from './lifecycle'
+import { createKept } from './relations/keep'
 import type { RecordSource } from './record/schema'
 import {
   appendEvent,
@@ -129,6 +130,7 @@ const handle = async (step: Step, ctx: Ctx): Promise<Outcome> => {
       return cardStep(step, ctx)
     case 'emit':
       await append(ctx, step.event)
+      if (step.event.type === 'brief.approved') await createKept(ctx.deps, ctx.stored.id, ctx.stored.record.relations)
       return 'repeat'
     case 'effect':
       await append(ctx, await attemptMerge(ctx))

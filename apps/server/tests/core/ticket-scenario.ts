@@ -12,10 +12,14 @@ import { storeStatement } from '../../src/core/statements'
 import type { Engine } from './harness'
 import { claimed, runTickets } from './run-seed'
 import { source } from './fixtures'
+import { pooled } from './pool'
+import { proposedRelations } from './relations-scenario'
 import { QUESTION, referral } from './question-text'
 import { referencing } from './ref-text'
 import { verifyRoundsTicket } from './verify-rounds-fixtures'
 import { asked, begin, edit, mirrorSource, patch, toBrief, workOn } from './scenario'
+
+export { POOL_SIZE } from './pool'
 
 export const TICKET_TITLES = {
   briefTitle: 'Brief with a decision for the tabs',
@@ -35,8 +39,6 @@ export const TICKET_TITLES = {
   parkedOnNeed: 'Build parked on a missing Connection',
 } as const
 
-export const POOL_SIZE = 3
-
 export const POOL_TITLES = {
   briefApprove: 'Brief with a decision to approve',
   briefArchive: 'Brief to archive',
@@ -47,6 +49,7 @@ export const POOL_TITLES = {
   questionBack: 'Question to send back to Brief',
   questionOwn: 'Question to answer in own words',
   briefComment: 'Brief to comment on',
+  briefRelations: 'Brief with proposed relations',
 } as const
 
 export type TicketNames = Record<keyof typeof TICKET_TITLES, number> &
@@ -243,18 +246,12 @@ const answered = async (e: Engine, id: number, stages: string[], from: number, t
   }
 }
 
-const pooled = async (make: (n: number) => Promise<number>): Promise<number[]> => {
-  const ids: number[] = []
-  for (let n = 1; n <= POOL_SIZE; n++) ids.push(await make(n))
-  return ids
-}
-
 export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   const mirror = await mirrorSource(e)
   const titled: [number, string][] = []
-  const open = async (title: string) => {
+  const open = async (title: string, fields = briefFields([STORAGE])) => {
     const id = await toBrief(e, true)
-    await edit(e, id, 'brief', briefFields([STORAGE]))
+    await edit(e, id, 'brief', fields)
     titled.push([id, title])
     return id
   }
@@ -294,6 +291,8 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   titled.push([deployStalled, TICKET_TITLES.deployStalled], [verifyRounds, TICKET_TITLES.verifyRounds])
   titled.push([names.parkedOnNeed, TICKET_TITLES.parkedOnNeed])
   const briefComment = await pooled((n) => open(`${POOL_TITLES.briefComment} ${n}`))
+  const withRelations = await proposedRelations(e, briefFields([]), names.briefTitle, names.briefAnswers)
+  const briefRelations = await pooled((n) => open(`${POOL_TITLES.briefRelations} ${n}`, withRelations))
   const adoptedWaiting = await adoptedTicket(e, ADOPTED_FIRST, false)
   const adoptedResult = await adoptedTicket(e, ADOPTED_FIRST + 1, true)
   titled.push([adoptedWaiting, TICKET_TITLES.adoptedWaiting], [adoptedResult, TICKET_TITLES.adoptedResult])
@@ -321,5 +320,5 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
     await mirror.item(source.number, { title: titled.find(([found]) => found === id)?.[1] ?? '' })
   }
   const waiting = { adoptedWaiting, adoptedResult, deployStalled, verifyRounds, intake }
-  return { ...names, ...runs, questionBack, questionOwn, briefComment, ...waiting }
+  return { ...names, ...runs, questionBack, questionOwn, briefComment, briefRelations, ...waiting }
 }
