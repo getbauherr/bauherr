@@ -59,6 +59,28 @@ describe('relations proposed by the Brief', () => {
     expect((await tickets.get('1')).blockedBy).toEqual(['2'])
   })
 
+  it('are refused at submit when a ticket would get two parents (f1)', async () => {
+    const s = await briefWithRelations([
+      { type: 'part-of', ticket: 2, reason: 'One step.' },
+      { type: 'part-of', ticket: 3, reason: 'Another step.' },
+    ])
+    expect(JSON.stringify(s.outcome)).toContain('already is part of #2')
+  })
+
+  it('are refused at submit when a blocks relation would close a loop (f1)', async () => {
+    const s = await f.start('active')
+    const tickets = f.fake().tickets(s.repo)
+    await tickets.create({ title: 'Blocked by this one' })
+    await tickets.addBlockedBy('2', '1')
+    await s.sync()
+    await f.work(s.id, 'builder', ACCEPTED)
+    const outcome = await f.work(s.id, 'builder', {
+      ...BRIEF,
+      relations: [{ type: 'blocked-by', ticket: 2, reason: 'Needs it.' }],
+    })
+    expect(JSON.stringify(outcome)).toContain('close a loop')
+  })
+
   it('are refused at submit when the ticket does not exist', async () => {
     const s = await f.start('active')
     await f.work(s.id, 'builder', ACCEPTED)

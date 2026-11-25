@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { Conn } from '../../core/conn'
 import type { Problem } from '../../core/module'
 import { defineModule } from '../../core/module'
+import { refusedRelations } from '../../core/relations/proposal'
 import { criterionSchema, PREVIEW_MAX, relationSchema, riskSchema, SHAPE_MAX } from '../../core/record/schema'
 
 const text = (max: number) => z.string().trim().min(1).max(max)
@@ -69,7 +70,9 @@ export const brief = defineModule({
   resultSchema,
   check: async (tx, run, result) => {
     const shapeProblems = hasChangedLine(result.shape) ? [] : [{ path: 'shape', message: NO_SHAPE }]
-    const problems = [...shapeProblems, ...(await unknownRelations(tx, run.recordId, result.relations))]
+    const unknown = await unknownRelations(tx, run.recordId, result.relations)
+    const refused = unknown.length === 0 ? await refusedRelations(tx, run.recordId, result.relations) : []
+    const problems = [...shapeProblems, ...unknown, ...refused]
     if (!result.visible) return problems
     const worked = await tx.db.drizzle.execute(sql`
       SELECT coalesce(p."executor", 'session') AS executor FROM "records" r
