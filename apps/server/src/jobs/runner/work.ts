@@ -17,6 +17,7 @@ import type { AgentOutcome, Ended, RunnerDeps } from './types'
 import { recordProofs, withProofIds } from './proofs'
 import { COMMENTS_PROMPT, FIX_PROMPT, PROMPT, readResult, writeComments, writeContext, writeProblems } from './workdir'
 
+const MAX_COMMENT_TURNS = 5
 const READ_ONLY = new Set(['intake', 'brief', 'done'])
 
 type Working = {
@@ -148,7 +149,7 @@ const run = async (claimed: Claimed, deps: RunnerDeps, checkout: Checkout, setup
   if (pack.newComments.length > 0) await writeComments(checkout.dir, pack.newComments)
   const outcome = await turn(working, PROMPT)
   if (!outcome.ok) return fail(claimed, deps, outcome.reason)
-  if (working.unread.length > 0) {
+  for (let turns = 0; working.unread.length > 0 && turns < MAX_COMMENT_TURNS; turns++) {
     const followUp = await turn(working, COMMENTS_PROMPT)
     if (!followUp.ok) return fail(claimed, deps, followUp.reason)
   }

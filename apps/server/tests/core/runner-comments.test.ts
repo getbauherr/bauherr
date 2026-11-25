@@ -7,7 +7,40 @@ const r = runnerHarness('core_runner_comments')
 
 const ACCEPT = { outcome: 'accepted', type: 'bug', reason: 'clear' }
 
+const said = async (record: number, text: string) => {
+  const payload = r.f.h.payload()
+  const workspace = r.f.h.ids.workspace
+  await postComment(payload, {
+    workspace,
+    recordId: record,
+    conversationId: await requestConversation(payload, workspace, record),
+    text,
+    fileIds: [],
+    author: 'maria',
+    role: 'product-owner',
+    actorId: 'maria',
+  })
+}
+
 describe('comments for a run by the Runner', () => {
+  it('takes another turn for a comment written during a follow-up turn', async () => {
+    const s = await r.start()
+    const files: string[] = []
+    r.state.behaviour = async (request) => {
+      const turn = r.state.prompts.length
+      if (turn > 1) files.push(r.read(request.cwd, 'new-comments.json'))
+      if (turn <= 2) {
+        await said(s.id, `comment in turn ${turn}`)
+        await sleep(200)
+      }
+      r.write(request, ACCEPT)
+    }
+    await r.next()
+    expect(r.state.prompts).toHaveLength(3)
+    expect(r.state.prompts[2]).toContain('.bauherr/new-comments.json')
+    expect(files[1]).toContain('comment in turn 2')
+  })
+
   it('hands a comment written during a turn to the next turn as reference data', async () => {
     const s = await r.start()
     const payload = r.f.h.payload()

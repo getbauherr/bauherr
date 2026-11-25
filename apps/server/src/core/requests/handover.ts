@@ -15,7 +15,7 @@ export const handOver = (payload: Payload, recordId: number, runId: number): Pro
     const fresh = events.filter((event) => event.type === 'request.commented' && event.id > given)
     const last = fresh.at(-1)
     if (!last) return []
-    const comments = await commentsOf(payload, recordId, fresh)
+    const comments = await commentsOf(tx, recordId, fresh)
     await appendEvent(tx, recordId, {
       type: 'run.comments.delivered',
       data: { runId: String(runId), through: last.id, count: comments.length },

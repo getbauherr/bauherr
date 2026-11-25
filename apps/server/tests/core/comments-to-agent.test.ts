@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
+import { handOver } from '../../src/core/requests/handover'
 import { postComment, requestConversation } from '../../src/core/requests/comments'
 import { AGENT_INSTRUCTIONS } from '../../src/core/run/mcp/instructions'
 import { heartbeat } from '../../src/core/run/mcp/heartbeat'
@@ -48,6 +49,21 @@ describe('comments handed to the agent working on the ticket', () => {
     expect(await beat(run.runId, run.leaseToken)).toEqual(['and the colours'])
     const delivered = (await readEvents(m.e.db.payload, record)).filter((e) => e.type === 'run.comments.delivered')
     expect(delivered).toHaveLength(2)
+    await m.e.drain()
+  })
+
+  it('reads the comments on the locked transaction, not on the outer connection', async () => {
+    await m.e.drain()
+    const record = await m.begin()
+    const run = await m.claimed(m.alpha)
+    await comment(record, 'read under the lock')
+    const { payload } = m.e.db
+    const spy = vi.spyOn(payload.db.drizzle, 'execute')
+    const handed = await handOver(payload, record, run.runId)
+    const outer = spy.mock.calls.length
+    spy.mockRestore()
+    expect(handed.map((c) => c.text)).toEqual(['read under the lock'])
+    expect(outer).toBe(0)
     await m.e.drain()
   })
 
