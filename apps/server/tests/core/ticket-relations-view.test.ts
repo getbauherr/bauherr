@@ -36,6 +36,35 @@ describe('the relations of a ticket', () => {
     expect((await found('UNREL')).map((c) => c.number)).toEqual([6])
   })
 
+  it('list an exact number first and still find old tickets by title among many', async () => {
+    const s = await setup(['subject', 'Box ancient'])
+    const [template] = await h.items(s.repo)
+    for (let number = 3; number <= 230; number++) {
+      await h.payload().create({
+        collection: 'mirror_items',
+        data: {
+          workspace: h.ids.workspace,
+          product: h.ids.product,
+          source: Number(template.source_id),
+          repo: s.repo,
+          state: 'open',
+          forgeCreatedAt: new Date().toISOString(),
+          number,
+          kind: 'issue',
+          title: `t${number}`,
+        },
+        overrideAccess: true,
+      })
+    }
+    for (const typed of ['2', '#2']) {
+      const found = await searchTickets(h.payload(), h.ids.workspace, s.record.id, typed)
+      expect(found).toHaveLength(20)
+      expect(found.slice(0, 2).map((c) => c.number)).toEqual([2, 230])
+    }
+    const byTitle = await searchTickets(h.payload(), h.ids.workspace, s.record.id, 'Box ancient')
+    expect(byTitle.map((c) => c.number)).toEqual([2])
+  })
+
   it('show a closed blocker as Closed and not open', async () => {
     const s = await setup()
     await s.writer.addRelation(s.record.id, { from: s.item(2), to: s.item(1), type: 'blocks' })

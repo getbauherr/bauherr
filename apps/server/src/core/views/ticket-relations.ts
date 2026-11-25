@@ -118,7 +118,8 @@ export const searchTickets = async (
     JOIN "mirror_items" o ON o."product_id" = m."product_id" AND o."workspace_id" = m."workspace_id"
     WHERE m."id" = ${itemId} AND o."id" <> m."id" AND o."kind" = 'issue' AND o."gone_at" IS NULL
       AND (${text} = '' OR o."number"::text LIKE ${prefix} OR o."title" ILIKE ${pattern})
-    ORDER BY o."number" DESC LIMIT ${SEARCH_LIMIT}`)
+    ORDER BY (o."number"::text = ${text}) DESC, (o."number"::text LIKE ${prefix}) DESC, o."number" DESC
+    LIMIT ${SEARCH_LIMIT}`)
   return pool.rows.map((raw) => {
     const row = candidate.parse(raw)
     return { itemId: row.id, number: row.number, title: row.title }
