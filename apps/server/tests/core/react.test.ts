@@ -151,6 +151,11 @@ describe('a ticket sent back after its merge', () => {
     expect(react(input(rebuilt, { issue: closedIssue }))).toEqual([])
   })
 
+  it('stays protected when sent back a second time before the merge', () => {
+    const twice = [...sentBack, ev('build.submitted'), ev('result.sent-back', { note: 'again' })]
+    expect(react(input(twice, { issue: closedIssue }))).toEqual([])
+  })
+
   it('forgets the send-back once the owner accepted it', () => {
     const accepted = [...sentBack, ev('build.submitted'), ev('result.accepted')]
     expect(fold(accepted).sentBackAfterMerge).toBe(false)

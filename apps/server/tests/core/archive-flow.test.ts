@@ -125,7 +125,9 @@ describe('restoring a ticket closed on the forge', () => {
     expect(await f.view(s.id)).toMatchObject({ stage: 'build', waitingOn: 'agents' })
     expect(await page(s.id)).toMatchObject({ restorable: false })
     await s.sync()
+    await s.sync()
     expect((await f.types(s.id)).filter((t) => t === 'ticket.closed')).toHaveLength(1)
+    expect(await f.view(s.id)).toMatchObject({ stage: 'build', waitingOn: 'agents' })
   })
 
   it('shows Restore on the page only for the closed ticket', async () => {

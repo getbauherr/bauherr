@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import { describe, expect, it } from 'vitest'
-import { decide } from '../../src/core/decide'
+import { restore } from '../../src/core/archive'
+import { decide, InvalidDecision } from '../../src/core/decide'
 import { fold } from '../../src/core/lifecycle'
 import { readEvents } from '../../src/core/record/store'
 import { heartbeat } from '../../src/core/run/leases'
@@ -195,6 +196,19 @@ describe('an adopted pull request against the fake forge', () => {
     await s.sync()
     expect(await f.types(s.id)).toContain('ticket.closed')
     expect(await f.view(s.id)).toMatchObject({ waitingOn: 'nobody' })
+  })
+
+  it('offers no Restore for a ticket whose adopted pull request was closed, and refuses it', async () => {
+    const s = await toVerify()
+    await f.fake().forge.closePullRequest(s.repo, s.pr)
+    f.h.later(DAY)
+    await s.sync()
+    expect(await ticket(f.h.payload(), { workspace: f.h.ids.workspace, recordId: s.id })).toMatchObject({
+      restorable: false,
+    })
+    await expect(restore(s.id, owner(), f.subDeps())).rejects.toBeInstanceOf(InvalidDecision)
+    await s.sync()
+    expect((await f.types(s.id)).filter((t) => t === 'ticket.restored')).toHaveLength(0)
   })
 
   it('counts a merge by a person as merged and still asks the owner at the Result card', async () => {

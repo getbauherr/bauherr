@@ -198,7 +198,7 @@ const merged = (state: State, sha: string, options: FoldOptions): State => {
 }
 
 const sentBack = (state: State, note: string): State => {
-  const after = { sentBackAfterMerge: state.merged }
+  const after = { sentBackAfterMerge: state.sentBackAfterMerge || state.merged }
   if (!state.adopted) return { ...enter(state, 'build'), ...after, accepted: false, note }
   if (state.merged) return { ...enter(state, 'build'), ...after, adopted: false, accepted: false, verdict: null, note }
   return { ...enter(state, 'verify'), accepted: false, verdict: null, waitingAuthor: true, note }

@@ -5,6 +5,7 @@ import { advance, type AdvanceDeps } from './engine'
 import type { AppEvent } from './events'
 import { fold } from './fold'
 import { canArchive, foldOptions, type State } from './lifecycle'
+import { closedByAdoptedPull } from './views/ticket-parts'
 import { appendEvent, readEvents, readRecord } from './record/store'
 
 type Plan = { events: AppEvent[]; allowed: (state: State) => boolean; refusal: string }
@@ -28,6 +29,9 @@ const inState = async (deps: AdvanceDeps, recordId: number, person: Person, plan
   }
   const state = fold(await readEvents(deps.payload, recordId), foldOptions(await deps.configFor(recordId)))
   if (!plan.allowed(state)) throw new InvalidDecision(plan.refusal)
+  if (plan === restoring && state.closed === 'closed-on-forge' && (await closedByAdoptedPull(deps.payload, stored))) {
+    throw new InvalidDecision('The pull request was closed on the forge: reopen it there and the ticket follows.')
+  }
 }
 
 const append = async (deps: AdvanceDeps, recordId: number, person: Person, plan: Plan): Promise<void> => {
