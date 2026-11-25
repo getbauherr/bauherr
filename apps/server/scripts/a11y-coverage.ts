@@ -17,8 +17,11 @@ const route = (file: string) =>
     .filter((s) => !/^\(.*\)$/.test(s))
     .join('/')}`.replace(/\/$/, '') || '/'
 
-const spec = readFileSync(join(root, 'e2e', 'a11y.spec.ts'), 'utf8')
-const covered = new Set([...spec.matchAll(/^\s+'(\/[^']*)':/gm)].map((m) => m[1]))
+const e2e = join(root, 'e2e')
+const spec = readFileSync(join(e2e, 'a11y.spec.ts'), 'utf8')
+const imported = [...spec.matchAll(/from '\.\/([^']+)'/g)].map((m) => readFileSync(join(e2e, `${m[1]}.ts`), 'utf8'))
+const routesIn = (text: string) => [...text.matchAll(/^\s+'(\/[^']*)':/gm)].map((m) => m[1])
+const covered = new Set([spec, ...imported].flatMap(routesIn))
 
 const all = pages(app).map(route)
 const missing = all.filter((r) => !covered.has(r) && !(r in exceptions))
