@@ -115,7 +115,6 @@ type ProductDoc = {
   name: string
   slug: string
   stagingUrl?: string | null
-  productionGate?: boolean | null
   pathSets?: PathSets | null
   state?: string
 }
@@ -158,7 +157,7 @@ const productRow = async (payload: Payload, p: ProductDoc, repositories: Reposit
     id: p.id,
     name: p.name,
     slug: p.slug,
-    deploy: { stagingUrl: p.stagingUrl ?? '', productionGate: !!p.productionGate },
+    deploy: { stagingUrl: p.stagingUrl ?? '' },
     pathSetsText: formatPathSets(p.pathSets),
     state: p.state === 'active' ? ('active' as const) : ('observing' as const),
     tickets: await recordCountOf(payload, p.id),

@@ -1,4 +1,4 @@
-import type { Deployment, Release, RepoRef } from './contracts.js';
+import type { Deployment, DeploymentState, Release, RepoRef } from './contracts.js';
 import { GithubError } from './github-error.js';
 import { GithubMergeQueue } from './github-merge-queue.js';
 import { githubRelease } from './github-mappers.js';
@@ -6,6 +6,8 @@ import { probeCommit } from './release-probe.js';
 import { field, get, idText, list, maybeText, nullableText, text, wire } from './wire.js';
 
 const enc = encodeURIComponent;
+
+const DEPLOYMENT_STATES: Record<string, DeploymentState> = { success: 'success', failure: 'failure', error: 'failure' };
 
 const isPublished = (release: unknown): boolean => !wire(release).draft;
 
@@ -105,7 +107,9 @@ export class GithubReleases extends GithubMergeQueue {
     const [d] = list(await this.h.json('GET', `/repos/${repo}/deployments?environment=${enc(environment)}&per_page=1`));
     if (!d) return null;
     const statuses = await this.h.json('GET', `/repos/${repo}/deployments/${idText(wire(d).id)}/statuses?per_page=1`);
-    return { sha: field(d, 'sha'), url: nullableText(wire(list(statuses)[0]).environment_url) };
+    const latest = wire(list(statuses)[0]);
+    const state = DEPLOYMENT_STATES[text(latest.state)] ?? 'pending';
+    return { sha: field(d, 'sha'), url: nullableText(latest.environment_url), state };
   }
   async commitEndpoint(_repo: RepoRef, o: { url: string; sha: string }) {
     return probeCommit(fetch, o);

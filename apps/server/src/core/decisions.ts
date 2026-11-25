@@ -91,13 +91,6 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
     'check-again': answer('check-again'),
     continue: answer('continue', { type: 'ship.deployed', data: {} }),
   },
-  'question:production': {
-    approve: answer('approve', { type: 'production.approved', data: {} }),
-    hold: answer('hold', { type: 'production.held', data: {} }),
-  },
-  'production-held': {
-    'approve-production': one({ type: 'production.approved', data: {} }),
-  },
   [AGENT_ASK]: { [BACK_TO_BRIEF]: backToBrief(true), [OWN_ANSWER]: ownAnswer },
   [WORKING_ASK]: { [BACK_TO_BRIEF]: backToBrief(false) },
 }
@@ -109,7 +102,6 @@ export const QUESTION_REASONS = [
   'verify-rounds',
   'already-done',
   'deploy-stalled',
-  'production',
   'agent',
   'parked',
 ] as const

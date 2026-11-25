@@ -79,7 +79,7 @@ test('a new Product lands on the Connect page, opens its settings and is deleted
   const name = `E2E Widgets ${Date.now()}`
   await signIn(page)
   await page.goto('/settings/products')
-  await expect(page.getByRole('row', { name: /Acme Web/ })).toContainText('Off')
+  await expect(page.getByRole('row', { name: /Acme Web/ })).toContainText('Ready')
   await expect(page.getByRole('button', { name: 'Delete' })).toHaveCount(0)
   const path = await addProduct(page, name)
   await expect(page.getByRole('heading', { name: `Connect ${name}` })).toBeVisible()
@@ -120,7 +120,7 @@ test('Intake saves its own fields and says why a silence before the reminder is 
   })
 })
 
-test('Gates save path sets, risk areas, the production switch and the Brief limit', async ({ page }) => {
+test('Gates save path sets, risk areas and the Brief limit', async ({ page }) => {
   test.setTimeout(120_000)
   await ownProduct(page, async () => {
     const gates = page.locator('#gates')
@@ -130,14 +130,13 @@ test('Gates save path sets, risk areas, the production switch and the Brief limi
     await saved(page)
     await page.reload()
     await gates.getByRole('checkbox', { name: /^security/ }).check()
-    await gates.getByRole('switch', { name: /Ask me before production/ }).check()
     await gates.getByLabel('Briefs waiting on you at a time').fill('7')
     await gates.getByRole('button', { name: 'Save gates' }).click()
     await saved(page)
     await page.reload()
     await expect(gates.getByRole('checkbox', { name: /^security/ })).toBeChecked()
     await expect(gates.getByRole('checkbox', { name: /^ui/ })).not.toBeChecked()
-    await expect(gates.getByRole('switch', { name: /Ask me before production/ })).toBeChecked()
+    await expect(gates.getByText('Ask me before production')).toHaveCount(0)
     await expect(gates.getByLabel('Briefs waiting on you at a time')).toHaveValue('7')
     await expect(gates).toContainText('A Brief card goes to you when it has an open decision')
   })

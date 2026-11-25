@@ -6,9 +6,8 @@ import type { TicketRecord } from './record/schema'
 export { fold, type State }
 
 export const foldOptions = (
-  config: Pick<Config, 'productionGate' | 'requiredChecks' | 'deployChecks'>,
+  config: Pick<Config, 'requiredChecks' | 'deployChecks'>,
 ): FoldOptions => ({
-  productionGate: config.productionGate,
   requiredChecks: config.requiredChecks,
   deployChecks: config.deployChecks,
 })
@@ -16,7 +15,6 @@ export const foldOptions = (
 export type Config = {
   caps: { verifyRounds: number; reporterRounds: number; failedRuns: number }
   riskAreas: string[]
-  productionGate: boolean
   deployChecks: boolean
   deployNames: string[]
   deployWaitMinutes: number
@@ -160,9 +158,6 @@ const afterMerge = (state: State, config: Config): Step => {
     return state.deployStalled ? question('deploy-stalled', ['check-again', 'continue']) : wait('deploy')
   }
   if (!state.accepted) return resultCard
-  if (config.productionGate && !state.productionApproved) {
-    return state.productionHeld ? wait('owner') : question('production', ['approve', 'hold'])
-  }
   return { kind: 'done' }
 }
 

@@ -32,7 +32,6 @@ const setup = async () => {
     configFor: async () => ({
       caps: { ...CAPS },
       riskAreas: [],
-      productionGate: false,
       deployChecks: false,
       deployNames: [],
       deployWaitMinutes: 60,

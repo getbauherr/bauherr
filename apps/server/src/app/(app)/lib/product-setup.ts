@@ -2,7 +2,7 @@ export type Tone = 'ok' | 'warn' | 'muted'
 type SetupInput = {
   repositories: unknown[]
   sources: unknown[]
-  deploy: { stagingUrl: string; productionGate: boolean }
+  deploy: { stagingUrl: string }
 }
 
 export function setupOf(p: SetupInput) {
@@ -20,6 +20,5 @@ export function setupOf(p: SetupInput) {
   return {
     rows,
     open: rows.filter((r) => r.word === 'Needs setup').length,
-    production: d.productionGate ? 'On' : 'Off',
   }
 }

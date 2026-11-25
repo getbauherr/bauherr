@@ -1,4 +1,4 @@
-import type { Deployment, RepoRef } from './contracts.js';
+import type { Deployment, DeploymentState, RepoRef } from './contracts.js';
 import { GitlabError } from './gitlab.js';
 import { gitlabRelease, isGitlabPrerelease } from './gitlab-mappers.js';
 import { GitlabMergeTrain } from './gitlab-merge-train.js';
@@ -8,6 +8,12 @@ import { field, get, list, nullableText, num, text, wire } from './wire.js';
 const DEVELOPER = 30;
 
 const enc = encodeURIComponent;
+
+const DEPLOYMENT_STATES: Record<string, DeploymentState> = {
+  success: 'success',
+  failed: 'failure',
+  canceled: 'failure',
+};
 
 /** Releases, tags and commit ranges. */
 export class GitlabReleases extends GitlabMergeTrain {
@@ -88,6 +94,7 @@ export class GitlabReleases extends GitlabMergeTrain {
     return {
       sha: field(get(d, 'deployable', 'commit'), 'id') || field(d, 'sha'),
       url: nullableText(wire(get(d, 'environment')).external_url),
+      state: DEPLOYMENT_STATES[text(wire(d).status)] ?? 'pending',
     };
   }
   async commitEndpoint(_repo: RepoRef, o: { url: string; sha: string }) {

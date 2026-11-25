@@ -47,7 +47,6 @@ export default async function ProductList() {
               <th>Product</th>
               <th>Repository</th>
               <th>Setup</th>
-              <th>Production approval</th>
             </tr>
           </thead>
           <tbody>
@@ -64,9 +63,6 @@ export default async function ProductList() {
                   <StatusWord tone={p.setup.open ? 'warn' : 'ok'}>
                     {p.setup.open ? `${p.setup.open} ${p.setup.open === 1 ? 'step' : 'steps'} left` : 'Ready'}
                   </StatusWord>
-                </td>
-                <td data-label="Production approval">
-                  <StatusWord tone={p.setup.production === 'On' ? 'ok' : 'muted'}>{p.setup.production}</StatusWord>
                 </td>
               </tr>
             ))}
