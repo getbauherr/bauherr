@@ -14,12 +14,17 @@ const base = (): TicketRecord => briefed()
 
 describe('record schema', () => {
   it('accepts the empty record and a briefed record', () => {
-    expect(ok(emptyRecord(source, 'feature'))).toBe(true)
+    expect(ok(emptyRecord(source, 'change'))).toBe(true)
     expect(ok(base())).toBe(true)
   })
 
   it('names every top-level field', () => {
     expect([...RECORD_FIELDS].sort()).toEqual(Object.keys(base()).sort())
+  })
+
+  it('reads a stored feature as a change and knows the question type', () => {
+    expect(recordSchema.parse({ ...base(), type: 'feature' }).type).toBe('change')
+    expect(ok({ ...base(), type: 'question' })).toBe(true)
   })
 
   it('rejects another version and unknown types', () => {

@@ -3,7 +3,9 @@ import { z } from 'zod'
 const text = (max: number) => z.string().trim().min(1).max(max)
 const ident = (prefix: string) => z.string().regex(new RegExp(`^${prefix}[1-9][0-9]*$`))
 
-export const TYPES = ['bug', 'feature', 'change', 'chore'] as const
+export const TYPES = ['bug', 'change', 'question', 'chore'] as const
+
+const typeSchema = z.preprocess((value) => (value === 'feature' ? 'change' : value), z.enum(TYPES))
 export const CRITERION_STATUSES = ['open', 'met', 'partial', 'missing', 'waived'] as const
 
 const source = z.object({
@@ -96,7 +98,7 @@ export const resultSchema = z.object({
 const shape = z.object({
   v: z.literal(1),
   goal: z.string().trim().max(300),
-  type: z.enum(TYPES),
+  type: typeSchema,
   source,
   criteria: z.array(criterionSchema).max(7),
   outOfScope: z.array(text(160)).max(5),

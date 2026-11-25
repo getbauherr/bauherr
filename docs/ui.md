@@ -31,6 +31,7 @@ A Product owner gets a smaller shell today. Requests from Product owners are pla
 | `/requests/<id>` | Read one request: whose turn it is, then its story. |
 | `/tickets/<id>` | Decide one ticket. Tabs Now, Brief, Result and Activity. |
 | `/memory` | Edit the factory, workspace or product document. `/memory/retro` starts a Retro. |
+| `/releases` | See what is live and ready to release. |
 | `/insights` | Read time per stage and cost. Choose 7, 30 or 90 days. |
 | `/settings/products/<id>` | Read Repo readiness and set gates, intake and proof for a Product. |
 | `/settings/products/<id>/connect` | Connect a project: import, first look and switch on. |

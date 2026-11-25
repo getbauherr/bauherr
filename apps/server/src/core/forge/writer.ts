@@ -175,6 +175,14 @@ const openIssue = async (ctx: Ctx, target: ProductTarget, input: NewIssue): Prom
   return issue
 }
 
+const commentOnIssue = async (ctx: Ctx, target: ProductTarget, number: number, body: string): Promise<void> => {
+  const row = await loadProductRow(ctx.payload, target)
+  if (row.productState !== 'active') {
+    throw new ProductObserving(`Product ${row.productName} is observing: nothing is written to the forge.`)
+  }
+  await (await ctx.deps.backend(row.connection)).tickets(row.repo).comment(String(number), disclosed(body))
+}
+
 const closeIssue = async (ctx: Ctx, target: Target, reason: CloseReason): Promise<void> => {
   const session = await open(ctx, target, 'issue')
   await perform(ctx, target, 'close', session, {
@@ -277,6 +285,8 @@ export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(pa
     openPullRequest: (target: Target, input: NewPullRequest) => openPullRequest(ctx, target, input),
     reviewPullRequest: (target: Target, body: string) => reviewPullRequest(ctx, target, body),
     openIssue: (target: ProductTarget, input: NewIssue) => openIssue(ctx, target, input),
+    commentOnIssue: (target: ProductTarget, number: number, body: string) =>
+      commentOnIssue(ctx, target, number, body),
     openIssues: (target: ProductTarget, inputs: SeriesIssue[]) => openIssues(ctx, target, inputs),
     closeIssue: (target: Target, reason: CloseReason) => closeIssue(ctx, target, reason),
     reopenIssue: (target: Target) => reopenIssue(ctx, target),
