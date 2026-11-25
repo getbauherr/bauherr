@@ -30,6 +30,14 @@ test('a blocking ticket shows Blocks with every ticket down the chain and a red 
   await expect(card(page, 'Chain tail').getByRole('button', { name: /^Blocks/ })).toHaveCount(0)
 })
 
+test('without a filter a blocking ticket sorts above an unrelated card in its stage', async ({ page }) => {
+  await enter(page, '/')
+  const middle = card(page, 'Chain middle')
+  const stage = page.getByRole('list').filter({ has: middle })
+  const titles = await stage.last().getByRole('listitem').getByRole('link').allInnerTexts()
+  expect(titles.indexOf('Chain middle')).toBeLessThan(titles.indexOf('Early bystander'))
+})
+
 test('a blocked ticket shows Blocked by and is dimmed, a parent shows its parts done', async ({ page }) => {
   await enter(page, '/')
   const middle = card(page, 'Chain middle')

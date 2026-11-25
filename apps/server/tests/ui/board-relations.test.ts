@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { groupsByParent, parseView } from '../../src/app/(app)/lib/board-relations'
+import { forView, groupsByParent, parseView } from '../../src/app/(app)/lib/board-relations'
 
 const parent = { number: 7, title: 'Epic', stage: 'Brief', recordId: 7, parts: { done: 1, total: 2, tickets: [] } }
 const related = { blocks: [], blockedBy: [], parts: null, parent }
@@ -17,5 +17,16 @@ describe('board relations view', () => {
       ['parent-7', [1, 3]],
       ['no-parent', [2]],
     ])
+  })
+})
+
+describe('forView without a filter', () => {
+  const withBlocks = (recordId: number, count: number) => ({
+    recordId,
+    relations: { ...related, parent: null, blocks: Array.from({ length: count }, () => parent) },
+  })
+  it('puts blocking tickets first and keeps the stored order within each group', () => {
+    const cards = [withBlocks(1, 0), withBlocks(2, 1), withBlocks(3, 0), withBlocks(4, 3)]
+    expect(forView(cards, undefined).map((c) => c.recordId)).toEqual([2, 4, 1, 3])
   })
 })

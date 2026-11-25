@@ -18,16 +18,18 @@ export const parseView = (raw: { relation?: string; group?: string }): BoardView
   return { relation: parsed.relation, group: parsed.group === 'parent' }
 }
 
-export const isBlocking = (card: BoardCard): boolean => (card.relations?.blocks.length ?? 0) > 0
-export const isBlocked = (card: BoardCard): boolean => (card.relations?.blockedBy.length ?? 0) > 0
+type Related = Pick<BoardCard, 'relations'>
 
-const MATCHES: Record<RelationFilter, (card: BoardCard) => boolean> = { blocking: isBlocking, blocked: isBlocked }
+export const isBlocking = (card: Related): boolean => (card.relations?.blocks.length ?? 0) > 0
+export const isBlocked = (card: Related): boolean => (card.relations?.blockedBy.length ?? 0) > 0
 
-export const blockingFirst = (cards: BoardCard[]): BoardCard[] =>
-  [...cards].sort((a, b) => (b.relations?.blocks.length ?? 0) - (a.relations?.blocks.length ?? 0))
+const MATCHES: Record<RelationFilter, (card: Related) => boolean> = { blocking: isBlocking, blocked: isBlocked }
 
-export const forView = (cards: BoardCard[], relation: RelationFilter | undefined): BoardCard[] =>
-  relation === undefined ? cards : blockingFirst(cards.filter(MATCHES[relation]))
+export const blockingFirst = <T extends Related>(cards: T[]): T[] =>
+  [...cards].sort((a, b) => Number(isBlocking(b)) - Number(isBlocking(a)))
+
+export const forView = <T extends Related>(cards: T[], relation: RelationFilter | undefined): T[] =>
+  blockingFirst(relation === undefined ? cards : cards.filter(MATCHES[relation]))
 
 export const countRelations = (lanes: Board): Record<RelationFilter, number> => {
   const open = [...Object.values(lanes.stages).flat(), ...lanes.parked].filter((card) => card.stage !== 'done')

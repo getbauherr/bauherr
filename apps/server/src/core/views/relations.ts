@@ -99,7 +99,7 @@ const relationsOf = (item: RelationItem, graph: Graph): CardRelations => {
   const parentItem = items.get(parents.get(item.id)?.[0] ?? -1)
   const own = children.get(item.id)
   return {
-    blocks: openRefs(downstream(item.id, blocked, items), items),
+    blocks: item.open ? openRefs(downstream(item.id, blocked, items), items) : [],
     blockedBy: openRefs(blockers.get(item.id) ?? [], items),
     parent: parentItem ? { ...refOf(parentItem), parts: partsOf(children.get(parentItem.id) ?? [], items) } : null,
     parts: own ? partsOf(own, items) : null,

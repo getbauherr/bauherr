@@ -28,6 +28,7 @@ export const seedBoardRelations = async (payload: Payload): Promise<void> => {
   const ticket = async (id: number, title: string) => mirror.item(await numberOf(id), { title })
   const closedPart = (n: number, title: string) => mirror.item(5000 + n, { title, state: 'closed' })
   const head = await ticket(await toBrief(engine, false), 'Chain head')
+  await ticket(await begin(engine), 'Early bystander')
   const middle = await ticket(await begin(engine), 'Chain middle')
   const tail = await ticket(await begin(engine), 'Chain tail')
   const parent = await ticket(await begin(engine), 'Parent epic')

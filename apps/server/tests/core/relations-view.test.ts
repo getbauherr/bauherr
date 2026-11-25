@@ -25,6 +25,12 @@ describe('relationsByRecord', () => {
     expect(view.has(1003)).toBe(false)
   })
 
+  it('does not let a closed ticket block an open one', () => {
+    const view = relationsByRecord([blocks(1, 2)], items(item(1, { open: false, stage: null }), item(2)))
+    expect(view.has(1001)).toBe(false)
+    expect(view.has(1002)).toBe(false)
+  })
+
   it('names the stage of each related ticket', () => {
     const view = relationsByRecord(
       [blocks(1, 2), blocks(1, 3), blocks(1, 4)],
