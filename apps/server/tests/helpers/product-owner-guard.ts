@@ -117,6 +117,7 @@ const PRODUCT_SECTION_ACTIONS = [
   'saveIntake',
   'saveGates',
   'saveProof',
+  'saveReleaseMode',
   'copyForgeChecks',
   'saveReadinessFix',
   'checkReadinessNow',

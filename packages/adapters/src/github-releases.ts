@@ -1,8 +1,9 @@
-import type { Release, RepoRef } from './contracts.js';
+import type { Deployment, Release, RepoRef } from './contracts.js';
 import { GithubError } from './github-error.js';
 import { GithubMergeQueue } from './github-merge-queue.js';
 import { githubRelease } from './github-mappers.js';
-import { field, get, idText, list, maybeText, text, wire } from './wire.js';
+import { probeCommit } from './release-probe.js';
+import { field, get, idText, list, maybeText, nullableText, text, wire } from './wire.js';
 
 const enc = encodeURIComponent;
 
@@ -99,5 +100,17 @@ export class GithubReleases extends GithubMergeQueue {
       ? list(get(await this.h.json('GET', `/repos/${repo}/compare/${enc(o.from)}...${enc(o.to)}`), 'commits')).reverse()
       : list(await this.h.json('GET', `/repos/${repo}/commits?sha=${enc(o.to)}&per_page=100`));
     return commits.map((c) => ({ sha: field(c, 'sha'), message: field(get(c, 'commit'), 'message') }));
+  }
+  async latestDeployment(repo: RepoRef, environment: string): Promise<Deployment | null> {
+    const [d] = list(await this.h.json('GET', `/repos/${repo}/deployments?environment=${enc(environment)}&per_page=1`));
+    if (!d) return null;
+    const statuses = await this.h.json('GET', `/repos/${repo}/deployments/${idText(wire(d).id)}/statuses?per_page=1`);
+    return { sha: field(d, 'sha'), url: nullableText(wire(list(statuses)[0]).environment_url) };
+  }
+  async commitEndpoint(_repo: RepoRef, o: { url: string; sha: string }) {
+    return probeCommit(fetch, o);
+  }
+  async canWrite(repo: RepoRef) {
+    return wire(get(await this.h.json('GET', `/repos/${repo}`), 'permissions')).push === true;
   }
 }

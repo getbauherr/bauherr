@@ -2,7 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
-import { bootBlankPayload, forPayload, runSql, type MigrationDb } from './helpers/migration-db'
+import { bootBlankPayload, forPayload, insertProduct, runSql, type MigrationDb } from './helpers/migration-db'
 
 let db: MigrationDb
 let payload: Payload
@@ -29,8 +29,7 @@ it(
     expect(i).toBeGreaterThan(0)
     await payload.db.migrate({ migrations: migrations.slice(0, i).map(forPayload) })
     const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'W', slug: 'w' }, ...o })).id
-    const product = (await payload.create({ collection: 'products', data: { name: 'P', slug: 'p', workspace }, ...o }))
-      .id
+    const product = await insertProduct(payload, workspace, 'p')
     const record = z.coerce.number().parse(
       (
         await runSql(

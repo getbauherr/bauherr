@@ -5,8 +5,25 @@ export const fakeFactOps = (
   kit: FakeKit,
 ): Pick<
   Forge,
-  'isAncestor' | 'getCommitDate' | 'queueSupport' | 'requiredChecks' | 'isBranchProtected' | 'mergeIntoBranch'
+  | 'isAncestor'
+  | 'getCommitDate'
+  | 'queueSupport'
+  | 'requiredChecks'
+  | 'isBranchProtected'
+  | 'mergeIntoBranch'
+  | 'latestDeployment'
+  | 'commitEndpoint'
+  | 'canWrite'
 > => ({
+  latestDeployment: async (repo: RepoRef, environment: string) => {
+    return kit.repoOf(repo).deployments.get(environment) ?? null;
+  },
+  commitEndpoint: async (repo: RepoRef) => {
+    return kit.repoOf(repo).commitEndpoint;
+  },
+  canWrite: async (repo: RepoRef) => {
+    return kit.repoOf(repo).canWrite;
+  },
   isAncestor: async (repo: RepoRef, base: string, head: string) => {
     return base === head || !!kit.repoOf(repo).ancestors.get(head)?.includes(base);
   },

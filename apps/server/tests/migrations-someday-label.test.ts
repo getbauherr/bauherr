@@ -2,7 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { afterAll, beforeAll, expect, it } from 'vitest'
 import { z } from 'zod'
-import { bootBlankPayload, forPayload, runSql, type MigrationDb } from './helpers/migration-db'
+import { bootBlankPayload, forPayload, insertProduct, runSql, type MigrationDb } from './helpers/migration-db'
 
 let db: MigrationDb
 let payload: Payload
@@ -29,7 +29,7 @@ it(
     await payload.db.migrate({ migrations: migrations.slice(0, i).map(forPayload) })
     const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'W', slug: 'w' }, ...o })).id
     for (const slug of ['plain', 'custom', 'already']) {
-      await payload.create({ collection: 'products', data: { name: slug, slug, workspace }, ...o })
+      await insertProduct(payload, workspace, slug)
     }
     await runSql(
       payload,
