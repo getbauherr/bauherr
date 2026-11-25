@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import type { RunPage } from '../../../../core/views/run'
 import { duration, kilobytes, usd } from '../../lib/format'
 import { RunLinks } from './RunLinks'
@@ -27,17 +26,6 @@ export function RunAside({ run, admin }: { run: RunPage; admin: boolean }) {
           <span key={part.label} className="small">{part.label}: <span className="mono">{part.detail}</span></span>
         ))}
       </section>
-      {run.memory.length > 0 && (
-        <section className={PANEL}>
-          <h2 className="label m-0 text-muted-foreground">Memory handed to this run</h2>
-          {run.memory.map((entry) => (
-            <span key={entry.id} className="small [overflow-wrap:anywhere]">
-              <Link href={`/memory/${entry.id}`} className="text-primary hover:underline">{entry.text}</Link>{' '}
-              <span className="text-muted-foreground">{entry.reason}</span>
-            </span>
-          ))}
-        </section>
-      )}
       {run.attachments.length > 0 && (
         <section className={PANEL}>
           <h2 className="label m-0 text-muted-foreground">Attachments</h2>

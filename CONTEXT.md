@@ -133,7 +133,7 @@ What code assembles for one run: the stage skill, the repository's `AGENTS.md`, 
 ### Memory
 
 **Memory**:
-Three markdown documents: factory, workspace and product. Parts of them go to the runs of Brief, Build, Review and Verify. Only the owner or a Retro changes them. Single sentences given on a card are kept too; in code they are `statements`.
+Three markdown documents: factory, workspace and product. Parts of them go to the runs of Brief, Build, Review and Verify. Only the owner or a Retro changes them. The old single memories are no longer handed out.
 _Avoid_: Statement (on screen), lesson, Learn
 
 **Retro**:

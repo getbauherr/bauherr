@@ -8,7 +8,7 @@ import {
   type DocumentVersion,
 } from '../../../../core/memory-documents'
 import { instructionFilesOf } from '../../../../core/views/instruction-files'
-import { memoryProducts } from '../../../../core/views/statement-records'
+import { memoryProducts } from '../../../../core/views/memory-products'
 import { EmptyState } from '../../components/EmptyState'
 import { MemoryEditor } from '../../components/memory/MemoryEditor'
 import { MemorySide } from '../../components/memory/MemorySide'

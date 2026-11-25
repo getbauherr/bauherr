@@ -3,10 +3,10 @@ import { revalidatePath } from 'next/cache'
 import { withLoginLock } from '../../../../../lib/login-lock'
 import { textOf } from '../../../lib/form-data'
 import { run, type FormState } from '../../../lib/settings'
-import { payloadClient, requirePerson } from '../../../lib/session'
+import { payloadClient, requireBauherr } from '../../../lib/session'
 
 export const saveOwnLogin = async (_prev: FormState, fd: FormData): Promise<FormState> => {
-  const user = await requirePerson()
+  const user = await requireBauherr()
   const login = textOf(fd, 'githubLogin').trim().replace(/^@/, '')
   const result = await run(async () => {
     const payload = await payloadClient()

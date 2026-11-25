@@ -3,7 +3,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { InvalidDecision, StaleDecision } from '../../src/core/decide'
 import { readEvents } from '../../src/core/record/store'
 import { failRun } from '../../src/core/submit'
-import { statementsFor } from '../../src/core/statements'
 import { claim } from '../../src/core/run/leases'
 import { openMcp, type Mcp } from './mcp-harness'
 
@@ -57,10 +56,6 @@ describe('back to Brief through decide and the MCP route', () => {
       waitingOn: 'owner',
       card: { card: 'brief', reason: 'sent-back' },
     })
-    const statements = await statementsFor(m.e.db.payload, m.e.db.product, 20)
-    expect(statements.filter((s) => s.record === record).map((s) => [s.kind, s.text])).toEqual([
-      ['brief-change', 'redo as a redesign'],
-    ])
     const seq = await m.e.seq(record)
     await m.call('decide', { record, ask: 'brief', choice: 'approve', seq }, owner())
     expect(await m.e.view(record)).toMatchObject({ stage: 'build', waitingOn: 'agents' })

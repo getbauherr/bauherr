@@ -9,13 +9,26 @@ test('no OIDC button by default', async ({ page }) => {
   await expect(page.getByLabel('Password')).toBeVisible()
 })
 
-test('OIDC button when configured', { tag: '@oidc' }, async ({ page }) => {
-  await page.goto('/login')
-  await expect(button(page)).toHaveAttribute('href', '/auth/oidc/login')
-  await expect(page.getByLabel('Password')).toBeHidden()
-  await page.getByText('Use password').click()
-  await expect(page.getByLabel('Password')).toBeVisible()
-  await page.screenshot({ path: 'e2e/results/login-oidc.png' })
+test.describe('with the fake OIDC provider', { tag: '@oidc' }, () => {
+  test.use({ baseURL: process.env.E2E_OIDC })
+
+  test('OIDC button when configured', async ({ page }) => {
+    await page.goto('/login')
+    await expect(button(page)).toHaveAttribute('href', '/auth/oidc/login')
+    await expect(page.getByLabel('Password')).toBeHidden()
+    await page.getByText('Use password').click()
+    await expect(page.getByLabel('Password')).toBeVisible()
+    await page.screenshot({ path: 'e2e/results/login-oidc.png' })
+  })
+
+  test('a Product owner signs in through OIDC and lands on Requests', async ({ page }) => {
+    await page.goto('/login')
+    await button(page).click()
+    await expect(page).toHaveURL(/\/requests$/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Requests' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2, name: 'Factory App' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveText(['Requests'])
+  })
 })
 
 test('oidc-role refusal shows a generic message', async ({ page }) => {

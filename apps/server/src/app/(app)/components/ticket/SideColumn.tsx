@@ -1,15 +1,12 @@
-import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { TicketRelations } from '../../../../core/views/ticket-relations'
 import type { TicketView } from '../../../../core/views/ticket'
-import { shortDate } from '../../lib/format'
 import { FINDING_WORDS, FORGE_NAMES, pullLabel } from '../../lib/ticket'
 import { WordBadge } from '../WordBadge'
 import { CARD } from './Section'
 import { ForgeLink } from './ForgeLink'
 import { RunLink } from './RunLink'
 import { RefText } from '../RefText'
-import { TicketRef } from '../TicketRef'
 import { RelationsBox } from './RelationsBox'
 import { TimeCost } from './TimeCost'
 
@@ -110,31 +107,6 @@ function OtherPulls({ view }: { view: TicketView }) {
   )
 }
 
-function AnswersUsed({ view }: { view: TicketView }) {
-  const kind = view.card?.card
-  const used = kind === 'brief' ? view.statementsUsed.brief : kind === 'result' ? view.statementsUsed.result : []
-  if (used.length === 0) return null
-  return (
-    <Aside title="Memory used">
-      {used.map((statement) => (
-        <span key={statement.id} className="small">
-          &quot;<RefText text={statement.text} repo={view.record.source.repo} />&quot;{' '}
-          <Link href={`/memory/${statement.id}`} className="text-muted-foreground underline">
-            Memory
-          </Link>{' '}
-          {statement.record !== null && statement.ticket !== null && (
-            <>
-              <TicketRef recordId={statement.record} number={statement.ticket} className="text-muted-foreground" />
-              , {shortDate(statement.at)}
-            </>
-          )}{' '}
-          <span className="text-muted-foreground">({statement.scopeLabel})</span>
-        </span>
-      ))}
-    </Aside>
-  )
-}
-
 function Similar({ view }: { view: TicketView }) {
   if (view.similarItems.length === 0) return null
   return (
@@ -157,7 +129,6 @@ export function SideColumn({ view, relations, may }: SideProps) {
       <Source view={view} />
       {relations && <RelationsBox recordId={view.recordId} relations={relations} may={may} />}
       <TimeCost timing={view.timing} />
-      <AnswersUsed view={view} />
       <Verdict view={view} />
       <Findings view={view} />
       <OtherPulls view={view} />

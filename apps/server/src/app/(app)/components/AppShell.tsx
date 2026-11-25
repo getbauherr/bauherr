@@ -27,8 +27,9 @@ export function AppShell({ defaultOpen, version, children, ...sidebar }: Props) 
         <AppSidebar {...sidebar} />
         <div className="group/col flex min-w-0 flex-1 flex-col">
           <ShellHeader
-            items={mainItems().map(({ href, label }) => ({ href, label }))}
+            items={mainItems(sidebar.productOwner).map(({ href, label }) => ({ href, label }))}
             admin={sidebar.admin}
+            productOwner={sidebar.productOwner}
             logout={sidebar.logout}
           />
           <main id="main" tabIndex={-1} className="flex flex-col gap-6 p-8 outline-none max-sm:p-4">

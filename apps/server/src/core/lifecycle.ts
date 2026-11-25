@@ -25,7 +25,8 @@ export type Config = {
 }
 
 export type Role = 'builder' | 'reviewer' | 'verifier'
-export type WaitOn = 'reporter' | 'run' | 'checks' | 'deploy' | 'owner' | 'author'
+export type WaitOn = 'reporter' | 'run' | 'checks' | 'deploy' | 'owner' | 'author' | 'nobody'
+export type Blocker = { number: number; state: 'open' | 'discarded' | 'closed' }
 export type BriefReason =
   | 'open-decision'
   | 'one-way-door'
@@ -43,7 +44,7 @@ export type Step =
   | { kind: 'wait'; on: WaitOn }
   | { kind: 'done' }
 
-type Rule = (record: TicketRecord, state: State, config: Config) => Step | null
+type Rule = (record: TicketRecord, state: State, config: Config, blockers: Blocker[]) => Step | null
 
 export const fingerprint = (value: unknown): string => {
   const canonical = (v: unknown): unknown => {
@@ -89,6 +90,22 @@ const question = (reason: string, options: string[]): Step => ({ kind: 'card', c
 const closed: Rule = (_r, state) => (state.closed !== null || state.stage === 'done' ? { kind: 'done' } : null)
 const cardOpen: Rule = (_r, state) => (state.card ? wait('owner') : null)
 const runLive: Rule = (_r, state) => (state.run ? wait('run') : null)
+const BLOCKER_WORDS: Record<Blocker['state'], (number: number) => string> = {
+  open: (n) => `Waiting for #${n}`,
+  discarded: (n) => `#${n} was discarded`,
+  closed: (n) => `#${n} was closed without a merge`,
+}
+
+export const blockedReason = (blockers: Blocker[]): string | null =>
+  blockers.length === 0 ? null : blockers.map((b) => BLOCKER_WORDS[b.state](b.number)).join('; ')
+
+const blocked: Rule = (_r, state, _c, blockers) => {
+  if (state.stage !== 'build') return null
+  const reason = blockedReason(blockers)
+  if (reason === state.blockedReason) return reason === null ? null : wait('nobody')
+  return { kind: 'emit', event: { type: 'ticket.blocked', data: { reason } } }
+}
+
 const failedRuns: Rule = (_r, state, config) =>
   state.failedRuns >= config.caps.failedRuns
     ? question('failed-runs', ['retry', 'retry-with-guidance', 'discard'])
@@ -155,11 +172,11 @@ const ship: Rule = (_r, state, config) => {
   return state.merged ? afterMerge(state, config) : { kind: 'effect', effect: 'merge' }
 }
 
-const RULES: Rule[] = [closed, cardOpen, runLive, failedRuns, intake, brief, build, author, verify, ship]
+const RULES: Rule[] = [closed, cardOpen, runLive, blocked, failedRuns, intake, brief, build, author, verify, ship]
 
-export const next = (record: TicketRecord, state: State, config: Config): Step => {
+export const next = (record: TicketRecord, state: State, config: Config, blockers: Blocker[] = []): Step => {
   for (const rule of RULES) {
-    const step = rule(record, state, config)
+    const step = rule(record, state, config, blockers)
     if (step) return step
   }
   return { kind: 'done' }

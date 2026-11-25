@@ -12,7 +12,6 @@ import { seedConnect } from './seed-connect'
 import { seedSomeday } from './seed-someday'
 import { seedReadiness } from './seed-readiness'
 import { seedInsights } from './seed-insights'
-import { seedStatements } from './seed-statements'
 import { seedMemoryEditor } from './seed-memory-editor'
 import { seedRetro } from './seed-retro'
 import { seedTicketRelations } from './seed-ticket-relations'
@@ -151,6 +150,14 @@ await ensure(
 const factory = Number((await ensure('workspaces', { slug: 'factory' }, { name: 'Factory', slug: 'factory' })).id)
 const factoryProduct = { name: 'Factory App', slug: 'factory-app', workspace: factory, state: 'active' }
 const factoryApp = Number((await ensure('products', { slug: 'factory-app' }, factoryProduct)).id)
+await user('po-factory@example.com', 'product-owner', {
+  assignments: [{ workspace: factory, scope: 'products', products: [factoryApp] }],
+})
+await user('po-none@example.com', 'product-owner')
+await user('po-oidc@example.com', 'product-owner', {
+  oidcSubject: 'http://localhost:4010|po-oidc',
+  assignments: [{ workspace: factory, scope: 'products', products: [factoryApp] }],
+})
 const inFactory = { workspace: { equals: factory } }
 const seeded = await payload.find({ collection: 'records', where: inFactory, limit: 1, depth: 0, ...o })
 if (!seeded.docs.length) {
@@ -186,7 +193,6 @@ if (!ticketsSeeded.docs.length) {
 }
 await seedConnect(payload)
 await seedSomeday(payload)
-await seedStatements(payload)
 await seedMemoryEditor(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
 await seedReadiness(payload)
 await seedInsights(payload)
