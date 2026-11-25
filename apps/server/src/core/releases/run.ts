@@ -13,6 +13,7 @@ import {
   createRun,
   dropUnreleasedNotes,
   readRun,
+  readRunIn,
   runByVersion,
   runningIds,
   saveRun,
@@ -98,17 +99,24 @@ const tag = async (ctx: Context, run: ReleaseRun): Promise<Outcome> => {
   return { link: release.url }
 }
 
-const deploy = async (ctx: Context, run: ReleaseRun, place: Place): Promise<Outcome> => {
+const startProduction = async (ctx: Context, run: ReleaseRun): Promise<void> => {
+  const loaded = await loadFacts(ctx.payload, { ...target(run), now: ctx.deps.now() })
+  const facts = loaded?.facts.release
+  if (!facts?.productionWorkflow || !facts.versionInput) {
+    throw new StepFailed('The production workflow or its version input is not known. Read the repository again.')
+  }
+  const inputs = { [facts.versionInput]: run.version }
+  await ctx.writer.startDeploy(target(run), { workflow: facts.productionWorkflow, ref: run.version, inputs })
+}
+
+const deploy = async (ctx: Context, run: ReleaseRun, place: Place, steps: Step[]): Promise<Outcome> => {
+  const mine = steps.find((step) => step.id === 'deploy')
   const current = await place.reads.latestDeployment(place.repo, 'production')
-  const started = current !== null && current.sha === run.sha && current.state !== 'failure'
-  if (!started) {
-    const loaded = await loadFacts(ctx.payload, { ...target(run), now: ctx.deps.now() })
-    const facts = loaded?.facts.release
-    if (!facts?.productionWorkflow || !facts.versionInput) {
-      throw new StepFailed('The production workflow or its version input is not known. Read the repository again.')
-    }
-    const inputs = { [facts.versionInput]: run.version }
-    await ctx.writer.startDeploy(target(run), { workflow: facts.productionWorkflow, ref: run.version, inputs })
+  const seen = current !== null && current.sha === run.sha && current.state !== 'failure'
+  if (!seen && !mine?.started) {
+    await startProduction(ctx, run)
+    if (mine) mine.started = true
+    await persist(ctx, run, steps, 'running', null)
   }
   const url = (await place.reads.getRepository(place.repo)).url
   return { link: pipelinesOf(place.kind, url) }
@@ -159,7 +167,7 @@ const runStep = (ctx: Context, id: StepId, run: ReleaseRun, place: Place, steps:
     case 'tag':
       return tag(ctx, run)
     case 'deploy':
-      return deploy(ctx, run, place)
+      return deploy(ctx, run, place, steps)
     case 'wait':
       return wait(ctx, run, place, steps)
     case 'check':
@@ -213,8 +221,8 @@ export const advanceRunning = async (ctx: Context): Promise<number> => {
   return ids.length
 }
 
-export const answerRelease = async (ctx: Context, id: number, option: RunOption): Promise<void> => {
-  const run = await readRun(ctx.payload, id)
+export const answerRelease = async (ctx: Context, at: ProductAt, id: number, option: RunOption): Promise<void> => {
+  const run = await readRunIn(ctx.payload, id, at)
   if (run?.state !== 'failed' || !OPTIONS.includes(option)) return
   if (option === 'release-fixed-later') return abandon(ctx.payload, id)
   const steps = run.steps.map((step) =>
@@ -234,7 +242,7 @@ export const createReleaser = (payload: Payload, deps: ReleaseDeps = defaultDeps
     },
     advance: (id: number) => advanceRelease(ctx, id),
     advanceRunning: () => advanceRunning(ctx),
-    answer: (id: number, option: RunOption) => answerRelease(ctx, id, option),
+    answer: (at: ProductAt, id: number, option: RunOption) => answerRelease(ctx, at, id, option),
   }
 }
 

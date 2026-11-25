@@ -16,6 +16,8 @@ import {
 
 const LEASE_MINUTES = 2
 
+type ProductAt = { workspace: number; product: number }
+
 const row = z.object({
   id: z.coerce.number(),
   workspace_id: z.coerce.number(),
@@ -53,6 +55,20 @@ const toRun = (found: unknown): ReleaseRun => {
 export const readRun = async (payload: Payload, id: number): Promise<ReleaseRun | null> => {
   const found = await payload.db.drizzle.execute(sql`SELECT ${COLUMNS} FROM "product_releases" WHERE "id" = ${id}`)
   return found.rows[0] ? toRun(found.rows[0]) : null
+}
+
+export const readRunIn = async (payload: Payload, id: number, at: ProductAt): Promise<ReleaseRun | null> => {
+  const found = await payload.db.drizzle.execute(sql`
+    SELECT ${COLUMNS} FROM "product_releases"
+    WHERE "id" = ${id} AND "workspace_id" = ${at.workspace} AND "product_id" = ${at.product}`)
+  return found.rows[0] ? toRun(found.rows[0]) : null
+}
+
+export const doneRuns = async (payload: Payload, product: number): Promise<ReleaseRun[]> => {
+  const found = await payload.db.drizzle.execute(
+    sql`SELECT ${COLUMNS} FROM "product_releases" WHERE "product_id" = ${product} AND "state" = 'done'`,
+  )
+  return found.rows.map(toRun)
 }
 
 export const openRun = async (payload: Payload, product: number): Promise<ReleaseRun | null> => {

@@ -60,6 +60,23 @@ void describe('github release writes', () => {
   });
 });
 
+void describe('github release for a tag that exists on an older commit', () => {
+  void it('reports the commit of the existing tag, not the new one', async () => {
+    const b = new GithubBackend({
+      auth: patAuth('t'),
+      fetch: async (u, init) => {
+        const path = new URL(urlOf(u)).pathname;
+        const method = init?.method ?? 'GET';
+        if (method === 'POST' && path.endsWith('/git/refs')) return json({ message: 'exists' }, { status: 422 });
+        if (path.endsWith('/releases') && method === 'GET') return json([]);
+        if (path.includes('/commits/')) return json({ sha: 'OLD' });
+        return json({ id: 7, tag_name: 'v1.0.0', draft: true, name: 'v1.0.0', body: 'b', html_url: 'u' });
+      },
+    });
+    assert.equal((await b.forge.draftRelease('o/r', { ...input, sha: 'NEW' })).sha, 'OLD');
+  });
+});
+
 void describe('gitlab release writes', () => {
   const release = { tag_name: 'v1.0.0', name: 'v1.0.0', description: 'b', commit: { id: 's1' }, _links: { self: 'u' } };
   void it('creates the tag and an upcoming release, then publishes it', async () => {
@@ -77,6 +94,15 @@ void describe('gitlab release writes', () => {
     };
     assert.ok(Date.parse(upcoming.released_at ?? '') > Date.now());
     assert.equal(calls.find((c) => c.method === 'PUT')?.body?.description, 'notes');
+  });
+  void it('reports the commit of a tag that already exists', async () => {
+    const old = { ...release, commit: { id: 'OLD' } };
+    const { b } = setup((method, path) => {
+      if (method === 'GET' && path.includes('/releases/')) return new Response('{}', { status: 404 });
+      if (path.endsWith('/repository/tags')) return new Response('{}', { status: 400 });
+      return old;
+    });
+    assert.equal((await b.forge.draftRelease('g/p', { ...input, sha: 'NEW' })).sha, 'OLD');
   });
   void it('starts a pipeline at the tag with the version as a variable', async () => {
     const { b, calls } = setup(() => ({}));

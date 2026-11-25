@@ -5,7 +5,7 @@ import { evaluate } from '../readiness/checks'
 import { loadFacts } from '../readiness/load'
 import { releaseStateOf } from '../readiness/view'
 import { mergedTickets } from './merged'
-import { openRun } from './run-store'
+import { doneRuns, openRun } from './run-store'
 import { bumpOf, nextVersion, type Bump, type ChangeFacts } from './version'
 import { partition, sourceOf } from './view'
 
@@ -55,17 +55,22 @@ export const readyToRelease = async (payload: Payload, f: ProductAt, now: Date):
   if (!source?.release_state) return null
   const state = source.release_state
   const { ready } = partition(state, await mergedTickets(payload, source.id))
-  const tags = state.versions.map((version) => version.tag)
-  const bump = bumpOf(await changeFactsOf(payload, ready.tickets.map((ticket) => ticket.recordId)))
+  const finished = (await doneRuns(payload, f.product)).filter(
+    (run) => !state.versions.some((version) => version.tag === run.version),
+  )
+  const released = new Set(finished.flatMap((run) => run.tickets.map((ticket) => ticket.recordId)))
+  const tags = [...state.versions.map((version) => version.tag), ...finished.map((run) => run.version)]
+  const tickets = ready.tickets.filter((ticket) => !released.has(ticket.recordId))
+  const bump = bumpOf(await changeFactsOf(payload, tickets.map((ticket) => ticket.recordId)))
   const sha = state.staging?.sha ?? null
   const open = await openRun(payload, f.product)
   const refusal = open
     ? `Releasing ${open.version} is not finished yet.`
-    : await refusalOf(payload, f, now, ready.tickets.length, sha)
+    : await refusalOf(payload, f, now, tickets.length, sha)
   return {
     sha: sha ?? '',
     tags,
-    tickets: ready.tickets.map(({ recordId, number }) => ({ recordId, number })),
+    tickets: tickets.map(({ recordId, number }) => ({ recordId, number })),
     proposal: { version: nextVersion(tags, bump), bump },
     refusal,
   }

@@ -91,9 +91,9 @@ export async function releaseAction(form: FormData): Promise<void> {
 }
 
 export async function answerReleaseAction(form: FormData): Promise<void> {
-  const { payload } = await inProduct(form)
+  const { payload, at } = await inProduct(form)
   const run = id.safeParse(textOf(form, 'run'))
   const option = z.enum(OPTIONS).safeParse(textOf(form, 'option'))
-  if (run.success && option.success) await createReleaser(payload).answer(run.data, option.data)
+  if (run.success && option.success) await createReleaser(payload).answer(at, run.data, option.data)
   revalidatePath('/releases')
 }

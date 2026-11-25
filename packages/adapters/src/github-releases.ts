@@ -79,7 +79,8 @@ export class GithubReleases extends GithubMergeQueue {
       (x) => wire(x).tag_name === o.tag,
     );
     const release = known ?? (await this.createDraft(repo, o));
-    return { ...githubRelease(release, o.sha), draft: !!wire(release).draft };
+    const sha = (await this.tagSha(repo, o.tag)) ?? o.sha;
+    return { ...githubRelease(release, sha), draft: !!wire(release).draft };
   }
   private async createDraft(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }) {
     await this.h

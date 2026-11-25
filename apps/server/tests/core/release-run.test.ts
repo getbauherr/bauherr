@@ -105,6 +105,13 @@ const advance = async (r: Releaser, id: number) => present(await r.advance(id))
 type Stepped = { steps: { id: string; status: string }[] }
 const states = (run: Stepped) => run.steps.map((step) => `${step.id}:${step.status}`)
 
+const expectNoWrite = (repo: string) => {
+  const fake = f.fake()
+  expect(fake.listReleases(repo).filter((rel) => rel.tag === 'v0.7.0')).toEqual([])
+  expect(fake.deployStarts(repo)).toEqual([])
+  return fake.forge.listTags(repo).then((tags) => expect(tags).not.toContain('v0.7.0'))
+}
+
 const deployed = (s: Setup, state: 'success' | 'failure' | 'pending' = 'success') =>
   f.fake().setDeployment(s.repo, 'production', { sha: s.staging, url: 'https://example.com', state })
 
@@ -186,7 +193,7 @@ describe('release run', () => {
     expect(panel?.run?.question?.options).toEqual(['check-again', 'release-fixed-later'])
     expect(panel?.refusal).toContain('not finished')
     deployed(s)
-    await r.answer(first.id, 'check-again')
+    await r.answer(at(), first.id, 'check-again')
     expect((await fake.forge.releaseByTag(s.repo, 'v0.7.0'))?.draft).toBeUndefined()
     expect(fake.deployStarts(s.repo)).toHaveLength(1)
   })
@@ -202,15 +209,16 @@ describe('release run', () => {
     const stopped = await advance(r, first.id)
     expect(stopped.steps.find((step) => step.status === 'failed')?.id).toBe('check')
     expect(await fake.forge.releaseByTag(s.repo, 'v0.7.0')).toBeNull()
-    await r.answer(first.id, 'release-fixed-later')
+    await r.answer(at(), first.id, 'release-fixed-later')
     const panel = await releasePanel(h.payload(), at(), NOW)
     expect(panel?.run).toBeNull()
     expect(fake.listReleases(s.repo).find((rel) => rel.tag === 'v0.7.0')?.draft).toBe(true)
   })
 
   it('refuses while the product has release gaps', async () => {
-    await setup({ endpoint: false })
+    const s = await setup({ endpoint: false })
     await expect(start(releaser())).rejects.toThrow(/release gaps/)
+    await expectNoWrite(s.repo)
     expect((await releasePanel(h.payload(), at(), NOW))?.refusal).toMatch(/release gaps/)
   })
 
@@ -218,7 +226,7 @@ describe('release run', () => {
     const s = await setup({ merged: false })
     await expect(start(releaser())).rejects.toBeInstanceOf(ReleaseRefused)
     await expect(start(releaser())).rejects.toThrow(/Nothing was merged/)
-    expect(f.fake().deployStarts(s.repo)).toHaveLength(0)
+    await expectNoWrite(s.repo)
   })
 
   it('refuses a version number that exists or is not a version', async () => {
@@ -240,5 +248,53 @@ describe('release run', () => {
     const forbidden = [...seen.methods].filter((name) => !allowed.includes(name))
     expect(forbidden).toEqual([])
     expect(seen.methods.has('startDeploy')).toBe(true)
+  })
+
+  it('starts the production deploy once per version even when the deploy step failed after it started', async () => {
+    const s = await setup()
+    const fake = f.fake()
+    let failures = 1
+    const forge = new Proxy(fake.forge, {
+      get: (target, name) => {
+        const value: unknown = Reflect.get(target, name)
+        if (name !== 'getRepository' || typeof value !== 'function') return value
+        return (...args: unknown[]) => {
+          if (failures-- > 0) return Promise.reject(new Error('forge unavailable'))
+          return Reflect.apply(value, target, args) as unknown
+        }
+      },
+    })
+    const r = releaser({ ...fake, forge, tickets: (repo) => fake.tickets(repo) })
+    const first = await start(r)
+    expect(first.steps.find((step) => step.status === 'failed')?.id).toBe('deploy')
+    expect(fake.deployStarts(s.repo)).toHaveLength(1)
+    await r.answer(at(), first.id, 'check-again')
+    expect(fake.deployStarts(s.repo)).toHaveLength(1)
+  })
+
+  it('does not let another workspace or product answer a stopped release', async () => {
+    const s = await setup()
+    const r = releaser()
+    const first = await start(r)
+    deployed(s, 'failure')
+    await advance(r, first.id)
+    await r.answer({ workspace: h.ids.workspace + 999, product: h.ids.product }, first.id, 'release-fixed-later')
+    await r.answer({ workspace: h.ids.workspace, product: h.ids.product + 999 }, first.id, 'release-fixed-later')
+    expect((await advance(r, first.id)).state).toBe('failed')
+    await r.answer(at(), first.id, 'release-fixed-later')
+    const rows = await h.rows(sql`SELECT "state" FROM "product_releases" WHERE "id" = ${first.id}`)
+    expect(rows[0]?.state).toBe('abandoned')
+  })
+
+  it('counts a finished release as the last version at once', async () => {
+    const s = await setup()
+    const r = releaser()
+    const first = await start(r)
+    deployed(s)
+    expect((await advance(r, first.id)).state).toBe('done')
+    const panel = await releasePanel(h.payload(), at(), NOW)
+    expect(panel?.refusal).toMatch(/Nothing was merged/)
+    expect(panel?.proposal.version).toBe('v0.7.1')
+    await expect(start(r, 'v0.7.1')).rejects.toThrow(/Nothing was merged/)
   })
 })

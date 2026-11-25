@@ -9,6 +9,7 @@ export const stepSchema = z.object({
   link: z.string().nullable(),
   detail: z.string().nullable(),
   at: z.string().nullable(),
+  started: z.boolean().optional(),
 })
 export type Step = z.infer<typeof stepSchema>
 
