@@ -41,6 +41,14 @@
       "registry": "dropdown-menu",
       "source": "shadcn"
     },
+    "ui/form.tsx": {
+      "registry": "form",
+      "source": "shadcn"
+    },
+    "ui/hover-card.tsx": {
+      "registry": "hover-card",
+      "source": "shadcn"
+    },
     "ui/input.tsx": {
       "registry": "input",
       "source": "shadcn"
@@ -55,6 +63,14 @@
     },
     "ui/popover.tsx": {
       "registry": "popover",
+      "source": "shadcn"
+    },
+    "ui/resizable.tsx": {
+      "registry": "resizable",
+      "source": "shadcn"
+    },
+    "ui/scroll-area.tsx": {
+      "registry": "scroll-area",
       "source": "shadcn"
     },
     "ui/select.tsx": {
@@ -89,6 +105,10 @@
       "registry": "skeleton",
       "source": "shadcn"
     },
+    "ui/sonner.tsx": {
+      "registry": "sonner",
+      "source": "shadcn"
+    },
     "ui/switch.tsx": {
       "registry": "switch",
       "source": "shadcn"
@@ -97,8 +117,20 @@
       "registry": "table",
       "source": "shadcn"
     },
+    "ui/tabs.tsx": {
+      "registry": "tabs",
+      "source": "shadcn"
+    },
     "ui/textarea.tsx": {
       "registry": "textarea",
+      "source": "shadcn"
+    },
+    "ui/toggle-group.tsx": {
+      "registry": "toggle-group",
+      "source": "shadcn"
+    },
+    "ui/toggle.tsx": {
+      "registry": "toggle",
       "source": "shadcn"
     },
     "ui/tooltip.tsx": {
