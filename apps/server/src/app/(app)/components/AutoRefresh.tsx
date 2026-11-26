@@ -1,9 +1,10 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useTransition } from 'react'
+import type { ChangeTable } from '../lib/change-tables'
 
 const QUIET_MS = 1500
-const NAVIGATING = '#nav-progress[data-active="true"]'
+const NAVIGATING = '[aria-busy="true"]'
 
 const versionOf = (body: unknown): number | null =>
   typeof body === 'object' && body !== null && 'v' in body && typeof body.v === 'number' ? body.v : null
@@ -16,13 +17,14 @@ const fetchVersion = async (src: string): Promise<number | null> => {
 const interacting = (touchedAt: number): boolean =>
   Date.now() - touchedAt < QUIET_MS || document.querySelector(NAVIGATING) !== null
 
-export function AutoRefresh({ ms = 5000, src = '/api/changes' }: { ms?: number; src?: string }) {
+export function AutoRefresh({ tables, ms = 5000 }: { tables: readonly ChangeTable[]; ms?: number }) {
   const router = useRouter()
   const [pending, start] = useTransition()
   const busy = useRef(false)
   const seen = useRef<number | null>(null)
   const touched = useRef(0)
   busy.current = pending
+  const src = `/api/changes?tables=${tables.join(',')}`
   useEffect(() => {
     const touch = () => {
       touched.current = Date.now()

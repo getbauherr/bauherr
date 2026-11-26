@@ -16,6 +16,8 @@ const signIn = async (page: Page) => {
   await expect(page.getByRole('banner')).toBeVisible()
   await page.goto('/inbox')
   await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible()
+  await expect(rows(page).first()).toBeVisible()
+  await page.waitForLoadState('networkidle')
 }
 
 const rows = (page: Page) => page.locator('[data-inbox-row]')

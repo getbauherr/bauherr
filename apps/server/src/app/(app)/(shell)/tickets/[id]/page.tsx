@@ -3,6 +3,7 @@ import { RecordNotFound } from '../../../../../core/record/errors'
 import { ticket } from '../../../../../core/views/ticket'
 import { loadTicketRelations } from '../../../../../core/views/ticket-relations'
 import { AutoRefresh } from '../../../components/AutoRefresh'
+import { TICKET_TABLES } from '../../../lib/change-tables'
 import { EmptyState } from '../../../components/EmptyState'
 import { PageTitle } from '../../../components/PageTitle'
 import { ArchiveControl } from '../../../components/ticket/ArchiveControl'
@@ -26,12 +27,15 @@ export default async function TicketPage({ params, searchParams }: Props) {
   if (!workspace || !Number.isInteger(recordId) || recordId <= 0) {
     return <EmptyState text="This ticket does not exist." action={GONE} />
   }
-  const view = await ticket(await payloadClient(), { workspace: workspace.id, recordId }).catch((error: unknown) => {
-    if (error instanceof RecordNotFound) return null
-    throw error
-  })
+  const payload = await payloadClient()
+  const [view, relations] = await Promise.all([
+    ticket(payload, { workspace: workspace.id, recordId }).catch((error: unknown) => {
+      if (error instanceof RecordNotFound) return null
+      throw error
+    }),
+    loadTicketRelations(payload, workspace.id, recordId),
+  ])
   if (!view) return <EmptyState text="This ticket does not exist." action={GONE} />
-  const relations = await loadTicketRelations(await payloadClient(), workspace.id, recordId)
   const { tab, proof } = await searchParams
   const current = parseTab(tab)
   const may = mayDecide({ id: String(user.id), role: user.role, workspaceIds: [workspace.id] }, workspace.id)
@@ -50,7 +54,7 @@ export default async function TicketPage({ params, searchParams }: Props) {
         </div>
         <SideColumn view={view} relations={relations} may={may} />
       </div>
-      <AutoRefresh />
+      <AutoRefresh tables={TICKET_TABLES} />
     </>
   )
 }

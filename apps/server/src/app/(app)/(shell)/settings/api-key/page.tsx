@@ -2,6 +2,7 @@ import { hasApiKey, listAgentKeys } from '../../../../../lib/api-key'
 import { agentSessions } from '../../../../../core/views/sessions'
 import { publicUrl } from '../../../../../lib/oidc'
 import { AutoRefresh } from '../../../components/AutoRefresh'
+import { SESSION_TABLES } from '../../../lib/change-tables'
 import { AgentKeyForm } from '../../../components/connect/AgentKeyForm'
 import { AgentKeyTable } from '../../../components/connect/AgentKeyTable'
 import { SessionsTable } from '../../../components/connect/SessionsTable'
@@ -29,7 +30,7 @@ export default async function ApiKey() {
       <AgentKeyForm action={mintOwnAgentKey} url={publicUrl()} />
       {keys.length > 0 && <AgentKeyTable keys={keys} />}
       <SessionsTable sessions={sessions} />
-      <AutoRefresh />
+      <AutoRefresh tables={SESSION_TABLES} />
       <h2 className="heading">Personal key (human)</h2>
       <p className="small text-destructive">Never give this key to an agent; it can approve gates.</p>
       {has ? (

@@ -100,7 +100,11 @@ const recentlyEnded = (row: TicketRow, now: Date): boolean =>
   row.endedAt !== null && row.endedAt.getTime() >= now.getTime() - 7 * DAY_MS
 
 export const board = async (payload: Payload, filter: RowFilter): Promise<Board> => {
-  const [rows, relations] = await Promise.all([loadRows(payload, filter), loadRelations(payload, filter.workspace)])
+  const [rows, relations, held] = await Promise.all([
+    loadRows(payload, filter),
+    loadRelations(payload, filter.workspace),
+    heldOf(payload, filter),
+  ])
   const toRelatedCard = (row: TicketRow): BoardCard => ({
     ...toCard(row),
     relations: relations.get(row.recordId) ?? null,
@@ -111,5 +115,5 @@ export const board = async (payload: Payload, filter: RowFilter): Promise<Board>
     if (row.parked !== null) parked.push(toRelatedCard(row))
     else if (row.stage !== 'done' || recentlyEnded(row, filter.now)) stages[row.stage].push(toRelatedCard(row))
   }
-  return { stages, held: await heldOf(payload, filter), parked }
+  return { stages, held, parked }
 }

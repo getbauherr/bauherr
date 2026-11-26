@@ -129,7 +129,7 @@ test('a parked ticket names its need in the Inbox and offers Resume and Discard'
 
 test('a decision on a card that moved on shows the stale sentence', async ({ page, browser }) => {
   const path = await enterOpen(page, 'Result decided twice')
-  await page.route('**/api/changes', (route) => route.abort())
+  await page.route('**/api/changes*', (route) => route.abort())
   const other = await browser.newPage()
   await signIn(other)
   await other.goto(path)

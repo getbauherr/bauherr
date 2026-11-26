@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { AppFooter } from './AppFooter'
 import { AppSidebar } from './AppSidebar'
 import { mainItems } from './nav-items'
-import { NavProgress } from './NavProgress'
 import { PageTitleProvider } from './PageTitle'
 import { ShellHeader } from './ShellHeader'
 import { SidebarProvider } from './ui/sidebar'
@@ -13,7 +12,6 @@ export function AppShell({ defaultOpen, version, children, ...sidebar }: Props) 
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
       <PageTitleProvider>
-        <NavProgress />
         <a
           href="#main"
           className={

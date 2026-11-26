@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useFormStatus } from 'react-dom'
 import { Button } from './ui/button'
@@ -18,9 +19,9 @@ export function LinkedReason({ reason, links }: { reason: string; links: { text:
   return reason.split(/(#\d+|Run \d+)/).map((part, i) => {
     const link = links.find((l) => l.text === part)
     return link ? (
-      <a key={i} className="text-primary" href={link.href}>
+      <Link key={i} className="text-primary" href={link.href}>
         {part}
-      </a>
+      </Link>
     ) : (
       part
     )
@@ -46,9 +47,9 @@ type ButtonState = {
 function LinkButton({ p }: { p: NextStepPrimary & { href: string } }) {
   return (
     <Button asChild>
-      <a href={p.href} {...(p.newTab ? { target: '_blank', rel: 'noreferrer' } : {})}>
+      <Link href={p.href} {...(p.newTab ? { target: '_blank', rel: 'noreferrer' } : {})}>
         {p.label}
-      </a>
+      </Link>
     </Button>
   )
 }

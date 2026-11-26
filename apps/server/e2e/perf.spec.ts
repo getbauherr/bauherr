@@ -80,7 +80,7 @@ const observe = (c: Content) => {
     if (arrived && perf.content === null) perf.content = now
     if (
       perf.pending === null &&
-      (arrived || document.querySelector('[aria-busy="true"], [data-testid=nav-progress][data-active=true]'))
+      (arrived || document.querySelector('[aria-busy="true"]'))
     )
       perf.pending = now
   }
@@ -88,7 +88,7 @@ const observe = (c: Content) => {
     subtree: true,
     childList: true,
     attributes: true,
-    attributeFilter: ['aria-busy', 'data-active'],
+    attributeFilter: ['aria-busy'],
     characterData: true,
   })
 }

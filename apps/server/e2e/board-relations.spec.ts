@@ -33,6 +33,7 @@ test('a blocking ticket shows Blocks with every ticket down the chain and a red 
 test('without a filter a blocking ticket sorts above an unrelated card in its stage', async ({ page }) => {
   await enter(page, '/')
   const middle = card(page, 'Chain middle')
+  await expect(middle).toBeVisible()
   const stage = page.getByRole('list').filter({ has: middle })
   const titles = await stage.last().getByRole('listitem').getByRole('link').allInnerTexts()
   expect(titles.indexOf('Chain middle')).toBeLessThan(titles.indexOf('Early bystander'))
