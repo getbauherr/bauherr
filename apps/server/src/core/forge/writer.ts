@@ -16,11 +16,10 @@ import { WRITE_KINDS, type Stage } from '../events'
 import { settleMerge } from './merge-pending'
 import { checkNewRelation } from '../relations/relate'
 import { edgeOf } from '../relations/proposal'
-import { forgeAdd, forgeRemove } from '../relations/forge-ops'
+import { syncForgeLink } from '../relations/forge-link'
 import { normalised, type Edge } from '../relations/rules'
 import { deleteEdge, insertEdge, itemFacts, itemsByNumber } from '../relations/store'
-import { forgeNumbers } from '../relations/sync'
-import { RelationRefused, typeOf, type ForgeField, type RelationType } from '../relations/types'
+import { RelationRefused, typeOf } from '../relations/types'
 import type { RelationKind } from '../record/schema'
 import { commentRow, errorText, itemFromPull, itemFromTicket } from '../mirror/map'
 import { upsertComments, upsertItem } from '../mirror/store'
@@ -221,18 +220,6 @@ const relationEnds = async (ctx: Ctx, input: Edge) => {
   const to = facts.get(edge.to)
   if (!from || !to) throw new TargetNotFound(`Tickets ${edge.from} and ${edge.to} must both be mirrored.`)
   return { type, edge, from, to }
-}
-
-const syncForgeLink = async (
-  tickets: TicketSource,
-  type: RelationType,
-  link: { field: ForgeField; mine: number; other: number },
-  change: 'add' | 'remove',
-): Promise<void> => {
-  const linked = forgeNumbers(await tickets.get(String(link.mine)), type).includes(link.other)
-  if (linked === (change === 'add')) return
-  const write = change === 'add' ? forgeAdd : forgeRemove
-  await write(tickets, link.field, String(link.mine), String(link.other))
 }
 
 const changeRelation = async (ctx: Ctx, recordId: number, input: Edge, change: 'add' | 'remove'): Promise<void> => {
