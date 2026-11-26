@@ -34,7 +34,13 @@ type CountProps = { count: number; title: string; note: string }
 function NavCount({ count, title, note }: Partial<CountProps>) {
   if (!count || count <= 0) return null
   return (
-    <span className="mono ml-auto group-data-[collapsible=icon]:hidden" title={title}>
+    <span
+      className={
+        'ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-xs/5 font-semibold ' +
+        'text-primary-foreground group-data-[collapsible=icon]:hidden'
+      }
+      title={title}
+    >
       {count}
       <span className="sr-only">{note}</span>
     </span>
@@ -51,11 +57,11 @@ function Brand() {
         'focus-visible:ring-sidebar-ring'
       }
     >
-      <svg width="24" height="24" viewBox="0 0 32 32" fill="none" aria-hidden className="shrink-0">
-        <rect x="3" y="3" width="26" height="26" stroke="currentColor" strokeWidth="2" />
-        <rect x="3" y="18" width="11" height="11" fill="var(--accent)" />
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden className="shrink-0">
+        <rect x="2" y="2" width="20" height="20" rx="4" stroke="currentColor" strokeWidth="2" />
+        <rect x="12" y="12" width="10" height="10" rx="2" fill="var(--accent)" />
       </svg>
-      <span className="heading group-data-[collapsible=icon]:hidden">Bauherr</span>
+      <span className="heading font-bold group-data-[collapsible=icon]:hidden">Bauherr</span>
     </Link>
   )
 }

@@ -1,37 +1,110 @@
-import type { ReactNode } from 'react'
-import { cn } from '@/lib/utils'
-import { Badge } from '../../ui/badge'
+'use client'
 
-export function RecommendationCard({
-  title,
-  level,
-  confidence,
-  accepted,
-  children,
-  action,
+import type { ComponentProps } from 'react'
+import type { ReactNode } from 'react'
+import { CheckIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { inkButton, mono, paper } from './surfaces'
+import { useReceiptFocus } from './receipt-focus'
+export type RecommendationState = 'idle' | 'accepted'
+const CONFIDENCE_BARS = [0, 1, 2]
+function RecommendationIdleActions({
+  confidenceLabel,
+  onAccept,
+  onAlternatives,
 }: {
-  title: string
-  level: string
-  confidence: string
-  accepted: boolean
-  children: ReactNode
-  action: ReactNode
+  confidenceLabel: string
+  onAccept: (() => void) | undefined
+  onAlternatives: (() => void) | undefined
 }) {
   return (
-    <article
+    <>
+      <div className="flex items-center gap-2">
+        <span className="flex items-end gap-0.5" aria-hidden>
+          {CONFIDENCE_BARS.map((bar) => (
+            <span key={bar} className="w-1 rounded-full bg-ok/70" style={{ height: 6 + bar * 3 }} />
+          ))}
+        </span>
+        <span className={cn(mono, 'text-muted-foreground')}>{confidenceLabel}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {onAlternatives && (
+          <button
+            type="button"
+            onClick={onAlternatives}
+            className={cn(
+              'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground/90 h-8',
+              'rounded-full px-3.5 text-xs font-medium',
+              'transition-[background-color,color,scale] duration-150 active:scale-[0.96]',
+            )}
+          >
+            Alternatives
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onAccept}
+          className={cn(inkButton, 'flex h-8 items-center rounded-full px-3.5 text-xs font-medium')}
+        >
+          Accept
+        </button>
+      </div>
+    </>
+  )
+}
+
+export function RecommendationCard({
+  state,
+  question,
+  children,
+  confidenceLabel,
+  acceptedLabel,
+  onAccept,
+  onAlternatives,
+  className,
+  ...props
+}: Omit<
+  ComponentProps<'div'>,
+  'state' | 'question' | 'children' | 'confidenceLabel' | 'acceptedLabel' | 'onAccept' | 'onAlternatives'
+> & {
+  state: RecommendationState
+  question: string
+  children: ReactNode
+  confidenceLabel: string
+  acceptedLabel: string
+  onAccept?: () => void
+  onAlternatives?: () => void
+}) {
+  const { receiptRef, focusHandlers } = useReceiptFocus<HTMLDivElement>(props)
+  return (
+    <div
       data-slot="recommendation-card"
-      aria-label={title}
-      className={cn('grid gap-2 rounded-2xl border bg-card p-4', accepted ? 'border-ok' : 'border-border')}
+      className={cn(paper, 'flex w-full max-w-sm flex-col gap-3 rounded-[20px] p-4', className)}
+      {...props}
+      {...focusHandlers}
     >
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="m-0 text-base font-semibold">{title}</h3>
-        <Badge variant="accent">{level}</Badge>
+      <p className="text-sm font-medium">{question}</p>
+      <p className="text-muted-foreground text-[13px] leading-relaxed">{children}</p>
+
+      <div className="flex h-8 items-center justify-between">
+        {state === 'idle' ? (
+          <RecommendationIdleActions
+            confidenceLabel={confidenceLabel}
+            onAccept={onAccept}
+            onAlternatives={onAlternatives}
+          />
+        ) : (
+          <div
+            key="accepted"
+            ref={receiptRef}
+            tabIndex={-1}
+            className="fade-in animate-in text-muted-foreground flex items-center gap-2 text-xs duration-300"
+          >
+            <CheckIcon className="size-3.5 text-ok" />
+            {acceptedLabel}
+          </div>
+        )}
       </div>
-      <div className="small grid gap-1 text-muted-foreground">{children}</div>
-      <div className="flex items-center justify-between gap-3">
-        <span className="small text-muted-foreground">{confidence} confidence</span>
-        {action}
-      </div>
-    </article>
+    </div>
   )
 }

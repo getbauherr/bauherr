@@ -2,6 +2,10 @@
 
 The Bauherr UI is served at `/`. A Bauherr or Admin decides on tickets here and sets up Products. This is the short guide.
 
+## Building blocks
+
+Pages are built from shadcn/ui components and assistant-ui. The colours are indigo for actions and selection, emerald for success. The component map, the palette and the type classes are in `DESIGN.md`.
+
 ## Shell
 
 Every signed-in page has this frame.

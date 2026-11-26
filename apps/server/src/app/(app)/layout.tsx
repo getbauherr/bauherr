@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import localFont from 'next/font/local'
 import type { ReactNode } from 'react'
+import { Toaster } from './components/ui/sonner'
 import './tokens.css'
 import './tailwind.css'
-import './app.css'
 
 const archivo = localFont({
   src: './fonts/Archivo-latin-wght.woff2',
@@ -31,7 +31,10 @@ export default function Layout({ children }: { children: ReactNode }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: theme }} />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Toaster />
+      </body>
     </html>
   )
 }

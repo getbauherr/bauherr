@@ -13,7 +13,7 @@ import type { FormState } from '../lib/settings'
 import { LeaveGuard } from './LeaveGuard'
 import { NextStepBar } from './NextStepBar'
 import { FormStateContext } from './SettingsFormState'
-import { Alert } from './ui/alert'
+import { Alert, AlertDescription } from './ui/alert'
 import { Button } from './ui/button'
 
 export { Field } from './SettingsField'
@@ -87,7 +87,7 @@ function FormNotice({ state, noticeHint, copy }: { state: FormState; noticeHint?
           <CopyField text={state.notice} block={state.notice.includes('\n')} />
         ) : (
           <Alert role="status" className="mono">
-            {state.notice}
+            <AlertDescription>{state.notice}</AlertDescription>
           </Alert>
         ))}
     </>
@@ -197,12 +197,14 @@ export function CopyField({ text, block }: { text: string; block?: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       {block ? (
-        <Alert role="status" className="mono overflow-x-auto">
-          <pre className="m-0">{text}</pre>
+        <Alert role="status" className="mono">
+          <AlertDescription>
+            <pre className="m-0 break-all whitespace-pre-wrap">{text}</pre>
+          </AlertDescription>
         </Alert>
       ) : (
         <Alert role="status" className="mono">
-          {text}
+          <AlertDescription>{text}</AlertDescription>
         </Alert>
       )}
       <Button

@@ -1,33 +1,62 @@
-import { Badge } from '../../ui/badge'
+'use client'
 
-export type TodoItem = { id: string; text: string; badge: string; done: boolean }
+import { useId, useState, type ComponentProps } from 'react'
+import { cn } from '@/lib/utils'
+import { ghostButton, mono } from './surfaces'
+import { clamp } from '../utils/range'
+import { isFoldable, TodoRow, type TodoItem } from './todo-list.parts'
 
-export function TodoList({ title, items }: { title: string; items: TodoItem[] }) {
-  const done = items.filter((item) => item.done).length
+export type { TodoItem, TodoStatus } from './todo-list.parts'
+
+export function TodoList({
+  items,
+  revision,
+  title = 'Todos',
+  description,
+  maxVisible,
+  className,
+  ...props
+}: Omit<ComponentProps<'div'>, 'children' | 'items' | 'revision' | 'title'> & {
+  items: readonly TodoItem[]
+  revision?: number | undefined
+  title?: string | undefined
+  description?: string | undefined
+  maxVisible?: number | undefined
+}) {
+  const done = items.filter((item) => item.status === 'done').length
+  const total = items.filter((item) => item.status !== 'cancelled').length
+  const visibleCount = Math.floor(clamp(maxVisible ?? items.length, 0, items.length))
+  const [expanded, setExpanded] = useState(false)
+  const listId = useId()
+  const hiddenItems = items.filter((item, index) => isFoldable(item, index, visibleCount))
+  const canFold = maxVisible !== undefined && hiddenItems.length > 0
   return (
-    <section
-      data-slot="todo-list"
-      aria-label={title}
-      className="grid gap-3 rounded-2xl border border-border bg-card p-4"
-    >
-      <h2 className="m-0 flex justify-between text-base font-semibold">
-        {title}
-        <span className="small text-muted-foreground" aria-label={`${done} of ${items.length}`}>
-          {done}/{items.length}
+    <div data-slot="todo-list" className={cn('flex w-full max-w-sm flex-col gap-3', className)} {...props}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="text-[13.5px] font-medium">{title}</span>
+          {description ? <p className="text-muted-foreground text-xs leading-4 break-words">{description}</p> : null}
+        </div>
+        <span className={cn(mono, 'text-muted-foreground shrink-0 whitespace-nowrap tabular-nums')}>
+          {revision === undefined ? `${done}/${total}` : `${done}/${total} · rev ${revision}`}
         </span>
-      </h2>
-      {items.length === 0 ? (
-        <p className="small m-0 text-muted-foreground">Nothing agreed yet. Accept a proposal or talk it through.</p>
-      ) : (
-        <ul className="m-0 grid list-none gap-3 p-0">
-          {items.map((item) => (
-            <li key={item.id} className="grid gap-1">
-              <span>{item.text}</span>
-              <Badge className="w-fit">{item.badge}</Badge>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+      </div>
+      <ul id={listId} className="flex flex-col gap-1">
+        {items.map((item, index) =>
+          canFold && !expanded && isFoldable(item, index, visibleCount) ? null : <TodoRow key={item.id} item={item} />,
+        )}
+      </ul>
+      {canFold ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={listId}
+          onClick={() => setExpanded((current) => !current)}
+          className={cn(ghostButton, 'self-start px-2 py-1 text-xs font-medium')}
+        >
+          {expanded ? 'Show less' : `Show ${hiddenItems.length} more`}
+        </button>
+      ) : null}
+    </div>
   )
 }

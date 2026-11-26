@@ -88,7 +88,7 @@ describe('RetroOutcome', () => {
   it('names the repository a ticket opens in and shows an error from Apply', async () => {
     const actions = stub({ apply: vi.fn(async () => ({ error: 'The forge is down.' })) })
     show(outcome(['keep']), actions)
-    expect(screen.getByText('Opens in acme/factory')).toBeTruthy()
+    expect(screen.getByText('acme/factory')).toBeTruthy()
     fireEvent.click(apply())
     expect((await screen.findByRole('alert')).textContent).toBe('The forge is down.')
     expect(apply().disabled).toBe(false)

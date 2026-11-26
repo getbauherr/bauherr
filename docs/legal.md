@@ -54,6 +54,10 @@ For the other coding tools the gateway offers no subscription passthrough. Codex
 
 The providers allowed per Workspace are the egress policy. A Workspace reaches only the providers configured for it; the Workspace's credential never reaches an agent. With the optional router profile the router container calls only the gateway, with its own key.
 
+## UI libraries
+
+The UI uses shadcn/ui components (copied into the repository), Radix UI, Sonner, react-hook-form and react-resizable-panels. The chat surfaces use assistant-ui (`@assistant-ui/react` and the components of its registry at r.assistant-ui.com, copied into `components/assistant-ui/elements`, listed in `apps/server/registry.lock.json`) and tw-shimmer. All are MIT licensed, which is compatible with Apache-2.0. Their notices are listed in `NOTICE`.
+
 ## Optional dashboards profile
 
 If you add a dashboards stack licensed under AGPL-3.0, such as Grafana or Loki, run the unmodified upstream images as separate services. Bauherr does not link to them. If you modify them, you must offer your changes under the AGPL.
