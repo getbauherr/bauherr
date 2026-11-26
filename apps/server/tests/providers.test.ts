@@ -20,7 +20,7 @@ const EXPECTED: Record<Preset, object> = {
   mistral: {
     provider: { custom: { formats: [{ type: 'completions' }], providerOverride: 'mistral' } },
     params: { apiKey: { file: FILE }, baseUrl: 'https://api.mistral.ai/v1' },
-    overrides: { metadata: {} },
+    overrides: { metadata: {}, thinking: { type: 'disabled' } },
   },
   bedrock: { provider: 'bedrock', params: { apiKey: { file: FILE }, awsRegion: 'us-east-1' } },
   vertex: {

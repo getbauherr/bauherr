@@ -150,7 +150,7 @@ export const PRESETS: Record<Preset, Def> = {
         slug,
         custom('completions', 'mistral'),
         { apiKey: { file }, baseUrl: 'https://api.mistral.ai/v1' },
-        { overrides: { metadata: {} } },
+        { overrides: { metadata: {}, thinking: { type: 'disabled' } } },
       ),
   },
   bedrock: {
