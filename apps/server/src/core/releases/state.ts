@@ -3,7 +3,7 @@ import type { Check, Release } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { ReadForge } from '../forge/reader'
-import { sortVersions } from '../readiness/release-facts'
+import { releasesOnly, sortVersions } from '../readiness/release-facts'
 import type { SourceRow } from '../mirror/store'
 
 const MAX_VERSIONS = 20
@@ -44,7 +44,7 @@ const versionsOf = async (
 ): Promise<{ found: (Version & { sha: string | null })[]; olderAt: string | null }> => {
   const releases = await forge.listReleases(repo)
   const tags = [...new Set([...(await forge.listTags(repo)), ...releases.map((release) => release.tag)])]
-  const sorted = sortVersions(tags)
+  const sorted = sortVersions(releasesOnly(tags))
   const found: (Version & { sha: string | null })[] = []
   for (const tag of sorted.slice(0, MAX_VERSIONS)) {
     const { release, sha, at } = await stampOfTag(repo, forge, releases, tag)

@@ -39,9 +39,13 @@ export const newSteps = (): Step[] =>
 export const OPTIONS = ['check-again', 'release-fixed-later'] as const
 export type RunOption = (typeof OPTIONS)[number]
 
+export const isPublished = (steps: Pick<Step, 'id' | 'status'>[]): boolean =>
+  steps.some((step) => step.id === 'publish' && step.status === 'done')
+
 export const questionOf = (run: ReleaseRun): { text: string; options: readonly RunOption[] } | null => {
   if (run.state !== 'failed') return null
-  return { text: `Releasing ${run.version} stopped: ${run.failure ?? 'a step failed'}`, options: OPTIONS }
+  const options = isPublished(run.steps) ? OPTIONS.filter((option) => option === 'check-again') : OPTIONS
+  return { text: `Releasing ${run.version} stopped: ${run.failure ?? 'a step failed'}`, options }
 }
 
 export const stepLabel = (id: StepId, run: Pick<ReleaseRun, 'version' | 'sha'>): string => {

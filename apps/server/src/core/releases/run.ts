@@ -6,7 +6,8 @@ import { ProductObserving } from '../forge/errors'
 import { createWriter, defaultDeps, type ForgeWriter, type WriterDeps } from '../forge/writer'
 import { loadFacts } from '../readiness/load'
 import { forgeText } from './forge-text'
-import { readNotes, UNRELEASED } from './notes-store'
+import type { AskModel } from './notes'
+import { readNotes, UNRELEASED, writeNotesFor } from './notes-store'
 import {
   abandon,
   claim,
@@ -19,7 +20,7 @@ import {
   saveRun,
   unclaim,
 } from './run-store'
-import { OPTIONS, type ReleaseRun, type RunOption, type Step, type StepId } from './run-steps'
+import { isPublished, OPTIONS, type ReleaseRun, type RunOption, type Step, type StepId } from './run-steps'
 import { readyToRelease, type ProductAt } from './ready'
 import { validVersion } from './version'
 
@@ -34,16 +35,17 @@ type Context = { payload: Payload; deps: ReleaseDeps; writer: ForgeWriter }
 
 export type StartInput = ProductAt & { version: string; notesLink: string }
 
-export const startRelease = async (ctx: Context, input: StartInput): Promise<ReleaseRun> => {
+export const startRelease = async (ctx: Context, input: StartInput, ask: AskModel): Promise<ReleaseRun> => {
   const { payload, deps } = ctx
   const existing = await runByVersion(payload, input.product, input.version)
-  if (existing) return existing
+  if (existing && existing.state !== 'abandoned') return existing
   const ready = await readyToRelease(payload, input, deps.now())
   if (!ready) throw new ReleaseRefused('The repository has not been read yet.')
   if (ready.refusal) throw new ReleaseRefused(ready.refusal)
   if (!validVersion(input.version, ready.tags)) {
-    throw new ReleaseRefused(`${input.version} is not a new version number such as v1.2.3.`)
+    throw new ReleaseRefused(`${input.version} is already used or is not a version number such as v1.2.3.`)
   }
+  await writeNotesFor(payload, { ...input, version: UNRELEASED }, ready.merged, ask)
   const notes = await readNotes(payload, input.product, UNRELEASED)
   const body = forgeText(notes?.items ?? [], notes?.internal ?? 0, input.notesLink)
   return createRun(
@@ -224,7 +226,7 @@ export const advanceRunning = async (ctx: Context): Promise<number> => {
 export const answerRelease = async (ctx: Context, at: ProductAt, id: number, option: RunOption): Promise<void> => {
   const run = await readRunIn(ctx.payload, id, at)
   if (run?.state !== 'failed' || !OPTIONS.includes(option)) return
-  if (option === 'release-fixed-later') return abandon(ctx.payload, id)
+  if (option === 'release-fixed-later') return isPublished(run.steps) ? undefined : abandon(ctx.payload, id)
   const steps = run.steps.map((step) =>
     step.status === 'failed' ? { ...step, status: 'todo' as const, detail: null } : step,
   )
@@ -236,8 +238,8 @@ export const createReleaser = (payload: Payload, deps: ReleaseDeps = defaultDeps
   const ctx: Context = { payload, deps, writer: createWriter(payload, deps) }
   return {
     ready: (at: ProductAt) => readyToRelease(payload, at, deps.now()),
-    start: async (input: StartInput) => {
-      const run = await startRelease(ctx, input)
+    start: async (input: StartInput, ask: AskModel) => {
+      const run = await startRelease(ctx, input, ask)
       return advanceRelease(ctx, run.id)
     },
     advance: (id: number) => advanceRelease(ctx, id),

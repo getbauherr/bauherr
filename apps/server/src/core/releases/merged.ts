@@ -8,6 +8,7 @@ export type MergedTicket = {
   title: string
   mergedAt: string
   visible: boolean
+  breaking: boolean
   acceptedAt: string | null
 }
 
@@ -21,11 +22,20 @@ const row = z.object({
   merged_at: z.coerce.date(),
   accepted_at: z.coerce.date().nullable(),
   data: z.unknown(),
+  pr_title: z.string().nullable(),
+  pr_labels: z.array(z.string()).catch([]),
+  issue_labels: z.array(z.string()).catch([]),
 })
+
+const BREAKING_TITLE = /^[a-z]+(\([^)]*\))?!:/i
+
+const isBreaking = (title: string | null, labels: string[]): boolean =>
+  BREAKING_TITLE.test(title ?? '') || labels.some((label) => label.toLowerCase() === 'breaking')
 
 export const mergedTickets = async (payload: Payload, source: number): Promise<MergedTicket[]> => {
   const found = await payload.db.drizzle.execute(sql`
     SELECT r."id" AS record_id, r."source_number", t."title", i."forge_closed_at" AS merged_at, r."data",
+      i."title" AS pr_title, i."labels" AS pr_labels, t."labels" AS issue_labels,
       (SELECT min(e."created_at") FROM "events" e
         WHERE e."record_id" = r."id" AND e."type" IN ('result.accepted', 'ticket.done-elsewhere')) AS accepted_at
     FROM "mirror_items" i
@@ -44,6 +54,7 @@ export const mergedTickets = async (payload: Payload, source: number): Promise<M
       title: parsed.title ?? `#${parsed.source_number}`,
       mergedAt: parsed.merged_at.toISOString(),
       visible: changes.some((change) => change.tag === 'visible'),
+      breaking: isBreaking(parsed.pr_title, [...parsed.pr_labels, ...parsed.issue_labels]),
       acceptedAt: parsed.accepted_at?.toISOString() ?? null,
     }
   })

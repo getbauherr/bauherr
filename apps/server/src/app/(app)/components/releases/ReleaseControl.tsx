@@ -53,7 +53,11 @@ function Question({ run, product, answer }: { run: RunView; product: number; ans
         <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" />
         {run.question.text}
       </p>
-      <p className="small m-0 text-muted-foreground">The release stays a draft until it is fixed.</p>
+      <p className="small m-0 text-muted-foreground">
+        {run.question.options.includes('release-fixed-later')
+          ? 'The release stays a draft until it is fixed.'
+          : 'The notes are published; only marking the tickets is left.'}
+      </p>
       <div className="flex flex-wrap gap-2">
         {run.question.options.map((option) => (
           <Button key={option} type="submit" name="option" value={option} size="sm" variant="outline">
@@ -96,7 +100,13 @@ function Start({ panel, product, refused, release }: StartProps) {
         </label>
         <span className="small text-muted-foreground">{BUMPS[proposal.bump]}</span>
         <p className="small m-0">
-          Deploys <span className="mono">{panel.sha.slice(0, 7)}</span> to production and publishes the notes.
+          Covers {panel.changes} {panel.changes === 1 ? 'change' : 'changes'} merged since{' '}
+          {panel.since === null ? 'the start' : <span className="mono">{panel.since}</span>}. Release candidates are
+          not releases.
+        </p>
+        <p className="small m-0">
+          Deploys <span className="mono">{panel.sha.slice(0, 7)}</span> to production and publishes the notes for
+          these changes.
         </p>
         <div>
           <Button type="submit" disabled={refusal !== null}>Release {version}</Button>

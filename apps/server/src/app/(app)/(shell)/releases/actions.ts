@@ -68,21 +68,14 @@ export async function removeNoteAction(form: FormData): Promise<void> {
 }
 
 export async function releaseAction(form: FormData): Promise<void> {
-  const { payload, at, view } = await inProduct(form)
+  const { payload, at } = await inProduct(form)
   const notesLink = `${publicUrl()}/releases?product=${at.product}#notes`
-  if (view.notes === null) {
-    const model = gatewayModel(payload)
-    await writeNotesFor(payload, at, view.ready?.tickets ?? [], (system, user) =>
-      model(at.workspace, system, [{ role: 'user', content: user }]),
-    )
-  }
+  const model = gatewayModel(payload)
   try {
-    await createReleaser(payload).start({
-      workspace: at.workspace,
-      product: at.product,
-      version: textOf(form, 'version').trim(),
-      notesLink,
-    })
+    await createReleaser(payload).start(
+      { workspace: at.workspace, product: at.product, version: textOf(form, 'version').trim(), notesLink },
+      (system, user) => model(at.workspace, system, [{ role: 'user', content: user }]),
+    )
   } catch (error) {
     if (!(error instanceof ReleaseRefused)) throw error
     redirect(`/releases?product=${at.product}&refused=${encodeURIComponent(error.message)}`)

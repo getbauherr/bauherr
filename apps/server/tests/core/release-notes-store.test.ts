@@ -29,6 +29,7 @@ const ticket = async (number: number, title: string, type = 'change', visible = 
     title,
     mergedAt: '2026-11-25T10:00:00Z',
     visible,
+    breaking: false,
     acceptedAt: null,
   }
 }

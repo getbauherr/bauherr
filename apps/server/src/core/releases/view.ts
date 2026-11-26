@@ -2,9 +2,10 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import { loadLastCheck, type LastCheck } from '../readiness/last-check'
-import { highestVersion } from '../readiness/release-facts'
+import { highestVersion, isRelease } from '../readiness/release-facts'
 import { mergedTickets, type MergedTicket } from './merged'
 import { readNotes, UNRELEASED, type StoredNotes } from './notes-store'
+import { unfinishedVersions } from './run-store'
 import { releaseStateSchema, type ReleaseState } from './state'
 
 export type PastVersion = {
@@ -35,10 +36,11 @@ const sourceRow = z.object({
 
 const timeOf = (iso: string | null): number => (iso === null ? Number.NEGATIVE_INFINITY : Date.parse(iso))
 
-export const partition = (state: ReleaseState, merged: MergedTicket[]) => {
-  const last = highestVersion(state.versions.map((version) => version.tag))
-  const lastAt = state.versions.find((version) => version.tag === last)?.at ?? null
-  const ascending = [...state.versions].sort((a, b) => timeOf(a.at) - timeOf(b.at))
+export const partition = (state: ReleaseState, merged: MergedTicket[], unfinished: string[] = []) => {
+  const releases = state.versions.filter((version) => isRelease(version.tag) && !unfinished.includes(version.tag))
+  const last = highestVersion(releases.map((version) => version.tag))
+  const lastAt = releases.find((version) => version.tag === last)?.at ?? null
+  const ascending = [...releases].sort((a, b) => timeOf(a.at) - timeOf(b.at))
   const past = ascending.map((version, index): PastVersion => {
     const from = timeOf(index === 0 ? state.olderAt : (ascending[index - 1]?.at ?? null))
     const to = timeOf(version.at)
@@ -95,7 +97,8 @@ export const releasesPage = async (
   if (!product || !source) return none
   const check = await checkOf(payload, source)
   if (!state) return { ...none, check }
-  const { ready, past } = partition(state, await mergedTickets(payload, source.id))
+  const unfinished = await unfinishedVersions(payload, product.id)
+  const { ready, past } = partition(state, await mergedTickets(payload, source.id), unfinished)
   const notes = await readNotes(payload, product.id, UNRELEASED)
   return { products, product, production: productionOf(state), staging: state.staging, ready, past, notes, check }
 }
