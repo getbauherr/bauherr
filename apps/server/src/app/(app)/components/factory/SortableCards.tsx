@@ -22,7 +22,7 @@ const TARGETS: Record<MoveTo, (index: number) => number> = { top: () => 0, up: (
 
 export function SortableCards({ items, more }: { items: Item<ReactNode>[]; more?: LaneMore | undefined }) {
   const lane = useLaneMore(items, more)
-  const { order, reorder, failed, status } = useOrder(lane.all)
+  const { order, reorder, failed, status } = useOrder(lane.all, lane.total)
   const { dragging, handlers, mark, clearOver } = useDrag(order.map((card) => card.id), reorder)
   return (
     <>

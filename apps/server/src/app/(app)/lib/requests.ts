@@ -4,6 +4,7 @@ import { loadRows, type TicketRow } from '../../../core/views/rows'
 import { requestCounts, requestPage, type RequestCursor } from '../../../core/views/request-list'
 import { listRequests, type RequestFilter, type Viewer } from '../../../core/views/request-status'
 import { notFound } from 'next/navigation'
+import { REQUEST_PAGE } from './chunks'
 import { assignmentRows, isBauherr, isProductOwner, loginsOf, mayWorkIn } from '../../../lib/people'
 import { currentPersonWorkspace, requirePerson, type Person } from './session'
 
@@ -51,8 +52,6 @@ export const readableProducts = async (payload: Payload, person: Person): Promis
     : []
 }
 
-export const REQUEST_PAGE = 50
-
 const requestFilter = (product: ListedProduct) =>
   ({ workspace: product.workspace, product: product.id, now: new Date(), history: 'all' }) as const
 
@@ -63,9 +62,10 @@ export const viewerOf = async (payload: Payload, person: Person): Promise<Viewer
 
 export const requestChunk = async (
   payload: Payload,
-  input: { product: ListedProduct; viewer: Viewer; show: RequestFilter; after: RequestCursor | null },
+  input: { product: ListedProduct; viewer: Viewer; show: RequestFilter; after: RequestCursor | null; limit?: number },
 ) => {
-  const page = await requestPage(payload, requestFilter(input.product), { ...input, limit: REQUEST_PAGE })
+  const limit = input.limit ?? REQUEST_PAGE
+  const page = await requestPage(payload, requestFilter(input.product), { ...input, limit })
   return { list: listRequests(page.rows, input.viewer), cursor: page.cursor }
 }
 

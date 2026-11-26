@@ -11,7 +11,7 @@ const moved = <T,>(items: Item<T>[], from: number, to: number): Item<T>[] => {
   return next
 }
 
-export function useOrder<T>(items: Item<T>[]) {
+export function useOrder<T>(items: Item<T>[], total: number) {
   const router = useRouter()
   const [order, setOrder] = useState(items)
   const [failed, setFailed] = useState(false)
@@ -33,7 +33,7 @@ export function useOrder<T>(items: Item<T>[]) {
     setStatus('')
     focus.current = card.id
     const result = await moveCard(card.id, next[to - 1]?.id ?? null).catch(() => ({ moved: false }))
-    if (result.moved) setStatus(`Moved ${card.label} to position ${to + 1} of ${order.length}`)
+    if (result.moved) setStatus(`Moved ${card.label} to position ${to + 1} of ${Math.max(total, order.length)}`)
     else setFailed(true)
     router.refresh()
   }

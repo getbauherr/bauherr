@@ -37,6 +37,8 @@ test('Inbox: Waiting on you is complete, Done loads 50 rows and Show more adds t
   expect(new Set(keys).size, 'no row appears twice').toBe(100)
   await expect(done.locator('header .mono')).toHaveText(String(total))
   await expect(done.getByText(`${total - 100} not shown`)).toBeVisible()
+  await page.getByRole('link', { name: 'Inbox' }).first().click()
+  await expect(rows).toHaveCount(100)
 })
 
 test('Factory lane: 30 cards, Show more adds 30, a loaded card can be moved', async ({ page }) => {
@@ -46,14 +48,18 @@ test('Factory lane: 30 cards, Show more adds 30, a loaded card can be moved', as
   await expect(cards).toHaveCount(30)
   await lane.getByRole('button', { name: 'Show 30 more' }).click()
   await expect(cards).toHaveCount(60)
-  const ids = await cards.evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-card')))
-  expect(new Set(ids).size, 'no card appears twice').toBe(60)
+  const total = Number(await lane.locator('#stage-intake + .title').innerText())
+  expect(total).toBeGreaterThan(60)
+  const ids = (await cards.evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-card')))).slice(0, 60)
+  expect(new Set(ids).size, 'no card appears twice').toBe(ids.length)
 
   const moved = lane.locator(`[data-card="${ids[40]}"] [data-card-link]`)
   await moved.focus()
   await page.keyboard.press('Alt+ArrowUp')
-  await expect(page.getByRole('status').filter({ hasText: 'Moved' })).toContainText('position 40 of 60')
+  await expect(page.getByRole('status').filter({ hasText: 'Moved' })).toContainText(`position 40 of ${total}`)
   await expect(moved).toBeFocused()
+  await expect(cards.nth(39)).toHaveAttribute('data-card', ids[40]!)
+  await expect(cards).not.toHaveCount(30)
 })
 
 test('Requests: 50 rows per page, Show more adds the next 50, the filter counts stay exact', async ({ page }) => {
@@ -71,4 +77,6 @@ test('Requests: 50 rows per page, Show more adds the next 50, the filter counts 
   await page.getByRole('button', { name: 'Show more' }).click()
   await expect(rows).toHaveCount(100)
   await expect(page.getByText(`${count - 100} not shown`)).toBeVisible()
+  await page.getByRole('link', { name: 'Requests', exact: true }).first().click()
+  await expect(rows).toHaveCount(100)
 })

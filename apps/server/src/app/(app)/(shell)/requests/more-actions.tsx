@@ -6,12 +6,14 @@ import type { RequestCursor } from '../../../../core/views/request-list'
 import { REQUEST_FILTERS } from '../../../../core/views/request-status'
 import { isBauherr } from '../../../../lib/people'
 import { RequestRow } from '../../components/request/RequestRows'
+import { MAX_WINDOW } from '../../lib/chunks'
 import { payloadClient } from '../../lib/session'
 import { readableProducts, requestChunk, requireRequestsReader, viewerOf } from '../../lib/requests'
 
 const input = z.object({
   product: z.number().int().positive(),
   show: z.enum(REQUEST_FILTERS),
+  limit: z.number().int().min(1).max(MAX_WINDOW).optional(),
   cursor: z.object({ changedAt: z.iso.datetime(), id: z.number().int().positive() }),
 })
 
@@ -29,6 +31,7 @@ export async function moreRequests(
     viewer: await viewerOf(payload, person),
     show: parsed.data.show,
     after: parsed.data.cursor,
+    ...(parsed.data.limit && { limit: parsed.data.limit }),
   })
   const staff = isBauherr(person)
   return { rows: list.map((item) => <RequestRow key={item.row.recordId} item={item} staff={staff} />), cursor }
