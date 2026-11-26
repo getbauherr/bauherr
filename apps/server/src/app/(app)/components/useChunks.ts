@@ -4,6 +4,8 @@ import { MAX_WINDOW } from '../lib/chunks'
 
 export type Chunk<T, C> = { items: T[]; cursor: C | null }
 
+const NONE: never[] = []
+
 export function useChunks<T, C>(
   signature: string,
   first: C | null,
@@ -33,5 +35,5 @@ export function useChunks<T, C>(
       setLoaded((before) => ({ items: [...(before?.items ?? []), ...chunk.items], cursor: chunk.cursor }))
     })
   }, [cursor, loading, pageSize])
-  return { items: loaded?.items ?? [], cursor, loading, load }
+  return { items: loaded?.items ?? NONE, cursor, loading, load }
 }
