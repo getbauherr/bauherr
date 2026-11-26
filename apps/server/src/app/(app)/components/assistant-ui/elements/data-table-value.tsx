@@ -105,7 +105,7 @@ const renderLink = (format: FormatOf<'link'>, { value, row }: Context): ReactNod
 }
 
 const TONE_CLASS = {
-  neutral: cn(field, 'text-foreground/60'),
+  neutral: cn(field, 'text-foreground/75'),
   success: 'bg-ok/12 text-ok ',
   warning: 'bg-warn/12 text-warn ',
   danger: 'bg-danger/12 text-danger ',

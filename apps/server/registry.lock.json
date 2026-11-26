@@ -199,7 +199,8 @@
     },
     "assistant-ui/elements/data-table-value.tsx": {
       "registry": "elements-data-table",
-      "source": "assistant-ui"
+      "source": "assistant-ui",
+      "edits": "Neutral badge text is foreground at 75% (60% failed AA contrast)."
     },
     "assistant-ui/elements/data-table-views.tsx": {
       "registry": "elements-data-table",

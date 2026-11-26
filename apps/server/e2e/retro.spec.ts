@@ -18,7 +18,7 @@ const startRetro = async (page: Page) => {
   await expect(page.getByRole('region', { name: 'What this range holds' })).toContainText('4 tickets accepted')
   await page.getByRole('button', { name: 'Start Retro' }).dblclick()
   await expect(page.getByRole('heading', { level: 1, name: /^Retro:/ })).toBeVisible()
-  await expect(page.getByRole('log', { name: 'Conversation' })).toContainText('Factory')
+  await expect(page.getByRole('log', { name: 'Conversation' })).toContainText('Analysed')
 }
 
 const agreed = (page: Page) => page.getByRole('region', { name: 'Agreed so far' })

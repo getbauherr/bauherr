@@ -39,7 +39,7 @@ export function Figures({ opening }: { opening: Opening }) {
   const far = opening.figures.filter((figure) => figure.farOff).length
   return (
     <div className="grid gap-4">
-      <p className="m-0">
+      <p id="retro-figures-intro" className="m-0">
         Analysed {opening.counts.accepted} tickets and {opening.counts.runs} runs. These are the figures of this range,
         with the change against the range before. {far} are far off, marked in red.
       </p>

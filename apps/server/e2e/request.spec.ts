@@ -25,7 +25,7 @@ const issuesOf = (page: Page) =>
 
 const dropFile = (page: Page, name: string) =>
   page.evaluate((fileName) => {
-    const zone = document.querySelector('textarea')!.closest('div.rounded-md')!
+    const zone = document.querySelector('[data-slot="aui_composer-shell"]')!
     const transfer = new DataTransfer()
     transfer.items.add(new File(['Notes about the export.'], fileName, { type: 'text/plain' }))
     zone.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }))
