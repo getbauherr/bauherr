@@ -10,7 +10,18 @@ export function NowBox({ story }: { story: RequestStory }) {
       <h2 id="now" className="label text-muted-foreground">
         Now
       </h2>
-      <p className="m-0">{words.now}</p>
+      {story.live ? (
+        <p className="m-0">
+          {`Live in ${story.live.version}. `}
+          {story.live.notes && (
+            <a href={story.live.notes} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+              Read the notes
+            </a>
+          )}
+        </p>
+      ) : (
+        <p className="m-0">{words.now}</p>
+      )}
       <p className="small m-0 text-muted-foreground">{TURN_WORDS[words.turn]}</p>
       {story.status === 'result-ready' && <NotWhatIAsked />}
       {staging && (

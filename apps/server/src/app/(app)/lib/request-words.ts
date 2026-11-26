@@ -1,3 +1,4 @@
+import type { RequestStory } from '../../../core/views/request-story'
 import type { TicketStatus } from '../../../core/views/status'
 import type { StatusWord } from './status-words'
 
@@ -51,3 +52,6 @@ export const REQUEST_WORDS: Record<TicketStatus, RequestWords> = {
   accepted: w({ word: 'Done', tone: 'ok', mark: 'check' }, 'The request is done and closed.', 'nobody'),
   closed: w({ word: 'Closed', tone: 'neutral' }, 'The request is closed.', 'nobody'),
 }
+
+export const chipOf = (story: Pick<RequestStory, 'status' | 'live'>): StatusWord =>
+  story.live ? { word: `Live in ${story.live.version}`, tone: 'ok', mark: 'check' } : REQUEST_WORDS[story.status].chip

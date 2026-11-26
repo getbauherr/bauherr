@@ -3,7 +3,8 @@ import { createElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { NowBox } from '../../src/app/(app)/components/request/NowBox'
 import { RequestTimeline } from '../../src/app/(app)/components/request/RequestTimeline'
-import { REQUEST_WORDS } from '../../src/app/(app)/lib/request-words'
+import { RequestAbout } from '../../src/app/(app)/components/request/RequestAbout'
+import { chipOf, REQUEST_WORDS } from '../../src/app/(app)/lib/request-words'
 import { STATUSES } from '../../src/core/views/status'
 import type { RequestStory, StoryEvent } from '../../src/core/views/request-story'
 
@@ -27,6 +28,7 @@ const story = (status: RequestStory['status'], events: StoryEvent[]): RequestSto
   title: 'The logo on the report',
   status,
   ended: null,
+  live: null,
   events,
   about: { type: 'Change', by: 'Anna', created: '2026-11-24T16:40:00Z', product: 'Shop' },
   links: { issue: 'https://forge/848', staging: 'https://staging.example.com/x' },
@@ -60,6 +62,28 @@ const ready = story('result-ready', [
     lists: [{ heading: 'What was checked', items: ['✓ the year is in the title'] }],
   }),
 ])
+
+const live = { version: 'v1.2.0', notes: 'https://forge/releases/v1.2.0', at: '2026-11-26T09:00:00Z' }
+
+describe('live in a version', () => {
+  const released = { ...story('accepted', []), live }
+
+  it('shows the version in the chip, the Now box and the side facts, each linking to the notes', () => {
+    expect(chipOf(released).word).toBe('Live in v1.2.0')
+    expect(chipOf(waiting).word).toBe('Plan waiting for approval')
+    const now = render(createElement(NowBox, { story: released }))
+    expect(now.getByRole('link', { name: 'Read the notes' }).getAttribute('href')).toBe(live.notes)
+    expect(now.getByText(/Live in v1.2.0/)).toBeTruthy()
+    now.unmount()
+    const about = render(createElement(RequestAbout, { story: released }))
+    expect(about.getByRole('link', { name: 'v1.2.0' }).getAttribute('href')).toBe(live.notes)
+  })
+
+  it('leaves the side facts without a version for a request that is not live', () => {
+    const { queryByText } = render(createElement(RequestAbout, { story: waiting }))
+    expect(queryByText('Version')).toBeNull()
+  })
+})
 
 describe('the Now box', () => {
   it('says what happens and whose turn it is while the plan waits', () => {
