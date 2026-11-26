@@ -1,14 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { bumpOf, nextVersion, validVersion } from '../../src/core/releases/version'
 
-const change = (tags: string[], bug = false) => ({ bug, tags })
+const change = (tags: string[], bug = false, breaking = false) => ({ bug, tags, breaking })
 
 describe('proposed version', () => {
   it('makes a breaking change major, a new capability minor and only fixes patch', () => {
-    expect(bumpOf([change(['visible']), change(['behaviour'])])).toBe('major')
+    expect(bumpOf([change(['visible']), change(['internal'], false, true)])).toBe('major')
     expect(bumpOf([change(['visible']), change(['internal'], true)])).toBe('minor')
     expect(bumpOf([change(['visible'], true), change(['internal'])])).toBe('patch')
     expect(bumpOf([])).toBe('patch')
+  })
+
+  it.each([
+    ['a fix that changes behaviour', [change(['behaviour'], true)], 'patch', 'v0.6.1', 'v1.4.3'],
+    ['a feature that changes behaviour', [change(['behaviour'])], 'patch', 'v0.6.1', 'v1.4.3'],
+    ['a visible feature that changes behaviour', [change(['visible', 'behaviour'])], 'minor', 'v0.7.0', 'v1.5.0'],
+    ['a breaking fix', [change(['behaviour'], true, true)], 'major', 'v0.7.0', 'v2.0.0'],
+    ['a breaking feature', [change(['visible'], false, true)], 'major', 'v0.7.0', 'v2.0.0'],
+  ] as const)('proposes for %s', (_name, tickets, bump, below, above) => {
+    expect(bumpOf([...tickets])).toBe(bump)
+    expect(nextVersion(['v0.6.0'], bumpOf([...tickets]))).toBe(below)
+    expect(nextVersion(['v1.4.2'], bumpOf([...tickets]))).toBe(above)
   })
 
   it('raises the highest existing version', () => {

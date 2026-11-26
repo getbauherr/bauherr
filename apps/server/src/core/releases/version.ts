@@ -1,7 +1,7 @@
 import { isRelease, isVersion, sortVersions } from '../readiness/release-facts'
 
 export type Bump = 'major' | 'minor' | 'patch'
-export type ChangeFacts = { bug: boolean; tags: string[] }
+export type ChangeFacts = { bug: boolean; tags: string[]; breaking: boolean }
 
 const PARTS = /^(v?)(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/
 
@@ -17,7 +17,7 @@ const partsOf = (name: string): Parts | null => {
 const text = (parts: Parts): string => `${parts.prefix}${parts.major}.${parts.minor}.${parts.patch}`
 
 export const bumpOf = (tickets: ChangeFacts[]): Bump => {
-  if (tickets.some((ticket) => ticket.tags.includes('behaviour'))) return 'major'
+  if (tickets.some((ticket) => ticket.breaking)) return 'major'
   if (tickets.some((ticket) => !ticket.bug && ticket.tags.includes('visible'))) return 'minor'
   return 'patch'
 }

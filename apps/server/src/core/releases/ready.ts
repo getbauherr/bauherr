@@ -5,30 +5,32 @@ import { evaluate } from '../readiness/checks'
 import { loadFacts } from '../readiness/load'
 import { releaseStateOf } from '../readiness/view'
 import { mergedTickets, type MergedTicket } from './merged'
-import { doneRuns, openRun, usedVersions } from './run-store'
+import { doneRuns, openRun, unfinishedVersions, usedVersions } from './run-store'
 import { bumpOf, nextVersion, type Bump, type ChangeFacts } from './version'
 import { partition, sourceOf } from './view'
 
 export type ProductAt = { workspace: number; product: number }
 
-const changeRow = z.object({ data: z.unknown() })
+const changeRow = z.object({ id: z.coerce.number(), data: z.unknown() })
 const changeData = z
   .looseObject({
     type: z.string().optional(),
     result: z.looseObject({ changes: z.array(z.looseObject({ tag: z.string() })) }).nullish(),
   })
-  .transform((data): ChangeFacts => {
+  .transform((data) => {
     const changes = data.result?.changes ?? []
     return { bug: data.type === 'bug', tags: changes.map((change) => change.tag) }
   })
   .catch({ bug: false, tags: [] })
 
-const changeFactsOf = async (payload: Payload, recordIds: number[]): Promise<ChangeFacts[]> => {
-  if (recordIds.length === 0) return []
+const changeFactsOf = async (payload: Payload, tickets: MergedTicket[]): Promise<ChangeFacts[]> => {
+  if (tickets.length === 0) return []
+  const ids = tickets.map((ticket) => sql`${ticket.recordId}`)
   const found = await payload.db.drizzle.execute(
-    sql`SELECT "data" FROM "records" WHERE "id" IN (${sql.join(recordIds.map((id) => sql`${id}`), sql`, `)})`,
+    sql`SELECT "id", "data" FROM "records" WHERE "id" IN (${sql.join(ids, sql`, `)})`,
   )
-  return found.rows.map((entry) => changeData.parse(changeRow.parse(entry).data))
+  const rows = new Map(found.rows.map((entry) => changeRow.parse(entry)).map((row) => [row.id, row.data]))
+  return tickets.map((ticket) => ({ ...changeData.parse(rows.get(ticket.recordId)), breaking: ticket.breaking }))
 }
 
 export type ReleaseReady = {
@@ -56,15 +58,17 @@ export const readyToRelease = async (payload: Payload, f: ProductAt, now: Date):
   const source = await sourceOf(payload, f.workspace, f.product)
   if (!source?.release_state) return null
   const state = source.release_state
-  const { ready } = partition(state, await mergedTickets(payload, source.id))
+  const unfinished = await unfinishedVersions(payload, f.product)
+  const { ready } = partition(state, await mergedTickets(payload, source.id), unfinished)
   const finished = (await doneRuns(payload, f.product)).filter(
     (run) => !state.versions.some((version) => version.tag === run.version),
   )
   const released = new Set(finished.flatMap((run) => run.tickets.map((ticket) => ticket.recordId)))
-  const tags = [...state.versions.map((version) => version.tag), ...finished.map((run) => run.version)]
+  const kept = state.versions.map((version) => version.tag).filter((tag) => !unfinished.includes(tag))
+  const tags = [...kept, ...finished.map((run) => run.version)]
   const used = await usedVersions(payload, f.product)
   const merged = ready.tickets.filter((ticket) => !released.has(ticket.recordId))
-  const bump = bumpOf(await changeFactsOf(payload, merged.map((ticket) => ticket.recordId)))
+  const bump = bumpOf(await changeFactsOf(payload, merged))
   const sha = state.staging?.sha ?? null
   const open = await openRun(payload, f.product)
   const refusal = open
@@ -72,7 +76,7 @@ export const readyToRelease = async (payload: Payload, f: ProductAt, now: Date):
     : await refusalOf(payload, f, now, merged.length, sha)
   return {
     sha: sha ?? '',
-    tags: [...new Set([...tags, ...used])],
+    tags: [...new Set([...tags, ...state.versions.map((version) => version.tag), ...used])],
     tickets: merged.map(({ recordId, number }) => ({ recordId, number })),
     merged,
     since: ready.since,

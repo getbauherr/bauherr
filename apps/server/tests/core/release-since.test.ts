@@ -3,7 +3,7 @@ import { editItem, readNotes, UNRELEASED, writeNotesFor } from '../../src/core/r
 import { releasePanel } from '../../src/core/releases/panel'
 import { releaseHarness } from './release-harness'
 
-const { f, h, recording, mergeTicket, refresh, setup, releaser, at, start, advance, deployed, ask, NOW } =
+const { f, h, recording, mergeTicket, refresh, setup, releaser, at, start, advance, deployed, ask, commentsOn, NOW } =
   releaseHarness('core_release_since')
 
 describe('release since the last real release', () => {
@@ -61,5 +61,88 @@ describe('release since the last real release', () => {
     await releaser(backend).ready(at())
     await releasePanel(h.payload(), at(), NOW)
     expect([...seen.methods]).toEqual([])
+  })
+
+  it('keeps the last real release when a release was given up, and never proposes its version again', async () => {
+    const s = await setup()
+    const r = releaser()
+    const first = await start(r)
+    deployed(s, 'failure')
+    await advance(r, first.id)
+    await r.answer(at(), first.id, 'release-fixed-later')
+    await refresh()
+    const panel = await releasePanel(h.payload(), at(), NOW)
+    expect(panel?.since).toBe('v0.6.0')
+    expect(panel?.changes).toBe(2)
+    expect(panel?.refusal).toBeNull()
+    expect(panel?.proposal.version).toBe('v0.7.1')
+  })
+
+  it('proposes a patch for a fix that changes behaviour and a major only for an explicit breaking signal', async () => {
+    const s = await setup({ merged: false })
+    await mergeTicket(s.repo, 'Sign-in works again', 1, 'behaviour', true)
+    await refresh()
+    const fix = await releasePanel(h.payload(), at(), NOW)
+    expect(fix?.proposal).toEqual({ version: 'v0.6.1', bump: 'patch' })
+    await mergeTicket(s.repo, 'Drop the old export', 2, 'visible', false, '2026-11-22T11:00:00Z', ['Breaking'])
+    await refresh()
+    expect((await releasePanel(h.payload(), at(), NOW))?.proposal).toEqual({ version: 'v0.7.0', bump: 'major' })
+  })
+
+  it('treats a pull request title with the breaking mark as breaking', async () => {
+    const s = await setup({ merged: false })
+    await mergeTicket(s.repo, 'feat(core)!: Drop the old export', 1, 'visible')
+    await refresh()
+    expect((await releasePanel(h.payload(), at(), NOW))?.proposal.bump).toBe('major')
+  })
+
+  it.each([
+    ['tag', 'draftRelease', 'forge', true],
+    ['deploy', 'getRepository', 'forge', true],
+    ['wait', null, 'forge', false],
+    ['check', 'commitEndpoint', 'forge', false],
+    ['publish', 'publishRelease', 'forge', false],
+    ['tell', 'comment', 'tickets', false],
+  ] as const)('stops after the %s step; a rerun makes one tag, release, deploy', async (_step, method, on, early) => {
+    const s = await setup()
+    const fake = f.fake()
+    const gate = { armed: early }
+    const once = <T extends object>(target: T, name: string): T =>
+      new Proxy(target, {
+        get: (from, key) => {
+          const value: unknown = Reflect.get(from, key)
+          if (key !== name || typeof value !== 'function' || !gate.armed) return value
+          return () => {
+            gate.armed = false
+            return Promise.reject(new Error('forge unavailable'))
+          }
+        },
+      })
+    const forge = method !== null && on === 'forge' ? once(fake.forge, method) : fake.forge
+    const wrapped = (repo: string) => {
+      const own = fake.tickets(repo)
+      return method !== null && on === 'tickets' ? once(own, method) : own
+    }
+    const r = releaser({ ...fake, forge, tickets: wrapped })
+    const first = await start(r)
+    let stops = 0
+    const recover = async (run: { id: number; state: string }) => {
+      if (run.state === 'failed') stops++
+      if (run.state === 'failed') await r.answer(at(), first.id, 'check-again')
+      await start(r)
+      return advance(r, first.id)
+    }
+    await recover(first)
+    deployed(s)
+    gate.armed = method !== null && !early
+    await recover(await advance(r, first.id))
+    const done = await advance(r, first.id)
+    expect(done.state).toBe('done')
+    expect(stops).toBe(method === null ? 0 : 1)
+    const names = await fake.forge.listTags(s.repo)
+    expect(names.filter((name) => name === 'v0.7.0')).toHaveLength(1)
+    expect(fake.listReleases(s.repo).filter((rel) => rel.tag === 'v0.7.0')).toHaveLength(1)
+    expect(fake.deployStarts(s.repo)).toHaveLength(1)
+    for (const issue of s.issues) expect(await commentsOn(s.repo, issue)).toHaveLength(1)
   })
 })

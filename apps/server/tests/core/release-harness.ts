@@ -43,6 +43,7 @@ export const releaseHarness = (name: string) => {
     tag: string,
     bug = false,
     mergedAt = '2026-11-22T10:00:00Z',
+    labels: string[] = [],
   ) => {
     const fake = f.fake()
     const issue = (await fake.tickets(repo).create({ title })).number
@@ -54,7 +55,8 @@ export const releaseHarness = (name: string) => {
         "state", "author", "author_trusted", "author_is_bot", "labels", "assignees", "url", "forge_created_at",
         "forge_updated_at", "forge_closed_at", "head_sha", "closes", "draft", "synced_at", "updated_at", "created_at")
       VALUES (${workspace}, ${source.id}, ${product}, ${repo}, ${n}, ${kind}, ${title}, '', ${state}, 'jo', true, false,
-        '[]'::jsonb, '[]'::jsonb, 'https://forge/x', now(), now(), ${closed}::timestamptz, '', '[]'::jsonb, false,
+        ${JSON.stringify(labels)}::jsonb, '[]'::jsonb, 'https://forge/x', now(), now(), ${closed}::timestamptz, '',
+        '[]'::jsonb, false,
         now(), now(), now())
       ON CONFLICT DO NOTHING`)
     const pr = 500 + number
