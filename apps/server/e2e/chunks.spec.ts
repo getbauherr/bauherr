@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { pickUp, stepUp } from './sort'
 import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
@@ -53,9 +54,9 @@ test('Factory lane: 30 cards, Show more adds 30, a loaded card can be moved', as
   const ids = (await cards.evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-card')))).slice(0, 60)
   expect(new Set(ids).size, 'no card appears twice').toBe(ids.length)
 
-  const moved = lane.locator(`[data-card="${ids[40]}"] [data-card-link]`)
-  await moved.focus()
-  await page.keyboard.press('Alt+ArrowUp')
+  const moved = lane.locator(`[data-card="${ids[40]}"] [data-card-grip]`)
+  await stepUp(page, await pickUp(page, moved))
+  await page.keyboard.press('Space')
   await expect(page.getByRole('status').filter({ hasText: 'Moved' })).toContainText(`position 40 of ${total}`)
   await expect(moved).toBeFocused()
   await expect(cards.nth(39)).toHaveAttribute('data-card', ids[40]!)

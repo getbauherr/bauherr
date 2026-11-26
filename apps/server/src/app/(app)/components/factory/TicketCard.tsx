@@ -6,6 +6,8 @@ import { adoptedLine } from '../../lib/ticket'
 import { StatusChip } from '../StatusChip'
 import { Time } from '../Time'
 import { TicketRef } from '../TicketRef'
+import { CardGrip } from './card-controls'
+import { CardMenu } from './CardMenu'
 import { RelationBadges } from './RelationBadges'
 import { RelationTag } from './RelationScope'
 
@@ -55,11 +57,13 @@ export async function TicketCard({ card }: { card: BoardCard }) {
       className={cn(CARD, frameOf(card), edgeOf(card), SELECTION)}
       data-blocked={(relations?.blockedBy.length ?? 0) > 0 || undefined}
     >
-      <div className="flex w-full items-baseline justify-between gap-2">
+      <div className="flex w-full items-center gap-2">
+        <CardGrip />
         <TicketRef recordId={card.recordId} number={card.number} />
-        <Time iso={card.enteredAt} className="mono text-muted-foreground" />
+        <Time iso={card.enteredAt} className="mono ml-auto whitespace-nowrap text-muted-foreground" />
+        <CardMenu />
       </div>
-      <Link href={`/tickets/${card.recordId}`} data-card-link draggable={false} className={LINK}>
+      <Link href={`/tickets/${card.recordId}`} data-card-link className={LINK}>
         {card.title}
       </Link>
       <StatusChip status={card.status} closedAs={card.closedAs} />

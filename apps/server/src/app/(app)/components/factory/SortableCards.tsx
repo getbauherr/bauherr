@@ -1,52 +1,64 @@
 'use client'
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type Modifier,
+} from '@dnd-kit/core'
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { ReactNode } from 'react'
-import { cn } from '@/lib/utils'
-import { CardMenu, type MoveTo } from './CardMenu'
+import type { MoveTo } from './card-controls'
 import { LaneMoreButton } from './LaneMoreButton'
-import { useDrag } from './useDrag'
+import { SortableItem } from './SortableItem'
+import { announcements, INSTRUCTIONS } from './sort-announcements'
 import { useLaneMore, type LaneMore } from './useLaneMore'
 import { useOrder, type Item } from './useOrder'
 
 export type { LaneMore }
 
-const FADE = 'transition-opacity duration-(--duration-state) ease-(--ease-out) motion-reduce:transition-none'
-const MARK = cn(
-  'data-[drop]:before:absolute data-[drop]:before:inset-x-0 data-[drop]:before:h-0.5',
-  'data-[drop]:before:bg-primary data-[drop]:before:content-[""]',
-  'data-[drop=before]:before:-top-1.5 data-[drop=after]:before:-bottom-1.5',
-)
-const ITEM = 'group/card relative'
-const HINT = 'Drag, or press Alt+ArrowUp or Alt+ArrowDown, to move'
-
 const TARGETS: Record<MoveTo, (index: number) => number> = { top: () => 0, up: (i) => i - 1, down: (i) => i + 1 }
+
+const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
 export function SortableCards({ items, more }: { items: Item<ReactNode>[]; more?: LaneMore | undefined }) {
   const lane = useLaneMore(items, more)
   const { order, reorder, failed, status } = useOrder(lane.all, lane.total)
-  const { dragging, handlers, mark, clearOver } = useDrag(order.map((card) => card.id), reorder)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+  const ids = order.map((card) => card.id)
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return
+    void reorder(ids.indexOf(Number(active.id)), ids.indexOf(Number(over.id)))
+  }
   return (
     <>
-      <ul className="m-0 grid list-none gap-2 p-0" onDragLeave={clearOver}>
-        {order.map((card, index) => (
-          <li
-            key={card.id}
-            data-card={card.id}
-            data-drop={mark(index)}
-            draggable
-            title={HINT}
-            className={cn(ITEM, FADE, MARK, card.dimmed && 'opacity-20', dragging === card.id && 'opacity-50')}
-            {...handlers(index, card.id)}
-          >
-            {card.node}
-            <CardMenu
-              label={card.label}
-              first={index === 0}
-              last={index === order.length - 1}
-              onMove={(to) => void reorder(index, TARGETS[to](index))}
-            />
-          </li>
-        ))}
-      </ul>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        modifiers={[verticalOnly]}
+        onDragEnd={onDragEnd}
+        accessibility={{ announcements: announcements(order), screenReaderInstructions: { draggable: INSTRUCTIONS } }}
+      >
+        <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+          <ul className="m-0 grid list-none gap-2 p-0">
+            {order.map((card, index) => (
+              <SortableItem
+                key={card.id}
+                card={card}
+                first={index === 0}
+                last={index === order.length - 1}
+                onMove={(to) => void reorder(index, TARGETS[to](index))}
+              />
+            ))}
+          </ul>
+        </SortableContext>
+      </DndContext>
       {lane.left > 0 && <LaneMoreButton left={lane.left} loading={lane.loading} load={lane.load} />}
       {failed && (
         <p role="alert" className="small text-destructive">Could not save the new order. The board was reloaded.</p>

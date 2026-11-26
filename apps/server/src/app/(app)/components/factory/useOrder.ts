@@ -20,7 +20,7 @@ export function useOrder<T>(items: Item<T>[], total: number) {
   useEffect(() => setOrder(items), [items])
   useLayoutEffect(() => {
     if (focus.current === null || document.activeElement?.closest('[data-card]')) return
-    document.querySelector<HTMLElement>(`[data-card="${focus.current}"] [data-card-link]`)?.focus()
+    document.querySelector<HTMLElement>(`[data-card="${focus.current}"] [data-card-grip]`)?.focus()
   }, [order])
 
   const reorder = async (from: number, to: number) => {

@@ -56,7 +56,7 @@ The providers allowed per Workspace are the egress policy. A Workspace reaches o
 
 ## UI libraries
 
-The UI uses shadcn/ui components (copied into the repository), Radix UI, Sonner, react-hook-form and react-resizable-panels. The chat surfaces use assistant-ui (`@assistant-ui/react` and the components of its registry at r.assistant-ui.com, copied into `components/assistant-ui/elements`, listed in `apps/server/registry.lock.json`) and tw-shimmer. All are MIT licensed, which is compatible with Apache-2.0. Their notices are listed in `NOTICE`.
+The UI uses shadcn/ui components (copied into the repository), Radix UI, Sonner, react-hook-form, react-resizable-panels and dnd-kit (drag and drop). The chat surfaces use assistant-ui (`@assistant-ui/react` and the components of its registry at r.assistant-ui.com, copied into `components/assistant-ui/elements`, listed in `apps/server/registry.lock.json`) and tw-shimmer. All are MIT licensed, which is compatible with Apache-2.0. Their notices are listed in `NOTICE`.
 
 ## Optional dashboards profile
 
