@@ -45,9 +45,9 @@ test('@fake-forge a request is written to the issue tracker only when it is sent
   await expect(card.getByText('drop-notes.txt')).toBeVisible()
 
   await page
-    .getByRole('textbox', { name: 'Describe your request' })
+    .getByRole('textbox', { name: 'Message input' })
     .fill('The export of our CO2 balance breaks for the big cities, it just stops.')
-  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await page.getByRole('button', { name: 'Send message' }).click()
   await expect(page.getByTestId('request-questions')).toBeVisible()
   await expect(card.getByText('Something is broken (bug)')).toBeVisible()
   await expect(card.getByText(/Still missing: .*How often/)).toBeVisible()

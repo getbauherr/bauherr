@@ -112,13 +112,13 @@ export function ApprovalBody({
   return (
     <>
       {description ? (
-        <p id={descriptionId} className="text-foreground/60 text-[13px]">
+        <p id={descriptionId} className="text-foreground/75 text-[13px]">
           {description}
         </p>
       ) : null}
 
       {command ? (
-        <div className={cn(field, 'text-foreground/70 rounded-xl px-3.5 py-2.5 font-mono text-xs')}>{command}</div>
+        <div className={cn(field, 'text-foreground/80 rounded-xl px-3.5 py-2.5 font-mono text-xs')}>{command}</div>
       ) : null}
 
       {details?.length ? (

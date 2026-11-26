@@ -53,7 +53,7 @@ test(GROWS, fake, async ({ page }) => {
   await expect(agreed(page).getByRole('listitem')).toHaveCount(1)
   await expect(agreed(page)).toContainText('Product')
   await page.getByLabel('Message input').fill('Yes, and answered questions must not come back.')
-  await page.getByRole('button', { name: 'Send' }).click()
+  await page.getByRole('button', { name: 'Send message' }).click()
   await expect(agreed(page).getByRole('listitem')).toHaveCount(2)
   await expect(agreed(page)).toContainText('Workspace')
   await page.screenshot({ path: test.info().outputPath('retro-agreed-1280.png'), fullPage: true })

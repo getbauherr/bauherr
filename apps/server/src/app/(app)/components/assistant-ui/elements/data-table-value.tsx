@@ -126,7 +126,7 @@ const renderList = (format: FormatOf<'list'>, { value }: Context): ReactNode => 
   return (
     <span className="flex flex-wrap gap-1">
       {shown.map((item, index) => (
-        <span key={index} className={cn(field, 'text-foreground/60 rounded-md px-1.5 py-0.5 text-xs')}>
+        <span key={index} className={cn(field, 'text-foreground/75 rounded-md px-1.5 py-0.5 text-xs')}>
           {item}
         </span>
       ))}

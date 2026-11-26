@@ -30,11 +30,11 @@ test('a conversation keeps its messages and its picture after a reload', async (
   await (await chooser).setFiles({ name: 'screen.png', mimeType: 'image/png', buffer: PIXEL })
   await expect(page.getByRole('button', { name: 'Remove screen.png' })).toBeVisible()
   await page.getByRole('textbox', { name: 'Message input' }).fill('Here is the screenshot of the list.')
-  await page.getByRole('button', { name: 'Send' }).click()
+  await page.getByRole('button', { name: 'Send message' }).click()
   await expect(page.getByText('Here is the screenshot of the list.')).toBeVisible()
 
   await page.getByRole('textbox', { name: 'Message input' }).fill('And a second thought.')
-  await page.getByRole('button', { name: 'Send' }).click()
+  await page.getByRole('button', { name: 'Send message' }).click()
   await expect(page.getByText('And a second thought.')).toBeVisible()
 
   await page.reload()
