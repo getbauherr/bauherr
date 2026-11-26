@@ -16,9 +16,9 @@ vi.mock('../src/app/(app)/lib/session', () => ({
 }))
 
 let db: CoreDb
-const read = async () => {
+const read = async (tables?: string) => {
   const { GET } = await import('../src/app/api/changes/route')
-  const res = await GET()
+  const res = await GET(new Request(`http://localhost/api/changes${tables === undefined ? '' : `?tables=${tables}`}`))
   return { status: res.status, body: z.object({ v: z.number().optional() }).parse(await res.json()) }
 }
 const touch = (payload: Payload, id: number) =>
@@ -53,6 +53,14 @@ describe('GET /api/changes', () => {
     expect((await read()).body.v).toBe(first)
     await touch(db.payload, mine)
     expect((await read()).body.v ?? 0).toBeGreaterThan(first)
+  })
+
+  it('stamps only the requested tables and refuses an unknown one', async () => {
+    state.person = { role: 'bauherr' }
+    await db.fresh()
+    expect((await read('records,events')).body.v).toBeGreaterThan(0)
+    expect((await read('agent_sessions')).body.v).toBe(0)
+    expect((await read('records;DROP')).status).toBe(400)
   })
 
   it('answers an Admin too', async () => {

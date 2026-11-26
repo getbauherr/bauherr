@@ -76,13 +76,14 @@ export const productsIn = async (payload: Payload, workspace: number): Promise<{
 export const loadFactory = async (payload: Payload, input: { workspace: number; product?: number }) => {
   const now = new Date()
   const filter = input.product === undefined ? { workspace: input.workspace, now } : { ...input, now }
-  const [lanes, stats, held, someday] = await Promise.all([
+  const [lanes, stats, held, someday, products] = await Promise.all([
     board(payload, filter),
     stageStats(payload, filter),
     holds(payload, { workspace: input.workspace, now }),
     somedayCounts(payload, input),
+    productsIn(payload, input.workspace),
   ])
-  return { lanes, stats, held, someday, products: await productsIn(payload, input.workspace) }
+  return { lanes, stats, held, someday, products }
 }
 
 export const somedayHref = (item: Pick<SomedayCount, 'forge' | 'repo' | 'config'>): string => {

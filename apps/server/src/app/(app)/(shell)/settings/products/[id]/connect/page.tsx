@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { firstLook } from '../../../../../../../core/views/first-look'
 import { productSettings } from '../../../../../../../core/views/product-settings'
 import { AutoRefresh } from '../../../../../components/AutoRefresh'
+import { SOURCE_TABLES } from '../../../../../lib/change-tables'
 import { ConnectSteps } from '../../../../../components/connect/ConnectSteps'
 import { FirstLookTables } from '../../../../../components/connect/FirstLookTables'
 import { RepositoryOffers } from '../../../../../components/connect/RepositoryOffers'
@@ -69,7 +70,7 @@ export default async function ConnectPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
       )}
-      {phase === 2 && <AutoRefresh />}
+      {phase === 2 && <AutoRefresh tables={SOURCE_TABLES} />}
     </div>
   )
 }

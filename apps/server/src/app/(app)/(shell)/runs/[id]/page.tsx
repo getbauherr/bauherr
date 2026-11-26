@@ -1,6 +1,7 @@
 import { RunNotFound } from '../../../../../core/run/errors'
 import { runPage } from '../../../../../core/views/run'
 import { AutoRefresh } from '../../../components/AutoRefresh'
+import { TICKET_TABLES } from '../../../lib/change-tables'
 import { EmptyState } from '../../../components/EmptyState'
 import { PageTitle } from '../../../components/PageTitle'
 import { RunAside } from '../../../components/ticket/RunAside'
@@ -34,7 +35,7 @@ export default async function RunPageRoute({ params }: { params: Promise<{ id: s
         <RunSteps run={run} />
         <RunAside run={run} admin={admin} />
       </div>
-      <AutoRefresh />
+      <AutoRefresh tables={TICKET_TABLES} />
     </>
   )
 }

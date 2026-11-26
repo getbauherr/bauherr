@@ -85,6 +85,10 @@
       "registry": "sidebar",
       "source": "shadcn"
     },
+    "ui/skeleton.tsx": {
+      "registry": "skeleton",
+      "source": "shadcn"
+    },
     "ui/switch.tsx": {
       "registry": "switch",
       "source": "shadcn"

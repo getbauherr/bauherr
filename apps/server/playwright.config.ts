@@ -17,6 +17,7 @@ const signInSpecs = [
   'repo-files',
   'requests-page',
   'perf',
+  'perf-load',
   'product-owner',
   'product-settings',
   'selects',
@@ -26,7 +27,8 @@ const signInSpecs = [
   'workspace-delete',
 ].map((name) => `${name}.spec.ts`)
 
-const testIgnore = [...(hasCredentials ? [] : signInSpecs), ...(hasFakeForge ? ['perf.spec.ts'] : [])]
+const timed = hasFakeForge ? 'perf.spec.ts' : 'perf-load.spec.ts'
+const testIgnore = [...(hasCredentials ? [] : signInSpecs), timed]
 
 const grepInvert = [
   ...(hasFakeForge ? [] : [/@fake-forge/]),

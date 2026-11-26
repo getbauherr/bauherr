@@ -81,7 +81,11 @@ const toCandidate = (row: unknown): Candidate => {
   }
 }
 
-export const loadCandidates = async (payload: Payload, product: number | null): Promise<Candidate[]> => {
+export const loadCandidates = async (
+  payload: Payload,
+  product: number | null,
+  workspace: number | null,
+): Promise<Candidate[]> => {
   const result = await payload.db.drizzle.execute(sql`
     SELECT i."id" AS item_id, i."workspace_id", i."product_id", c."kind"::text AS forge, i."repo", i."number",
       i."title", i."url", i."forge_created_at", p."connected_at", (s."imported_at" IS NOT NULL) AS imported,
@@ -101,15 +105,21 @@ export const loadCandidates = async (payload: Payload, product: number | null): 
       AND r."source_repo" = i."repo" AND r."source_number" = i."number"
     WHERE r."id" IS NULL AND i."kind" = 'issue' AND i."state" = 'open' AND i."gone_at" IS NULL
       AND (${product}::integer IS NULL OR i."product_id" = ${product})
+      AND (${workspace}::integer IS NULL OR i."workspace_id" = ${workspace})
     ORDER BY i."forge_created_at", i."id"`)
   return result.rows.map(toCandidate)
 }
 
-export const admittedToday = async (payload: Payload, now: Date): Promise<Map<number, Record<string, number>>> => {
+export const admittedToday = async (
+  payload: Payload,
+  now: Date,
+  workspace: number | null,
+): Promise<Map<number, Record<string, number>>> => {
   const since = new Date(now.getTime() - DAY_MS).toISOString()
   const result = await payload.db.drizzle.execute(sql`
     SELECT "product_id", "data"->'source'->>'reporter' AS author, count(*) AS admitted FROM "records"
     WHERE "created_at" >= ${since}::timestamptz AND ("data"->'source'->>'external')::boolean
+      AND (${workspace}::integer IS NULL OR "workspace_id" = ${workspace})
     GROUP BY "product_id", "data"->'source'->>'reporter'`)
   const byProduct = new Map<number, Record<string, number>>()
   for (const row of result.rows) {
@@ -134,10 +144,18 @@ const bump = (counts: Record<string, number>, author: string): Record<string, nu
   [author]: (counts[author] ?? 0) + 1,
 })
 
-export const classify = async (payload: Payload, now: Date, product: number | null): Promise<Classified[]> => {
-  const admitted = await admittedToday(payload, now)
+export const classify = async (
+  payload: Payload,
+  now: Date,
+  product: number | null,
+  workspace: number | null = null,
+): Promise<Classified[]> => {
+  const [admitted, candidates] = await Promise.all([
+    admittedToday(payload, now, workspace),
+    loadCandidates(payload, product, workspace),
+  ])
   const classified: Classified[] = []
-  for (const loaded of await loadCandidates(payload, product)) {
+  for (const loaded of candidates) {
     const candidate = asFactoryIssue(loaded)
     const counts = admitted.get(candidate.product) ?? {}
     const selection = select(candidate.item, candidate.settings, { admittedTodayByAuthor: counts })

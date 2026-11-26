@@ -54,6 +54,7 @@ const signIn = async (page: Page) => {
 
 const linkOn = (from: string, re: RegExp) => async (page: Page) => {
   await page.goto(from)
+  await page.locator('main a[href]').first().waitFor()
   const hrefs = await page.locator('main a[href]').evaluateAll((as) => as.map((a) => a.getAttribute('href') ?? ''))
   const href = hrefs.find((h) => re.test(h))
   expect(href, `a link matching ${re} on ${from}`).toBeTruthy()

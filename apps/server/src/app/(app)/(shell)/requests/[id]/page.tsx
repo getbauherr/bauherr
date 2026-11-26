@@ -3,6 +3,7 @@ import { RecordNotFound } from '../../../../../core/record/errors'
 import { mayOpenRequest, requestScope } from '../../../../../core/views/request-access'
 import { requestStory } from '../../../../../core/views/request-story'
 import { AutoRefresh } from '../../../components/AutoRefresh'
+import { TICKET_TABLES } from '../../../lib/change-tables'
 import { PageTitle } from '../../../components/PageTitle'
 import { WordBadge } from '../../../components/WordBadge'
 import { NowBox } from '../../../components/request/NowBox'
@@ -48,7 +49,7 @@ export default async function RequestPage({ params }: Props) {
         </div>
         <RequestAbout story={story} />
       </div>
-      <AutoRefresh />
+      <AutoRefresh tables={TICKET_TABLES} />
     </>
   )
 }

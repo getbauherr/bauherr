@@ -65,12 +65,12 @@ const loadRuns = async (payload: Payload, filter: RowFilter) => {
 const emptyCounts = (): Record<(typeof STATES)[number], number> => ({ owner: 0, agents: 0, stuck: 0, others: 0 })
 
 export const stageStats = async (payload: Payload, filter: RowFilter): Promise<Stats> => {
-  const [counts, runs, medians, totals] = [
-    await loadCounts(payload, filter),
-    await loadRuns(payload, filter),
-    await loadMedians(payload, filter, ago(filter.now, 30)),
-    await loadTotals(payload, filter),
-  ]
+  const [counts, runs, medians, totals] = await Promise.all([
+    loadCounts(payload, filter),
+    loadRuns(payload, filter),
+    loadMedians(payload, filter, ago(filter.now, 30)),
+    loadTotals(payload, filter),
+  ])
   const stages = STAGES.map((stage): StageStat => {
     const tally = emptyCounts()
     for (const row of counts.filter((c) => c.stage === stage)) {
