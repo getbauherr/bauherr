@@ -1,24 +1,34 @@
-import type { ComponentProps } from 'react'
-import { cn } from '@/lib/utils'
+"use client"
 
-export function Switch({ className, ...props }: Omit<ComponentProps<'input'>, 'type' | 'role'>) {
+import * as React from "react"
+import { cn } from "@/lib/utils"
+import { Switch as SwitchPrimitive } from "radix-ui"
+
+function Switch({
+  className,
+  size = "default",
+  ...props
+}: React.ComponentProps<typeof SwitchPrimitive.Root> & {
+  size?: "sm" | "default"
+}) {
   return (
-    <input
-      type="checkbox"
-      role="switch"
+    <SwitchPrimitive.Root
       data-slot="switch"
+      data-size={size}
       className={cn(
-        'relative m-0 h-5 w-9 shrink-0 cursor-pointer appearance-none rounded-sm border ' +
-          'border-border bg-secondary outline-none transition-colors ' +
-          'duration-(--duration-state) ease-(--ease-out) after:absolute after:top-0.5 ' +
-          'after:left-0.5 after:size-3.5 after:rounded-[1px] after:bg-muted-foreground ' +
-          "after:content-[''] checked:border-primary checked:bg-primary " +
-          'checked:after:left-[18px] checked:after:bg-primary-foreground ' +
-          'focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed ' +
-          'disabled:opacity-60',
-        className,
+        "peer group/switch inline-flex shrink-0 items-center rounded-full border border-transparent transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-[1.15rem] data-[size=default]:w-8 data-[size=sm]:h-3.5 data-[size=sm]:w-6 data-[state=checked]:bg-primary data-[state=unchecked]:bg-input dark:data-[state=unchecked]:bg-input/80",
+        className
       )}
       {...props}
-    />
+    >
+      <SwitchPrimitive.Thumb
+        data-slot="switch-thumb"
+        className={cn(
+          "pointer-events-none block rounded-full bg-background ring-0 transition-transform group-data-[size=default]/switch:size-4 group-data-[size=sm]/switch:size-3 data-[state=checked]:translate-x-[calc(100%-2px)] data-[state=unchecked]:translate-x-0 dark:data-[state=checked]:bg-primary-foreground dark:data-[state=unchecked]:bg-foreground"
+        )}
+      />
+    </SwitchPrimitive.Root>
   )
 }
+
+export { Switch }

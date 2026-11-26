@@ -17,11 +17,11 @@ it('DESIGN.md equals docs/design/tokens.json', () => {
 })
 
 it('a changed front matter colour, dark value and duration each fail naming the token', () => {
-  expect(diffDesign(tokens, change('accent: "#2457c5"', 'accent: "#2457c6"'))).toEqual([
-    'colors.accent: expected #2457c5, got #2457c6',
+  expect(diffDesign(tokens, change('accent: "#5b35e8"', 'accent: "#5b35e9"'))).toEqual([
+    'colors.accent: expected #5b35e8, got #5b35e9',
   ])
-  expect(diffDesign(tokens, change('#8db1ff', '#8db1fe'))).toEqual([
-    'table.colors.accent.dark: expected #8db1ff, got #8db1fe',
+  expect(diffDesign(tokens, change('#a594ff', '#a594fe'))).toEqual([
+    'table.colors.accent.dark: expected #a594ff, got #a594fe',
   ])
   expect(diffDesign(tokens, change('| 320ms |', '| 300ms |'))).toEqual([
     'table.motion.duration-state.value: expected 320ms, got 300ms',

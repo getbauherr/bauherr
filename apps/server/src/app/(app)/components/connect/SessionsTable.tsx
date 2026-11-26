@@ -1,13 +1,22 @@
 import type { SessionRow } from '../../../../core/views/sessions'
 import { EmptyState } from '../EmptyState'
+import { LiveDot } from '../LiveDot'
 import { Time } from '../Time'
 import { Table } from '../ui/table'
 import { TicketRef } from '../TicketRef'
 
 function State({ row }: { row: SessionRow }) {
-  if (row.state !== 'working') return row.state
+  if (row.state !== 'working') {
+    return (
+      <>
+        {row.state === 'idle' && <LiveDot className="mr-2 text-success" />}
+        {row.state}
+      </>
+    )
+  }
   return (
     <>
+      <LiveDot className="mr-2 text-primary" />
       {row.tickets.length} of {row.capacity} working on{' '}
       {row.tickets.map((ticket, index) => (
         <span key={ticket.recordId}>

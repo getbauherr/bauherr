@@ -1,7 +1,7 @@
 import type { LastCheck } from '../../../../core/readiness/last-check'
 import { CheckNow } from '../product/ReadinessActions'
 import { Time } from '../Time'
-import { Alert } from '../ui/alert'
+import { Alert, AlertDescription } from '../ui/alert'
 
 type Props = { check: LastCheck | null; product: number; canCheck: boolean }
 
@@ -20,7 +20,7 @@ export function CheckError({ check }: { check: LastCheck | null }) {
   if (!check?.error) return null
   return (
     <Alert role="alert" className="small text-destructive">
-      The last readiness check failed: {check.error}
+      <AlertDescription className="text-destructive">The last readiness check failed: {check.error}</AlertDescription>
     </Alert>
   )
 }
