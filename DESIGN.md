@@ -32,13 +32,13 @@ typography:
     letterSpacing: -0.01em
   title:
     fontFamily: "Archivo, Helvetica Neue, Arial, sans-serif"
-    fontSize: 24px
-    lineHeight: 30px
-    fontWeight: 600
+    fontSize: 28px
+    lineHeight: 34px
+    fontWeight: 700
     letterSpacing: -0.005em
   heading:
     fontFamily: "Archivo, Helvetica Neue, Arial, sans-serif"
-    fontSize: 17px
+    fontSize: 18px
     lineHeight: 24px
     fontWeight: 600
   body:
@@ -172,12 +172,12 @@ Principles:
 2. **Two brand hues.** `accent` (indigo) marks what can be clicked or is selected. `accent-2` (emerald) marks success, done and progress, and drives `ok`. `warn` and `danger` mean state. Every status comes with a word or glyph.
 3. **Hairlines first.** Surfaces are separated by `hairline` on `surface-000` / `surface-100`. The shadcn components keep their own subtle shadows (cards, inputs, popovers); add none of your own.
 4. **Small corners.** `radius-sm`, `radius-md` and `radius-lg` are the tokens; shadcn components use their own radii. Pills only for badges and chips.
-5. **Slow and unobtrusive.** Motion confirms a state change (`duration-state`) or places a panel (`duration-panel`), always `ease-out`, never more than 8px of travel, never a bounce or loop. Under `prefers-reduced-motion` every duration is 0.
+5. **Slow and unobtrusive.** Motion carries meaning (in progress, background work, a connected session, a state change), is subtle, always `ease-out`, never more than 8px of travel, never decorative. Under `prefers-reduced-motion` every duration is 0 and loops stop.
 6. **Plain words.** Say what happens: "Approve plan", then "Plan approved". Name things as the Bauherr sees them (ticket, stage, run, gate), never as the system is built (job, label, webhook). Sentence case everywhere except `label`.
 
 ### Name and mark
 
-Write **Bauherr** with a capital B, in `display` or `title`, never in uppercase. The mark is the **cornerstone**: a square outline in `ink` with a solid square in `accent` at its bottom-left corner, the one stone the Bauherr lays. Use `assets/Logos/bauherr-mark.svg` at 16, 20, 24 or 32px (drawn on a 32 grid); the wordmark `assets/Logos/bauherr-wordmark.svg` only on the cover, the login page and documents. Keep clear space of one mark width around it. Never recolor the outline, never put the mark on `accent`, never rotate it.
+Write **Bauherr** with a capital B, in `display` or `title`, never in uppercase. The mark is the **cornerstone**: a rounded square outline in `ink` with a solid rounded square in `accent` at its lower-right corner, the one stone the Bauherr lays. Use `assets/Logos/bauherr-mark.svg` at 16, 20, 24 or 32px (drawn on a 24 grid); the wordmark `assets/Logos/bauherr-wordmark.svg` only on the cover, the login page and documents. Keep clear space of one mark width around it. Never recolor the outline, never put the mark on `accent`, never rotate it.
 
 ### Writing
 
@@ -224,6 +224,7 @@ Use the primitive in the right column; do not build another.
 
 #### Local changes to pulled components
 
+- All: no `shadow-xs` or `shadow-sm` (cards and fields are hairline only), controls use `rounded-lg` (8px), badges and buttons are semibold.
 - `button.tsx`: `success` variant; `destructive` is a hairline button with `destructive` text, never a fill.
 - `badge.tsx`: `success`, `warning`, `accent`, and the tone aliases `ok`, `warn`, `neutral`, `muted` that callers pass; `destructive` uses `danger-soft`.
 - `card.tsx`: `asChild`. `command.tsx`: `trigger`, `shouldFilter={false}` (the palette filters its own list), and the sr-only title and description inside the content so a closed palette adds no heading or text to the page.
@@ -290,17 +291,19 @@ A 4px grid: `space-1` to `space-12`. Desktop pages pad `space-8`, phones `space-
 
 ### Motion
 
-Slow and unobtrusive: motion confirms a state change, never decorates. Use only these durations with `ease-out` for entrances and `ease-in` at half duration for exits. Allowed properties: opacity, transform (translate ≤ 8px), background-color, border-color, color. Disallowed: scale on enter, bounce, infinite loops, parallax, skeleton shimmer. Under `prefers-reduced-motion` every duration is 0.
+Motion only where it carries meaning: work in progress, background work, a connected agent session, a state change. It is subtle, never decorative, and it never animates layout. Use only these durations with `ease-out` for entrances and `ease-in` at half duration for exits. Allowed properties: opacity, transform (translate ≤ 8px), background-color, border-color, color. Disallowed: scale on enter, bounce, parallax, any loop that runs when nothing is happening. Under `prefers-reduced-motion` every duration is 0 and every loop stops.
 
 | Token | Value | Use |
 |---|---|---|
 | `duration-state` | 320ms | Hover, focus, chip and status changes, row highlight. |
 | `duration-panel` | 560ms | Drawers, sheets, step nodes appearing in the run graph. |
 | `duration-page` | 800ms | Page-level transitions only: opacity 0→1 of a view after data arrives. |
+| `duration-pulse` | 2000ms | One soft pulse of the live dot on an in-progress chip or a connected session. Loops only while the work runs. |
+| `duration-shimmer` | 1600ms | One sweep of a skeleton shimmer while content loads. |
 | `ease-out` | cubic-bezier(0.2, 0.7, 0.2, 1) | Every entrance and state change; elements move at most 8px while fading in. |
 | `ease-in` | cubic-bezier(0.6, 0, 0.8, 0.4) | Exits only, at half the entrance duration. |
 
-A spinner is a 1.5px arc rotating once per 1.6s, in `accent`, and, besides the running-Ticket indicator, the only looping motion in the product. The indicator marks a Ticket whose Run is `running`: a dashed accent border marching at 1.6s on Graph nodes, a static dashed accent border on Factory cards, always with the activity word (building, reviewing, planning, deploying). Under `prefers-reduced-motion` it is a solid accent border plus the word.
+The loops that exist: the live dot (`animate-pulse-dot`, in the status color) on an in-progress chip and on a connected agent session, and the skeleton shimmer (`shimmer shimmer-bg` from `tw-shimmer`) while a section loads. A Ticket whose Run is `running` also keeps its dashed accent border (marching at 1.6s on Graph nodes, static on Factory cards) with the activity word. Under `prefers-reduced-motion` the dot is steady, the shimmer is still, and the border is solid.
 
 ## Elevation & Depth
 
@@ -314,7 +317,7 @@ Small corners. `radius-sm` (2px): code spans and checkboxes. `radius-md` (4px): 
 
 Guidelines and previews: `docs/design/components/{Button,Cover,Gate,StatusChip}`.
 
-- **Button**: one size, height 36px, padding `0 space-3`, `radius-md`, `body` at weight 500. Primary (`accent` fill, `on-accent` text): the single step a page asks a person for; at most one per view (a modal or drawer is its own view); none when nothing is asked. Secondary (`surface-100`, `hairline` border, `ink`): every other action. Danger (`danger` text, `hairline` border, never a fill): destructive actions. Disabled (`surface-200`, `ink-muted`): only with a visible reason nearby; never as a placeholder primary. Hover changes `background-color` over `duration-state`; focus is a 2px `focus` outline, 2px offset. Verb label in sentence case. Buttons sit `space-2` apart. No shadows, pills or icon-only buttons; animate only `background-color` and `border-color`.
+- **Button**: one size, height 36px, padding `0 space-3`, 8px radius (`rounded-lg`), 14px at weight 600. Primary (`accent` fill, `on-accent` text): the single step a page asks a person for; at most one per view (a modal or drawer is its own view); none when nothing is asked. Secondary (`surface-100`, `hairline` border, `ink`): every other action. Danger (`danger` text, `hairline` border, never a fill): destructive actions. Disabled (`surface-200`, `ink-muted`): only with a visible reason nearby; never as a placeholder primary. Hover changes `background-color` over `duration-state`; focus is a 2px `focus` outline, 2px offset. Verb label in sentence case. Buttons sit `space-2` apart. No shadows, pills or icon-only buttons; animate only `background-color` and `border-color`.
 - **StatusChip**: the state of a ticket, run or step as a word. `label` type (uppercase), `radius-sm`, 1px border and text in the status color on `surface-100`, padding `space-1 space-2`. queued: `ink-muted` text, `hairline` border. running: `accent` with a 1.5px arc spinner. succeeded: `ok`, "✓" before the word. failed: `danger`, "×". cancelled: `ink-muted`. needs human: `warn`, shown as "Waiting for you" or the specific word (Stuck, Session gone, Blocked). Waiting on a machine (Waiting for CI, for review, for the fast lane): `queued` colors with a clock glyph before the word. Always the word; the word list and tones are Product patterns > Activity vocabulary. No fills, pills or other loops; `accent` only for running. Not on Workflow rows (they show the ticket status vocabulary: In progress, Waiting for you, Blocked, …). Under `prefers-reduced-motion` the spinner stops.
 - **Gate**: the decisive content behind a sign-off: no heading, no subtitle, no explanation. Card on `surface-100`, `hairline` border, `radius-md`, padding `space-6`; title in `heading`, meta in `small` / `ink-muted`. Goals with "✓ verified" in `ok` or "Unverified" in `warn`; evidence in a `mono` block on `surface-200`, exit 0 in `ok`. Carries no primary button. Budget and model stay in Details (Admin only). Evidence sits next to the goals it supports; never color alone for verified state.
 - **ActionBar**: the last element of the card that asks for a decision (Brief, Result, Question), under its content and inside its border, separated by a `hairline` top border. Left: one sentence (`body`). Right: at most one secondary Button per recovery action (Discard in `danger` text, Request changes, Send back with note, Back to Brief), then at most one primary Button labelled with the step's verb. The bar wraps on phones with the sentence on its own line. `surface-100`, `radius-md` at the bottom corners, padding `space-3` / `space-4`. The status card of a ticket in Build or Verify and the agent Question card carry Back to Brief as a secondary Button, never primary. A card with nothing to decide has no bar; a status sentence sits under its content instead. Every card that has a bar carries one Comment field directly above it, up to the note limit, in a `Textarea` with the label "Comment", a character count only when fewer than 100 are left, and no dialog. It starts behind a quiet "Add a comment" ghost Button and stays open once it holds text. A recovery action that needs a comment, pressed with the field empty, opens the field, moves focus into it and shows one `danger` line under it that names the action ("Say what should change, then press Request changes again."). The engine acts on the chosen option only; the comment goes to the next run and to the Activity.

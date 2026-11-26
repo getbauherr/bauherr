@@ -24,14 +24,14 @@ export const SidebarMenuItem = ({ className, ...props }: ComponentProps<'li'>) =
 )
 
 const menuButton = cva(
-  'peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md ' +
-    'border-0 bg-transparent p-2 text-left font-[inherit] text-[15px] ' +
+  'peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-lg ' +
+    'border-0 bg-transparent p-2 text-left font-[inherit] text-sm ' +
     'text-sidebar-foreground outline-none transition-colors ' +
     'duration-(--duration-state) ease-(--ease-out) hover:bg-muted ' +
     'focus-visible:ring-2 focus-visible:ring-sidebar-ring ' +
     'disabled:pointer-events-none disabled:opacity-50 ' +
     'group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:p-2! ' +
-    'data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium ' +
+    'data-[active=true]:bg-sidebar-accent data-[active=true]:font-semibold ' +
     'data-[state=open]:bg-muted [&>span:last-child]:truncate [&>svg]:shrink-0',
   {
     variants: { size: { default: 'h-9', lg: 'h-12 group-data-[collapsible=icon]:p-0!' } },
@@ -78,8 +78,8 @@ export const SidebarMenuBadge = ({ className, ...props }: ComponentProps<'div'>)
     data-sidebar="menu-badge"
     className={cn(
       'pointer-events-none absolute top-1/2 right-2 flex h-5 min-w-5 -translate-y-1/2 ' +
-        'items-center justify-center rounded-sm bg-primary px-1 font-mono text-xs/4 ' +
-        'font-medium text-primary-foreground select-none ' +
+        'items-center justify-center rounded-full bg-primary px-1.5 text-xs/4 ' +
+        'font-semibold text-primary-foreground select-none ' +
         'group-data-[collapsible=icon]:top-1 group-data-[collapsible=icon]:right-1 ' +
         'group-data-[collapsible=icon]:size-2 group-data-[collapsible=icon]:min-w-0 ' +
         'group-data-[collapsible=icon]:translate-y-0 group-data-[collapsible=icon]:p-0 ' +

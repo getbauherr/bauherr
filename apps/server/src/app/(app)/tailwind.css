@@ -137,6 +137,12 @@
 }
 
 @theme {
+  --animate-pulse-dot: pulse-dot var(--duration-pulse) ease-in-out infinite;
+  @keyframes pulse-dot {
+    50% {
+      opacity: 0.35;
+    }
+  }
   --animate-march: march 1.6s linear infinite;
   @keyframes march {
     to { stroke-dashoffset: -20; }
@@ -144,5 +150,13 @@
   --animate-stripe: stripe 1.6s ease-in-out infinite alternate;
   @keyframes stripe {
     to { background-position: left bottom; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer,
+  .shimmer::before,
+  .shimmer::after {
+    animation: none !important;
   }
 }
