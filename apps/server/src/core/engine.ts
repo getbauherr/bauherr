@@ -134,7 +134,7 @@ const attemptMerge = async (ctx: Ctx): Promise<AppEvent | MergePending> => {
 const mergeStep = async (ctx: Ctx): Promise<Outcome> => {
   const pr = ctx.state.patch?.pr
   const base = pr === undefined ? null : await stackBaseOf(ctx.deps.payload, ctx.stored, pr)
-  if (base !== null && !base.merged) {
+  if (base !== null && base.open) {
     await setParked(ctx.deps.payload, ctx.stored.id, `Waiting for #${base.number} to merge first`)
     await project(ctx, 'nobody', null)
     return 'stop'
@@ -195,7 +195,7 @@ const advanceOne = async (recordId: number, deps: AdvanceDeps): Promise<boolean>
     const ctx = { deps, stored, state, seq: events.length }
     const blockers = await blockersOf(deps.payload, stored)
     const outcome = await handle(next(stored.record, state, config, blockers), ctx)
-    if (outcome === 'stop') return state.merged
+    if (outcome === 'stop') return state.merged || state.closed !== null
   }
   return false
 }

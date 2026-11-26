@@ -1,22 +1,24 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
-import type { StoredRecord } from '../record/store'
+import { fold } from '../lifecycle'
+import { readEvents, type StoredRecord } from '../record/store'
 
 const count = z.coerce.number()
 const baseRow = z.object({
   number: count,
   state: z.enum(['open', 'closed', 'merged']),
   record_number: count.nullable(),
+  record_id: count.nullable(),
 })
 const idRow = z.object({ id: count })
 
-export type StackBase = { number: number; merged: boolean }
+export type StackBase = { number: number; open: boolean }
 
 export const stackBaseOf = async (payload: Payload, stored: StoredRecord, pr: number): Promise<StackBase | null> => {
   const { repo } = stored.record.source
   const found = await payload.db.drizzle.execute(sql`
-    SELECT b."number", b."state", rec."source_number" AS record_number FROM "mirror_items" c
+    SELECT b."number", b."state", rec."source_number" AS record_number, rec."id" AS record_id FROM "mirror_items" c
     JOIN "mirror_items" b ON b."workspace_id" = c."workspace_id" AND b."repo" = c."repo" AND b."kind" = 'pr'
       AND b."head_ref" = c."base_ref" AND b."number" <> c."number"
     LEFT JOIN "records" rec ON rec."workspace_id" = b."workspace_id" AND rec."source_repo" = b."repo"
@@ -25,7 +27,8 @@ export const stackBaseOf = async (payload: Payload, stored: StoredRecord, pr: nu
     ORDER BY b."number" DESC LIMIT 1`)
   const row = found.rows[0] ? baseRow.parse(found.rows[0]) : null
   if (row === null) return null
-  return { number: row.record_number ?? row.number, merged: row.state === 'merged' }
+  const discarded = row.record_id !== null && fold(await readEvents(payload, row.record_id)).closed !== null
+  return { number: row.record_number ?? row.number, open: row.state === 'open' && !discarded }
 }
 
 export const stackedOnRecord = async (payload: Payload, stored: StoredRecord): Promise<number[]> => {

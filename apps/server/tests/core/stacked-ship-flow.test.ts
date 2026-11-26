@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { enterIssues } from '../../src/core/intake/enter'
+import { advance } from '../../src/core/engine'
 import { fold } from '../../src/core/lifecycle'
-import { readEvents } from '../../src/core/record/store'
+import { appendEvent, readEvents } from '../../src/core/record/store'
 import { readerOf } from './mirror-harness'
 import { buildResult, BRIEF, flowHarness, FORM } from './modules-harness'
 
@@ -75,5 +76,18 @@ describe('a ticket built on another ticket branch', () => {
     const state = fold(await readEvents(f.h.payload(), p.child))
     expect(state).toMatchObject({ stage: 'build', verifyRounds: 0, conflict: { patchId: 'p1', base: 'main' } })
     expect(await f.types(p.child)).not.toContain('verify.changes')
+  })
+
+  it('stops waiting when its base is discarded, and merges on the default branch', async () => {
+    const p = await stackedPair()
+    await f.work(p.child, 'verifier', await passing(p.child, p.childHead, 'p1'))
+    expect(await f.types(p.child)).not.toContain('ship.merged')
+
+    await appendEvent(f.h.payload(), p.baseId, { type: 'ticket.closed', data: { reason: 'discarded' }, actor: 'owner' })
+    await advance(p.baseId, f.subDeps())
+
+    expect(await f.types(p.child)).toContain('ship.merged')
+    const pull = await f.fake().forge.getPullRequest(p.repo, p.childPull.number)
+    expect(pull).toMatchObject({ state: 'merged', base: 'main' })
   })
 })
