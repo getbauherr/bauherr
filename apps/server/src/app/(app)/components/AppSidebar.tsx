@@ -34,7 +34,13 @@ type CountProps = { count: number; title: string; note: string }
 function NavCount({ count, title, note }: Partial<CountProps>) {
   if (!count || count <= 0) return null
   return (
-    <span className="mono ml-auto group-data-[collapsible=icon]:hidden" title={title}>
+    <span
+      className={
+        'ml-auto min-w-5 rounded-full bg-primary px-1.5 text-center text-xs/5 font-semibold ' +
+        'text-primary-foreground group-data-[collapsible=icon]:hidden'
+      }
+      title={title}
+    >
       {count}
       <span className="sr-only">{note}</span>
     </span>

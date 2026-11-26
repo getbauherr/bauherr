@@ -6,7 +6,10 @@ function Skeleton({ className, ...props }: ComponentProps<'div'>) {
     <div
       data-slot="skeleton"
       aria-hidden
-      className={cn('animate-pulse rounded-md bg-muted motion-reduce:animate-none', className)}
+      className={cn(
+        'shimmer shimmer-bg rounded-md bg-muted [--shimmer-color:color-mix(in_oklab,var(--ink)_6%,transparent)]',
+        className,
+      )}
       {...props}
     />
   )
