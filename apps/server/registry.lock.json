@@ -137,10 +137,13 @@
       "registry": "tooltip",
       "source": "shadcn"
     },
+    "assistant-ui/elements/approval-card.parts.tsx": {
+      "registry": "elements-approval-card",
+      "source": "assistant-ui"
+    },
     "assistant-ui/elements/approval-card.tsx": {
-      "registry": null,
-      "source": "local",
-      "lookalike": true
+      "registry": "elements-approval-card",
+      "source": "assistant-ui"
     },
     "assistant-ui/elements/artifact-card.tsx": {
       "registry": "artifact-card",
@@ -158,19 +161,69 @@
       "registry": "attachment",
       "source": "assistant-ui"
     },
+    "assistant-ui/elements/audio-player.tsx": {
+      "registry": "elements-media-player",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/chart.parts.tsx": {
+      "registry": "elements-chart",
+      "source": "assistant-ui"
+    },
     "assistant-ui/elements/chart.tsx": {
-      "registry": null,
-      "source": "local",
-      "lookalike": true
+      "registry": "elements-chart",
+      "source": "assistant-ui"
     },
     "assistant-ui/elements/code-diff.tsx": {
       "registry": null,
       "source": "local"
     },
+    "assistant-ui/elements/collapsible-root.tsx": {
+      "registry": "elements-collapsible-root",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/data-table-format.ts": {
+      "registry": "elements-data-table",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/data-table-hooks.ts": {
+      "registry": "elements-data-table",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/data-table-sort.ts": {
+      "registry": "elements-data-table",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/data-table-types.ts": {
+      "registry": "elements-data-table",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/data-table-value.tsx": {
+      "registry": "elements-data-table",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/data-table-views.tsx": {
+      "registry": "elements-data-table",
+      "source": "assistant-ui"
+    },
     "assistant-ui/elements/data-table.tsx": {
-      "registry": null,
-      "source": "local",
-      "lookalike": true
+      "registry": "elements-data-table",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/error-state.tsx": {
+      "registry": "elements-error-state",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/file-utils.ts": {
+      "registry": "file",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/file.tsx": {
+      "registry": "file",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/follow-up-suggestions.aui.tsx": {
+      "registry": "follow-up-suggestions",
+      "source": "assistant-ui"
     },
     "assistant-ui/elements/image-gallery-dialog.tsx": {
       "registry": "image-gallery",
@@ -180,8 +233,32 @@
       "registry": "image-gallery",
       "source": "assistant-ui"
     },
+    "assistant-ui/elements/image-preview.tsx": {
+      "registry": "image",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/image-utils.ts": {
+      "registry": "image",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/image-zoom.tsx": {
+      "registry": "image",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/image.tsx": {
+      "registry": "image",
+      "source": "assistant-ui"
+    },
     "assistant-ui/elements/markdown-text.tsx": {
       "registry": "markdown-text",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/media-hooks.ts": {
+      "registry": "elements-media-player",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/media-player.tsx": {
+      "registry": "elements-media-player",
       "source": "assistant-ui"
     },
     "assistant-ui/elements/option-list-rows.tsx": {
@@ -204,18 +281,30 @@
       "registry": "option-list",
       "source": "assistant-ui"
     },
+    "assistant-ui/elements/reasoning.aui.tsx": {
+      "registry": "reasoning",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/reasoning.tsx": {
+      "registry": "elements-reasoning",
+      "source": "assistant-ui"
+    },
     "assistant-ui/elements/receipt-focus.ts": {
       "registry": "option-list",
       "source": "assistant-ui"
     },
     "assistant-ui/elements/recommendation-card.tsx": {
-      "registry": null,
-      "source": "local",
-      "lookalike": true
+      "registry": "elements-recommendation-card",
+      "source": "assistant-ui",
+      "edits": "The Alternatives button renders only when onAlternatives is given."
     },
     "assistant-ui/elements/reviewable-diff.tsx": {
       "registry": null,
       "source": "local"
+    },
+    "assistant-ui/elements/suggestions.tsx": {
+      "registry": "elements-suggestions",
+      "source": "assistant-ui"
     },
     "assistant-ui/elements/surfaces.tsx": {
       "registry": "surfaces",
@@ -225,17 +314,101 @@
       "registry": "task-card",
       "source": "assistant-ui"
     },
+    "assistant-ui/elements/thread-assistant.tsx": {
+      "registry": "thread",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/thread-composer.tsx": {
+      "registry": "thread",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/thread-context.tsx": {
+      "registry": "thread",
+      "source": "assistant-ui",
+      "edits": "Split from thread.aui.tsx for the 300-line limit. Adds the placeholder, composer, welcome, afterMessages and aboveComposer props."
+    },
+    "assistant-ui/elements/thread-spoken.tsx": {
+      "registry": "thread",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/thread-user.tsx": {
+      "registry": "thread",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/thread.aui.tsx": {
+      "registry": "thread",
+      "source": "assistant-ui"
+    },
     "assistant-ui/elements/timeline.tsx": {
       "registry": "timeline",
       "source": "assistant-ui"
     },
+    "assistant-ui/elements/todo-list.parts.tsx": {
+      "registry": "elements-todo-list",
+      "source": "assistant-ui"
+    },
     "assistant-ui/elements/todo-list.tsx": {
-      "registry": null,
-      "source": "local",
-      "lookalike": true
+      "registry": "elements-todo-list",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-call.tsx": {
+      "registry": "elements-tool-call",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-error.tsx": {
+      "registry": "elements-tool-error",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-fallback-approval-hooks.ts": {
+      "registry": "tool-fallback",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-fallback-approval-model.ts": {
+      "registry": "tool-fallback",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-fallback-approval-views.tsx": {
+      "registry": "tool-fallback",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-fallback-approval.tsx": {
+      "registry": "tool-fallback",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-fallback-parts.tsx": {
+      "registry": "tool-fallback",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-fallback-questions.tsx": {
+      "registry": "tool-fallback",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-fallback-receipt.tsx": {
+      "registry": "tool-fallback",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-fallback-root.tsx": {
+      "registry": "tool-fallback",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-fallback.aui.tsx": {
+      "registry": "tool-fallback",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/tool-group.aui.tsx": {
+      "registry": "tool-group",
+      "source": "assistant-ui"
     },
     "assistant-ui/elements/tooltip-icon-button.tsx": {
       "registry": "tooltip-icon-button",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/use-pinned-scroll.ts": {
+      "registry": "elements-reasoning",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/video-player.tsx": {
+      "registry": "elements-media-player",
       "source": "assistant-ui"
     }
   }

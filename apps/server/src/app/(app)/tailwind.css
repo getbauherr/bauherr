@@ -131,7 +131,11 @@
 @media (prefers-reduced-motion: reduce) {
   .shimmer,
   .shimmer::before,
-  .shimmer::after {
+  .shimmer::after,
+  .animate-in,
+  .animate-out,
+  .animate-pulse,
+  .animate-spin {
     animation: none !important;
   }
 }

@@ -1,7 +1,6 @@
 'use client'
 import type { Decision, Outcome } from '../../../../core/retro/schema'
 import { ApprovalCard } from '../assistant-ui/elements/approval-card'
-import { Button } from '../ui/button'
 import type { OutcomeActions, OutcomeResult } from './RetroOutcome'
 
 type Props = {
@@ -13,10 +12,13 @@ type Props = {
   take: (result: OutcomeResult) => boolean
 }
 
-const decidedText = (decision: Decision, number: number | null): string | null => {
-  if (number !== null) return `Opened as #${number}.`
-  if (decision === 'discard') return 'Dropped. No ticket will be opened.'
-  return decision === 'keep' ? 'Kept. It opens when you press Apply.' : null
+const pendingText = (decision: Decision): string =>
+  decision === 'discard' ? 'Dropped. No ticket will be opened.' : 'Kept. It opens when you press Apply.'
+
+const stateOf = (number: number | null, done: boolean) => {
+  if (number !== null) return { state: 'done' as const, statusLabel: `Opened as #${number}` }
+  if (done) return { state: 'denied' as const, statusLabel: 'Dropped. No ticket was opened.' }
+  return { state: 'request' as const }
 }
 
 export function OutcomeTickets({ outcome, done, repos, day, actions, take }: Props) {
@@ -28,21 +30,18 @@ export function OutcomeTickets({ outcome, done, repos, day, actions, take }: Pro
         <ApprovalCard
           key={ticket.id}
           title={ticket.title}
-          badge={ticket.repo === 'factory' ? 'Ticket on the factory' : 'Ticket for the product'}
-          body={ticket.body}
-          details={[`Opens in ${repos[ticket.repo]}`, `From Retro ${day}`]}
-          decided={decidedText(ticket.decision, ticket.number)}
-          locked={done}
-          actions={(['keep', 'discard'] as const).map((decision) => (
-            <Button
-              key={decision}
-              type="button"
-              variant={decision === 'keep' ? 'default' : 'outline'}
-              onClick={() => void actions.decideTicket(ticket.id, decision).then(take)}
-            >
-              {decision === 'keep' ? 'Open ticket' : 'Drop'}
-            </Button>
-          ))}
+          subtitle={ticket.repo === 'factory' ? 'Ticket on the factory' : 'Ticket for the product'}
+          description={ticket.body}
+          details={[
+            { label: 'Opens in', value: repos[ticket.repo] },
+            { label: 'From', value: `Retro ${day}` },
+            ...(done ? [] : [{ label: 'Status', value: pendingText(ticket.decision) }]),
+          ]}
+          {...stateOf(ticket.number, done)}
+          allowOnceLabel="Open ticket"
+          denyLabel="Drop"
+          onAllowOnce={() => void actions.decideTicket(ticket.id, 'keep').then(take)}
+          onDeny={() => void actions.decideTicket(ticket.id, 'discard').then(take)}
         />
       ))}
     </section>

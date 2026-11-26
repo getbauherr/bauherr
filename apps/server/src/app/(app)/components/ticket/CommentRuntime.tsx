@@ -9,21 +9,22 @@ import { conversationApi } from '../conversation/conversation-api'
 const api = conversationApi()
 
 type Props = {
-  conversation: () => Promise<number>
+  conversation?: () => Promise<number>
   onSend?: (text: string, fileIds: number[]) => Promise<void>
+  messages?: ThreadMessageLike[]
   children: ReactNode
 }
 
 const NO_MESSAGES: ThreadMessageLike[] = []
 
-export function CommentRuntime({ conversation, onSend, children }: Props) {
-  const attachments = useMemo(() => attachmentAdapter(conversation, api), [conversation])
+export function CommentRuntime({ conversation, onSend, messages = NO_MESSAGES, children }: Props) {
+  const attachments = useMemo(() => (conversation ? attachmentAdapter(conversation, api) : undefined), [conversation])
   const runtime = useExternalStoreRuntime({
-    messages: NO_MESSAGES,
+    messages,
     isRunning: false,
     convertMessage: (message) => message,
     onNew: (message) => onSend?.(textOf(message), fileIdsOf(message)) ?? Promise.resolve(),
-    adapters: { attachments },
+    ...(attachments ? { adapters: { attachments } } : {}),
   })
   return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
 }

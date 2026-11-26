@@ -1,35 +1,50 @@
-import type { ReactNode } from 'react'
-import { Table } from '../../ui/table'
+'use client'
+
+import { cn } from '@/lib/utils'
+import { useRelativeTime, useSortState } from './data-table-hooks'
+import { sortRows } from './data-table-sort'
+import type { DataTableProps } from './data-table-types'
+import { ListView, TableView } from './data-table-views'
+import { paper } from './surfaces'
+
+export type {
+  DataTableColumn,
+  DataTableFormat,
+  DataTableProps,
+  DataTableRow,
+  DataTableSort,
+  DataTableValue,
+} from './data-table-types'
 
 export function DataTable({
-  caption,
   columns,
   rows,
-}: {
-  caption: string
-  columns: string[]
-  rows: { key: string; cells: ReactNode[] }[]
-}) {
+  rowKey,
+  caption,
+  defaultSort,
+  sort,
+  onSortChange,
+  locale = 'en-US',
+  emptyMessage = 'No rows',
+  relativeTo,
+  className,
+  ...props
+}: DataTableProps) {
+  const { activeSort, announcement, changeSort } = useSortState(defaultSort, sort, onSortChange)
+  const relativeTime = useRelativeTime(columns, rows, relativeTo)
+  const sortedRows = sortRows(rows, columns, activeSort, locale)
+  const view = { columns, rows: sortedRows, rowKey, locale, relativeTo: relativeTime, emptyMessage }
   return (
-    <Table data-slot="data-table" aria-label={caption}>
-      <thead>
-        <tr>
-          {columns.map((column) => (
-            <th key={column} scope="col">
-              {column}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.key}>
-            {row.cells.map((cell, index) => (
-              <td key={columns[index]}>{cell}</td>
-            ))}
-          </tr>
-        ))}
-      </tbody>
-    </Table>
+    <div
+      data-slot="data-table"
+      className={cn(paper, '@container w-full overflow-hidden rounded-2xl', className)}
+      {...props}
+    >
+      <TableView {...view} caption={caption} activeSort={activeSort} onSort={changeSort} />
+      <ListView {...view} />
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
+    </div>
   )
 }
