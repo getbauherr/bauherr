@@ -150,7 +150,9 @@ export const PRESETS: Record<Preset, Def> = {
         slug,
         custom('completions', 'mistral'),
         { apiKey: { file }, baseUrl: 'https://api.mistral.ai/v1' },
-        { overrides: { metadata: {} } },
+        // metadata: Claude Code's metadata.user_id becomes an OpenAI `user` field (422 extra_forbidden).
+        // thinking: Claude Code's thinking becomes reasoning_effort, which codestral rejects.
+        { overrides: { metadata: {}, thinking: { type: 'disabled' } } },
       ),
   },
   bedrock: {
