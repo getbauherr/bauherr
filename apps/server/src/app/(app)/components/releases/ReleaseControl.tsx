@@ -53,7 +53,11 @@ function Question({ run, product, answer }: { run: RunView; product: number; ans
         <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" />
         {run.question.text}
       </p>
-      <p className="small m-0 text-muted-foreground">The release stays a draft until it is fixed.</p>
+      <p className="small m-0 text-muted-foreground">
+        {run.question.options.includes('release-fixed-later')
+          ? 'The release stays a draft until it is fixed.'
+          : 'The notes are published; only marking the tickets is left.'}
+      </p>
       <div className="flex flex-wrap gap-2">
         {run.question.options.map((option) => (
           <Button key={option} type="submit" name="option" value={option} size="sm" variant="outline">

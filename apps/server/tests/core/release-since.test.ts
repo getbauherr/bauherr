@@ -1,10 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import { editItem, readNotes, UNRELEASED, writeNotesFor } from '../../src/core/releases/notes-store'
 import { releasePanel } from '../../src/core/releases/panel'
+import { releasesPage } from '../../src/core/releases/view'
 import { releaseHarness } from './release-harness'
 
-const { f, h, recording, mergeTicket, refresh, setup, releaser, at, start, advance, deployed, ask, commentsOn, NOW } =
-  releaseHarness('core_release_since')
+const harness = releaseHarness('core_release_since')
+const { f, h, recording, mergeTicket, refresh, setup, releaser, at, start, advance } = harness
+const { states, deployed, ask, commentsOn, NOW } = harness
+
+const once = <T extends object>(target: T, name: string, gate: { armed: boolean }): T =>
+  new Proxy(target, {
+    get: (from, key) => {
+      const value: unknown = Reflect.get(from, key)
+      if (key !== name || typeof value !== 'function' || !gate.armed) return value
+      return () => {
+        gate.armed = false
+        return Promise.reject(new Error('forge unavailable'))
+      }
+    },
+  })
 
 describe('release since the last real release', () => {
   it('counts everything since the last real release and ignores release candidates', async () => {
@@ -17,6 +31,9 @@ describe('release since the last real release', () => {
     await refresh()
     const panel = await releasePanel(h.payload(), at(), NOW)
     expect(panel?.since).toBe('v0.6.0')
+    expect((await releasesPage(h.payload(), { workspace: h.ids.workspace, product: h.ids.product })).ready?.since).toBe(
+      'v0.6.0',
+    )
     expect(panel?.changes).toBe(3)
     expect(panel?.proposal.version).toBe('v0.7.0')
     const run = await start(releaser())
@@ -107,21 +124,10 @@ describe('release since the last real release', () => {
     const s = await setup()
     const fake = f.fake()
     const gate = { armed: early }
-    const once = <T extends object>(target: T, name: string): T =>
-      new Proxy(target, {
-        get: (from, key) => {
-          const value: unknown = Reflect.get(from, key)
-          if (key !== name || typeof value !== 'function' || !gate.armed) return value
-          return () => {
-            gate.armed = false
-            return Promise.reject(new Error('forge unavailable'))
-          }
-        },
-      })
-    const forge = method !== null && on === 'forge' ? once(fake.forge, method) : fake.forge
+    const forge = method !== null && on === 'forge' ? once(fake.forge, method, gate) : fake.forge
     const wrapped = (repo: string) => {
       const own = fake.tickets(repo)
-      return method !== null && on === 'tickets' ? once(own, method) : own
+      return method !== null && on === 'tickets' ? once(own, method, gate) : own
     }
     const r = releaser({ ...fake, forge, tickets: wrapped })
     const first = await start(r)
@@ -143,6 +149,37 @@ describe('release since the last real release', () => {
     expect(names.filter((name) => name === 'v0.7.0')).toHaveLength(1)
     expect(fake.listReleases(s.repo).filter((rel) => rel.tag === 'v0.7.0')).toHaveLength(1)
     expect(fake.deployStarts(s.repo)).toHaveLength(1)
+    for (const issue of s.issues) expect(await commentsOn(s.repo, issue)).toHaveLength(1)
+  })
+
+  const publishedThenStopped = async () => {
+    const s = await setup()
+    const fake = f.fake()
+    const gate = { armed: true }
+    const r = releaser({ ...fake, tickets: (repo) => once(fake.tickets(repo), 'comment', gate) })
+    const first = await start(r)
+    deployed(s)
+    const stopped = await advance(r, first.id)
+    expect(states(stopped)).toEqual(expect.arrayContaining(['publish:done', 'tell:failed']))
+    return { s, r, id: first.id }
+  }
+
+  it('offers only check-again after the notes are published and refuses giving up', async () => {
+    const { r, id } = await publishedThenStopped()
+    const failed = await releasePanel(h.payload(), at(), NOW)
+    expect(failed?.run?.question?.options).toEqual(['check-again'])
+    await r.answer(at(), id, 'release-fixed-later')
+    expect((await releasePanel(h.payload(), at(), NOW))?.run?.state).toBe('failed')
+  })
+
+  it('counts a published release as the last one and marks the tickets on check again', async () => {
+    const { s, r, id } = await publishedThenStopped()
+    await refresh()
+    expect((await releasePanel(h.payload(), at(), NOW))?.since).toBe('v0.7.0')
+    await r.answer(at(), id, 'check-again')
+    await refresh()
+    const after = await releasePanel(h.payload(), at(), NOW)
+    expect([after?.run, after?.since, after?.changes]).toEqual([null, 'v0.7.0', 0])
     for (const issue of s.issues) expect(await commentsOn(s.repo, issue)).toHaveLength(1)
   })
 })

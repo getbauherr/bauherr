@@ -80,7 +80,10 @@ export const usedVersions = async (payload: Payload, product: number): Promise<s
 
 export const unfinishedVersions = async (payload: Payload, product: number): Promise<string[]> => {
   const found = await payload.db.drizzle.execute(
-    sql`SELECT "version" FROM "product_releases" WHERE "product_id" = ${product} AND "state" <> 'done'`,
+    sql`SELECT "version" FROM "product_releases" WHERE "product_id" = ${product} AND "state" <> 'done'
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements("steps") AS s WHERE s->>'id' = 'publish' AND s->>'status' = 'done'
+      )`,
   )
   return found.rows.map((entry) => z.string().parse(entry.version))
 }

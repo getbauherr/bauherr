@@ -20,7 +20,7 @@ import {
   saveRun,
   unclaim,
 } from './run-store'
-import { OPTIONS, type ReleaseRun, type RunOption, type Step, type StepId } from './run-steps'
+import { isPublished, OPTIONS, type ReleaseRun, type RunOption, type Step, type StepId } from './run-steps'
 import { readyToRelease, type ProductAt } from './ready'
 import { validVersion } from './version'
 
@@ -226,7 +226,7 @@ export const advanceRunning = async (ctx: Context): Promise<number> => {
 export const answerRelease = async (ctx: Context, at: ProductAt, id: number, option: RunOption): Promise<void> => {
   const run = await readRunIn(ctx.payload, id, at)
   if (run?.state !== 'failed' || !OPTIONS.includes(option)) return
-  if (option === 'release-fixed-later') return abandon(ctx.payload, id)
+  if (option === 'release-fixed-later') return isPublished(run.steps) ? undefined : abandon(ctx.payload, id)
   const steps = run.steps.map((step) =>
     step.status === 'failed' ? { ...step, status: 'todo' as const, detail: null } : step,
   )
