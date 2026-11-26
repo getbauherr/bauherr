@@ -114,6 +114,7 @@ export default tseslint.config(
   {
     ignores: [
       '**/node_modules/**',
+      '.claude/**', // agent worktrees
       '**/dist/**',
       '**/.next/**',
       '**/.test-dist/**',
