@@ -229,6 +229,7 @@ Use the primitive in the right column; do not build another.
 - `badge.tsx`: `success`, `warning`, `accent`, and the tone aliases `ok`, `warn`, `neutral`, `muted` that callers pass; `destructive` uses `danger-soft`.
 - `card.tsx`: `asChild`. `command.tsx`: `trigger`, `shouldFilter={false}` (the palette filters its own list), and the sr-only title and description inside the content so a closed palette adds no heading or text to the page.
 - `breadcrumb.tsx`: the nav label is `Breadcrumb`, which tests and e2e query.
+- `checkbox.tsx`: the previous native `<input type="checkbox">`, not Radix. The Radix version made `/settings/bauherren` hydrate 100 ms slower (e2e/perf.spec.ts budget).
 - `skeleton.tsx`: `shimmer shimmer-bg` (tw-shimmer, a 6% ink band) instead of `animate-pulse`; still under `prefers-reduced-motion`.
 - `sonner.tsx`: no `next-themes`; colors come from the tokens.
 - `sidebar.tsx`, `sidebar-context.tsx`, `sidebar-menu.tsx`, `sidebar-cookie.ts`: not re-pulled; the registry file is over the 300-line limit, so it stays split.

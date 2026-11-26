@@ -27,10 +27,10 @@ function ProductChecks({
               name="products"
               value={p.id}
               checked={checked.has(p.id)}
-              onCheckedChange={(on) =>
+              onChange={(e) =>
                 setChecked((c) => {
                   const n = new Set(c)
-                  if (on === true) n.add(p.id)
+                  if (e.target.checked) n.add(p.id)
                   else n.delete(p.id)
                   return n
                 })
