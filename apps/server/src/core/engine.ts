@@ -1,6 +1,7 @@
 import type { Payload } from 'payload'
 import { MergePending } from './forge/merge-pending'
-import { runEffects, type ForgePort } from './effects'
+import { stackBaseOf, stackedOnRecord } from './forge/stack'
+import { mirrorItem, runEffects, type ForgePort } from './effects'
 import type { AppEvent, Stage } from './events'
 import { fingerprint, fold, foldOptions, next, type Config, type State, type Step } from './lifecycle'
 import { createKept } from './relations/keep'
@@ -68,6 +69,23 @@ const project = async (ctx: Ctx, waitingOn: WaitingOn, card: Raised | null, stag
   await setCard(ctx.deps.payload, ctx.stored.id, raised(ctx, card, ctx.seq))
 }
 
+const bringUp = async (ctx: Ctx, retarget: boolean): Promise<'ready' | 'restart'> => {
+  const { forge } = ctx.deps
+  const patch = ctx.state.patch
+  if (forge === undefined || patch === null || ctx.state.adopted) return 'ready'
+  const itemId = await mirrorItem(ctx.deps.payload, ctx.stored, 'pr', patch.pr)
+  if (itemId === null) return 'ready'
+  const update = await forge.updatePullRequestBranch({ recordId: ctx.stored.id, itemId }, retarget).catch(() => null)
+  if (update === null || update.kind === 'current') return 'ready'
+  if (update.kind === 'updated') {
+    await append(ctx, { type: 'pull.updated', data: { patchId: patch.id, headSha: update.headSha } })
+    return 'restart'
+  }
+  await append(ctx, { type: 'pull.conflicted', data: { patchId: patch.id, base: update.base } })
+  await runEffects(ctx.deps, ctx.stored.id, [{ kind: 'status' }])
+  return 'restart'
+}
+
 const runStep = async (step: Extract<Step, { kind: 'run' }>, ctx: Ctx): Promise<Outcome> => {
   const print = fingerprint({ stage: step.stage, version: ctx.stored.version, note: ctx.state.note })
   const verdict = (await ctx.deps.mayStart?.(ctx.stored, step.stage)) ?? { ok: true }
@@ -75,6 +93,9 @@ const runStep = async (step: Extract<Step, { kind: 'run' }>, ctx: Ctx): Promise<
     await setParked(ctx.deps.payload, ctx.stored.id, verdict.reason)
     await project(ctx, 'nobody', null, step.stage)
     return 'stop'
+  }
+  if (step.stage === 'verify' && step.role === 'reviewer' && (await bringUp(ctx, false)) === 'restart') {
+    return 'repeat'
   }
   if (ctx.stored.parked !== null) await setParked(ctx.deps.payload, ctx.stored.id, null)
   const input = { stage: step.stage, role: step.role, fingerprint: print }
@@ -111,6 +132,14 @@ const attemptMerge = async (ctx: Ctx): Promise<AppEvent | MergePending> => {
 }
 
 const mergeStep = async (ctx: Ctx): Promise<Outcome> => {
+  const pr = ctx.state.patch?.pr
+  const base = pr === undefined ? null : await stackBaseOf(ctx.deps.payload, ctx.stored, pr)
+  if (base !== null && !base.merged) {
+    await setParked(ctx.deps.payload, ctx.stored.id, `Waiting for #${base.number} to merge first`)
+    await project(ctx, 'nobody', null)
+    return 'stop'
+  }
+  if (base !== null && (await bringUp(ctx, true)) === 'restart') return 'repeat'
   const result = await attemptMerge(ctx)
   if (result instanceof MergePending) {
     await setParked(ctx.deps.payload, ctx.stored.id, `Merge will be retried: ${result.message}`)
@@ -173,6 +202,10 @@ const advanceOne = async (recordId: number, deps: AdvanceDeps): Promise<boolean>
 
 export const advance = async (recordId: number, deps: AdvanceDeps): Promise<void> => {
   if (!(await advanceOne(recordId, deps))) return
-  const blocked = await blockedByRecord(deps.payload, await readRecord(deps.payload, recordId))
-  for (const id of blocked) await advance(id, deps)
+  const stored = await readRecord(deps.payload, recordId)
+  const waiting = new Set([
+    ...(await blockedByRecord(deps.payload, stored)),
+    ...(await stackedOnRecord(deps.payload, stored)),
+  ])
+  for (const id of waiting) await advance(id, deps)
 }

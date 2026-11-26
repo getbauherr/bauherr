@@ -81,6 +81,15 @@ export const findingSchema = z.object({
   text: text(300),
   evidence: z.object({ kind: z.enum(['test', 'repro']), pointer: text(200) }),
   status: z.enum(['open', 'fixing', 'fixed', 'invalid']),
+  followUp: z.boolean().optional(),
+})
+
+export const STATE_OUTCOMES = ['done', 'failed', 'retried', 'given-up'] as const
+
+export const stateRowSchema = z.object({
+  step: text(80),
+  outcome: z.enum(STATE_OUTCOMES),
+  test: text(160),
 })
 
 export const resultSchema = z.object({
@@ -110,6 +119,7 @@ const shape = z.object({
   relations: z.array(relationSchema).max(5).default([]),
   shape: z.string().trim().max(SHAPE_MAX).default(''),
   flow: z.string().trim().max(SHAPE_MAX).default(''),
+  stateTable: z.array(stateRowSchema).max(28).default([]),
   findings: z.array(findingSchema).max(20),
   handoff: z.string().trim().max(1200),
   result: resultSchema.nullable(),
@@ -145,6 +155,7 @@ export type Decision = TicketRecord['decisions'][number]
 export type RelationKind = (typeof RELATION_KINDS)[number]
 export type ProposedRelation = z.infer<typeof relationSchema>
 export type Finding = TicketRecord['findings'][number]
+export type StateRow = z.infer<typeof stateRowSchema>
 export type RecordField = keyof TicketRecord
 export const RECORD_FIELDS = Object.keys(shape.shape) as RecordField[]
 
@@ -163,6 +174,7 @@ export const emptyRecord = (recordSource: RecordSource, type: RecordType): Ticke
   relations: [],
   shape: '',
   flow: '',
+  stateTable: [],
   findings: [],
   handoff: '',
   result: null,

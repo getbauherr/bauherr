@@ -77,6 +77,25 @@ describe('a Brief with constraints', () => {
   })
 })
 
+describe('a Brief with a state table', () => {
+  const rows = ['done', 'failed', 'retried', 'given-up'].map((outcome) => ({
+    step: 'deploy',
+    outcome,
+    test: `deploy is ${outcome}`,
+  }))
+
+  it('is refused when a row is missing, and keeps the table once it is complete', async () => {
+    const { record, ids } = await briefRun()
+    const refused = z
+      .object({ status: z.literal('retry'), problems: z.array(z.object({ path: z.string(), message: z.string() })) })
+      .parse(await m.call('submit', { ...ids, result: { ...BRIEF, stateTable: rows.slice(0, 3) } }, m.agent(m.alpha)))
+    expect(refused.problems[0]?.message).toContain('step "deploy" has no row for given-up')
+    const complete = { ...BRIEF, stateTable: rows }
+    expect(await m.call('submit', { ...ids, result: complete }, m.agent(m.alpha))).toEqual({ status: 'accepted' })
+    expect((await readRecord(m.e.db.payload, record)).record.stateTable).toEqual(rows)
+  })
+})
+
 describe('a Brief for a visible change', () => {
   it('is refused without a mockup, with the one fix turn, and accepted once a mockup is attached', async () => {
     const { record, ids } = await briefRun()

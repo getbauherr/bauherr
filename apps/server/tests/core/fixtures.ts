@@ -70,6 +70,7 @@ export const SAMPLES: Record<EventType, unknown> = {
   'ticket.done-elsewhere': {},
   'pull.adopted': { pr: 12, headSha: 'h1', patchId: 'adopted:h1' },
   'pull.conflicted': { patchId: 'p1', base: 'main' },
+  'pull.updated': { patchId: 'p1', headSha: 'h2' },
   'checks.finished': { patchId: 'p1', passed: true },
   'review.submitted': { runId: 'r1', patchId: 'p1', headSha: 'h1', findings: 0 },
   'verify.passed': { runId: 'r2', patchId: 'p1', headSha: 'h1' },

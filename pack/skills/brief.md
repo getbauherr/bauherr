@@ -46,6 +46,14 @@ The owner judges the plan from pictures. Use the smallest view that makes the po
 4. Send the file to the `uploadUrl` the tool returns, as its description says. The address works once, for 10 minutes.
 5. At most 12 images per run. A Brief with `visible` true and no mockup is refused.
 
+## State table
+
+When the change has several steps that can fail (deploy, release, payment, migration), set `stateTable`: one row per
+step and outcome, `{ step, outcome, test }`, with `outcome` one of `done`, `failed`, `retried`, `given-up`.
+Every step has all four rows, and `test` names the one test that proves the row (the test name, not a criterion).
+A step that cannot be retried or given up still gets the row, with the test that shows it cannot. A Brief whose
+table misses a row or reuses a test is refused. A change with no such steps leaves `stateTable` empty.
+
 ## Adopted pull request
 
 When `source.adopted` is set on the record, a person opened pull request `source.adopted.pr` for this issue before the

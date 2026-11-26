@@ -10,3 +10,9 @@ it('the Verify skill tells verifiers what the checks gate enforces', () => {
   expect(skill).toMatch(/red or pending, a criterion verified by a test or command stays `open`/)
   expect(skill).toMatch(/`partial` is for a criterion met in part on a green commit/)
 })
+
+it('the Verify skill states the one-round and follow-up rules', () => {
+  expect(skill).toMatch(/Report everything you find in one round/)
+  expect(skill).toMatch(/check it in round 1/)
+  expect(skill).toMatch(/with `followUp` set to true/)
+})

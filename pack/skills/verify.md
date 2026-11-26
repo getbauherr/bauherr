@@ -42,6 +42,17 @@ You judge a patch you did not build, from evidence, and give a verdict the owner
    that changed most. The owner sees it against the approved shape, and every changed line the Brief did not
    have is marked "not in plan"; do not hide such a line, it is the point.
 
+## Rounds
+
+Report everything you find in one round: check the whole record before you answer, not a part of it.
+- When the Brief has a `stateTable`, check it in round 1: every row has a test, the test exists and fails when the
+  behaviour is wrong. A missing or empty test is a finding.
+- A later round reports only what the last fix changed or a new regression it caused. A defect that was already in
+  the patch in an earlier round is not a finding of this round: report it with `followUp` set to true, with its
+  evidence, so it becomes a suggestion for a follow-up ticket. The gate does not send a ticket back for findings
+  that are only follow-ups, and a `changes` verdict needs a finding that is not.
+- A conflict with the default branch is not a finding: the factory brings the branch up to date before Verify.
+
 ## Never
 
 - Never give a verdict on a patch you built.

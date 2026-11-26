@@ -8,6 +8,8 @@ export type TimeSummary = {
   done: number
   medianSeconds: number | null
   verifyRoundsPerTicket: number | null
+  verifyRoundsMedian: number | null
+  moreThanOneRoundShare: number | null
   sentBackShare: number | null
   stages: StageTime[]
   largestWait: LargestWait | null
@@ -65,6 +67,8 @@ export const summarize = (tickets: TicketTime[]): TimeSummary => {
     done: tickets.length,
     medianSeconds: median(tickets.map((ticket) => ticket.seconds)),
     verifyRoundsPerTicket: mean(tickets.map((ticket) => ticket.verifyRounds)),
+    verifyRoundsMedian: median(tickets.map((ticket) => ticket.verifyRounds)),
+    moreThanOneRoundShare: mean(tickets.map((ticket) => (ticket.verifyRounds > 1 ? 1 : 0))),
     sentBackShare: mean(tickets.map((ticket) => (ticket.sentBack > 0 ? 1 : 0))),
     stages: STAGES.filter((stage): stage is Stay['stage'] => stage !== 'done')
       .map((stage) => stageTime(stage, stays.filter((stay) => stay.stage === stage)))

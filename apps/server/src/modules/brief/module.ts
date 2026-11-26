@@ -4,7 +4,15 @@ import type { Conn } from '../../core/conn'
 import type { Problem } from '../../core/module'
 import { defineModule } from '../../core/module'
 import { refusedRelations } from '../../core/relations/proposal'
-import { criterionSchema, PREVIEW_MAX, relationSchema, riskSchema, SHAPE_MAX } from '../../core/record/schema'
+import {
+  criterionSchema,
+  PREVIEW_MAX,
+  relationSchema,
+  riskSchema,
+  SHAPE_MAX,
+  stateRowSchema,
+} from '../../core/record/schema'
+import { stateTableProblems } from '../../core/record/state-table'
 
 const text = (max: number) => z.string().trim().min(1).max(max)
 
@@ -38,6 +46,7 @@ const resultSchema = z.object({
   relations: z.array(relationSchema).max(5).default([]),
   shape: z.string().trim().max(SHAPE_MAX).default(''),
   flow: z.string().trim().max(SHAPE_MAX).default(''),
+  stateTable: z.array(stateRowSchema).max(28).default([]),
 })
 
 const UNKNOWN_TICKET = 'is not another ticket of this repository: use a real ticket number or drop the relation.'
@@ -95,13 +104,15 @@ export const brief = defineModule({
     'relations',
     'shape',
     'flow',
+    'stateTable',
   ],
   resultSchema,
   check: async (tx, run, result) => {
     const shapeProblems = hasChangedLine(result.shape) ? [] : [{ path: 'shape', message: NO_SHAPE }]
     const unknown = await unknownRelations(tx, run.recordId, result.relations)
     const refused = unknown.length === 0 ? await refusedRelations(tx, run.recordId, result.relations) : []
-    const problems = [...shapeProblems, ...homePaths(result), ...unknown, ...refused]
+    const table = stateTableProblems(result.stateTable)
+    const problems = [...shapeProblems, ...homePaths(result), ...table, ...unknown, ...refused]
     if (!result.visible) return problems
     const worked = await tx.db.drizzle.execute(sql`
       SELECT coalesce(p."executor", 'session') AS executor FROM "records" r
@@ -125,6 +136,7 @@ export const brief = defineModule({
       relations: result.relations,
       shape: result.shape,
       flow: result.flow,
+      stateTable: result.stateTable,
     },
     events: [{ type: 'brief.submitted', data: { runId: String(run.id) } }],
   }),

@@ -154,3 +154,8 @@ export const saveStatusComment = async (
     UPDATE "records" SET "status_comment_id" = ${commentId}, "status_comment_hash" = ${hash}, "updated_at" = now()
     WHERE "id" = ${recordId}`)
 }
+
+export const saveHead = async (payload: Payload, itemId: number, headSha: string): Promise<void> => {
+  await payload.db.drizzle.execute(sql`
+    UPDATE "mirror_items" SET "head_sha" = ${headSha}, "updated_at" = now() WHERE "id" = ${itemId}`)
+}
