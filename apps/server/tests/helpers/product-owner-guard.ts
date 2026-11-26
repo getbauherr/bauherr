@@ -66,11 +66,14 @@ export const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#logout': 'sign-out',
   '(shell)/requests/actions.ts#startRequestConversation': 'comment on a request of their own product',
   '(shell)/requests/actions.ts#commentOnRequestAction': 'comment on a request of their own product',
+  '(shell)/requests/more-actions.tsx#moreRequests': 'the next rows of the Requests of an assigned Product',
 }
 export const BAUHERR_ACTIONS = [
   '(shell)/settings/profile/actions.ts#saveOwnLogin',
   'lib/actions.ts#selectWorkspace',
   '(shell)/actions.ts#moveCard',
+  '(shell)/lane-actions.tsx#moreCards',
+  '(shell)/inbox/actions.tsx#moreInbox',
   '(shell)/releases/actions.ts#writeNotesAction',
   '(shell)/releases/actions.ts#editNoteAction',
   '(shell)/releases/actions.ts#addNoteAction',

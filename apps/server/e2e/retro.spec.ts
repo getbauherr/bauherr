@@ -18,7 +18,7 @@ const startRetro = async (page: Page) => {
   await expect(page.getByRole('region', { name: 'What this range holds' })).toContainText('4 tickets accepted')
   await page.getByRole('button', { name: 'Start Retro' }).dblclick()
   await expect(page.getByRole('heading', { level: 1, name: /^Retro:/ })).toBeVisible()
-  await expect(page.getByRole('log', { name: 'Conversation' })).toContainText('Factory')
+  await expect(page.getByRole('log', { name: 'Conversation' })).toContainText('Analysed')
 }
 
 const agreed = (page: Page) => page.getByRole('region', { name: 'Agreed so far' })
@@ -52,8 +52,8 @@ test(GROWS, fake, async ({ page }) => {
   await page.getByRole('button', { name: 'Accept' }).click()
   await expect(agreed(page).getByRole('listitem')).toHaveCount(1)
   await expect(agreed(page)).toContainText('Product')
-  await page.getByLabel('Answer the factory or ask a question').fill('Yes, and answered questions must not come back.')
-  await page.getByRole('button', { name: 'Send' }).click()
+  await page.getByLabel('Message input').fill('Yes, and answered questions must not come back.')
+  await page.getByRole('button', { name: 'Send message' }).click()
   await expect(agreed(page).getByRole('listitem')).toHaveCount(2)
   await expect(agreed(page)).toContainText('Workspace')
   await page.screenshot({ path: test.info().outputPath('retro-agreed-1280.png'), fullPage: true })

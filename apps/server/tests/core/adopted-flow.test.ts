@@ -9,7 +9,7 @@ import { DISCLOSURE } from '../../src/core/forge/disclosure'
 import { sendDeferred } from '../../src/core/deferred'
 import { board } from '../../src/core/views/board'
 import { ticket } from '../../src/core/views/ticket'
-import { groupRows } from '../../src/app/(app)/lib/inbox'
+import { loadInbox } from '../../src/core/views/inbox'
 import { whoOf } from '../../src/app/(app)/lib/factory'
 import { BRIEF, finding, flowHarness } from './modules-harness'
 
@@ -106,7 +106,8 @@ describe('an adopted pull request against the fake forge', () => {
       adopted: { pr: s.pr, author: 'jo' },
     })
     expect(card && whoOf(card)).toBe('others')
-    expect(groupRows(lanes).others.some((row) => row.kind === 'ticket' && row.card.recordId === s.id)).toBe(true)
+    const inbox = await loadInbox(f.h.payload(), { workspace: f.h.ids.workspace, now: f.clock.now }, 50)
+    expect(inbox.others.cards.some((c) => c.recordId === s.id)).toBe(true)
     const view = await ticket(f.h.payload(), { workspace: f.h.ids.workspace, recordId: s.id })
     expect(view).toMatchObject({ status: 'waiting-on-author', adopted: { pr: s.pr, author: 'jo' } })
     expect(view.pullRequest).toMatchObject({ number: s.pr, author: 'jo' })

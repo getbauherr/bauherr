@@ -71,13 +71,3 @@ export const listRequests = (rows: TicketRow[], viewer: Viewer): RequestListRow[
       return { row, status: requestStatus(row, mine), mine }
     })
     .sort((a, b) => +b.row.changedAt - +a.row.changedAt)
-
-export const filterCounts = (list: RequestListRow[]): Record<RequestFilter, number> => ({
-  open: list.filter((r) => r.status.bucket === 'open').length,
-  live: list.filter((r) => r.status.bucket === 'live').length,
-  closed: list.filter((r) => r.status.bucket === 'closed').length,
-  mine: list.filter((r) => r.mine).length,
-})
-
-export const applyFilter = (list: RequestListRow[], filter: RequestFilter): RequestListRow[] =>
-  list.filter((r) => (filter === 'mine' ? r.mine : r.status.bucket === filter))

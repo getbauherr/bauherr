@@ -5,10 +5,9 @@ import { ticketTitles } from '../../../../../../core/retro/history'
 import { loadRetro, messagesOf } from '../../../../../../core/retro/store'
 import { PageTitle } from '../../../../components/PageTitle'
 import { TodoList } from '../../../../components/assistant-ui/elements/todo-list'
-import { PreparingOpening } from '../../../../components/retro/PreparingOpening'
-import { ProposalCards } from '../../../../components/retro/ProposalCards'
-import { RetroComposer } from '../../../../components/retro/RetroComposer'
-import { RetroOpening } from '../../../../components/retro/RetroOpening'
+import { Preparing } from '../../../../components/retro/Preparing'
+import { RetroThread } from '../../../../components/retro/RetroThread'
+import type { RetroEntry } from '../../../../components/retro/retro-adapter'
 import { Button } from '../../../../components/ui/button'
 import { LEVEL_LABEL } from '../../../../lib/retro'
 import { held } from '../../../../lib/retro-wiring'
@@ -28,43 +27,39 @@ export default async function RetroPage({ params }: Props) {
   const evidence = [...known.values()].flatMap((proposal) => proposal.evidence)
   const titles = await ticketTitles(payload, evidence)
   const items = retro.agreed.flatMap((agreedId) => known.get(agreedId) ?? [])
+  const entries: RetroEntry[] = messages.map((message, index) => ({
+    id: String(message.id),
+    role: message.role,
+    body: message.body,
+    proposals: message.parts?.proposals ?? [],
+    opening: index === 0 ? retro.opening : null,
+  }))
   return (
     <>
       <PageTitle>Retro</PageTitle>
       <h1 className="title">Retro: {retro.label}</h1>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="grid gap-5" aria-label="Conversation" role="log">
-          {messages.map((message, index) => (
-            <div key={message.id} className="grid gap-3">
-              <p className="small m-0 font-semibold">{message.role === 'owner' ? 'You' : 'Factory'}</p>
-              {index === 0 && <RetroOpening opening={retro.opening as NonNullable<typeof retro.opening>} />}
-              <p className="m-0">{message.body}</p>
-              <ProposalCards
-                retro={retro.id}
-                proposals={message.parts?.proposals ?? []}
-                agreed={retro.agreed}
-                titles={titles}
-              />
-            </div>
-          ))}
-          {messages.length === 0 && (
-            <>
-              <RetroOpening opening={retro.opening} />
-              <PreparingOpening retro={retro.id} />
-            </>
-          )}
-          {messages.length > 0 && retro.state !== 'applied' && <RetroComposer retro={retro.id} />}
-        </div>
+        <RetroThread
+          retro={retro.id}
+          entries={entries}
+          agreed={retro.agreed}
+          titles={Object.fromEntries(titles)}
+          open={retro.state !== 'applied'}
+          empty={<Preparing retro={retro.id} opening={retro.opening} />}
+        />
         <aside className="grid gap-4">
-          <TodoList
-            title="Agreed so far"
-            items={items.map((item) => ({
-              id: item.id,
-              text: item.title,
-              badge: LEVEL_LABEL[item.level],
-              done: true,
-            }))}
-          />
+          <section aria-label="Agreed so far">
+            <TodoList
+              title="Agreed so far"
+              description={items.length === 0 ? 'Nothing agreed yet. Accept a proposal or talk it through.' : undefined}
+              items={items.map((item) => ({
+                id: item.id,
+                text: item.title,
+                description: LEVEL_LABEL[item.level],
+                status: 'done' as const,
+              }))}
+            />
+          </section>
           <form action={toOutcomeAction.bind(null, retro.id)}>
             <Button type="submit">{retro.state === 'applied' ? 'See the outcome' : 'To the outcome'}</Button>
           </form>

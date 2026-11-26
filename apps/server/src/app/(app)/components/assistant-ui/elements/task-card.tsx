@@ -32,7 +32,7 @@ export function TaskStateIcon({
     return (
       <CheckIcon
         aria-hidden
-        className={cn("size-3.5 shrink-0 text-emerald-500", className)}
+        className={cn("size-3.5 shrink-0 text-ok", className)}
       />
     );
   }

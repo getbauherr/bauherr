@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { pickUp, stepUp } from './sort'
 import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
@@ -54,14 +55,7 @@ test('a card dragged by its handle stays moved after a reload', async ({ page })
 
 test('a card sorted with the keyboard stays moved after a reload', async ({ page }) => {
   const { links, order, upper, lower, grip } = await open(page)
-  await grip(lower).focus()
-  await page.keyboard.press('Space')
-  await expect(grip(lower)).toHaveAttribute('aria-pressed', 'true')
-  const start = await hovered(page)
-  await expect(async () => {
-    await page.keyboard.press('ArrowUp')
-    await expect(page.getByRole('status').filter({ hasText: OVER })).not.toHaveText(start, { timeout: 1500 })
-  }).toPass()
+  await stepUp(page, await pickUp(page, grip(lower)))
   await page.keyboard.press('Space')
   await expect(page.getByRole('status').filter({ hasText: 'Moved' })).toContainText(lower)
   expect(await order()).toEqual([lower, upper])

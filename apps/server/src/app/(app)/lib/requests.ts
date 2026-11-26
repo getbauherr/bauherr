@@ -1,8 +1,11 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { loadRows, type TicketRow } from '../../../core/views/rows'
+import { requestCounts, requestPage, type RequestCursor } from '../../../core/views/request-list'
+import { listRequests, type RequestFilter, type Viewer } from '../../../core/views/request-status'
 import { notFound } from 'next/navigation'
-import { assignmentRows, isBauherr, isProductOwner, mayWorkIn } from '../../../lib/people'
+import { REQUEST_PAGE } from './chunks'
+import { assignmentRows, isBauherr, isProductOwner, loginsOf, mayWorkIn } from '../../../lib/people'
 import { currentPersonWorkspace, requirePerson, type Person } from './session'
 
 export type OwnedProduct = { id: number; name: string; workspace: number; requests: TicketRow[] }
@@ -49,8 +52,25 @@ export const readableProducts = async (payload: Payload, person: Person): Promis
     : []
 }
 
-export const requestsOf = (payload: Payload, product: ListedProduct): Promise<TicketRow[]> =>
-  loadRows(payload, { workspace: product.workspace, product: product.id, now: new Date(), history: 'all' })
+const requestFilter = (product: ListedProduct) =>
+  ({ workspace: product.workspace, product: product.id, now: new Date(), history: 'all' }) as const
+
+export const viewerOf = async (payload: Payload, person: Person): Promise<Viewer> => ({
+  forgeLogins: loginsOf(person.githubLogin),
+  sentRecordIds: await sentRecordIdsOf(payload, person.email),
+})
+
+export const requestChunk = async (
+  payload: Payload,
+  input: { product: ListedProduct; viewer: Viewer; show: RequestFilter; after: RequestCursor | null; limit?: number },
+) => {
+  const limit = input.limit ?? REQUEST_PAGE
+  const page = await requestPage(payload, requestFilter(input.product), { ...input, limit })
+  return { list: listRequests(page.rows, input.viewer), cursor: page.cursor }
+}
+
+export const requestTotals = (payload: Payload, product: ListedProduct, viewer: Viewer) =>
+  requestCounts(payload, requestFilter(product), viewer)
 
 export const sentRecordIdsOf = async (payload: Payload, email: string): Promise<number[]> => {
   const found = await payload.db.drizzle.execute(

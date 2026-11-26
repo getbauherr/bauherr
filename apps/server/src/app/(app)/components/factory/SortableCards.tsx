@@ -12,16 +12,21 @@ import {
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { ReactNode } from 'react'
 import type { MoveTo } from './card-controls'
+import { LaneMoreButton } from './LaneMoreButton'
 import { SortableItem } from './SortableItem'
 import { announcements, INSTRUCTIONS } from './sort-announcements'
+import { useLaneMore, type LaneMore } from './useLaneMore'
 import { useOrder, type Item } from './useOrder'
+
+export type { LaneMore }
 
 const TARGETS: Record<MoveTo, (index: number) => number> = { top: () => 0, up: (i) => i - 1, down: (i) => i + 1 }
 
 const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 })
 
-export function SortableCards({ items }: { items: Item<ReactNode>[] }) {
-  const { order, reorder, failed, status } = useOrder(items)
+export function SortableCards({ items, more }: { items: Item<ReactNode>[]; more?: LaneMore | undefined }) {
+  const lane = useLaneMore(items, more)
+  const { order, reorder, failed, status } = useOrder(lane.all, lane.total)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -54,6 +59,7 @@ export function SortableCards({ items }: { items: Item<ReactNode>[] }) {
           </ul>
         </SortableContext>
       </DndContext>
+      {lane.left > 0 && <LaneMoreButton left={lane.left} loading={lane.loading} load={lane.load} />}
       {failed && (
         <p role="alert" className="small text-destructive">Could not save the new order. The board was reloaded.</p>
       )}

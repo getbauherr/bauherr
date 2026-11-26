@@ -46,7 +46,10 @@ const AttachmentRemove: FC<{ name: string }> = ({ name }) => (
   <AttachmentPrimitive.Remove asChild>
     <TooltipIconButton
       tooltip={`Remove ${name}`}
-      className="absolute end-1 top-1 size-5 rounded-full bg-black/50! text-white hover:bg-black/70! hover:text-white!"
+      className={cn(
+        'absolute end-1 top-1 size-5 rounded-full bg-foreground/60! text-background',
+        'hover:bg-foreground/80! hover:text-background!',
+      )}
       side="top"
     >
       <XIcon className="size-3 stroke-[2.5]" />
