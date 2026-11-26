@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
+import { loadLastCheck, type LastCheck } from '../readiness/last-check'
 import { highestVersion } from '../readiness/release-facts'
 import { mergedTickets, type MergedTicket } from './merged'
 import { readNotes, UNRELEASED, type StoredNotes } from './notes-store'
@@ -22,10 +23,15 @@ export type ReleasesView = {
   ready: { since: string | null; tickets: MergedTicket[]; visible: number } | null
   past: PastVersion[]
   notes: StoredNotes | null
+  check: LastCheck | null
 }
 
 const productRow = z.object({ id: z.coerce.number(), name: z.string() })
-const sourceRow = z.object({ id: z.coerce.number(), release_state: releaseStateSchema.nullable() })
+const sourceRow = z.object({
+  id: z.coerce.number(),
+  release_state: releaseStateSchema.nullable(),
+  facts_at: z.coerce.date().nullable(),
+})
 
 const timeOf = (iso: string | null): number => (iso === null ? Number.NEGATIVE_INFINITY : Date.parse(iso))
 
@@ -60,7 +66,7 @@ const productsOf = async (payload: Payload, workspace: number) => {
 
 const sourceOf = async (payload: Payload, workspace: number, product: number) => {
   const found = await payload.db.drizzle.execute(sql`
-    SELECT "id", "release_state" FROM "ticket_sources"
+    SELECT "id", "release_state", "facts_at" FROM "ticket_sources"
     WHERE "product_id" = ${product} AND "workspace_id" = ${workspace} ORDER BY "id" LIMIT 1`)
   return found.rows[0] ? sourceRow.parse(found.rows[0]) : null
 }
@@ -71,17 +77,25 @@ const productionOf = (state: ReleaseState): ReleasesView['production'] => {
   return { ...state.production, at: tagged?.at ?? null, url: tagged?.url ?? null }
 }
 
+const checkOf = async (payload: Payload, source: z.output<typeof sourceRow>): Promise<LastCheck | null> => {
+  const stored = await loadLastCheck(payload, source.id)
+  const factsAt = source.facts_at?.toISOString()
+  return stored ?? (factsAt ? { at: factsAt, error: null } : null)
+}
+
 export const releasesPage = async (
   payload: Payload,
   f: { workspace: number; product?: number | undefined },
 ): Promise<ReleasesView> => {
   const products = await productsOf(payload, f.workspace)
   const product = products.find((entry) => entry.id === f.product) ?? products[0] ?? null
-  const none = { products, product, production: null, staging: null, ready: null, past: [], notes: null }
+  const none = { products, product, production: null, staging: null, ready: null, past: [], notes: null, check: null }
   const source = product ? await sourceOf(payload, f.workspace, product.id) : null
   const state = source?.release_state
-  if (!product || !source || !state) return none
+  if (!product || !source) return none
+  const check = await checkOf(payload, source)
+  if (!state) return { ...none, check }
   const { ready, past } = partition(state, await mergedTickets(payload, source.id))
   const notes = await readNotes(payload, product.id, UNRELEASED)
-  return { products, product, production: productionOf(state), staging: state.staging, ready, past, notes }
+  return { products, product, production: productionOf(state), staging: state.staging, ready, past, notes, check }
 }

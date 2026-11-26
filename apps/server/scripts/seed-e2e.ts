@@ -12,6 +12,7 @@ import { seedConnect } from './seed-connect'
 import { seedBoardRelations } from './seed-board-relations'
 import { seedSomeday } from './seed-someday'
 import { seedReadiness } from './seed-readiness'
+import { seedReleasesCheck } from './seed-releases-check'
 import { seedRequestList } from './seed-requests-list'
 import { seedInsights } from './seed-insights'
 import { seedMemoryEditor } from './seed-memory-editor'
@@ -201,6 +202,7 @@ await seedSomeday(payload)
 await seedBoardRelations(payload)
 await seedMemoryEditor(payload, (address, tenant) => user(address, 'bauherr', { tenants: [{ tenant }] }))
 await seedReadiness(payload)
+await seedReleasesCheck(payload)
 await seedRequests(payload)
 await seedHandover(payload, user)
 await seedInsights(payload)

@@ -1,13 +1,27 @@
 import type { Payload } from 'payload'
 import { refreshFacts } from '../mirror/facts'
 import { errorText } from '../mirror/map'
-import { liveSources } from '../mirror/store'
+import { liveSources, type SourceRow } from '../mirror/store'
 import type { SyncDeps } from '../mirror/sync'
 import { refreshReleaseState } from '../releases/state'
+import { saveLastCheck } from './last-check'
 import { refreshReleaseFacts } from './release-facts'
 
 export type RefreshDeps = Pick<SyncDeps, 'reader' | 'now'>
 export type Refreshed = { checked: number; errors: string[] }
+
+const checkSource = async (payload: Payload, deps: RefreshDeps, source: SourceRow): Promise<string | null> => {
+  try {
+    const reader = await deps.reader(source)
+    const error = await refreshFacts(payload, source, reader.forge, deps.now())
+    if (error !== null) return error
+    await refreshReleaseFacts(payload, source, reader.forge)
+    await refreshReleaseState(payload, source, reader.forge)
+    return null
+  } catch (error) {
+    return errorText(error)
+  }
+}
 
 export const refreshReadiness = async (
   payload: Payload,
@@ -19,17 +33,11 @@ export const refreshReadiness = async (
     (source) => only === null || (source.workspace === only.workspace && source.product === only.product),
   )
   for (const source of sources) {
-    try {
-      const reader = await deps.reader(source)
-      const error = await refreshFacts(payload, source, reader.forge, deps.now())
-      if (error === null) {
-        await refreshReleaseFacts(payload, source, reader.forge)
-        await refreshReleaseState(payload, source, reader.forge)
-        result.checked++
-      } else result.errors.push(`${source.repo}: ${error}`)
-    } catch (error) {
-      result.errors.push(`${source.repo}: ${errorText(error)}`)
-    }
+    const at = deps.now()
+    const error = await checkSource(payload, deps, source)
+    await saveLastCheck(payload, source.id, { at: at.toISOString(), error })
+    if (error === null) result.checked++
+    else result.errors.push(`${source.repo}: ${error}`)
   }
   return result
 }

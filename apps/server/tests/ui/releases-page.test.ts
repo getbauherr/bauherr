@@ -1,6 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ReleasesUnread } from '../../src/app/(app)/components/releases/ReleasesCheck'
 import { PastVersions } from '../../src/app/(app)/components/releases/PastVersions'
 import { ReleasesNow } from '../../src/app/(app)/components/releases/ReleasesNow'
 import type { ReleasesView } from '../../src/core/releases/view'
@@ -10,6 +11,11 @@ class Watcher {
   disconnect() {}
 }
 vi.stubGlobal('ResizeObserver', Watcher)
+vi.mock('../../src/app/(app)/(shell)/settings/products/[id]/actions', () => ({
+  checkReadinessNow: async () => ({}),
+  makeReadinessTicket: async () => ({}),
+  saveReadinessFix: async () => ({}),
+}))
 
 afterEach(cleanup)
 
@@ -21,6 +27,7 @@ const view: ReleasesView = {
   ready: null,
   past: [],
   notes: null,
+  check: null,
 }
 
 describe('releases page parts', () => {
@@ -45,5 +52,28 @@ describe('releases page parts', () => {
     expect(within(first).getByText('14')).toBeTruthy()
     expect(within(second).queryByRole('link', { name: 'Read' })).toBeNull()
     expect(within(second).getByRole('link', { name: 'Release on the forge' })).toBeTruthy()
+  })
+})
+
+describe('releases page without facts', () => {
+  const failed = { at: '2026-11-26T08:00:00.000Z', error: 'Bad credentials' }
+
+  it('shows the error and the Check now button to an Admin', () => {
+    render(createElement(ReleasesUnread, { check: failed, product: 1, canCheck: true }))
+    expect(screen.getByRole('alert').textContent).toContain('Bad credentials')
+    expect(screen.getByRole('button', { name: 'Check now' })).toBeTruthy()
+  })
+
+  it('says it never ran and offers no button to a member who cannot change settings', () => {
+    render(createElement(ReleasesUnread, { check: null, product: 1, canCheck: false }))
+    expect(screen.getByText('The readiness check has not run for this Product.')).toBeTruthy()
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('shows a checked time and no error line after a good check', () => {
+    render(createElement(ReleasesUnread, { check: { at: failed.at, error: null }, product: 1, canCheck: false }))
+    expect(screen.getByText(/Last readiness check/)).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
