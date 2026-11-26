@@ -87,18 +87,18 @@ export function TicketFix({ product, check, label }: FixProps & { label: string 
 const LINK_BUTTON =
   'small cursor-pointer border-0 bg-transparent p-0 text-primary underline underline-offset-2 disabled:no-underline'
 
-export function CheckNow({ product }: { product: number }) {
+export function CheckNow({ product, button = false }: { product: number; button?: boolean }) {
   const [state, action, pending] = useActionState(checkReadinessNow, {})
   return (
     <form action={action} className="inline-flex flex-wrap items-baseline gap-2">
       <input type="hidden" name="id" value={product} />
-      <button
-        type="submit"
-        disabled={pending}
-        className={LINK_BUTTON}
-      >
-        {pending ? 'Checking' : 'Check now'}
-      </button>
+      {button ? (
+        <Button variant="outline" disabled={pending}>{pending ? 'Checking' : 'Check now'}</Button>
+      ) : (
+        <button type="submit" disabled={pending} className={LINK_BUTTON}>
+          {pending ? 'Checking' : 'Check now'}
+        </button>
+      )}
       {state.error && <span role="alert" className="small text-destructive">{state.error}</span>}
     </form>
   )

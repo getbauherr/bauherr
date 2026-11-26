@@ -87,7 +87,8 @@ export async function checkReadinessNow(_prev: FormState, fd: FormData): Promise
     const { errors } = await refreshReadiness(payload, defaultDeps(payload), filter)
     if (errors.length > 0) throw new Error(`Could not read the repository: ${errors.join('; ')}`)
   })
-  if (result.saved) revalidatePath('/settings', 'layout')
+  revalidatePath('/settings', 'layout')
+  revalidatePath('/releases')
   return result
 }
 

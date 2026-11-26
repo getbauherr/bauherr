@@ -1,8 +1,10 @@
-import { releasesPage } from '../../../../core/releases/view'
+import { releasesPage, type ReleasesView } from '../../../../core/releases/view'
+import { isAdmin } from '../../lib/settings-admin'
 import { EmptyState } from '../../components/EmptyState'
 import { PageTitle } from '../../components/PageTitle'
 import { PastVersions } from '../../components/releases/PastVersions'
 import { ProductPicker } from '../../components/releases/ProductPicker'
+import { CheckError, ReleasesUnread } from '../../components/releases/ReleasesCheck'
 import { ReleaseNotes } from '../../components/releases/ReleaseNotes'
 import { ReadyList } from '../../components/releases/ReadyList'
 import { ReleasesNow } from '../../components/releases/ReleasesNow'
@@ -13,7 +15,7 @@ export const dynamic = 'force-dynamic'
 type Props = { searchParams: Promise<{ product?: string }> }
 
 export default async function ReleasesPage({ searchParams }: Props) {
-  const { workspace } = await currentWorkspace()
+  const { user, workspace } = await currentWorkspace()
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const requested = Number((await searchParams).product)
   const view = await releasesPage(await payloadClient(), {
@@ -27,18 +29,21 @@ export default async function ReleasesPage({ searchParams }: Props) {
         <h1 className="title">Releases</h1>
         <ProductPicker products={view.products} product={view.product?.id ?? null} />
       </div>
-      {view.product === null && <EmptyState text="This Workspace has no Product yet." />}
-      {view.product !== null && view.ready === null && (
-        <EmptyState text="The repository has not been read yet. Releases appear after the next readiness check." />
-      )}
-      {view.ready !== null && (
-        <>
-          <ReleasesNow view={view} />
-          <ReadyList ready={view.ready} />
-          <ReleaseNotes view={view} />
-          <PastVersions past={view.past} />
-        </>
-      )}
+      <Body view={view} canCheck={isAdmin(user)} />
+    </>
+  )
+}
+
+function Body({ view, canCheck }: { view: ReleasesView; canCheck: boolean }) {
+  if (view.product === null) return <EmptyState text="This Workspace has no Product yet." />
+  if (view.ready === null) return <ReleasesUnread check={view.check} product={view.product.id} canCheck={canCheck} />
+  return (
+    <>
+      <CheckError check={view.check} />
+      <ReleasesNow view={view} />
+      <ReadyList ready={view.ready} />
+      <ReleaseNotes view={view} />
+      <PastVersions past={view.past} />
     </>
   )
 }
