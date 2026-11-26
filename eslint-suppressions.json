@@ -159,11 +159,6 @@
       "count": 1
     }
   },
-  "apps/server/src/app/(app)/components/request/NewRequest.tsx": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
   "apps/server/src/app/(app)/components/retro/RangeFields.tsx": {
     "no-restricted-syntax": {
       "count": 3

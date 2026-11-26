@@ -64,7 +64,7 @@ export const collapsePanel = [
   "motion-reduce:transition-none",
 ].join(" ");
 
-export const live = "text-blue-500 dark:text-blue-400";
+export const live = "text-primary ";
 
 export const mono = "font-mono text-[11px] tracking-tight";
 
