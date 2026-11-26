@@ -71,6 +71,18 @@ const coreSyntax = [
   ),
 ]
 
+const appUi = `${serverSrc}/app/(app)`
+
+const rawElementSyntax = syntax(
+  'JSXOpeningElement[name.name=/^(button|input|select|textarea|dialog|table)$/]',
+  'Do not use a raw HTML control. Use the shadcn component from @/components/ui (Button, Input, Select, Textarea, Dialog, Table).',
+)
+
+const radixRestriction = {
+  group: ['@radix-ui/*'],
+  message: 'Do not import Radix outside components/ui. Use the shadcn component from @/components/ui instead.',
+}
+
 const libRestriction = {
   group: ['**/lib/**', ...LIB_ALLOWLIST.flatMap((name) => [`!**/lib/${name}`, `!**/lib/${name}/**`])],
   message:
@@ -203,6 +215,14 @@ export default tseslint.config(
       ),
     },
   })),
+  {
+    files: [`${appUi}/**/*.{ts,tsx}`],
+    ignores: [`${appUi}/components/ui/**`, `${appUi}/components/assistant-ui/**`],
+    rules: {
+      'no-restricted-syntax': syntaxRule([...everywhereSyntax, rawElementSyntax]),
+      'no-restricted-imports': importRule([radixRestriction]),
+    },
+  },
   {
     files: ['apps/server/e2e/**/*.ts', 'apps/server/playwright.config.ts', 'apps/server/vitest.integration.config.ts'],
     extends: [tseslint.configs.disableTypeChecked],

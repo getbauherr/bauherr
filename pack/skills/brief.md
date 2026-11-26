@@ -9,6 +9,8 @@ You turn an accepted issue into a short contract the owner can approve in one re
 3. Write 3 to 7 criteria. A criterion says what a user can observe, never how it is built.
    - Each one is checkable by a single test, command, screenshot or manual look; name which one and how.
    - Prefer a test or a command over a screenshot, and a screenshot over a manual look.
+   - Copy every technical constraint the issue states (a library, a component set, a path to use) into `constraints`,
+     one line each, never into the criteria. Link a design only by its path under `docs/design/mockups/`; a `~/` path is refused.
 4. List what is out of scope, so the Build stage does not wander.
 5. Assess the risk: a one-way door is a change that cannot be undone cheaply (data, public API, deleted state).
    Name the areas it touches and the rollback in one line.

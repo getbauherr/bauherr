@@ -21,6 +21,7 @@ const NO_SHAPE =
 const resultSchema = z.object({
   goal: text(300),
   criteria: z.array(criterionSchema.pick({ text: true, verify: true }).strict()).min(3).max(7),
+  constraints: z.array(text(200)).max(7).default([]),
   outOfScope: z.array(text(160)).max(5),
   visible: z.boolean(),
   risk: riskSchema,
@@ -61,18 +62,46 @@ const unknownRelations = async (
   )
 }
 
+const HOME_PATH =
+  'is an absolute ~/ path, which no builder can open: link the design by its path under docs/design/mockups/.'
+
+const homePaths = (result: z.infer<typeof resultSchema>): Problem[] => {
+  const texts = [
+    result.goal,
+    result.shape,
+    ...result.constraints,
+    ...result.outOfScope,
+    ...result.plan,
+    ...result.criteria.flatMap((c) => [c.text, c.verify.how]),
+  ]
+  const found = texts.some((t) => /(^|[\s(`'"])~\//.test(t))
+  return found ? [{ path: 'constraints', message: HOME_PATH }] : []
+}
+
 const hasChangedLine = (shape: string): boolean => /^[+-]/m.test(shape)
 
 export const brief = defineModule({
   stage: 'brief',
   role: 'builder',
-  writes: ['goal', 'criteria', 'outOfScope', 'visible', 'risk', 'decisions', 'plan', 'relations', 'shape', 'flow'],
+  writes: [
+    'goal',
+    'criteria',
+    'constraints',
+    'outOfScope',
+    'visible',
+    'risk',
+    'decisions',
+    'plan',
+    'relations',
+    'shape',
+    'flow',
+  ],
   resultSchema,
   check: async (tx, run, result) => {
     const shapeProblems = hasChangedLine(result.shape) ? [] : [{ path: 'shape', message: NO_SHAPE }]
     const unknown = await unknownRelations(tx, run.recordId, result.relations)
     const refused = unknown.length === 0 ? await refusedRelations(tx, run.recordId, result.relations) : []
-    const problems = [...shapeProblems, ...unknown, ...refused]
+    const problems = [...shapeProblems, ...homePaths(result), ...unknown, ...refused]
     if (!result.visible) return problems
     const worked = await tx.db.drizzle.execute(sql`
       SELECT coalesce(p."executor", 'session') AS executor FROM "records" r
@@ -87,6 +116,7 @@ export const brief = defineModule({
     patch: {
       goal: result.goal,
       criteria: result.criteria.map((c, i) => ({ id: `c${i + 1}`, ...c, status: 'open', proof: [] })),
+      constraints: result.constraints,
       outOfScope: result.outOfScope,
       visible: result.visible,
       risk: result.risk,

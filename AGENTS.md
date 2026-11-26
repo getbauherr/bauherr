@@ -32,6 +32,12 @@ staged TypeScript. Hooks are installed by `pnpm install`.
 do not work around it, and do not add to `eslint-suppressions.json` (it only shrinks, and holds nothing for
 `src/core` or `src/modules`). The comment allowlist is `pack/rules/no-comments.md`.
 
+## UI
+
+- shadcn/ui only: `@/components/ui/*`, never a raw `button`, `input`, `select`, `textarea`, `dialog`, `table` or `@radix-ui/*` in `app/(app)`.
+- Every chat is assistant-ui (`@assistant-ui/react`); new components come from the shadcn or assistant-ui registry (`apps/server/registry.lock.json`).
+- Language and tokens: [DESIGN.md](DESIGN.md). Reference designs: [docs/design/mockups/](docs/design/mockups/); link designs by that path, never `~/`.
+
 ## Judgment, which no check enforces
 
 - Prefer the boring solution; build nothing speculative.

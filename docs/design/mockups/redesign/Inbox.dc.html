@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inbox</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--a)}a:hover{color:var(--as)}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;background:#18181b;color:#fafafa;font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:999px;border:1px solid #3f3f46;background:#27272a;color:#fafafa;font:500 13px Archivo,system-ui,sans-serif;cursor:pointer}
+.pill.on{border-color:#fafafa;background:#3f3f46}
+.dot{width:12px;height:12px;border-radius:999px;display:inline-block}
+.seg{height:32px;padding:0 12px;border:1px solid #3f3f46;background:#27272a;color:#d4d4d8;font:500 13px Archivo,system-ui,sans-serif;cursor:pointer}
+.seg.on{background:#fafafa;color:#18181b}
+.side{flex:1 1 220px;max-width:100%;background:var(--s1);border-right:1px solid var(--hl);padding:20px 12px;display:flex;flex-direction:column;gap:4px;box-sizing:border-box}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:14px}
+.nav:hover{background:var(--s2);color:var(--ink)}
+.nav.on{background:var(--asf);font-weight:600}
+.cnt{font-size:12px;font-weight:600;min-width:20px;text-align:center;padding:1px 6px;border-radius:999px;background:var(--a);color:var(--on)}
+.main{flex:999 1 560px;min-width:0;padding:28px clamp(16px,3vw,40px);display:flex;flex-direction:column;gap:20px;box-sizing:border-box}
+.card{background:var(--s1);border:1px solid var(--hl);border-radius:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 14px;border-radius:8px;font:600 14px Archivo,system-ui,sans-serif;border:1px solid transparent;cursor:pointer;text-decoration:none}
+.bp{background:var(--a);color:var(--on)}.bp:hover{background:var(--as);color:var(--on)}
+.bo{background:var(--s1);color:var(--ink);border-color:var(--hl)}
+.bg{background:transparent;color:var(--ink)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.c-run{background:var(--asf);color:var(--a)}.c-ok{background:var(--oksf);color:var(--ok)}.c-warn{background:var(--wsf);color:var(--w)}.c-err{background:var(--xsf);color:var(--x)}.c-q{background:var(--s2);color:var(--mu)}
+.tab{height:34px;padding:0 12px;border:0;border-bottom:2px solid transparent;background:none;color:var(--mu);font:600 14px Archivo,system-ui,sans-serif;cursor:pointer}
+.tab.on{color:var(--ink);border-bottom-color:var(--a)}
+.why{font-size:14px;color:var(--mu);line-height:1.45;margin:0}
+.k{font-size:12px;font-weight:600;color:var(--mu);text-transform:uppercase;letter-spacing:.04em}
+.opt{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--hl);border-radius:10px;font-size:14px;cursor:pointer}
+.opt.on{border-color:var(--a);background:var(--asf)}
+</style>
+</helmet>
+<div style="{{vars}}; font-family: Archivo, system-ui, sans-serif; background: var(--s0); color: var(--ink); min-height: 1080px; display: flex; flex-direction: column;">
+<div class="bar">
+<span style="font-weight: 600; margin-right: 4px;">Palette</span>
+<sc-for list="{{pals}}" as="it" hint-placeholder-count="5">
+<button type="button" class="{{it.cls}}" onClick="{{it.pick}}"><span class="dot" style="background: {{it.a}};"></span><span class="dot" style="background: {{it.g}};"></span>{{it.n}}</button>
+</sc-for>
+<span style="flex-grow: 1;"></span>
+<div style="display: flex;"><button type="button" class="{{lightCls}}" style="border-radius: 8px 0 0 8px;" onClick="{{setLight}}">Light</button><button type="button" class="{{darkCls}}" style="border-radius: 0 8px 8px 0;" onClick="{{setDark}}">Dark</button></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; flex-grow: 1;">
+<nav class="side" aria-label="Main">
+<div style="display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px;">
+<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="4" fill="none" stroke="var(--ink)" stroke-width="2"></rect><rect x="12" y="12" width="10" height="10" rx="2" fill="var(--a)"></rect></svg>
+<span style="font-size: 18px; font-weight: 700;">Bauherr</span>
+</div>
+<a class="nav on" href="#">Inbox <span class="cnt">3</span></a>
+<a class="nav" href="#">Factory</a>
+<a class="nav" href="#">Requests</a>
+<a class="nav" href="#">Tickets</a>
+<a class="nav" href="#">Runs</a>
+<a class="nav" href="#">Memory</a>
+<a class="nav" href="#">Insights</a>
+<a class="nav" href="#">Releases</a>
+<span style="flex-grow: 1; min-height: 24px;"></span>
+<a class="nav" href="#">Settings</a>
+</nav>
+<main class="main">
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<h1 style="margin: 0; font-size: 28px; font-weight: 700;">Inbox</h1>
+<p class="why">Only what needs you. Everything else runs on its own.</p>
+</div>
+<div style="display: flex; gap: 4px; border-bottom: 1px solid var(--hl);">
+<button type="button" class="tab on">Needs you · 3</button>
+<button type="button" class="tab">Waiting on agents · 5</button>
+<button type="button" class="tab">Done today · 4</button>
+</div>
+</div>
+
+<article class="card" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+<span class="chip c-warn">Approval</span>
+<span class="mono" style="font-size: 13px; color: var(--mu);">#931</span>
+<h2 style="margin: 0; font-size: 18px; font-weight: 600; flex-grow: 1;">Replace native drag &amp; drop with dnd-kit</h2>
+<span style="font-size: 13px; color: var(--mu);">builder · 4 min ago</span>
+</div>
+<p class="why"><strong style="color: var(--ink);">Why you:</strong> adds a dependency (@dnd-kit/core, MIT). New dependencies need owner approval.</p>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; background: var(--s2); border-radius: 10px; padding: 16px;">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span class="k">Plan</span>
+<ol style="margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.6;">
+<li>Add @dnd-kit/core + sortable</li>
+<li>Grip handle as the only drag start</li>
+<li>Keyboard sorting + announcements</li>
+</ol>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span class="k">Files · 5</span>
+<div class="mono" style="font-size: 13px; line-height: 1.7;">
+<div>~ factory/SortableCards.tsx</div>
+<div>− factory/useDrag.ts</div>
+<div>~ factory/CardMenu.tsx</div>
+<div>~ package.json · NOTICE</div>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span class="k">Risk</span>
+<span class="chip c-ok" style="align-self: flex-start;">Low</span>
+<span style="font-size: 13px; color: var(--mu); line-height: 1.45;">Reversible: one PR, no migration. e2e covers drag, keyboard and click.</span>
+</div>
+</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+<button type="button" class="btn bp">Approve</button>
+<button type="button" class="btn bo">Edit plan</button>
+<button type="button" class="btn bg">Deny with reason…</button>
+</div>
+</article>
+
+<article class="card" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+<span class="chip c-run">Question</span>
+<span class="mono" style="font-size: 13px; color: var(--mu);">#934</span>
+<h2 style="margin: 0; font-size: 18px; font-weight: 600; flex-grow: 1;">Loading state for the Inbox</h2>
+<span style="font-size: 13px; color: var(--mu);">builder · 11 min ago</span>
+</div>
+<p class="why"><strong style="color: var(--ink);">Why you:</strong> two layouts fit the criteria; the choice changes the first thing you see on every click.</p>
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<label class="opt on"><input type="radio" name="q934" checked> <span><strong>Skeleton of the grouped list</strong><br><span style="color: var(--mu);">Shell appears instantly, rows fill in as they stream.</span></span></label>
+<label class="opt"><input type="radio" name="q934"> <span><strong>Spinner in the header only</strong><br><span style="color: var(--mu);">Old content stays until the new page is ready.</span></span></label>
+</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+<button type="button" class="btn bp">Answer</button>
+<button type="button" class="btn bg">Reply in words…</button>
+</div>
+</article>
+
+<article class="card" style="padding: 20px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
+<span class="chip c-ok">Ready to merge</span>
+<span class="mono" style="font-size: 13px; color: var(--mu);">#928</span>
+<div style="display: flex; flex-direction: column; gap: 4px; flex: 1 1 320px; min-width: 0;">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600;">Retro chat on assistant-ui</h2>
+<p class="why">Verify met 6 of 6 criteria and both constraints. PR #929, CI green.</p>
+</div>
+<a class="btn bo" href="#">Open PR</a>
+<button type="button" class="btn bp">Merge</button>
+</article>
+
+<details style="font-size: 14px; color: var(--mu);">
+<summary style="cursor: pointer; padding: 6px 0;">Automatic approvals today · 2</summary>
+<div class="card" style="padding: 12px 16px; margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+<div><span class="mono">#925</span> Lockfile maintenance — auto-approved (deps, patch only)</div>
+<div><span class="mono">#926</span> Docs typo in ui.md — auto-approved (docs only)</div>
+</div>
+</details>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"palette":{"editor":"enum","options":["Violet + Emerald","Plum + Sage","Indigo + Emerald","Lavender + Mint","Forest + Amethyst"],"default":"Indigo + Emerald"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { p: null, dark: null }; }
+  renderVals() {
+    const P = [
+      {n:'Violet + Emerald',l:{s0:'#f6f5f8',s1:'#ffffff',s2:'#eeecf2',ink:'#1a1625',mu:'#5e5a6b',hl:'#dcd9e3',a:'#6d28d9',as:'#5b21b6',on:'#ffffff',asf:'#efe9fc',g:'#147638',gs:'#0f5c2b',ong:'#ffffff',gsf:'#e3f5e9'},d:{s0:'#121018',s1:'#1b1823',s2:'#25212f',ink:'#ece9f2',mu:'#a29db0',hl:'#2e2a38',a:'#b79cff',as:'#cdb9ff',on:'#1e0b45',asf:'#2c2148',g:'#4ade80',gs:'#86efac',ong:'#052e16',gsf:'#13301f'}},
+      {n:'Plum + Sage',l:{s0:'#f7f5f6',s1:'#ffffff',s2:'#efecee',ink:'#1c171b',mu:'#5f5960',hl:'#ddd7db',a:'#7a2e74',as:'#63245e',on:'#ffffff',asf:'#f5e8f3',g:'#3f6b4c',gs:'#335a3f',ong:'#ffffff',gsf:'#e7efe8'},d:{s0:'#141113',s1:'#1d191c',s2:'#272226',ink:'#efe9ed',mu:'#a69fa5',hl:'#312b30',a:'#e0a3d8',as:'#ecbfe6',on:'#3a0f35',asf:'#33212f',g:'#9fc9a9',gs:'#b9dbc1',ong:'#132a1a',gsf:'#1c2b20'}},
+      {n:'Indigo + Emerald',l:{s0:'#f5f5fa',s1:'#ffffff',s2:'#ebebf3',ink:'#16162a',mu:'#585a6e',hl:'#d8d8e6',a:'#5b35e8',as:'#4a26cc',on:'#ffffff',asf:'#ebe7fd',g:'#126c35',gs:'#0f5e2c',ong:'#ffffff',gsf:'#e3f5e9'},d:{s0:'#0f0f17',s1:'#181823',s2:'#222230',ink:'#ebebf5',mu:'#9e9fb3',hl:'#2b2b3b',a:'#a594ff',as:'#c0b5ff',on:'#160a4d',asf:'#25214a',g:'#4ade80',gs:'#86efac',ong:'#052e16',gsf:'#0f2a1a'}},
+      {n:'Lavender + Mint',l:{s0:'#f8f7fb',s1:'#ffffff',s2:'#efedf5',ink:'#1b1828',mu:'#5f5b6e',hl:'#dddae6',a:'#7445c2',as:'#6036a8',on:'#ffffff',asf:'#f1ebfb',g:'#0b7358',gs:'#075e48',ong:'#ffffff',gsf:'#e0f5ee'},d:{s0:'#131219',s1:'#1c1a24',s2:'#26232f',ink:'#eeebf4',mu:'#a6a2b5',hl:'#302c3a',a:'#c7b0f5',as:'#dccbff',on:'#26114f',asf:'#2d2645',g:'#6ee7c3',gs:'#a0f0d6',ong:'#03291f',gsf:'#12302a'}},
+      {n:'Forest + Amethyst',l:{s0:'#f5f7f5',s1:'#ffffff',s2:'#eaeeeb',ink:'#151b17',mu:'#58625b',hl:'#d6ddd8',a:'#1d6b40',as:'#155532',on:'#ffffff',asf:'#e4f1e8',g:'#8a3fbf',gs:'#73319f',ong:'#ffffff',gsf:'#f3e8fa',ok:'#1d6b40',oksf:'#e4f1e8'},d:{s0:'#101411',s1:'#181e1a',s2:'#212822',ink:'#e8eee9',mu:'#9ea9a1',hl:'#2a322c',a:'#7fd6a0',as:'#a3e6bd',on:'#052914',asf:'#1a3024',g:'#d4a6f5',gs:'#e3c2fa',ong:'#33104d',gsf:'#2c2038',ok:'#7fd6a0',oksf:'#1a3024'}}
+    ];
+    const S = { l: { w: '#9a6200', wsf: '#fbf0dc', x: '#b42318', xsf: '#fbe6e4' }, d: { w: '#e3b04b', wsf: '#3a2c10', x: '#f08a7f', xsf: '#3d1d1a' } };
+    const fromProp = Math.max(0, P.findIndex((p) => p.n === this.props.palette));
+    const i = this.state.p ?? fromProp;
+    const dark = this.state.dark ?? (this.props.dark ?? false);
+    const t = dark ? 'd' : 'l';
+    const c = Object.assign({ ok: P[i][t].g, oksf: P[i][t].gsf }, P[i][t], S[t]);
+    return {
+      vars: Object.keys(c).map((k) => '--' + k + ':' + c[k]).join(';'),
+      pals: P.map((p, j) => ({ n: p.n, a: p.l.a, g: p.l.g, cls: j === i ? 'pill on' : 'pill', pick: () => this.setState({ p: j }) })),
+      lightCls: dark ? 'seg' : 'seg on', darkCls: dark ? 'seg on' : 'seg',
+      setLight: () => this.setState({ dark: false }), setDark: () => this.setState({ dark: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

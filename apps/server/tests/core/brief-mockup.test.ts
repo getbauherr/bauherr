@@ -61,6 +61,22 @@ describe('a Brief without a shape view', () => {
   })
 })
 
+describe('a Brief with constraints', () => {
+  it('refuses a ~/ design path, and keeps the constraints once they link into the repository', async () => {
+    const { record, ids } = await briefRun()
+    const home = { ...BRIEF, constraints: ['Match the design in ~/.claude/plans/redesign.md'] }
+    const refused = z
+      .object({ status: z.literal('retry'), problems: z.array(z.object({ path: z.string(), message: z.string() })) })
+      .parse(await m.call('submit', { ...ids, result: home }, m.agent(m.alpha)))
+    expect(refused.problems[0]?.message).toMatch(/docs\/design\/mockups\//)
+    const constraints = ['Use shadcn/ui and assistant-ui only', 'Design: docs/design/mockups/redesign/Inbox.dc.html']
+    expect(await m.call('submit', { ...ids, result: { ...BRIEF, constraints } }, m.agent(m.alpha))).toEqual({
+      status: 'accepted',
+    })
+    expect((await readRecord(m.e.db.payload, record)).record.constraints).toEqual(constraints)
+  })
+})
+
 describe('a Brief for a visible change', () => {
   it('is refused without a mockup, with the one fix turn, and accepted once a mockup is attached', async () => {
     const { record, ids } = await briefRun()
