@@ -19,9 +19,8 @@ export function useOrder<T>(items: Item<T>[], total: number) {
   const focus = useRef<number | null>(null)
   useEffect(() => setOrder(items), [items])
   useLayoutEffect(() => {
-    if (focus.current === null) return
+    if (focus.current === null || document.activeElement?.closest('[data-card]')) return
     document.querySelector<HTMLElement>(`[data-card="${focus.current}"] [data-card-link]`)?.focus()
-    focus.current = null
   }, [order])
 
   const reorder = async (from: number, to: number) => {

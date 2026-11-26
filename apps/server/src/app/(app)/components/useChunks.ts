@@ -7,7 +7,6 @@ export type Chunk<T, C> = { items: T[]; cursor: C | null }
 const NONE: never[] = []
 
 export function useChunks<T, C>(
-  signature: string,
   first: C | null,
   pageSize: number,
   fetchAfter: (cursor: C, limit: number) => Promise<Chunk<T, C>>,
@@ -26,7 +25,7 @@ export function useChunks<T, C>(
     return () => {
       live = false
     }
-  }, [signature])
+  }, [first])
   const cursor = loaded ? loaded.cursor : first
   const load = useCallback(() => {
     if (cursor === null || loading) return

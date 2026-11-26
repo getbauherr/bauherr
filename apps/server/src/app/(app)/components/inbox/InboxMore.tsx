@@ -5,10 +5,10 @@ import { INBOX_PAGE, type GroupId } from '../../lib/inbox'
 import { Button } from '../ui/button'
 import { useChunks } from '../useChunks'
 
-type Props = { group: GroupId; cursor: InboxCursor; remaining: number; signature: string }
+type Props = { group: GroupId; cursor: InboxCursor; remaining: number }
 
-export function InboxMore({ group, cursor, remaining, signature }: Props) {
-  const chunks = useChunks(signature, cursor, INBOX_PAGE, async (after, limit) => {
+export function InboxMore({ group, cursor, remaining }: Props) {
+  const chunks = useChunks(cursor, INBOX_PAGE, async (after, limit) => {
     const chunk = await moreInbox(group, after, limit)
     return { items: chunk.rows, cursor: chunk.cursor }
   })

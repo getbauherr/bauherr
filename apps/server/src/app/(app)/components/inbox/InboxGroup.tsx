@@ -27,7 +27,6 @@ export function InboxGroup({ id, rows, total, cursor }: Props) {
           group={id}
           cursor={cursor}
           remaining={total - rows.length}
-          signature={rows.map(rowKeyOf).join()}
         />
       )}
     </section>

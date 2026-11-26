@@ -13,10 +13,8 @@ type Load = (request: Request) => Promise<Chunk>
 
 export type MoreRequests = Omit<Request, 'limit'> & { left: number; loadMore: Load }
 
-type Props = MoreRequests & { signature: string }
-
-export function RequestsMore({ product, show, cursor, left, loadMore, signature }: Props) {
-  const chunks = useChunks(signature, cursor, REQUEST_PAGE, async (after, limit) => {
+export function RequestsMore({ product, show, cursor, left, loadMore }: MoreRequests) {
+  const chunks = useChunks(cursor, REQUEST_PAGE, async (after, limit) => {
     const chunk = await loadMore({ product, show, cursor: after, limit })
     return { items: chunk.rows, cursor: chunk.cursor }
   })

@@ -65,7 +65,7 @@ export function RequestRows({ list, staff, more }: Props) {
       {list.map((item) => (
         <RequestRow key={item.row.recordId} item={item} staff={staff} />
       ))}
-      {more && <RequestsMore {...more} signature={list.map((item) => item.row.recordId).join()} />}
+      {more && <RequestsMore {...more} />}
     </div>
   )
 }

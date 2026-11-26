@@ -17,8 +17,7 @@ export type LaneMore = {
 }
 
 export function useLaneMore(items: Item<ReactNode>[], more: LaneMore | undefined) {
-  const signature = items.map((item) => item.id).sort().join()
-  const chunks = useChunks(signature, more?.cursor ?? null, more?.pageSize ?? 0, (cursor: LaneCursor, limit: number) =>
+  const chunks = useChunks(more?.cursor ?? null, more?.pageSize ?? 0, (cursor: LaneCursor, limit: number) =>
     moreCards({ stage: more!.stage, show: more!.show, product: more!.product, cursor, limit }),
   )
   const all = useMemo(() => {
