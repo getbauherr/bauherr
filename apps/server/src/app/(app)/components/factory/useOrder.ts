@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { startTransition, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { moveCard } from '../../(shell)/actions'
 
 export type Item<T> = { id: number; label: string; dimmed: boolean; node: T }
@@ -34,7 +34,7 @@ export function useOrder<T>(items: Item<T>[], total: number) {
     const result = await moveCard(card.id, next[to - 1]?.id ?? null).catch(() => ({ moved: false }))
     if (result.moved) setStatus(`Moved ${card.label} to position ${to + 1} of ${Math.max(total, order.length)}`)
     else setFailed(true)
-    router.refresh()
+    startTransition(() => router.refresh())
   }
   return { order, reorder, failed, status }
 }

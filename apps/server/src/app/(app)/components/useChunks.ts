@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
+import { startTransition, useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import { MAX_WINDOW } from '../lib/chunks'
 
 export type Chunk<T, C> = { items: T[]; cursor: C | null }
@@ -21,7 +21,8 @@ export function useChunks<T, C>(
     if (size.current === 0) return
     if (first === null) return setLoaded(null)
     let live = true
-    void latest.current(first, Math.min(size.current, MAX_WINDOW)).then((chunk) => live && setLoaded(chunk))
+    const window = Math.min(size.current, MAX_WINDOW)
+    void latest.current(first, window).then((chunk) => live && startTransition(() => setLoaded(chunk)))
     return () => {
       live = false
     }
@@ -31,7 +32,9 @@ export function useChunks<T, C>(
     if (cursor === null || loading) return
     start(async () => {
       const chunk = await latest.current(cursor, pageSize)
-      setLoaded((before) => ({ items: [...(before?.items ?? []), ...chunk.items], cursor: chunk.cursor }))
+      startTransition(() =>
+        setLoaded((before) => ({ items: [...(before?.items ?? []), ...chunk.items], cursor: chunk.cursor })),
+      )
     })
   }, [cursor, loading, pageSize])
   return { items: loaded?.items ?? NONE, cursor, loading, load }
