@@ -16,7 +16,7 @@ Bauherr runs Claude Code via the Claude Agent SDK.
 - Prometheus and Jaeger: Apache-2.0. Optional profile, upstream images, not redistributed.
 - PostgreSQL: PostgreSQL licence.
 - Payload and Next.js: MIT.
-- shadcn/ui components, Radix UI, Sonner, react-hook-form and react-resizable-panels: MIT.
+- shadcn/ui components, Radix UI, Sonner, react-hook-form, react-resizable-panels and dnd-kit: MIT.
 - @anthropic-ai/claude-agent-sdk and the Claude Code binary it bundles:
   NOT Apache-2.0. Governed by Anthropic's Commercial Terms
   (https://code.claude.com/docs/en/legal-and-compliance). Included
