@@ -1,6 +1,17 @@
+import type { ReactNode } from 'react'
+import type { LiveVersion } from '../../../../core/releases/live'
 import type { RequestStory } from '../../../../core/views/request-story'
 import { Time } from '../Time'
 import { Card, Facts } from '../ticket/Section'
+
+function LiveFact({ live }: { live: LiveVersion }) {
+  if (!live.notes) return live.version
+  return (
+    <a href={live.notes} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+      {live.version}
+    </a>
+  )
+}
 
 export function RequestAbout({ story }: { story: RequestStory }) {
   const { about, links } = story
@@ -14,6 +25,7 @@ export function RequestAbout({ story }: { story: RequestStory }) {
             ['By', about.by],
             ['Created', <Time key="created" iso={about.created} />],
             ['Product', about.product],
+            ...(story.live ? [['Version', <LiveFact key="version" live={story.live} />] as [string, ReactNode]] : []),
           ]}
         />
       </Card>

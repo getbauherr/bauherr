@@ -164,6 +164,7 @@ export interface NewPullRequest {
 
 export interface Release {
   prerelease?: boolean;
+  draft?: boolean;
   id: string;
   tag: string;
   sha: string;
@@ -261,6 +262,9 @@ export interface Forge {
   ): Promise<Release>;
   listReleases(repo: RepoRef): Promise<Release[]>;
   releaseByTag(repo: RepoRef, tag: string): Promise<Release | null>;
+  draftRelease(repo: RepoRef, o: { tag: string; sha: string; name: string; body: string }): Promise<Release>;
+  publishRelease(repo: RepoRef, id: string, o: { body: string }): Promise<Release>;
+  startDeploy(repo: RepoRef, o: { workflow: string; ref: string; inputs: Record<string, string> }): Promise<void>;
   isAncestor(repo: RepoRef, base: string, head: string): Promise<boolean>;
   listTags(repo: RepoRef): Promise<string[]>;
   tagSha(repo: RepoRef, tag: string): Promise<string | null>;

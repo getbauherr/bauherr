@@ -1,9 +1,12 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ReleaseControl } from '../../src/app/(app)/components/releases/ReleaseControl'
 import { ReleasesUnread } from '../../src/app/(app)/components/releases/ReleasesCheck'
 import { PastVersions } from '../../src/app/(app)/components/releases/PastVersions'
 import { ReleasesNow } from '../../src/app/(app)/components/releases/ReleasesNow'
+import { OPTIONS } from '../../src/core/releases/run-steps'
+import type { ReleasePanel } from '../../src/core/releases/panel'
 import type { ReleasesView } from '../../src/core/releases/view'
 
 class Watcher {
@@ -30,6 +33,8 @@ const view: ReleasesView = {
   check: null,
 }
 
+const actions = { release: async () => {}, answer: async () => {} }
+
 describe('releases page parts', () => {
   it('says what runs on production since when and the staging commit with its checks', () => {
     render(createElement(ReleasesNow, { view }))
@@ -52,6 +57,51 @@ describe('releases page parts', () => {
     expect(within(first).getByText('14')).toBeTruthy()
     expect(within(second).queryByRole('link', { name: 'Read' })).toBeNull()
     expect(within(second).getByRole('link', { name: 'Release on the forge' })).toBeTruthy()
+  })
+
+  it('offers the proposed version with the commit, or the reason it is refused', () => {
+    const panel: ReleasePanel = {
+      proposal: { version: 'v0.7.0', bump: 'minor' },
+      refusal: null,
+      sha: '7e7b712aaaa',
+      run: null,
+    }
+    const { rerender } = render(createElement(ReleaseControl, { panel, product: 1, refused: null, actions }))
+    expect(screen.getByDisplayValue('v0.7.0')).toBeTruthy()
+    expect(screen.getByText('7e7b712')).toBeTruthy()
+    expect(screen.getByText('minor: new capabilities, nothing breaks')).toBeTruthy()
+    const button = screen.getByRole('button', { name: 'Release v0.7.0' })
+    expect(button.hasAttribute('disabled')).toBe(false)
+    const refused = { ...panel, refusal: 'Nothing was merged since the last version.' }
+    rerender(createElement(ReleaseControl, { panel: refused, product: 1, refused: null, actions }))
+    expect(screen.getByText('Nothing was merged since the last version.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Release v0.7.0' }).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('shows each step with its forge link and a question when a step failed', () => {
+    const [done, started] = ['Tag v0.7.0 created', 'Production deploy started'].map((label, at) => ({
+      id: `step-${at}`,
+      label,
+      status: 'done' as const,
+      link: `https://forge/${at}`,
+    }))
+    const stopped = { id: 'wait', label: 'Waiting for production', status: 'failed' as const, link: null }
+    const question = { text: 'Releasing v0.7.0 stopped: The production deploy failed.', options: OPTIONS }
+    const run = { id: 3, version: 'v0.7.0', state: 'failed' as const, steps: [done, started, stopped], question }
+    const panel: ReleasePanel = {
+      proposal: { version: 'v0.8.0', bump: 'minor' },
+      refusal: 'Releasing v0.7.0 is not finished yet.',
+      sha: 'abc',
+      run,
+    }
+    render(createElement(ReleaseControl, { panel, product: 1, refused: null, actions }))
+    expect(screen.getByText('Release v0.7.0 stopped')).toBeTruthy()
+    expect(screen.getAllByRole('link', { name: /On the forge/ }).map((a) => a.getAttribute('href'))).toEqual([
+      'https://forge/0',
+      'https://forge/1',
+    ])
+    expect(screen.getByRole('button', { name: 'Check again' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Release a fixed version later' })).toBeTruthy()
   })
 })
 

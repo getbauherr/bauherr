@@ -9,7 +9,7 @@ import { NowBox } from '../../../components/request/NowBox'
 import { RequestAbout } from '../../../components/request/RequestAbout'
 import { RequestComposer } from '../../../components/request/RequestComposer'
 import { RequestTimeline } from '../../../components/request/RequestTimeline'
-import { REQUEST_WORDS } from '../../../lib/request-words'
+import { chipOf } from '../../../lib/request-words'
 import { payloadClient, requirePerson } from '../../../lib/session'
 
 const DIFFERENT = 'Tell us what is different from what you asked for'
@@ -35,7 +35,7 @@ export default async function RequestPage({ params }: Props) {
       <header className="flex flex-wrap items-center gap-3">
         <span className="small text-muted-foreground">{`#${story.number}`}</span>
         <h1 className="m-0">{story.title}</h1>
-        <WordBadge word={REQUEST_WORDS[story.status].chip} />
+        <WordBadge word={chipOf(story)} />
       </header>
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid min-w-0 gap-4">

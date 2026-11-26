@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { DISCLOSURE } from '../../src/core/forge/disclosure'
+import { liveVersionOf } from '../../src/core/releases/live'
 import { appendEvent, readRecord, setCard } from '../../src/core/record/store'
 import { loadMockups } from '../../src/core/views/attachments'
 import { mayOpenRequest, requestScope } from '../../src/core/views/request-access'
@@ -83,6 +84,53 @@ describe('the request story', () => {
     const text = JSON.stringify(await story())
     expect(text).not.toMatch(/"(runs?|cost|usd|agents?|findings|patchId|headSha|diff|shape|handoff)"/)
     expect(text).not.toMatch(/Run 7|\$1|patch|review round/i)
+  })
+})
+
+const release = async (version: string, tickets: number[], publish: 'done' | 'todo') => {
+  const found = await e.db.payload.db.drizzle.execute(sql`SELECT "product_id" FROM "records" WHERE "id" = ${id}`)
+  const product = Number((found.rows[0] as { product_id: number }).product_id)
+  const step = (name: string, status: string, link: string | null) => ({
+    id: name,
+    status,
+    link,
+    detail: null,
+    at: status === 'done' ? '2026-11-26T09:00:00Z' : null,
+  })
+  const steps = [step('tag', 'done', null), step('publish', publish, `https://forge/releases/${version}`)]
+  await e.db.payload.db.drizzle.execute(sql`
+    INSERT INTO "product_releases" ("workspace_id", "product_id", "version", "sha", "state", "steps", "tickets",
+      "updated_at", "created_at")
+    VALUES (${e.db.workspace}, ${product}, ${version}, 'abc', 'running', ${JSON.stringify(steps)}::jsonb,
+      ${JSON.stringify(tickets.map((recordId) => ({ recordId, number: recordId })))}::jsonb, now(), now())`)
+}
+
+describe('live in a version', () => {
+  it('shows no version before any release publishes', async () => {
+    await release('v0.1.0', [id], 'todo')
+    const result = await story()
+    expect(result.live).toBeNull()
+    expect(result.events.some((event) => event.kind === 'live')).toBe(false)
+  })
+
+  it('shows the version and a link to its notes once the release is published', async () => {
+    await release('v0.2.0', [id], 'done')
+    const result = await story()
+    expect(result.live?.version).toBe('v0.2.0')
+    expect(result.live?.notes).toBe('https://forge/releases/v0.2.0')
+    const live = result.events.find((event) => event.kind === 'live')
+    expect(live?.title).toBe('Live in v0.2.0')
+    expect(live?.files[0]?.url).toBe('https://forge/releases/v0.2.0')
+  })
+
+  it('shows no mark for a request that is not in the published release', async () => {
+    const other = await e.db.payload.db.drizzle.execute(sql`
+      INSERT INTO "records" ("workspace_id", "product_id", "source_forge", "source_repo", "source_number", "stage",
+        "waiting_on", "rank", "version", "data", "updated_at", "created_at")
+      SELECT "workspace_id", "product_id", "source_forge", "source_repo", "source_number" + 1000, "stage",
+        "waiting_on", "rank", "version", "data", now(), now() FROM "records" WHERE "id" = ${id} RETURNING "id"`)
+    const otherId = Number((other.rows[0] as { id: number }).id)
+    expect(await liveVersionOf(e.db.payload, { workspace: e.db.workspace, recordId: otherId })).toBeNull()
   })
 })
 

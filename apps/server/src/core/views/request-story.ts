@@ -6,6 +6,7 @@ import type { StoredEvent } from '../record/store'
 import { readEvents } from '../record/store'
 import type { TicketRecord } from '../record/schema'
 import { commentFileUrl, commentsOf, type RequestComment } from '../requests/comments'
+import { liveVersionOf, type LiveVersion } from '../releases/live'
 import { loadRunMockups } from './attachments'
 import { ticket, type TicketView } from './ticket'
 import type { TicketStatus } from './status'
@@ -13,7 +14,7 @@ import type { TicketStatus } from './status'
 export type StoryImage = { id: number; caption: string }
 export type StoryFile = { name: string; url: string; image: boolean }
 export type StoryList = { heading: string; items: string[] }
-export type StoryKind = 'sent' | 'plan' | 'approved' | 'comment' | 'ready' | 'closed'
+export type StoryKind = 'sent' | 'plan' | 'approved' | 'comment' | 'ready' | 'live' | 'closed'
 
 export type StoryEvent = {
   id: string
@@ -34,6 +35,7 @@ export type RequestStory = {
   title: string
   status: TicketStatus
   ended: 'accepted' | 'closed' | null
+  live: LiveVersion | null
   events: StoryEvent[]
   about: { type: string; by: string; created: string; product: string }
   links: { issue: string | null; staging: string | null }
@@ -172,6 +174,11 @@ const eventsOf = async (payload: Payload, stored: StoredEvent[], view: TicketVie
   return story
 }
 
+const liveEvent = (live: LiveVersion): StoryEvent => ({
+  ...base({ id: `live-${live.version}`, kind: 'live', at: live.at, who: 'Factory', title: `Live in ${live.version}` }),
+  files: live.notes === null ? [] : [{ name: `Notes of ${live.version}`, url: live.notes, image: false }],
+})
+
 const byTime = (a: StoryEvent, b: StoryEvent): number => Date.parse(a.at) - Date.parse(b.at)
 
 export const requestStory = async (
@@ -190,13 +197,16 @@ export const requestStory = async (
   const requested = (await commentsOf(payload, view.recordId, stored)).map((comment) =>
     commentEvent(comment, seenAt(comment, stored)),
   )
-  const events = [sent, ...(await eventsOf(payload, stored, view)), ...comments, ...requested].sort(byTime)
+  const live = await liveVersionOf(payload, { workspace: filter.workspace, recordId: view.recordId })
+  const released = live ? [liveEvent(live)] : []
+  const events = [sent, ...(await eventsOf(payload, stored, view)), ...comments, ...requested, ...released].sort(byTime)
   return {
     recordId: view.recordId,
     number: view.number,
     title: view.title,
     status: view.status,
     ended: view.ended,
+    live,
     events,
     about: {
       type: TYPE_WORDS[view.record.type],

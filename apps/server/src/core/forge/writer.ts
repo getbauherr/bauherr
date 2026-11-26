@@ -24,6 +24,7 @@ import type { RelationKind } from '../record/schema'
 import { commentRow, errorText, itemFromPull, itemFromTicket } from '../mirror/map'
 import { upsertComments, upsertItem } from '../mirror/store'
 import { disclosed, hashBody, planStageLabels } from './disclosure'
+import { releaseWrites } from './release-writes'
 import { HeadMoved, ProductObserving, TargetNotFound, WrongItemKind } from './errors'
 import {
   findIssueByReference,
@@ -292,6 +293,7 @@ export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(pa
     openIssues: (target: ProductTarget, inputs: SeriesIssue[]) => openIssues(ctx, target, inputs),
     closeIssue: (target: Target, reason: CloseReason) => closeIssue(ctx, target, reason),
     reopenIssue: (target: Target) => reopenIssue(ctx, target),
+    ...releaseWrites(ctx.payload, ctx.deps),
     addRelation: (recordId: number, edge: Edge) => changeRelation(ctx, recordId, edge, 'add'),
     removeRelation: (recordId: number, edge: Edge) => changeRelation(ctx, recordId, edge, 'remove'),
   }

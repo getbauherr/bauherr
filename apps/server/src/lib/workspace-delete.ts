@@ -159,6 +159,7 @@ export const PURGE_ORDER: { table: string; where: (ws: number) => ReturnType<typ
     'repo_instruction_files',
     'ticket_relations',
     'release_notes',
+    'product_releases',
     'mirror_checks',
     'mirror_comments',
     'mirror_items',
