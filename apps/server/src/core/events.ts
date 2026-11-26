@@ -80,6 +80,10 @@ const eventSchema = z.discriminatedUnion('type', [
       files: z.number().int().min(0),
     }),
   ),
+  event(
+    'run.comments.delivered',
+    z.object({ runId: id, through: z.number().int().positive(), count: z.number().int().positive() }),
+  ),
   event('ticket.closed', z.object({ reason: z.enum(['discarded', 'closed-on-forge', 'archived']) })),
   event('ticket.restored', none),
   event('ticket.blocked', z.object({ reason: z.string().min(1).nullable() })),

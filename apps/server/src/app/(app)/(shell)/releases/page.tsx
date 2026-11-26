@@ -3,6 +3,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { PageTitle } from '../../components/PageTitle'
 import { PastVersions } from '../../components/releases/PastVersions'
 import { ProductPicker } from '../../components/releases/ProductPicker'
+import { ReleaseNotes } from '../../components/releases/ReleaseNotes'
 import { ReadyList } from '../../components/releases/ReadyList'
 import { ReleasesNow } from '../../components/releases/ReleasesNow'
 import { currentWorkspace, payloadClient } from '../../lib/session'
@@ -34,6 +35,7 @@ export default async function ReleasesPage({ searchParams }: Props) {
         <>
           <ReleasesNow view={view} />
           <ReadyList ready={view.ready} />
+          <ReleaseNotes view={view} />
           <PastVersions past={view.past} />
         </>
       )}

@@ -98,4 +98,17 @@ export const mirrorCollections: CollectionConfig[] = [
     ],
     indexes: [{ fields: ['workspace', 'product', 'repo', 'path'], unique: true }],
   },
+  {
+    slug: 'release_notes',
+    admin: { useAsTitle: 'version' },
+    access,
+    fields: [
+      relation('product', 'products'),
+      text('version', true),
+      { name: 'items', type: 'json', required: true },
+      { name: 'internalCount', type: 'number', required: true, defaultValue: 0 },
+      { name: 'generatedAt', type: 'date', required: true },
+    ],
+    indexes: [{ fields: ['product', 'version'], unique: true }],
+  },
 ]

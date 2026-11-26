@@ -95,7 +95,7 @@ export const postComment = (payload: Payload, input: NewComment): Promise<Commen
   })
 
 export const commentsOf = async (
-  payload: Payload,
+  payload: Conn,
   recordId: number,
   events: StoredEvent[],
 ): Promise<RequestComment[]> => {

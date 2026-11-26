@@ -20,6 +20,7 @@ const view: ReleasesView = {
   staging: { sha: '7e7b712aaaa', checks: 'passing' },
   ready: null,
   past: [],
+  notes: null,
 }
 
 describe('releases page parts', () => {
