@@ -57,7 +57,7 @@ function PickItem({
     <label className="flex items-center gap-2">
       <Checkbox
         checked={chosen.checked.has(item.value)}
-        onChange={(e) => chosen.toggle(item.value, e.target.checked)}
+        onCheckedChange={(on) => chosen.toggle(item.value, on === true)}
       />
       <span className="flex min-w-0 flex-col gap-1">
         <span className={mono ? 'mono wrap-anywhere' : 'wrap-anywhere'}>{item.label ?? item.value}</span>

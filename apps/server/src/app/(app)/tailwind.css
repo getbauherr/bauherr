@@ -1,9 +1,11 @@
-/* Tailwind v4 without preflight, so app.css pages keep their look. Colors resolve to the docs/design tokens in tokens.css, which flip with the theme.
+/* Tailwind v4 with preflight. Colors resolve to the docs/design tokens in tokens.css, which flip with the theme.
    Radius, font and spacing tokens share Tailwind's variable names and override its defaults. */
 @layer theme, base, components, utilities;
 @import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
 @import 'tailwindcss/utilities.css' layer(utilities);
 @import 'tw-shimmer';
+@import './typography.css';
 
 @theme {
   --color-*: initial;
@@ -38,48 +40,99 @@
   --color-sidebar-accent-foreground: var(--ink);
   --color-sidebar-border: var(--hairline);
   --color-sidebar-ring: var(--focus);
+  --color-success: var(--accent-2);
+  --color-success-foreground: var(--on-accent-2);
+  --color-success-strong: var(--accent-2-strong);
+  --color-success-soft: var(--accent-2-soft);
+  --color-destructive-soft: var(--danger-soft);
+  --color-chart-1: var(--accent);
+  --color-chart-2: var(--accent-2);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
   --color-transparent: transparent;
   --color-current: currentColor;
 }
 
-/* Headings and paragraphs: in the base layer so margin and text-wrap utilities win. */
+:root {
+  --font-sans: var(--font-archivo), "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+
 @layer base {
+  *,
+  ::before,
+  ::after,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--hairline);
+  }
+  body {
+    background: var(--surface-000);
+    color: var(--ink);
+    font: 400 15px/22px var(--font-sans);
+  }
   h1,
   h2,
   p {
-    margin: 0;
     text-wrap: balance;
   }
-}
-
-/* Anchors default to the surrounding text; in the base layer so color and underline utilities on links win. */
-@layer base {
+  th {
+    text-align: left;
+  }
   a {
     color: inherit;
     text-decoration: none;
   }
-}
-
-/* The part of preflight the shadcn components rely on, scoped to them. */
-@layer base {
-  .aui-root :where(*, ::before, ::after) {
-    box-sizing: border-box;
-    border: 0 solid var(--hairline);
+  p a,
+  a.text-primary {
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
-  .aui-root :where(button, input, textarea) {
-    margin: 0;
-    padding: 0;
-    font: inherit;
-    color: inherit;
-    background: transparent;
-    letter-spacing: inherit;
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
   }
-  .aui-root :where(ol, ul) {
-    margin: 0;
-    padding: 0;
-    list-style: none;
+  a:has(> [data-pending="true"]) {
+    animation: link-pulse 1s ease-in-out infinite;
+  }
+  @keyframes link-pulse {
+    50% {
+      opacity: 0.5;
+    }
+  }
+  #nav-progress {
+    position: fixed;
+    inset: 0 0 auto 0;
+    z-index: 50;
+    height: 2px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-state) var(--ease-out);
+  }
+  #nav-progress[data-active="true"] {
+    opacity: 1;
+    animation: nav-progress 8s var(--ease-out) forwards;
+  }
+  @keyframes nav-progress {
+    to {
+      transform: scaleX(0.9);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    a:has(> [data-pending="true"]) {
+      animation: none;
+      opacity: 0.5;
+    }
+    #nav-progress[data-active="true"] {
+      animation: none;
+      transform: scaleX(1);
+    }
   }
 }
 

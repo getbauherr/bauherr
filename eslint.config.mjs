@@ -173,6 +173,11 @@ export default tseslint.config(
     rules: { 'max-lines-per-function': 'off' },
   },
   {
+    name: 'components/ui is pulled verbatim from the shadcn registry, whose Tailwind class strings exceed the line limit',
+    files: [`${serverSrc}/app/(app)/components/ui/**/*.{ts,tsx}`],
+    rules: { 'max-len': 'off' },
+  },
+  {
     name: 'migrations are generated SQL that must stay byte-identical once applied, so the size rules do not apply',
     files: [`${serverSrc}/migrations/**/*.ts`],
     rules: { 'max-lines': 'off', 'max-lines-per-function': 'off' },

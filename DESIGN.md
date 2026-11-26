@@ -1,21 +1,27 @@
 ---
 version: alpha
 name: Bauherr
-description: Interface of the Bauherr software factory. Few elements, one accent, square geometry, slow motion.
+description: Interface of the Bauherr software factory. Few elements, an indigo accent with an emerald second hue, small corners, slow motion.
 colors:
-  surface-000: "#f5f6f7"
+  surface-000: "#f5f5fa"
   surface-100: "#ffffff"
-  surface-200: "#eceef0"
-  ink: "#171a1f"
-  ink-muted: "#5b6168"
-  hairline: "#d9dce0"
-  accent: "#2457c5"
-  accent-strong: "#1b46a3"
+  surface-200: "#ebebf3"
+  ink: "#16162a"
+  ink-muted: "#585a6e"
+  hairline: "#d8d8e6"
+  accent: "#5b35e8"
+  accent-strong: "#4a26cc"
   on-accent: "#ffffff"
-  accent-soft: "#e4ecfb"
-  ok: "#1a7f4b"
-  warn: "#9a6200"
+  accent-soft: "#ebe7fd"
+  accent-2: "#126c35"
+  accent-2-strong: "#0f5e2c"
+  on-accent-2: "#ffffff"
+  accent-2-soft: "#e3f5e9"
+  ok: "{colors.accent-2}"
+  warn: "#915b00"
+  warn-soft: "#fbf0dc"
   danger: "#b42318"
+  danger-soft: "#fbe6e4"
   focus: "{colors.accent}"
 typography:
   display:
@@ -158,14 +164,14 @@ Source of the tokens: `docs/design/tokens.json`. The YAML front matter above is 
 
 ## Overview
 
-Bauherr is the person who commissions a building and signs off on the work. The product is the factory that does the work; the interface exists so that person can decide quickly and trust what they see. Everything serves that: few elements, one accent, square geometry, slow motion. Tone: professional, calm, dense without clutter.
+Bauherr is the person who commissions a building and signs off on the work. The product is the factory that does the work; the interface exists so that person can decide quickly and trust what they see. Everything serves that: few elements, an indigo accent, an emerald second hue, small corners, slow motion. Tone: professional, calm, dense without clutter.
 
 Principles:
 
 1. **Decide, don't browse.** Every screen has one job and one primary action. A page that asks for a decision shows the decision sheet first and the evidence beside it; nothing else competes.
-2. **One accent.** `accent` is the only brand hue. Status colors (`ok`, `warn`, `danger`) mean state and always come with a word or glyph. If something is blue, it can be clicked or it is selected.
-3. **Hairlines, not shadows.** Surfaces are separated by `hairline` on `surface-000` / `surface-100`. Shadows exist only on a drawer in motion.
-4. **Nearly square.** `radius-sm` by default, `radius-md` on buttons and cards, `radius-lg` only on drawers and the cover. Nothing is a pill.
+2. **Two brand hues.** `accent` (indigo) marks what can be clicked or is selected. `accent-2` (emerald) marks success, done and progress, and drives `ok`. `warn` and `danger` mean state. Every status comes with a word or glyph.
+3. **Hairlines first.** Surfaces are separated by `hairline` on `surface-000` / `surface-100`. The shadcn components keep their own subtle shadows (cards, inputs, popovers); add none of your own.
+4. **Small corners.** `radius-sm`, `radius-md` and `radius-lg` are the tokens; shadcn components use their own radii. Pills only for badges and chips.
 5. **Slow and unobtrusive.** Motion confirms a state change (`duration-state`) or places a panel (`duration-panel`), always `ease-out`, never more than 8px of travel, never a bounce or loop. Under `prefers-reduced-motion` every duration is 0.
 6. **Plain words.** Say what happens: "Approve plan", then "Plan approved". Name things as the Bauherr sees them (ticket, stage, run, gate), never as the system is built (job, label, webhook). Sentence case everywhere except `label`.
 
@@ -193,27 +199,63 @@ Line icons at 1.5px stroke on a 20px grid, `currentColor`, from one set (Lucide)
 
 ### Styling (implementation)
 
-Pages use Tailwind v4 utilities with shadcn/ui components (Radix primitives, copied into `apps/server/src/app/(app)/components/ui`, no runtime UI package). `app.css` holds no component classes: only the font variables, the base `body` and focus rules and the navigation-progress styles. The app shell is a shadcn `Sidebar` (icon rail, Sheet on phones) | content | optional right dock, with a header (sidebar trigger, breadcrumb, New request, ⌘K command palette); see `docs/ui.md` > Shell. Tailwind's colors, radius, spacing and fonts resolve to the tokens in `tokens.css` (`tailwind.css` maps them, light and dark). Tailwind's preflight is not loaded; shadcn roots carry the `aui-root` class for the part they need. Chat UIs use assistant-ui's shadcn components.
+Pages use Tailwind v4 utilities with shadcn/ui components (Radix primitives, pulled from the shadcn registry into `apps/server/src/app/(app)/components/ui`, no runtime UI package). Pull a component with `pnpm dlx shadcn@latest add <name>` in `apps/server`; local edits to a pulled file are listed under Local changes below. `tailwind.css` holds the global base layer (body, focus, links, navigation progress) and no component classes. The app shell is a shadcn `Sidebar` (icon rail, Sheet on phones) | content | optional right dock, with a header (sidebar trigger, breadcrumb, New request, ⌘K command palette); see `docs/ui.md` > Shell. Tailwind's colors, radius, spacing and fonts resolve to the tokens in `tokens.css` (`tailwind.css` maps them, light and dark). Tailwind's preflight is on. The type styles `display`, `title`, `heading`, `body`, `small`, `label` and `mono` are Tailwind utilities generated from `tokens.json` into `typography.css`. Chat UIs use assistant-ui's shadcn components.
+
+#### Component map
+
+Use the primitive in the right column; do not build another.
+
+| Need | Primitive |
+|---|---|
+| Action | `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `success`, `link`; `icon` sizes) |
+| Status word or count | `Badge` (`success`, `warning`, `destructive`, `accent`, `secondary`, `outline`) or `WordBadge` for activity words |
+| Text, long text, option list | `Input`, `Textarea`, `Select` (searchable or styled), `NativeSelect` (plain list, form posts) |
+| Yes or no | `Checkbox` (one of many), `Switch` (takes effect), `ToggleGroup` (pick one or more from a short row) |
+| Form with validation | `Form` (react-hook-form and zod) with `Label` |
+| Surface, notice, data | `Card`, `Alert`, `Table` |
+| Switch views of one page | `Tabs` |
+| Overlay | `Dialog` (confirm a transition), `Sheet` (drawer), `Popover`, `HoverCard` (preview on hover), `Tooltip`, `DropdownMenu`, `Command` |
+| Transient message | `toast()` from `sonner`; `Toaster` is in the root layout |
+| Scroll area, split panes | `ScrollArea`, `Resizable` |
+| Structure | `Separator`, `Avatar`, `Breadcrumb`, `Sidebar` |
+| Chat | assistant-ui (`Thread`, `Composer`, tool UI) |
+| Icon | `lucide-react` |
+| Text style | the type classes above |
+
+#### Local changes to pulled components
+
+- `button.tsx`: `success` variant; `destructive` is a hairline button with `destructive` text, never a fill.
+- `badge.tsx`: `success`, `warning`, `accent`, and the tone aliases `ok`, `warn`, `neutral`, `muted` that callers pass; `destructive` uses `danger-soft`.
+- `card.tsx`: `asChild`. `command.tsx`: `trigger` and `shouldFilter={false}`, because the palette filters its own list.
+- `breadcrumb.tsx`: the nav label is `Breadcrumb`, which tests and e2e query.
+- `sonner.tsx`: no `next-themes`; colors come from the tokens.
+- `sidebar.tsx`, `sidebar-context.tsx`, `sidebar-menu.tsx`, `sidebar-cookie.ts`: not re-pulled; the registry file is over the 300-line limit, so it stays split.
 
 ## Colors
 
-Light theme first; dark theme is a full second palette, not an inversion. Text is `ink` on `surface-000`, `surface-100` and `surface-200`; secondary text is `ink-muted`. The accent is text-safe on every surface in both themes; on an accent fill use `on-accent`. Selected rows and active tabs use `accent-soft` with `ink` text. The front matter holds the light values; this table is the dark theme.
+Light theme first; dark theme is a full second palette, not an inversion. Text is `ink` on `surface-000`, `surface-100` and `surface-200`; secondary text is `ink-muted`. `accent` and `accent-2` are text-safe on every surface in both themes; on an accent fill use `on-accent`, on an `accent-2` fill `on-accent-2`. `apps/server/tests/design-contrast.test.ts` checks every text pair at 4.5:1. Selected rows and active tabs use `accent-soft` with `ink` text. The front matter holds the light values; this table is the dark theme.
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `surface-000` | #f5f6f7 | #121417 | Page ground. Everything sits on it; no gradients. |
-| `surface-100` | #ffffff | #1b1e23 | Raised panels: cards, drawers, decision sheets. Separated from `surface-000` by `hairline`, never by shadow. |
-| `surface-200` | #eceef0 | #242830 | Inset fields and table header rows on `surface-100`. |
-| `ink` | #171a1f | #e9ebee | Primary text on the three surfaces (≥ 12:1). |
-| `ink-muted` | #5b6168 | #9aa1a9 | Secondary text, captions, timestamps on all surfaces (≥ 4.5:1). |
-| `hairline` | #d9dce0 | #2b3036 | 1px borders and dividers. The only way surfaces are separated. |
-| `accent` | #2457c5 | #8db1ff | The one brand hue: links, primary action, focus ring, selected state, the cornerstone. Text on `surface-000` ≥ 5:1 in both themes. |
-| `accent-strong` | #1b46a3 | #a9c4ff | Hover and pressed state of an accent fill; `on-accent` stays the text color on it. |
-| `on-accent` | #ffffff | #0b1a3a | Text and icons on an accent fill. |
-| `accent-soft` | #e4ecfb | #1f2d4d | Selected row, active tab ground. `ink` stays the text color on it. |
-| `ok` | #1a7f4b | #5bcf8a | Succeeded, approved, verified. |
-| `warn` | #9a6200 | #e3b04b | Needs a person: needs_human, blocked, budget near limit. |
-| `danger` | #b42318 | #f08a7f | Failed, destructive action. |
+| `surface-000` | #f5f5fa | #0f0f17 | Page ground. Everything sits on it; no gradients. |
+| `surface-100` | #ffffff | #181823 | Raised panels: cards, drawers, decision sheets. Separated from surface-000 by hairline, never by shadow. |
+| `surface-200` | #ebebf3 | #222230 | Inset fields, lanes and table header rows on surface-100. |
+| `ink` | #16162a | #ebebf5 | Primary text on surface-000, surface-100, surface-200 (≥ 12:1). |
+| `ink-muted` | #585a6e | #9e9fb3 | Secondary text, captions, timestamps on all surfaces (≥ 4.5:1). |
+| `hairline` | #d8d8e6 | #2b2b3b | 1px borders and dividers. The only way surfaces are separated. |
+| `accent` | #5b35e8 | #a594ff | The primary brand hue (indigo): links, primary action, focus ring, selected state, the cornerstone in the mark. Text on surface-000 ≥ 5:1 in both themes. |
+| `accent-strong` | #4a26cc | #c0b5ff | Hover and pressed state of an accent fill; on-accent stays the text color on it. |
+| `on-accent` | #ffffff | #160a4d | Text and icons on an accent fill. |
+| `accent-soft` | #ebe7fd | #25214a | Selected row, active tab, running chip ground. ink stays the text color on it. |
+| `accent-2` | #126c35 | #4ade80 | The second brand hue (emerald): success, done, progress, positive highlights. Text on surface-000 ≥ 5:1 in both themes. |
+| `accent-2-strong` | #0f5e2c | #86efac | Hover and pressed state of an accent-2 fill; on-accent-2 stays the text color on it. |
+| `on-accent-2` | #ffffff | #052e16 | Text and icons on an accent-2 fill. |
+| `accent-2-soft` | #e3f5e9 | #0f2a1a | Success badge and banner ground. accent-2 is the text color on it. |
+| `ok` | = `accent-2` | = `accent-2` | Succeeded, approved, verified. Always paired with a word or check glyph, never hue alone. |
+| `warn` | #915b00 | #e3b04b | Needs a person: needs_human, blocked, budget near limit. Paired with a word. |
+| `warn-soft` | #fbf0dc | #3a2c10 | Warning badge and banner ground. warn is the text color on it. |
+| `danger` | #b42318 | #f08a7f | Failed, destructive action. Paired with a word. |
+| `danger-soft` | #fbe6e4 | #3d1d1a | Error badge and banner ground. danger is the text color on it. |
 | `focus` | = `accent` | = `accent` | 2px solid focus ring, 2px offset, on every interactive element. |
 
 Status colors: `ok` for succeeded, approved and verified; `warn` for needs_human, blocked and budget near its limit; `danger` for failed and destructive actions. Each status also shows its word or a glyph, so color never carries meaning alone.
@@ -262,11 +304,11 @@ A spinner is a 1.5px arc rotating once per 1.6s, in `accent`, and, besides the r
 
 ## Elevation & Depth
 
-Flat. Depth comes from two tonal layers, `surface-000` (ground) and `surface-100` (raised), separated by a 1px `hairline`; `surface-200` is inset (fields, table headers). No shadows, no gradients. The only shadow is on a drawer while it moves.
+Mostly flat. Depth comes from two tonal layers, `surface-000` (ground) and `surface-100` (raised), separated by a 1px `hairline`; `surface-200` is inset (fields, table headers). No gradients. Shadows come only from the shadcn components themselves (cards, popovers, drawers).
 
 ## Shapes
 
-Nearly square. `radius-sm` (2px): chips, checkboxes, code spans, the default. `radius-md` (4px): buttons, inputs, cards. `radius-lg` (8px): drawers, modals, the cover blocks. Nothing rounder exists; nothing is a pill. In the front matter these are `rounded.sm`, `rounded.md`, `rounded.lg`.
+Small corners. `radius-sm` (2px): code spans and checkboxes. `radius-md` (4px): buttons and inputs. `radius-lg` (8px): drawers, modals, the cover blocks. shadcn cards use `rounded-xl` and badges are pills. In the front matter these are `rounded.sm`, `rounded.md`, `rounded.lg`.
 
 ## Components
 
@@ -286,10 +328,10 @@ Guidelines and previews: `docs/design/components/{Button,Cover,Gate,StatusChip}`
 - Do separate surfaces with `hairline`; do use `mono` for anything copyable.
 - Do write sentence case, verb buttons, plain words (ticket, stage, run, gate).
 - Do honor `prefers-reduced-motion`; do keep travel ≤ 8px.
-- Don't use shadows (except a moving drawer), gradients, pills, filled icons, emoji or illustrations in empty states.
-- Don't use `accent` for anything that is not clickable, selected or running.
-- Don't use `danger` as a fill, or icon-only buttons.
-- Don't introduce hues, radii above `radius-lg`, or durations outside the three tokens.
+- Don't add shadows of your own, gradients, filled icons, emoji or illustrations in empty states.
+- Don't use `accent` for anything that is not clickable, selected or running; `accent-2` only for success and progress.
+- Don't use a solid `danger` fill, or icon-only buttons without an `aria-label`.
+- Don't introduce hues, or durations outside the three tokens.
 - Don't build chat from scratch; use assistant-ui.
 - Don't show `runs.status` as the state; use the derived activity word. Don't use native dialogs; use a shadcn Dialog.
 - Don't use italics, light weights, uppercase "Bauherr", or "Bauherrs".

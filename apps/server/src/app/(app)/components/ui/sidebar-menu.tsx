@@ -1,5 +1,5 @@
 'use client'
-import { Slot } from '@radix-ui/react-slot'
+import { Slot } from 'radix-ui'
 import { cva, type VariantProps } from 'class-variance-authority'
 import type { ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
@@ -49,7 +49,7 @@ export function SidebarMenuButton({
 }: ComponentProps<'button'> & { asChild?: boolean; isActive?: boolean; tooltip?: string } & VariantProps<
     typeof menuButton
   >) {
-  const Comp = asChild ? Slot : 'button'
+  const Comp = asChild ? Slot.Root : 'button'
   const { isMobile, state } = useSidebar()
   const button = (
     <Comp
@@ -111,7 +111,7 @@ export function SidebarMenuSubButton({
   className,
   ...props
 }: ComponentProps<'a'> & { asChild?: boolean; isActive?: boolean }) {
-  const Comp = asChild ? Slot : 'a'
+  const Comp = asChild ? Slot.Root : 'a'
   return (
     <Comp
       data-slot="sidebar-menu-sub-button"

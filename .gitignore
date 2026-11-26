@@ -11,4 +11,5 @@ docs/site/site
 .venv
 apps/server/src/migrations/index.ts
 apps/server/src/app/(app)/tokens.css
+apps/server/src/app/(app)/typography.css
 .vitest/
