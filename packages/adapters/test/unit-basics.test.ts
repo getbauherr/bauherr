@@ -106,6 +106,20 @@ void describe('http', () => {
     await new Http({ auth: patAuth('token-a'), fetch }).json('POST', '/etag-split', {});
     assert.deepEqual(seen, [null, null, null]);
   });
+  void it('drops the oldest stored answers once their total size passes the byte cap', async () => {
+    const seen = new Map<string, string | null>();
+    const big = JSON.stringify({ pad: 'x'.repeat(900_000) });
+    const fetch = async (url: unknown, init?: RequestInit) => {
+      seen.set(String(url), new Headers(init?.headers).get('if-none-match'));
+      return new Response(big, { status: 200, headers: { etag: '"big"', 'content-type': 'application/json' } });
+    };
+    const h = new Http({ auth: patAuth('byte-cap'), fetch, baseUrl: 'https://cap.test' });
+    for (let i = 0; i < 40; i++) await h.json('GET', `/${i}`);
+    await h.json('GET', '/0');
+    await h.json('GET', '/39');
+    assert.equal(seen.get('https://cap.test/0'), null);
+    assert.equal(seen.get('https://cap.test/39'), '"big"');
+  });
   void it('backs off on 429 / 403 with Retry-After, then succeeds', async () => {
     const sleeps: number[] = [];
     const responses = [

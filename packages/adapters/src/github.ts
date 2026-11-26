@@ -29,8 +29,17 @@ type Cached = { etag: string; body: string; headers: [string, string][] };
 
 const CACHE_LIMIT = 2000;
 const CACHE_BODY_LIMIT = 1_000_000;
+const CACHE_BYTES_LIMIT = 32_000_000;
 const KEPT_HEADERS = ['content-type', 'link'];
 const conditional = new Map<string, Cached>();
+let cachedBytes = 0;
+
+const drop = (key: string): void => {
+  const old = conditional.get(key);
+  if (!old) return;
+  cachedBytes -= old.body.length;
+  conditional.delete(key);
+};
 
 const cacheKey = (token: string, accept: string, url: string): string =>
   `${createHash('sha256').update(token).digest('hex').slice(0, 16)} ${accept} ${url}`;
@@ -40,13 +49,16 @@ const remember = async (key: string, res: Response): Promise<void> => {
   if (!etag || !(res.headers.get('content-type') ?? '').includes('json')) return;
   const body = await res.clone().text();
   if (body.length > CACHE_BODY_LIMIT) return;
-  conditional.delete(key);
-  if (conditional.size >= CACHE_LIMIT) conditional.delete(conditional.keys().next().value!);
+  drop(key);
+  while (conditional.size >= CACHE_LIMIT || cachedBytes + body.length > CACHE_BYTES_LIMIT) {
+    drop(conditional.keys().next().value!);
+  }
   const headers = KEPT_HEADERS.flatMap((h): [string, string][] => {
     const v = res.headers.get(h);
     return v === null ? [] : [[h, v]];
   });
   conditional.set(key, { etag, body, headers });
+  cachedBytes += body.length;
 };
 
 const lookup = (key: string | undefined): Cached | undefined => (key === undefined ? undefined : conditional.get(key));
