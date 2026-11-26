@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { startTransition, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { moveCard } from '../../(shell)/actions'
 
 export type Item<T> = { id: number; label: string; dimmed: boolean; node: T }
@@ -11,7 +11,7 @@ const moved = <T,>(items: Item<T>[], from: number, to: number): Item<T>[] => {
   return next
 }
 
-export function useOrder<T>(items: Item<T>[]) {
+export function useOrder<T>(items: Item<T>[], total: number) {
   const router = useRouter()
   const [order, setOrder] = useState(items)
   const [failed, setFailed] = useState(false)
@@ -19,9 +19,8 @@ export function useOrder<T>(items: Item<T>[]) {
   const focus = useRef<number | null>(null)
   useEffect(() => setOrder(items), [items])
   useLayoutEffect(() => {
-    if (focus.current === null) return
+    if (focus.current === null || document.activeElement?.closest('[data-card]')) return
     document.querySelector<HTMLElement>(`[data-card="${focus.current}"] [data-card-link]`)?.focus()
-    focus.current = null
   }, [order])
 
   const reorder = async (from: number, to: number) => {
@@ -33,9 +32,9 @@ export function useOrder<T>(items: Item<T>[]) {
     setStatus('')
     focus.current = card.id
     const result = await moveCard(card.id, next[to - 1]?.id ?? null).catch(() => ({ moved: false }))
-    if (result.moved) setStatus(`Moved ${card.label} to position ${to + 1} of ${order.length}`)
+    if (result.moved) setStatus(`Moved ${card.label} to position ${to + 1} of ${Math.max(total, order.length)}`)
     else setFailed(true)
-    router.refresh()
+    startTransition(() => router.refresh())
   }
   return { order, reorder, failed, status }
 }

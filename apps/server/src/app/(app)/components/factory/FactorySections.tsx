@@ -28,14 +28,14 @@ export async function FactoryBody({ factory, show, product, boardView }: Props) 
       <FilterRow
         show={show}
         product={product}
-        counts={countShows(lanes)}
+        counts={countShows(lanes, stats)}
         products={view.products}
         view={boardView}
         relationCounts={countRelations(lanes)}
       />
       <HoldStrip holds={view.held} />
       <SomedayLine items={view.someday} />
-      <FactoryBoard lanes={lanes} stats={stats} show={show} view={boardView} />
+      <FactoryBoard lanes={lanes} stats={stats} show={show} view={boardView} product={product} />
     </>
   )
 }

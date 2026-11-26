@@ -11,6 +11,7 @@ import { STATES, stateOf, type TicketState } from './status'
 
 export type LiveRunView = {
   recordId: number
+  number: number
   role: 'builder' | 'reviewer' | 'verifier'
   leasedBy: string | null
   status: 'queued' | 'claimed'
@@ -39,6 +40,7 @@ const countRow = z.object({
 const runRow = z.object({
   stage: stageSchema,
   record_id: count,
+  number: count,
   role: z.enum(['builder', 'reviewer', 'verifier']),
   leased_by: z.string().nullable(),
   status: z.enum(['queued', 'claimed']),
@@ -55,7 +57,7 @@ const loadCounts = async (payload: Payload, filter: RowFilter) => {
 
 const loadRuns = async (payload: Payload, filter: RowFilter) => {
   const result = await payload.db.drizzle.execute(sql`
-    SELECT r."stage", s."record_id", s."role", s."leased_by", s."status"
+    SELECT r."stage", s."record_id", r."source_number" AS number, s."role", s."leased_by", s."status"
     FROM "stage_runs" s JOIN "records" r ON r."id" = s."record_id"
     WHERE ${scope(filter.workspace, filter.product)} AND s."status" IN ('queued', 'claimed')
     ORDER BY s."id"`)
@@ -85,7 +87,13 @@ export const stageStats = async (payload: Payload, filter: RowFilter): Promise<S
       medianSeconds: medians.get(stage) ?? null,
       runs: runs
         .filter((run) => run.stage === stage)
-        .map((run) => ({ recordId: run.record_id, role: run.role, leasedBy: run.leased_by, status: run.status })),
+        .map((run) => ({
+          recordId: run.record_id,
+          number: run.number,
+          role: run.role,
+          leasedBy: run.leased_by,
+          status: run.status,
+        })),
     }
   })
   return { stages, totals }

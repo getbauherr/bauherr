@@ -3,6 +3,7 @@ import type { Stage } from '../events'
 import type { HeldItem } from '../intake/held'
 import type { WaitingOn } from '../record/store'
 import { classifiedIn } from './classified'
+import { loadLaneAfter, loadLanes, type LaneCursor } from './lanes'
 import { loadRelations, type CardRelations } from './relations'
 import { loadRows, type ClosedAs, type RowFilter, type TicketRow } from './rows'
 import { DAY_MS } from './sql'
@@ -83,7 +84,7 @@ export const toCard = (row: TicketRow): BoardCard => {
   }
 }
 
-const heldOf = async (payload: Payload, filter: RowFilter): Promise<HeldItem[]> =>
+export const heldOf = async (payload: Payload, filter: RowFilter): Promise<HeldItem[]> =>
   (await classifiedIn(payload, filter))
     .filter(({ selection }) => selection.action === 'hold')
     .map(({ candidate, selection }) => ({
@@ -99,9 +100,27 @@ const heldOf = async (payload: Payload, filter: RowFilter): Promise<HeldItem[]> 
 const recentlyEnded = (row: TicketRow, now: Date): boolean =>
   row.endedAt !== null && row.endedAt.getTime() >= now.getTime() - 7 * DAY_MS
 
-export const board = async (payload: Payload, filter: RowFilter): Promise<Board> => {
+export const laneCursor = (card: BoardCard): LaneCursor => ({
+  rank: card.rank,
+  enteredAt: card.enteredAt,
+  id: card.recordId,
+})
+
+export const laneMore = async (
+  payload: Payload,
+  filter: RowFilter,
+  input: { stage: Stage; after: LaneCursor; limit: number },
+): Promise<BoardCard[]> => {
+  const [rows, relations] = await Promise.all([
+    loadLaneAfter(payload, filter, input),
+    loadRelations(payload, filter.workspace),
+  ])
+  return rows.map((row) => ({ ...toCard(row), relations: relations.get(row.recordId) ?? null }))
+}
+
+export const board = async (payload: Payload, filter: RowFilter, limit?: number): Promise<Board> => {
   const [rows, relations, held] = await Promise.all([
-    loadRows(payload, filter),
+    limit === undefined ? loadRows(payload, filter) : loadLanes(payload, filter, limit),
     loadRelations(payload, filter.workspace),
     heldOf(payload, filter),
   ])

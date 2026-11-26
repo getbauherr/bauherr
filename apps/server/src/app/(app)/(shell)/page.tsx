@@ -21,7 +21,9 @@ export default async function Factory({ searchParams }: { searchParams: Promise<
   if (!workspace) return <EmptyState text="You have no Workspace yet." />
   const raw = await searchParams
   const { show, product } = parseSearch(raw)
-  const factory = loadFactory(await payloadClient(), { workspace: workspace.id, ...(product && { product }) })
+  const boardView = parseView(raw)
+  const chunked = boardView.relation === undefined && !boardView.group
+  const factory = loadFactory(await payloadClient(), { workspace: workspace.id, ...(product && { product }) }, chunked)
   return (
     <>
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
@@ -31,7 +33,7 @@ export default async function Factory({ searchParams }: { searchParams: Promise<
         </Suspense>
       </div>
       <Suspense fallback={<BoardSkeleton />}>
-        <FactoryBody factory={factory} show={show} product={product} boardView={parseView(raw)} />
+        <FactoryBody factory={factory} show={show} product={product} boardView={boardView} />
       </Suspense>
       <AutoRefresh tables={BOARD_TABLES} />
     </>

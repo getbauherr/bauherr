@@ -5,21 +5,24 @@ import { ProductPicker } from '../../components/request/ProductPicker'
 import { RequestFilters } from '../../components/request/RequestFilters'
 import { RequestRows } from '../../components/request/RequestRows'
 import { Button } from '../../components/ui/button'
-import {
-  applyFilter,
-  filterCounts,
-  listRequests,
-  REQUEST_FILTERS,
-  type RequestFilter,
-} from '../../../../core/views/request-status'
-import { isBauherr, loginsOf } from '../../../../lib/people'
+import type { RequestCursor } from '../../../../core/views/request-list'
+import { REQUEST_FILTERS, type RequestFilter } from '../../../../core/views/request-status'
+import { isBauherr } from '../../../../lib/people'
+import { moreRequests } from './more-actions'
 import { payloadClient } from '../../lib/session'
-import { readableProducts, requestsOf, requireRequestsReader, sentRecordIdsOf } from '../../lib/requests'
+import { readableProducts, requestChunk, requestTotals, requireRequestsReader, viewerOf } from '../../lib/requests'
 
 export const dynamic = 'force-dynamic'
 
 const filterOf = (value: string | undefined): RequestFilter =>
   REQUEST_FILTERS.find((f) => f === value) ?? 'open'
+
+type Chunk = { list: unknown[]; cursor: RequestCursor | null }
+
+const moreOf = (chunk: Chunk, product: number, show: RequestFilter, total: number) =>
+  chunk.cursor
+    ? { product, show, cursor: chunk.cursor, left: total - chunk.list.length, loadMore: moreRequests }
+    : undefined
 
 export default async function Requests({
   searchParams,
@@ -39,31 +42,37 @@ export default async function Requests({
       </>
     )
   }
-  const list = listRequests(await requestsOf(payload, product), {
-    forgeLogins: loginsOf(person.githubLogin),
-    sentRecordIds: await sentRecordIdsOf(payload, person.email),
-  })
+  const viewer = await viewerOf(payload, person)
   const filter = filterOf(query.show)
+  const [counts, chunk] = await Promise.all([
+    requestTotals(payload, product, viewer),
+    requestChunk(payload, { product, viewer, show: filter, after: null }),
+  ])
+  const total = counts.open + counts.live + counts.closed
   return (
     <>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="title">Requests</h1>
         <ProductPicker products={products} current={product.id} />
-        {list.length > 0 && (
+        {total > 0 && (
           <Button asChild className="ml-auto">
             <Link href="/requests/new">New request</Link>
           </Button>
         )}
       </div>
-      {list.length === 0 ? (
+      {total === 0 ? (
         <FirstVisit product={product.name} />
       ) : (
         <>
-          <RequestFilters product={product.id} current={filter} counts={filterCounts(list)} />
-          {applyFilter(list, filter).length === 0 ? (
+          <RequestFilters product={product.id} current={filter} counts={counts} />
+          {chunk.list.length === 0 ? (
             <p className="small text-muted-foreground">Nothing here.</p>
           ) : (
-            <RequestRows list={applyFilter(list, filter)} staff={isBauherr(person)} />
+            <RequestRows
+              list={chunk.list}
+              staff={isBauherr(person)}
+              more={moreOf(chunk, product.id, filter, counts[filter])}
+            />
           )}
         </>
       )}

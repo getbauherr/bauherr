@@ -8,9 +8,9 @@ const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim
 const RUNS = 5
 const CONTENT_LIMIT_MS = 5000
 
-const signIn = async (page: Page) => {
+const signIn = async (page: Page, workspace: string) => {
   const url = process.env.BASE_URL ?? 'http://localhost:3000'
-  await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url }])
+  await page.context().addCookies([{ name: 'bauherr-ws', value: workspace, url }])
   await page.goto('/login')
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password').fill(password())
@@ -60,11 +60,17 @@ const measure = async (page: Page, name: string, path: string, selector: string)
 }
 
 test('page load: first byte and content of Inbox, Factory board and a ticket', async ({ page }) => {
-  await signIn(page)
+  await signIn(page, 'tickets')
   await page.goto('/inbox')
   const ticket = await page.locator(TICKETS).first().getAttribute('href')
   expect(ticket).toBeTruthy()
   await measure(page, 'inbox', '/inbox', TICKETS)
   await measure(page, 'board', '/', TICKETS)
   await measure(page, 'ticket', ticket!, 'nav[aria-label="Stage path"]')
+})
+
+test('page load with 2,806 tickets in one workspace: Inbox and Factory board', async ({ page }) => {
+  await signIn(page, 'bulk')
+  await measure(page, 'inbox-2806', '/inbox', TICKETS)
+  await measure(page, 'board-2806', '/', TICKETS)
 })

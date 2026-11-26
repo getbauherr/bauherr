@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyFilter, filterCounts, listRequests, requestStatus } from '../../src/core/views/request-status'
+import { listRequests, requestStatus } from '../../src/core/views/request-status'
 import type { ClosedAs, TicketRow } from '../../src/core/views/rows'
 
 type Input = Parameters<typeof requestStatus>[0]
@@ -119,11 +119,8 @@ describe('the filters of the Requests page', () => {
     expect(list.filter((r) => r.mine).map((r) => r.row.recordId)).toEqual([2])
   })
 
-  it('counts and filters Open, Live, Closed and Only mine, newest change first', () => {
+  it('lists the newest change first', () => {
     const list = listRequests(rows, { forgeLogins: ['me-login'], sentRecordIds: [] })
     expect(list.map((r) => r.row.recordId)).toEqual([3, 2, 1])
-    expect(filterCounts(list)).toEqual({ open: 1, live: 1, closed: 1, mine: 2 })
-    expect(applyFilter(list, 'live').map((r) => r.row.recordId)).toEqual([2])
-    expect(applyFilter(list, 'mine').map((r) => r.row.recordId)).toEqual([3, 1])
   })
 })
