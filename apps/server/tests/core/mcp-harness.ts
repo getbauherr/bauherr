@@ -10,6 +10,8 @@ export const ORIGIN = 'http://factory.test'
 
 export type Member = { id: number; agentToken: string; personalKey: string; keyId: number }
 
+type PackFacts = { note: string | null; newComments: { text: string }[] }
+
 export type Mcp = {
   e: Engine
   alpha: Member
@@ -22,7 +24,7 @@ export type Mcp = {
     member: Member,
     role?: string,
     capacity?: number,
-  ) => Promise<{ session: string; runId: number; leaseToken: string; context: { note: string | null } }>
+  ) => Promise<{ session: string; runId: number; leaseToken: string; context: PackFacts }>
 }
 
 const idOf = (doc: { id: number | string }) => z.coerce.number().parse(doc.id)
@@ -73,7 +75,11 @@ export const openMcp = async (suite: string, modules: Modules = TEST_MODULES): P
         .object({ session: z.string() })
         .parse(await mcp.call('connect', { role, capacity, clientSession: 'test-session-1' }, mcp.agent(member)))
       const work = z
-        .object({ runId: z.number(), leaseToken: z.string(), context: z.object({ note: z.string().nullable() }) })
+        .object({
+          runId: z.number(),
+          leaseToken: z.string(),
+          context: z.object({ note: z.string().nullable(), newComments: z.array(z.object({ text: z.string() })) }),
+        })
         .parse(await mcp.call('next_work', { session }, mcp.agent(member)))
       return { session, ...work }
     },

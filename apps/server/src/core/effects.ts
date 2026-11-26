@@ -58,7 +58,8 @@ const waitingOnConflict = (state: State): string | null =>
 const statusOf = async (deps: AdvanceDeps, stored: StoredRecord, target: Target, writer: ForgePort) => {
   const events = await readEvents(deps.payload, stored.id)
   const state = fold(events, foldOptions(await deps.configFor(stored.id)))
-  const quiet = (type: string) => type.startsWith('forge.write.') || type === 'request.commented'
+  const QUIET = ['request.commented', 'run.comments.delivered']
+  const quiet = (type: string) => type.startsWith('forge.write.') || QUIET.includes(type)
   const changed = events.findLast((event) => !quiet(event.type))
   const body = renderStatus({
     record: stored.record,
