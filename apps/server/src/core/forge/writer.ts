@@ -13,6 +13,7 @@ import { backendFor } from '../../lib/adapters'
 import { connectionInput } from '../../lib/connection'
 import { appendEvent } from '../record/store'
 import { WRITE_KINDS, type Stage } from '../events'
+import { bringUpToDate, type BranchUpdate } from './branch-update'
 import { settleMerge } from './merge-pending'
 import { checkNewRelation } from '../relations/relate'
 import { edgeOf } from '../relations/proposal'
@@ -31,6 +32,7 @@ import {
   loadProductRow,
   loadWriteRow,
   saveClosed,
+  saveHead,
   saveLabels,
   saveReopened,
   saveStatusComment,
@@ -152,6 +154,16 @@ const mergePullRequest = async (ctx: Ctx, target: Target, expectedHeadSha: strin
     mirror: () => saveClosed(ctx.payload, target.itemId, 'merged', ctx.deps.now()),
   })
   return merged.mergeSha
+}
+
+const updatePullRequestBranch = async (ctx: Ctx, target: Target, retarget: boolean): Promise<BranchUpdate> => {
+  const session = await open(ctx, target, 'pr')
+  return perform(ctx, target, 'update-branch', session, {
+    call: ({ forge, row }) => bringUpToDate(forge, row.repo, row.number, retarget),
+    mirror: async (_session, update) => {
+      if (update.kind === 'updated') await saveHead(ctx.payload, target.itemId, update.headSha)
+    },
+  })
 }
 
 const openPullRequest = async (ctx: Ctx, target: Target, input: NewPullRequest): Promise<PullRequest> => {
@@ -285,6 +297,7 @@ export const createWriter = (payload: Payload, deps: WriterDeps = defaultDeps(pa
     postQuestion: (target: Target, body: string) => postQuestion(ctx, target, body),
     commentOnTicket: (target: Target, input: { key: string; body: string }) => commentOnTicket(ctx, target, input),
     mergePullRequest: (target: Target, expectedHeadSha: string) => mergePullRequest(ctx, target, expectedHeadSha),
+    updatePullRequestBranch: (target: Target, retarget: boolean) => updatePullRequestBranch(ctx, target, retarget),
     openPullRequest: (target: Target, input: NewPullRequest) => openPullRequest(ctx, target, input),
     reviewPullRequest: (target: Target, body: string) => reviewPullRequest(ctx, target, body),
     openIssue: (target: ProductTarget, input: NewIssue) => openIssue(ctx, target, input),

@@ -26,6 +26,7 @@ export const WRITE_KINDS = [
   'relation-add',
   'relation-remove',
   'comment',
+  'update-branch',
 ] as const
 const target = z.object({ repo: id, number: z.number().int().positive() })
 const write = { kind: z.enum(WRITE_KINDS), target }
@@ -58,6 +59,7 @@ const eventSchema = z.discriminatedUnion('type', [
   event('ticket.done-elsewhere', none),
   event('pull.adopted', z.object({ pr: z.number().int().positive(), headSha: id, patchId: id })),
   event('pull.conflicted', z.object({ patchId: id, base: id })),
+  event('pull.updated', z.object({ patchId: id, headSha: id })),
   event('checks.finished', z.object({ patchId: id, passed: z.boolean() })),
   event('review.submitted', z.object({ runId: id, patchId: id, headSha: id, findings: z.number().int().min(0) })),
   event('verify.passed', z.object({ runId: id, patchId: id, headSha: id })),

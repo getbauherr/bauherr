@@ -164,6 +164,7 @@ const afterMerge = (state: State, config: Config): Step => {
 const ship: Rule = (_r, state, config) => {
   if (state.stage !== 'ship') return null
   if (state.adopted && !state.accepted) return resultCard
+  if (!state.merged && !state.overridden && state.checks === 'pending') return wait('checks')
   return state.merged ? afterMerge(state, config) : { kind: 'effect', effect: 'merge' }
 }
 

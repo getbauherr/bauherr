@@ -21,6 +21,7 @@ export type ForgePort = Pick<
   | 'reopenIssue'
   | 'reviewPullRequest'
   | 'addRelation'
+  | 'updatePullRequestBranch'
 >
 
 const REFUSALS = [ProductObserving, TargetNotFound, WrongItemKind]

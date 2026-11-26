@@ -1,6 +1,6 @@
 import { pairProblems, pairsOf, type Shot } from './attachments/pairs'
 import type { Problem } from './module'
-import type { Criterion, TicketRecord } from './record/schema'
+import type { Criterion, Finding, TicketRecord } from './record/schema'
 import type { ReviewResult } from './review-result'
 import type { VerifyResult } from './verify-result'
 
@@ -82,10 +82,14 @@ export const UNPROVEN_FIX = 'attach proof or name a finding'
 
 const UNPROVEN_WHY = 'changes with no finding and no missing or partial criterion'
 
+const liveFindings = (record: TicketRecord, result: VerifyResult): Finding[] =>
+  [...new Map([...record.findings, ...result.findings].map((f) => [f.id, f])).values()].filter(
+    (f) => (f.status === 'open' || f.status === 'fixing') && f.followUp !== true,
+  )
+
 const unproven: Rule = ({ result, record }) => {
   if (result.verdict !== 'changes') return []
-  const findings = new Map([...record.findings, ...result.findings].map((f) => [f.id, f]))
-  const live = [...findings.values()].some((f) => f.status === 'open' || f.status === 'fixing')
+  const live = liveFindings(record, result).length > 0
   const broken = result.criteria.some((c) => c.status === 'missing' || c.status === 'partial')
   return live || broken
     ? []
@@ -109,9 +113,7 @@ const verdict: Rule = ({ result, record }) => {
   if (result.verdict !== 'pass') return []
   const statusOf = (c: Criterion) => result.criteria.find((r) => r.id === c.id)?.status ?? c.status
   const unmet = record.criteria.filter((c) => ['open', 'partial', 'missing'].includes(statusOf(c)))
-  const findings = new Map([...record.findings, ...result.findings].map((f) => [f.id, f]))
-  const live = [...findings.values()].filter((f) => f.status === 'open' || f.status === 'fixing')
-  const parts = [...unmet.map((c) => c.id), ...live.map((f) => f.id)]
+  const parts = [...unmet.map((c) => c.id), ...liveFindings(record, result).map((f) => f.id)]
   return parts.length === 0
     ? []
     : [refusal('verdict', 'verdict', `pass while ${parts.join(', ')} are not settled: answer changes, or settle them.`)]

@@ -120,6 +120,15 @@ const conflicted = (state: State, data: EventOf<'pull.conflicted'>['data']): Sta
   return { ...enter(stale, 'build'), note: conflictNote(data.base) }
 }
 
+const updated: Reducer = (state, event, options) => {
+  if (event.type !== 'pull.updated') return null
+  const { data } = event
+  if (state.patch?.id !== data.patchId) return state
+  const verdict = state.verdict === null ? null : { ...state.verdict, headSha: data.headSha }
+  const checks = options.requiredChecks === false ? 'none' : 'pending'
+  return { ...state, patch: { ...state.patch, headSha: data.headSha }, verdict, checks }
+}
+
 const patch: Reducer = (state, event, options) => {
   switch (event.type) {
     case 'build.submitted': {
@@ -245,7 +254,7 @@ const questions: Reducer = (state, event) => {
   }
 }
 
-const REDUCERS: Reducer[] = [intake, runs, owner, brief, patch, verify, ship, questions]
+const REDUCERS: Reducer[] = [intake, runs, owner, brief, patch, updated, verify, ship, questions]
 
 const QUIET = new Set(['request.commented', 'run.comments.delivered'])
 

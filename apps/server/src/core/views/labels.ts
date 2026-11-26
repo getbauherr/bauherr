@@ -14,6 +14,7 @@ const WRITES: Record<EventOf<'forge.write.done'>['data']['kind'], string> = {
   'relation-add': 'a ticket relation',
   'relation-remove': 'removing a ticket relation',
   comment: 'a request comment',
+  'update-branch': 'bringing the branch up to date',
 }
 
 const EXCERPT = 80
@@ -58,6 +59,7 @@ const LABELS: Labels = {
   'ticket.done-elsewhere': () => 'The owner closed the ticket as done by other work',
   'pull.adopted': (e) => `Pull request #${e.data.pr} was adopted at ${e.data.headSha.slice(0, 7)}`,
   'pull.conflicted': (e) => `The pull request conflicts with ${e.data.base} and needs a rebase`,
+  'pull.updated': (e) => `The branch was brought up to date at ${e.data.headSha.slice(0, 7)}`,
   'checks.finished': (e) => (e.data.passed ? 'The checks passed' : 'The checks failed'),
   'review.submitted': (e) =>
     e.data.findings === 0
