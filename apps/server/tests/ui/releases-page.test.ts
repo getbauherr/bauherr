@@ -64,12 +64,16 @@ describe('releases page parts', () => {
       proposal: { version: 'v0.7.0', bump: 'minor' },
       refusal: null,
       sha: '7e7b712aaaa',
+      since: 'v0.6.0',
+      changes: 14,
       run: null,
     }
     const { rerender } = render(createElement(ReleaseControl, { panel, product: 1, refused: null, actions }))
     expect(screen.getByDisplayValue('v0.7.0')).toBeTruthy()
     expect(screen.getByText('7e7b712')).toBeTruthy()
     expect(screen.getByText('minor: new capabilities, nothing breaks')).toBeTruthy()
+    expect(screen.getByText(/Covers 14 changes merged since/)).toBeTruthy()
+    expect(screen.getByText('v0.6.0')).toBeTruthy()
     const button = screen.getByRole('button', { name: 'Release v0.7.0' })
     expect(button.hasAttribute('disabled')).toBe(false)
     const refused = { ...panel, refusal: 'Nothing was merged since the last version.' }
@@ -92,6 +96,8 @@ describe('releases page parts', () => {
       proposal: { version: 'v0.8.0', bump: 'minor' },
       refusal: 'Releasing v0.7.0 is not finished yet.',
       sha: 'abc',
+      since: 'v0.6.0',
+      changes: 3,
       run,
     }
     render(createElement(ReleaseControl, { panel, product: 1, refused: null, actions }))

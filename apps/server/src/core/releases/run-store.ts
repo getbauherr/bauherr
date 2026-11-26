@@ -71,6 +71,13 @@ export const doneRuns = async (payload: Payload, product: number): Promise<Relea
   return found.rows.map(toRun)
 }
 
+export const usedVersions = async (payload: Payload, product: number): Promise<string[]> => {
+  const found = await payload.db.drizzle.execute(
+    sql`SELECT "version" FROM "product_releases" WHERE "product_id" = ${product}`,
+  )
+  return found.rows.map((entry) => z.string().parse(entry.version))
+}
+
 export const openRun = async (payload: Payload, product: number): Promise<ReleaseRun | null> => {
   const found = await payload.db.drizzle.execute(sql`
     SELECT ${COLUMNS} FROM "product_releases"

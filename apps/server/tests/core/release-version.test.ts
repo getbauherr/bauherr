@@ -32,6 +32,12 @@ describe('proposed version', () => {
     expect(nextVersion(['v0.6.0', '0.6.1'], 'patch')).toBe('0.6.2')
   })
 
+  it('bases the proposal on the last real release, never on a release candidate', () => {
+    expect(nextVersion(['v0.6.0', 'v0.8.0-rc.1'], 'minor')).toBe('v0.7.0')
+    expect(nextVersion(['v0.6.0', 'v0.7.0-rc.2'], 'patch')).toBe('v0.6.1')
+    expect(nextVersion(['v0.7.0-rc.1'], 'minor')).toBeNull()
+  })
+
   it('has no proposal without a last version', () => {
     expect(nextVersion([], 'minor')).toBeNull()
   })

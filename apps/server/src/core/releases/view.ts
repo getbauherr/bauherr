@@ -2,7 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import { loadLastCheck, type LastCheck } from '../readiness/last-check'
-import { highestVersion } from '../readiness/release-facts'
+import { highestVersion, isRelease } from '../readiness/release-facts'
 import { mergedTickets, type MergedTicket } from './merged'
 import { readNotes, UNRELEASED, type StoredNotes } from './notes-store'
 import { releaseStateSchema, type ReleaseState } from './state'
@@ -36,9 +36,10 @@ const sourceRow = z.object({
 const timeOf = (iso: string | null): number => (iso === null ? Number.NEGATIVE_INFINITY : Date.parse(iso))
 
 export const partition = (state: ReleaseState, merged: MergedTicket[]) => {
-  const last = highestVersion(state.versions.map((version) => version.tag))
-  const lastAt = state.versions.find((version) => version.tag === last)?.at ?? null
-  const ascending = [...state.versions].sort((a, b) => timeOf(a.at) - timeOf(b.at))
+  const releases = state.versions.filter((version) => isRelease(version.tag))
+  const last = highestVersion(releases.map((version) => version.tag))
+  const lastAt = releases.find((version) => version.tag === last)?.at ?? null
+  const ascending = [...releases].sort((a, b) => timeOf(a.at) - timeOf(b.at))
   const past = ascending.map((version, index): PastVersion => {
     const from = timeOf(index === 0 ? state.olderAt : (ascending[index - 1]?.at ?? null))
     const to = timeOf(version.at)

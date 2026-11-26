@@ -17,6 +17,8 @@ export type ReleasePanel = {
   proposal: { version: string | null; bump: Bump }
   refusal: string | null
   sha: string
+  since: string | null
+  changes: number
   run: RunView | null
 }
 
@@ -48,6 +50,8 @@ export const releasePanel = async (payload: Payload, f: ProductAt, now: Date): P
     proposal: ready.proposal,
     refusal: ready.refusal,
     sha: ready.sha,
+    since: ready.since,
+    changes: ready.tickets.length,
     run: open ? runView(open) : null,
   }
 }

@@ -106,6 +106,10 @@ export const sortVersions = (names: string[]): string[] => {
 
 export const highestVersion = (names: string[]): string | null => sortVersions(names)[0] ?? null
 
+export const isRelease = (name: string): boolean => SEMVER.exec(name)?.[4] === undefined && isVersion(name)
+
+export const releasesOnly = (names: string[]): string[] => names.filter(isRelease)
+
 const readWorkflows = async (repo: string, branch: string, forge: ReadForge): Promise<Workflow[]> => {
   const { paths } = await forge.listFiles(repo, branch)
   const workflows: Workflow[] = []
