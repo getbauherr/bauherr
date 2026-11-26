@@ -2,8 +2,12 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { CardMenu, type MoveTo } from './CardMenu'
+import { LaneMoreButton } from './LaneMoreButton'
 import { useDrag } from './useDrag'
+import { useLaneMore, type LaneMore } from './useLaneMore'
 import { useOrder, type Item } from './useOrder'
+
+export type { LaneMore }
 
 const FADE = 'transition-opacity duration-(--duration-state) ease-(--ease-out) motion-reduce:transition-none'
 const MARK = cn(
@@ -16,8 +20,9 @@ const HINT = 'Drag, or press Alt+ArrowUp or Alt+ArrowDown, to move'
 
 const TARGETS: Record<MoveTo, (index: number) => number> = { top: () => 0, up: (i) => i - 1, down: (i) => i + 1 }
 
-export function SortableCards({ items }: { items: Item<ReactNode>[] }) {
-  const { order, reorder, failed, status } = useOrder(items)
+export function SortableCards({ items, more }: { items: Item<ReactNode>[]; more?: LaneMore | undefined }) {
+  const lane = useLaneMore(items, more)
+  const { order, reorder, failed, status } = useOrder(lane.all)
   const { dragging, handlers, mark, clearOver } = useDrag(order.map((card) => card.id), reorder)
   return (
     <>
@@ -42,6 +47,7 @@ export function SortableCards({ items }: { items: Item<ReactNode>[] }) {
           </li>
         ))}
       </ul>
+      {lane.left > 0 && <LaneMoreButton left={lane.left} loading={lane.loading} load={lane.load} />}
       {failed && (
         <p role="alert" className="small text-destructive">Could not save the new order. The board was reloaded.</p>
       )}

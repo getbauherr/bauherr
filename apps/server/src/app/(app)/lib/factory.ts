@@ -6,7 +6,7 @@ import { holds } from '../../../core/views/holds'
 import { somedayCounts, type SomedayCount } from '../../../core/views/someday'
 import type { BoardView } from './board-relations'
 import { webOrigin } from '../../../lib/connection'
-import { stageStats, type StageStat } from '../../../core/views/stats'
+import { stageStats, type StageStat, type Stats } from '../../../core/views/stats'
 
 export const SHOWS = ['all', 'you', 'working', 'stuck', 'others'] as const
 export type Show = (typeof SHOWS)[number]
@@ -73,11 +73,17 @@ export const productsIn = async (payload: Payload, workspace: number): Promise<{
   return found.docs.map((doc) => ({ id: z.coerce.number().parse(doc.id), name: z.string().parse(doc.name) }))
 }
 
-export const loadFactory = async (payload: Payload, input: { workspace: number; product?: number }) => {
+export const LANE_PAGE = 30
+
+export const loadFactory = async (
+  payload: Payload,
+  input: { workspace: number; product?: number },
+  chunked: boolean,
+) => {
   const now = new Date()
   const filter = input.product === undefined ? { workspace: input.workspace, now } : { ...input, now }
   const [lanes, stats, held, someday, products] = await Promise.all([
-    board(payload, filter),
+    board(payload, filter, chunked ? LANE_PAGE : undefined),
     stageStats(payload, filter),
     holds(payload, { workspace: input.workspace, now }),
     somedayCounts(payload, input),
@@ -100,22 +106,24 @@ export const workerOf = (leasedBy: string): { mark: 'R' | 'S'; name: string } =>
     ? { mark: 'R', name: 'Runner' }
     : { mark: 'S', name: `Session ${leasedBy.slice(0, 8)}` }
 
-export const countShows = (lanes: Board): Record<Show, number> => {
-  const open = [...Object.values(lanes.stages).flat(), ...lanes.parked]
-  const whos = open.map(whoOf).filter((who) => who !== null)
-  const held = lanes.held.length
-  const tally: Record<Show, number> = { all: whos.length + held, you: 0, working: 0, stuck: 0, others: held }
-  for (const who of whos) {
-    tally[who] += 1
-    if (who === 'stuck') tally.you += 1
+export const countShows = (lanes: Board, stats: Stats): Record<Show, number> => {
+  const parked = lanes.parked.length + lanes.held.length
+  const tally: Record<Show, number> = { all: parked, you: 0, working: 0, stuck: 0, others: parked }
+  for (const { stage, counts } of stats.stages) {
+    if (stage === 'done') continue
+    tally.all += counts.owner + counts.agents + counts.stuck + counts.others
+    tally.you += counts.owner + counts.stuck
+    tally.working += counts.agents
+    tally.stuck += counts.stuck
+    tally.others += counts.others
   }
   return tally
 }
 
-const workerOn = (run: StageStat['runs'][number], leasedBy: string, numbers: Map<number, number>): Worker => {
+const workerOn = (run: StageStat['runs'][number], leasedBy: string): Worker => {
   const { mark, name } = workerOf(leasedBy)
-  return { key: `${run.recordId}-${leasedBy}`, mark, title: `${name} on #${numbers.get(run.recordId) ?? run.recordId}` }
+  return { key: `${run.recordId}-${leasedBy}`, mark, title: `${name} on #${run.number}` }
 }
 
-export const workersOf = (stat: StageStat, numbers: Map<number, number>): Worker[] =>
-  stat.runs.flatMap((run) => (run.leasedBy === null ? [] : [workerOn(run, run.leasedBy, numbers)]))
+export const workersOf = (stat: StageStat): Worker[] =>
+  stat.runs.flatMap((run) => (run.leasedBy === null ? [] : [workerOn(run, run.leasedBy)]))

@@ -5,7 +5,9 @@ import { stageSchema, type Stage } from '../events'
 import { cardSchema, WAITING_ON, type StoredCard, type WaitingOn } from '../record/store'
 import { ago, ENTRY_TABLE, LIVE_RUN_SQL, LIVE_SQL, scope, TERMINAL_LIST } from './sql'
 
-export type RowFilter = { workspace: number; product?: number; now: Date; history?: 'week' | 'all' }
+export type RowFilter = { workspace: number; product?: number; now: Date; history?: 'week' | 'all'; ids?: number[] }
+
+export type Fragment = ReturnType<typeof sql>
 
 const count = z.coerce.number()
 
@@ -132,11 +134,14 @@ const toRow = (raw: unknown): TicketRow => {
   }
 }
 
-export const loadRows = async (payload: Payload, filter: RowFilter): Promise<TicketRow[]> => {
+export const rowsSql = (filter: RowFilter) => {
   const everything = filter.history === 'all' ? sql`true` : sql`false`
-  const result = await payload.db.drizzle.execute(sql`
+  const only =
+    filter.ids === undefined ? sql`` : sql`AND r."id" IN (${sql.join(filter.ids.map((id) => sql`${id}`), sql`, `)})`
+  return sql`
     SELECT r."id", r."product_id", p."name" AS product_name, r."source_repo", r."source_number", r."stage",
-      r."waiting_on", r."rank", r."card", r."parked", i."title", ev."entered_at", ev."verify_rounds",
+      r."waiting_on", r."rank", r."card", r."parked", i."title",
+      date_trunc('milliseconds', ev."entered_at") AS entered_at, ev."verify_rounds",
       ev."reporter_round", ev."question_drafted", ev."terminal_type", ev."terminal_at", s."role", s."leased_by",
       s."steps" -> -1 ->> 'text' AS step, ev."terminal_reason",
       jsonb_array_length(coalesce(r."data" -> 'criteria', '[]'::jsonb)) AS criteria_total,
@@ -144,7 +149,7 @@ export const loadRows = async (payload: Payload, filter: RowFilter): Promise<Tic
         WHERE c ->> 'status' = 'met') AS criteria_met,
       (r."data"->'source'->'adopted'->>'pr')::integer AS adopted_pr,
       r."data"->>'type' AS type, r."data"->'source'->>'reporter' AS reporter, r."created_at",
-      greatest(r."created_at", ev."changed_at") AS changed_at,
+      date_trunc('milliseconds', greatest(r."created_at", ev."changed_at")) AS changed_at,
       (SELECT a."author" FROM "mirror_items" a WHERE a."workspace_id" = r."workspace_id"
         AND a."repo" = r."source_repo" AND a."kind" = 'pr'
         AND a."number" = (r."data"->'source'->'adopted'->>'pr')::integer) AS adopted_by
@@ -167,9 +172,15 @@ export const loadRows = async (payload: Payload, filter: RowFilter): Promise<Tic
         max(e."created_at") AS changed_at
       FROM "events" e LEFT JOIN ${ENTRY_TABLE} ON m."type" = e."type" WHERE e."record_id" = r."id"
     ) ev ON true
-    WHERE ${scope(filter.workspace, filter.product)}
+    WHERE ${scope(filter.workspace, filter.product)} ${only}
       AND (${LIVE_SQL} OR ${everything} OR (r."updated_at" >= ${ago(filter.now, 7)}::timestamptz
-        AND ev."terminal_reason" IS DISTINCT FROM 'archived'))
-    ORDER BY r."rank", ev."entered_at", r."id"`)
-  return result.rows.map(toRow)
+        AND ev."terminal_reason" IS DISTINCT FROM 'archived'))`
 }
+
+export const ROW_ORDER = sql`"rank", "entered_at", "id"`
+
+export const queryRows = async (payload: Payload, statement: Fragment): Promise<TicketRow[]> =>
+  (await payload.db.drizzle.execute(statement)).rows.map(toRow)
+
+export const loadRows = (payload: Payload, filter: RowFilter): Promise<TicketRow[]> =>
+  queryRows(payload, sql`SELECT q.* FROM (${rowsSql(filter)}) q ORDER BY ${ROW_ORDER}`)
