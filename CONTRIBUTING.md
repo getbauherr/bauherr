@@ -19,6 +19,8 @@ Rules every e2e test follows (the mechanical ones are pinned by `apps/server/tes
 
 ## UI rules for agents
 
+AI chat UIs use [assistant-ui](https://www.assistant-ui.com/elements/) (`@assistant-ui/react`, an approved dependency) as much as possible; see the Chat pattern in [DESIGN.md](DESIGN.md).
+
 Bauherr's own UI rules, for the UX specialist and any agent changing the UI of this repository: [docs/agents/ui-development.md](docs/agents/ui-development.md) (rules, e2e) and [docs/ui.md](docs/ui.md) (pages), [docs/design/README.md](docs/design/README.md) (tokens, patterns, chat), and the shadcn components in `apps/server/src/app/(app)/components/ui`. They are not part of the core pack, which names no Product's paths.
 
 Every page meets WCAG 2.2 AA; an axe scan per page runs in the e2e job and a new page must be added to it: [docs/accessibility.md](docs/accessibility.md).

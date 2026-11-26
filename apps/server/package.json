@@ -24,7 +24,8 @@
     "eval:intake": "tsx scripts/eval-intake.ts",
     "design:check": "tsx scripts/design-md.ts",
     "e2e": "playwright test",
-    "a11y:coverage": "tsx scripts/a11y-coverage.ts"
+    "a11y:coverage": "tsx scripts/a11y-coverage.ts",
+    "registry:check": "tsx scripts/registry-lock.ts"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.38",

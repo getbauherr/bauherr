@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bauherr colour sets</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f4f4f5}
+a{color:#3f3f46}a:hover{color:#18181b}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+.panel{background:var(--s0);color:var(--ink);border:1px solid var(--hl);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.sw{display:flex;flex-direction:column;gap:6px;min-width:0}
+.chipx{display:block;height:56px;border-radius:10px;border:1px solid var(--hl)}
+.lbl{font-size:12px;font-weight:600}
+.hex{font-size:11px;color:var(--mu)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border-radius:8px;font:600 14px Archivo,system-ui,sans-serif;border:1px solid transparent;cursor:pointer}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}
+</style>
+</helmet>
+<div style="font-family: Archivo, system-ui, sans-serif; color: #18181b; background: #f4f4f5; box-sizing: border-box; padding: 56px clamp(16px, 4vw, 64px); display: flex; flex-direction: column; gap: 40px; max-width: 1440px; margin: 0 auto;">
+<header style="display: flex; flex-direction: column; gap: 10px; max-width: 860px;">
+<p class="mono" style="margin: 0; font-size: 13px; color: #52525b; letter-spacing: 0.04em;">BAUHERR · REDESIGN · STEP 1</p>
+<h1 style="margin: 0; font-size: 44px; line-height: 1.1; font-weight: 700;">Purple + green: five colour sets</h1>
+<p style="margin: 0; font-size: 17px; line-height: 1.5; color: #3f3f46;">Every set uses the same token names as <span class="mono">docs/design/tokens.json</span>, so the one you pick drops straight into the app. All pass WCAG AA in light and dark. The four screens below the sets switch between all five.</p>
+</header>
+<sc-for list="{{pals}}" as="p" hint-placeholder-count="5">
+<section style="display: flex; flex-direction: column; gap: 14px;">
+<div style="display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;">
+<h2 style="margin: 0; font-size: 26px; font-weight: 700;">{{p.num}} · {{p.n}}</h2>
+<span style="font-size: 15px; color: #52525b;">{{p.k}}</span>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 16px;">
+<sc-for list="{{p.themes}}" as="t" hint-placeholder-count="2">
+<div class="panel" style="{{t.vars}}">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+<span class="lbl" style="font-size: 13px; color: var(--mu);">{{t.label}}</span>
+<div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+<button class="btn" type="button" style="background: var(--a); color: var(--on);">Approve</button>
+<button class="btn" type="button" style="background: var(--s1); color: var(--ink); border-color: var(--hl);">Edit plan</button>
+<span class="chip" style="background: var(--asf); color: var(--a);">running</span>
+<span class="chip" style="background: var(--oksf); color: var(--ok);">done</span>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 12px;">
+<sc-for list="{{t.sw}}" as="s" hint-placeholder-count="10">
+<div class="sw">
+<span class="chipx" style="background: {{s.v}};"></span>
+<span class="lbl">{{s.k}}</span>
+<span class="hex mono">{{s.v}}</span>
+</div>
+</sc-for>
+</div>
+<div style="background: var(--s1); border: 1px solid var(--hl); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;">
+<span style="font-size: 15px; font-weight: 600;">Builder needs your decision on <span style="color: var(--a); text-decoration: underline;">#931</span></span>
+<span style="font-size: 13px; color: var(--mu);">Adds a dependency (@dnd-kit/core, MIT). New dependencies need owner approval.</span>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const P = [
+      {n:'Violet + Emerald',k:'Clear and modern. The safe default.',l:{s0:'#f6f5f8',s1:'#ffffff',s2:'#eeecf2',ink:'#1a1625',mu:'#5e5a6b',hl:'#dcd9e3',a:'#6d28d9',as:'#5b21b6',on:'#ffffff',asf:'#efe9fc',g:'#147638',gs:'#0f5c2b',ong:'#ffffff',gsf:'#e3f5e9'},d:{s0:'#121018',s1:'#1b1823',s2:'#25212f',ink:'#ece9f2',mu:'#a29db0',hl:'#2e2a38',a:'#b79cff',as:'#cdb9ff',on:'#1e0b45',asf:'#2c2148',g:'#4ade80',gs:'#86efac',ong:'#052e16',gsf:'#13301f'}},
+      {n:'Plum + Sage',k:'Calm, muted, editorial.',l:{s0:'#f7f5f6',s1:'#ffffff',s2:'#efecee',ink:'#1c171b',mu:'#5f5960',hl:'#ddd7db',a:'#7a2e74',as:'#63245e',on:'#ffffff',asf:'#f5e8f3',g:'#3f6b4c',gs:'#335a3f',ong:'#ffffff',gsf:'#e7efe8'},d:{s0:'#141113',s1:'#1d191c',s2:'#272226',ink:'#efe9ed',mu:'#a69fa5',hl:'#312b30',a:'#e0a3d8',as:'#ecbfe6',on:'#3a0f35',asf:'#33212f',g:'#9fc9a9',gs:'#b9dbc1',ong:'#132a1a',gsf:'#1c2b20'}},
+      {n:'Indigo + Emerald',k:'Chosen 2026-11-26. Vibrant indigo, calm emerald.',l:{s0:'#f5f5fa',s1:'#ffffff',s2:'#ebebf3',ink:'#16162a',mu:'#585a6e',hl:'#d8d8e6',a:'#5b35e8',as:'#4a26cc',on:'#ffffff',asf:'#ebe7fd',g:'#126c35',gs:'#0f5e2c',ong:'#ffffff',gsf:'#e3f5e9'},d:{s0:'#0f0f17',s1:'#181823',s2:'#222230',ink:'#ebebf5',mu:'#9e9fb3',hl:'#2b2b3b',a:'#a594ff',as:'#c0b5ff',on:'#160a4d',asf:'#25214a',g:'#4ade80',gs:'#86efac',ong:'#052e16',gsf:'#0f2a1a'}},
+      {n:'Lavender + Mint',k:'Soft, friendly, airy.',l:{s0:'#f8f7fb',s1:'#ffffff',s2:'#efedf5',ink:'#1b1828',mu:'#5f5b6e',hl:'#dddae6',a:'#7445c2',as:'#6036a8',on:'#ffffff',asf:'#f1ebfb',g:'#0b7358',gs:'#075e48',ong:'#ffffff',gsf:'#e0f5ee'},d:{s0:'#131219',s1:'#1c1a24',s2:'#26232f',ink:'#eeebf4',mu:'#a6a2b5',hl:'#302c3a',a:'#c7b0f5',as:'#dccbff',on:'#26114f',asf:'#2d2645',g:'#6ee7c3',gs:'#a0f0d6',ong:'#03291f',gsf:'#12302a'}},
+      {n:'Forest + Amethyst',k:'Green leads, purple accents.',l:{s0:'#f5f7f5',s1:'#ffffff',s2:'#eaeeeb',ink:'#151b17',mu:'#58625b',hl:'#d6ddd8',a:'#1d6b40',as:'#155532',on:'#ffffff',asf:'#e4f1e8',g:'#8a3fbf',gs:'#73319f',ong:'#ffffff',gsf:'#f3e8fa',ok:'#1d6b40',oksf:'#e4f1e8'},d:{s0:'#101411',s1:'#181e1a',s2:'#212822',ink:'#e8eee9',mu:'#9ea9a1',hl:'#2a322c',a:'#7fd6a0',as:'#a3e6bd',on:'#052914',asf:'#1a3024',g:'#d4a6f5',gs:'#e3c2fa',ong:'#33104d',gsf:'#2c2038',ok:'#7fd6a0',oksf:'#1a3024'}}
+    ];
+    const names = [['a','accent'],['as','accent-strong'],['asf','accent-soft'],['g','accent-2'],['gs','accent-2-strong'],['gsf','accent-2-soft'],['ink','ink'],['mu','ink-muted'],['hl','hairline'],['s0','surface-000'],['s1','surface-100'],['s2','surface-200']];
+    const vars = (c) => { const o = Object.assign({ ok: c.g, oksf: c.gsf }, c); return Object.keys(o).map((k) => '--' + k + ':' + o[k]).join(';'); };
+    return {
+      pals: P.map((p, i) => ({
+        num: i + 1, n: p.n, k: p.k,
+        themes: [['Light', p.l], ['Dark', p.d]].map(([label, c]) => ({ label, vars: vars(c), sw: names.map(([key, k]) => ({ k, v: c[key] })) }))
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

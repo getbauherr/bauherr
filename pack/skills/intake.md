@@ -49,3 +49,4 @@ Everything a person reads (titles, goals, criteria, questions, answers, findings
 - A criterion is a full sentence about what a person sees or what a test checks.
 - Name another ticket or pull request by number, title and link: "#555 Run page redesign (link)", never "#555" alone.
 - Put file paths and technical detail last, under "Technical notes".
+- Link a design by its path under `docs/design/mockups/`, never by an absolute `~/` path.

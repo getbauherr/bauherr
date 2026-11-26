@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Retro chat</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--a)}a:hover{color:var(--as)}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;background:#18181b;color:#fafafa;font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:999px;border:1px solid #3f3f46;background:#27272a;color:#fafafa;font:500 13px Archivo,system-ui,sans-serif;cursor:pointer}
+.pill.on{border-color:#fafafa;background:#3f3f46}
+.dot{width:12px;height:12px;border-radius:999px;display:inline-block}
+.seg{height:32px;padding:0 12px;border:1px solid #3f3f46;background:#27272a;color:#d4d4d8;font:500 13px Archivo,system-ui,sans-serif;cursor:pointer}
+.seg.on{background:#fafafa;color:#18181b}
+.side{flex:1 1 220px;max-width:100%;background:var(--s1);border-right:1px solid var(--hl);padding:20px 12px;display:flex;flex-direction:column;gap:4px;box-sizing:border-box}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:14px}
+.nav:hover{background:var(--s2);color:var(--ink)}
+.nav.on{background:var(--asf);font-weight:600}
+.cnt{font-size:12px;font-weight:600;min-width:20px;text-align:center;padding:1px 6px;border-radius:999px;background:var(--a);color:var(--on)}
+.main{flex:999 1 560px;min-width:0;display:flex;flex-direction:column;box-sizing:border-box}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 14px;border-radius:8px;font:600 14px Archivo,system-ui,sans-serif;border:1px solid transparent;cursor:pointer;text-decoration:none}
+.bp{background:var(--a);color:var(--on)}.bo{background:var(--s1);color:var(--ink);border-color:var(--hl)}.bg{background:transparent;color:var(--ink)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.c-run{background:var(--asf);color:var(--a)}.c-ok{background:var(--oksf);color:var(--ok)}.c-warn{background:var(--wsf);color:var(--w)}
+.thread{width:100%;max-width:780px;margin:0 auto;padding:28px 16px 12px;box-sizing:border-box;display:flex;flex-direction:column;gap:22px}
+.me{align-self:flex-end;max-width:80%;background:var(--s2);border-radius:16px 16px 4px 16px;padding:10px 14px;font-size:15px;line-height:1.5}
+.ai{display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px}
+.av{width:28px;height:28px;border-radius:8px;background:var(--a);display:flex;align-items:center;justify-content:center}
+.md{font-size:15px;line-height:1.6}
+.md p{margin:0 0 10px}
+.tool{border:1px solid var(--hl);border-radius:12px;background:var(--s1);padding:12px 14px;display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.th{display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap}
+.bars{display:flex;flex-direction:column;gap:6px}
+.br{display:grid;grid-template-columns:70px minmax(0,1fr) 52px;gap:8px;align-items:center;font-size:12px}
+.br i{display:block;height:10px;border-radius:4px;background:var(--a)}
+.br i.g{background:var(--g)}
+.sugg{display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--hl);background:var(--s1);color:var(--ink);font:500 13px Archivo,system-ui,sans-serif;cursor:pointer}
+.comp{border:1px solid var(--hl);border-radius:16px;background:var(--s1);padding:10px 10px 10px 14px;display:flex;flex-direction:column;gap:8px}
+.ibtn{width:36px;height:36px;border-radius:999px;border:0;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+</style>
+</helmet>
+<div style="{{vars}}; font-family: Archivo, system-ui, sans-serif; background: var(--s0); color: var(--ink); min-height: 1080px; display: flex; flex-direction: column;">
+<div class="bar">
+<span style="font-weight: 600; margin-right: 4px;">Palette</span>
+<sc-for list="{{pals}}" as="it" hint-placeholder-count="5">
+<button type="button" class="{{it.cls}}" onClick="{{it.pick}}"><span class="dot" style="background: {{it.a}};"></span><span class="dot" style="background: {{it.g}};"></span>{{it.n}}</button>
+</sc-for>
+<span style="flex-grow: 1;"></span>
+<div style="display: flex;"><button type="button" class="{{lightCls}}" style="border-radius: 8px 0 0 8px;" onClick="{{setLight}}">Light</button><button type="button" class="{{darkCls}}" style="border-radius: 0 8px 8px 0;" onClick="{{setDark}}">Dark</button></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; flex-grow: 1;">
+<nav class="side" aria-label="Main">
+<div style="display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px;">
+<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="4" fill="none" stroke="var(--ink)" stroke-width="2"></rect><rect x="12" y="12" width="10" height="10" rx="2" fill="var(--a)"></rect></svg>
+<span style="font-size: 18px; font-weight: 700;">Bauherr</span>
+</div>
+<a class="nav" href="#">Inbox <span class="cnt">3</span></a>
+<a class="nav" href="#">Factory</a>
+<a class="nav" href="#">Requests</a>
+<a class="nav" href="#">Tickets</a>
+<a class="nav" href="#">Runs</a>
+<a class="nav on" href="#">Memory</a>
+<a class="nav" href="#">Insights</a>
+<a class="nav" href="#">Releases</a>
+<span style="flex-grow: 1; min-height: 24px;"></span>
+<a class="nav" href="#">Settings</a>
+</nav>
+<main class="main">
+<header style="border-bottom: 1px solid var(--hl); background: var(--s1); padding: 14px clamp(16px, 3vw, 32px); display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+<div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+<span style="font-size: 13px; color: var(--mu);"><a href="#">Memory</a> / Retro</span>
+<h1 style="margin: 0; font-size: 20px; font-weight: 700;">Retro: week 47 — slow Inbox</h1>
+</div>
+<span class="chip c-run">Retro agent · Opus</span>
+</header>
+<div class="thread" role="log" aria-label="Conversation">
+<div class="me">Why did the Inbox feel so slow this week? Sometimes it never loaded.</div>
+<div class="ai">
+<span class="av" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" fill="none" stroke="var(--on)" stroke-width="2.5"></rect><rect x="12" y="12" width="9" height="9" rx="2" fill="var(--on)"></rect></svg></span>
+<div class="md">
+<p>Three causes, in order of impact. The Inbox waits for four statistics queries that run <strong>one after another</strong>, and it reads intake candidates for <strong>every workspace</strong> before filtering. On top, every 5 s the whole page re-renders.</p>
+<div class="tool">
+<div class="th"><span class="chip c-ok">Done</span><span class="mono">query_run_timings</span><span style="color: var(--mu);">· median server time per query, last 7 days</span></div>
+<div class="bars">
+<div class="br"><span class="mono">counts</span><i style="width: 38%;"></i><span class="mono">190 ms</span></div>
+<div class="br"><span class="mono">runs</span><i style="width: 52%;"></i><span class="mono">260 ms</span></div>
+<div class="br"><span class="mono">medians</span><i style="width: 88%;"></i><span class="mono">440 ms</span></div>
+<div class="br"><span class="mono">totals</span><i style="width: 24%;"></i><span class="mono">120 ms</span></div>
+<div class="br"><span class="mono">parallel</span><i class="g" style="width: 88%;"></i><span class="mono">≈ 440 ms</span></div>
+</div>
+<span style="font-size: 12px; color: var(--mu);">Serial today: about 1 s. In parallel: the slowest one, about 0.44 s. Example data for the mockup.</span>
+</div>
+</div>
+</div>
+<div class="ai">
+<span class="av" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3" fill="none" stroke="var(--on)" stroke-width="2.5"></rect><rect x="12" y="12" width="9" height="9" rx="2" fill="var(--on)"></rect></svg></span>
+<div class="md">
+<p>I'd turn this into one ticket. It needs your approval because it creates work for the factory.</p>
+<div class="tool" style="border-color: var(--a);">
+<div class="th"><span class="chip c-warn">Awaiting approval</span><span class="mono">create_ticket</span></div>
+<div style="font-size: 15px; font-weight: 600;">Parallel queries in stageStats, workspace filter in loadCandidates</div>
+<div style="font-size: 13px; color: var(--mu); line-height: 1.5;">Criteria: Inbox content in under 500 ms on local data · No query reads other workspaces · Constraint: no new dependencies</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+<button type="button" class="btn bp">Approve</button>
+<button type="button" class="btn bo">Edit</button>
+<button type="button" class="btn bg">Deny with reason…</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div style="width: 100%; max-width: 780px; margin: auto auto 0; padding: 8px 16px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px;">
+<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+<button type="button" class="sugg">What else got slower?</button>
+<button type="button" class="sugg">Show the auto-refresh cost</button>
+<button type="button" class="sugg">Compare with last week</button>
+</div>
+<div class="comp">
+<label for="msg" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Message</label>
+<textarea id="msg" rows="2" placeholder="Ask the retro agent…" style="border: 0; outline: none; resize: none; background: transparent; color: var(--ink); font: 15px/1.5 Archivo, system-ui, sans-serif;"></textarea>
+<div style="display: flex; align-items: center; gap: 8px;">
+<button type="button" class="ibtn" aria-label="Attach file" style="background: var(--s2); color: var(--ink);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.3 3.3 0 0 1 4.7 4.7l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9"></path></svg></button>
+<span style="flex-grow: 1; font-size: 12px; color: var(--mu);">assistant-ui Thread + Composer</span>
+<button type="button" class="ibtn" aria-label="Send" style="background: var(--a); color: var(--on);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg></button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"palette":{"editor":"enum","options":["Violet + Emerald","Plum + Sage","Indigo + Emerald","Lavender + Mint","Forest + Amethyst"],"default":"Indigo + Emerald"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { p: null, dark: null }; }
+  renderVals() {
+    const P = [
+      {n:'Violet + Emerald',l:{s0:'#f6f5f8',s1:'#ffffff',s2:'#eeecf2',ink:'#1a1625',mu:'#5e5a6b',hl:'#dcd9e3',a:'#6d28d9',as:'#5b21b6',on:'#ffffff',asf:'#efe9fc',g:'#147638',gs:'#0f5c2b',ong:'#ffffff',gsf:'#e3f5e9'},d:{s0:'#121018',s1:'#1b1823',s2:'#25212f',ink:'#ece9f2',mu:'#a29db0',hl:'#2e2a38',a:'#b79cff',as:'#cdb9ff',on:'#1e0b45',asf:'#2c2148',g:'#4ade80',gs:'#86efac',ong:'#052e16',gsf:'#13301f'}},
+      {n:'Plum + Sage',l:{s0:'#f7f5f6',s1:'#ffffff',s2:'#efecee',ink:'#1c171b',mu:'#5f5960',hl:'#ddd7db',a:'#7a2e74',as:'#63245e',on:'#ffffff',asf:'#f5e8f3',g:'#3f6b4c',gs:'#335a3f',ong:'#ffffff',gsf:'#e7efe8'},d:{s0:'#141113',s1:'#1d191c',s2:'#272226',ink:'#efe9ed',mu:'#a69fa5',hl:'#312b30',a:'#e0a3d8',as:'#ecbfe6',on:'#3a0f35',asf:'#33212f',g:'#9fc9a9',gs:'#b9dbc1',ong:'#132a1a',gsf:'#1c2b20'}},
+      {n:'Indigo + Emerald',l:{s0:'#f5f5fa',s1:'#ffffff',s2:'#ebebf3',ink:'#16162a',mu:'#585a6e',hl:'#d8d8e6',a:'#5b35e8',as:'#4a26cc',on:'#ffffff',asf:'#ebe7fd',g:'#126c35',gs:'#0f5e2c',ong:'#ffffff',gsf:'#e3f5e9'},d:{s0:'#0f0f17',s1:'#181823',s2:'#222230',ink:'#ebebf5',mu:'#9e9fb3',hl:'#2b2b3b',a:'#a594ff',as:'#c0b5ff',on:'#160a4d',asf:'#25214a',g:'#4ade80',gs:'#86efac',ong:'#052e16',gsf:'#0f2a1a'}},
+      {n:'Lavender + Mint',l:{s0:'#f8f7fb',s1:'#ffffff',s2:'#efedf5',ink:'#1b1828',mu:'#5f5b6e',hl:'#dddae6',a:'#7445c2',as:'#6036a8',on:'#ffffff',asf:'#f1ebfb',g:'#0b7358',gs:'#075e48',ong:'#ffffff',gsf:'#e0f5ee'},d:{s0:'#131219',s1:'#1c1a24',s2:'#26232f',ink:'#eeebf4',mu:'#a6a2b5',hl:'#302c3a',a:'#c7b0f5',as:'#dccbff',on:'#26114f',asf:'#2d2645',g:'#6ee7c3',gs:'#a0f0d6',ong:'#03291f',gsf:'#12302a'}},
+      {n:'Forest + Amethyst',l:{s0:'#f5f7f5',s1:'#ffffff',s2:'#eaeeeb',ink:'#151b17',mu:'#58625b',hl:'#d6ddd8',a:'#1d6b40',as:'#155532',on:'#ffffff',asf:'#e4f1e8',g:'#8a3fbf',gs:'#73319f',ong:'#ffffff',gsf:'#f3e8fa',ok:'#1d6b40',oksf:'#e4f1e8'},d:{s0:'#101411',s1:'#181e1a',s2:'#212822',ink:'#e8eee9',mu:'#9ea9a1',hl:'#2a322c',a:'#7fd6a0',as:'#a3e6bd',on:'#052914',asf:'#1a3024',g:'#d4a6f5',gs:'#e3c2fa',ong:'#33104d',gsf:'#2c2038',ok:'#7fd6a0',oksf:'#1a3024'}}
+    ];
+    const S = { l: { w: '#9a6200', wsf: '#fbf0dc', x: '#b42318', xsf: '#fbe6e4' }, d: { w: '#e3b04b', wsf: '#3a2c10', x: '#f08a7f', xsf: '#3d1d1a' } };
+    const fromProp = Math.max(0, P.findIndex((p) => p.n === this.props.palette));
+    const i = this.state.p ?? fromProp;
+    const dark = this.state.dark ?? (this.props.dark ?? false);
+    const t = dark ? 'd' : 'l';
+    const c = Object.assign({ ok: P[i][t].g, oksf: P[i][t].gsf }, P[i][t], S[t]);
+    return {
+      vars: Object.keys(c).map((k) => '--' + k + ':' + c[k]).join(';'),
+      pals: P.map((p, j) => ({ n: p.n, a: p.l.a, g: p.l.g, cls: j === i ? 'pill on' : 'pill', pick: () => this.setState({ p: j }) })),
+      lightCls: dark ? 'seg' : 'seg on', darkCls: dark ? 'seg on' : 'seg',
+      setLight: () => this.setState({ dark: false }), setDark: () => this.setState({ dark: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

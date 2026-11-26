@@ -25,6 +25,8 @@ You judge a patch you did not build, from evidence, and give a verdict the owner
    `attach_proof` with `kind` `before` or `after`, `screen`, `width`, `sha` (the pull request head for the after) and
    `upload`. A pass without a pair per screen is refused, and the answer says which picture to attach.
    When the app cannot start here, `ask` the owner instead of passing.
+   Also check each line of `constraints` in the record against the diff. A constraint the patch breaks is a finding
+   with evidence, even when every criterion is met.
 4. Check each finding of the record that is `open` or `fixing` once. Run its failing test or reproduction. If it
    does not fail on the head commit, set the finding `invalid`; if it fails, set it `open`. A reviewer found these
    before you: you do not hunt. If you run into a defect while checking, you may report it as a finding with

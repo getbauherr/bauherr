@@ -1,0 +1,206 @@
+{
+  "root": "src/app/(app)/components",
+  "files": {
+    "ui/alert.tsx": {
+      "registry": "alert",
+      "source": "shadcn"
+    },
+    "ui/avatar.tsx": {
+      "registry": "avatar",
+      "source": "shadcn"
+    },
+    "ui/badge.tsx": {
+      "registry": "badge",
+      "source": "shadcn"
+    },
+    "ui/breadcrumb.tsx": {
+      "registry": "breadcrumb",
+      "source": "shadcn"
+    },
+    "ui/button.tsx": {
+      "registry": "button",
+      "source": "shadcn"
+    },
+    "ui/card.tsx": {
+      "registry": "card",
+      "source": "shadcn"
+    },
+    "ui/checkbox.tsx": {
+      "registry": "checkbox",
+      "source": "shadcn"
+    },
+    "ui/command.tsx": {
+      "registry": "command",
+      "source": "shadcn"
+    },
+    "ui/dialog.tsx": {
+      "registry": "dialog",
+      "source": "shadcn"
+    },
+    "ui/dropdown-menu.tsx": {
+      "registry": "dropdown-menu",
+      "source": "shadcn"
+    },
+    "ui/input.tsx": {
+      "registry": "input",
+      "source": "shadcn"
+    },
+    "ui/label.tsx": {
+      "registry": "label",
+      "source": "shadcn"
+    },
+    "ui/native-select.tsx": {
+      "registry": "native-select",
+      "source": "shadcn"
+    },
+    "ui/popover.tsx": {
+      "registry": "popover",
+      "source": "shadcn"
+    },
+    "ui/select.tsx": {
+      "registry": "select",
+      "source": "shadcn"
+    },
+    "ui/separator.tsx": {
+      "registry": "separator",
+      "source": "shadcn"
+    },
+    "ui/sheet.tsx": {
+      "registry": "sheet",
+      "source": "shadcn"
+    },
+    "ui/sidebar-context.tsx": {
+      "registry": "sidebar",
+      "source": "shadcn"
+    },
+    "ui/sidebar-cookie.ts": {
+      "registry": "sidebar",
+      "source": "shadcn"
+    },
+    "ui/sidebar-menu.tsx": {
+      "registry": "sidebar",
+      "source": "shadcn"
+    },
+    "ui/sidebar.tsx": {
+      "registry": "sidebar",
+      "source": "shadcn"
+    },
+    "ui/switch.tsx": {
+      "registry": "switch",
+      "source": "shadcn"
+    },
+    "ui/table.tsx": {
+      "registry": "table",
+      "source": "shadcn"
+    },
+    "ui/textarea.tsx": {
+      "registry": "textarea",
+      "source": "shadcn"
+    },
+    "ui/tooltip.tsx": {
+      "registry": "tooltip",
+      "source": "shadcn"
+    },
+    "assistant-ui/elements/approval-card.tsx": {
+      "registry": null,
+      "source": "local",
+      "lookalike": true
+    },
+    "assistant-ui/elements/artifact-card.tsx": {
+      "registry": "artifact-card",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/attachment-preview.tsx": {
+      "registry": null,
+      "source": "local"
+    },
+    "assistant-ui/elements/attachment-state.ts": {
+      "registry": null,
+      "source": "local"
+    },
+    "assistant-ui/elements/attachment.aui.tsx": {
+      "registry": "attachment",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/chart.tsx": {
+      "registry": null,
+      "source": "local",
+      "lookalike": true
+    },
+    "assistant-ui/elements/code-diff.tsx": {
+      "registry": null,
+      "source": "local"
+    },
+    "assistant-ui/elements/data-table.tsx": {
+      "registry": null,
+      "source": "local",
+      "lookalike": true
+    },
+    "assistant-ui/elements/image-gallery-dialog.tsx": {
+      "registry": "image-gallery",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/image-gallery.tsx": {
+      "registry": "image-gallery",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/markdown-text.tsx": {
+      "registry": "markdown-text",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/option-list-rows.tsx": {
+      "registry": "option-list",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/option-list-selection.ts": {
+      "registry": "option-list",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/option-list-types.ts": {
+      "registry": "option-list",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/option-list-views.tsx": {
+      "registry": "option-list",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/option-list.tsx": {
+      "registry": "option-list",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/receipt-focus.ts": {
+      "registry": "option-list",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/recommendation-card.tsx": {
+      "registry": null,
+      "source": "local",
+      "lookalike": true
+    },
+    "assistant-ui/elements/reviewable-diff.tsx": {
+      "registry": null,
+      "source": "local"
+    },
+    "assistant-ui/elements/surfaces.tsx": {
+      "registry": "surfaces",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/task-card.tsx": {
+      "registry": "task-card",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/timeline.tsx": {
+      "registry": "timeline",
+      "source": "assistant-ui"
+    },
+    "assistant-ui/elements/todo-list.tsx": {
+      "registry": null,
+      "source": "local",
+      "lookalike": true
+    },
+    "assistant-ui/elements/tooltip-icon-button.tsx": {
+      "registry": "tooltip-icon-button",
+      "source": "assistant-ui"
+    }
+  }
+}

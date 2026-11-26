@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ticket #931</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--a)}a:hover{color:var(--as)}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;background:#18181b;color:#fafafa;font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:999px;border:1px solid #3f3f46;background:#27272a;color:#fafafa;font:500 13px Archivo,system-ui,sans-serif;cursor:pointer}
+.pill.on{border-color:#fafafa;background:#3f3f46}
+.dot{width:12px;height:12px;border-radius:999px;display:inline-block}
+.seg{height:32px;padding:0 12px;border:1px solid #3f3f46;background:#27272a;color:#d4d4d8;font:500 13px Archivo,system-ui,sans-serif;cursor:pointer}
+.seg.on{background:#fafafa;color:#18181b}
+.side{flex:1 1 220px;max-width:100%;background:var(--s1);border-right:1px solid var(--hl);padding:20px 12px;display:flex;flex-direction:column;gap:4px;box-sizing:border-box}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:14px}
+.nav:hover{background:var(--s2);color:var(--ink)}
+.nav.on{background:var(--asf);font-weight:600}
+.cnt{font-size:12px;font-weight:600;min-width:20px;text-align:center;padding:1px 6px;border-radius:999px;background:var(--a);color:var(--on)}
+.main{flex:999 1 560px;min-width:0;padding:24px clamp(16px,3vw,40px);display:flex;flex-direction:column;gap:20px;box-sizing:border-box}
+.card{background:var(--s1);border:1px solid var(--hl);border-radius:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 14px;border-radius:8px;font:600 14px Archivo,system-ui,sans-serif;border:1px solid transparent;cursor:pointer;text-decoration:none}
+.bp{background:var(--a);color:var(--on)}.bo{background:var(--s1);color:var(--ink);border-color:var(--hl)}.bg{background:transparent;color:var(--ink)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.c-run{background:var(--asf);color:var(--a)}.c-ok{background:var(--oksf);color:var(--ok)}.c-warn{background:var(--wsf);color:var(--w)}.c-err{background:var(--xsf);color:var(--x)}.c-q{background:var(--s2);color:var(--mu)}
+.k{font-size:12px;font-weight:600;color:var(--mu);text-transform:uppercase;letter-spacing:.04em;margin:0}
+.step{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--mu)}
+.step i{width:22px;height:22px;border-radius:999px;border:2px solid var(--hl);display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:12px}
+.step.done{color:var(--ink)}.step.done i{background:var(--ok);border-color:var(--ok);color:var(--s1)}
+.step.cur{color:var(--a)}.step.cur i{border-color:var(--a);background:var(--asf)}
+.line{flex:1 1 24px;height:2px;background:var(--hl);min-width:16px}
+.tl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:28px minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px solid var(--hl)}
+.row:last-child{border-bottom:0}
+.ic{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.i-th{background:var(--s2);color:var(--mu)}.i-ac{background:var(--asf);color:var(--a)}.i-q{background:var(--wsf);color:var(--w)}.i-er{background:var(--xsf);color:var(--x)}.i-ok{background:var(--oksf);color:var(--ok)}
+.rt{font-size:14px;line-height:1.45;margin:0}
+.rm{font-size:12px;color:var(--mu)}
+.out{margin-top:6px;background:var(--s2);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.6;overflow-x:auto}
+.ck{display:flex;gap:8px;align-items:flex-start;font-size:14px;line-height:1.4}
+.ck b{flex:none;width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:11px}
+.ck b.y{background:var(--ok);color:var(--s1)}.ck b.n{border:1.5px solid var(--hl)}.ck b.c{border:1.5px solid var(--a);background:var(--asf)}
+</style>
+</helmet>
+<div style="{{vars}}; font-family: Archivo, system-ui, sans-serif; background: var(--s0); color: var(--ink); min-height: 1080px; display: flex; flex-direction: column;">
+<div class="bar">
+<span style="font-weight: 600; margin-right: 4px;">Palette</span>
+<sc-for list="{{pals}}" as="it" hint-placeholder-count="5">
+<button type="button" class="{{it.cls}}" onClick="{{it.pick}}"><span class="dot" style="background: {{it.a}};"></span><span class="dot" style="background: {{it.g}};"></span>{{it.n}}</button>
+</sc-for>
+<span style="flex-grow: 1;"></span>
+<div style="display: flex;"><button type="button" class="{{lightCls}}" style="border-radius: 8px 0 0 8px;" onClick="{{setLight}}">Light</button><button type="button" class="{{darkCls}}" style="border-radius: 0 8px 8px 0;" onClick="{{setDark}}">Dark</button></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; flex-grow: 1;">
+<nav class="side" aria-label="Main">
+<div style="display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px;">
+<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="4" fill="none" stroke="var(--ink)" stroke-width="2"></rect><rect x="12" y="12" width="10" height="10" rx="2" fill="var(--a)"></rect></svg>
+<span style="font-size: 18px; font-weight: 700;">Bauherr</span>
+</div>
+<a class="nav" href="#">Inbox <span class="cnt">3</span></a>
+<a class="nav" href="#">Factory</a>
+<a class="nav" href="#">Requests</a>
+<a class="nav on" href="#">Tickets</a>
+<a class="nav" href="#">Runs</a>
+<a class="nav" href="#">Memory</a>
+<a class="nav" href="#">Insights</a>
+<a class="nav" href="#">Releases</a>
+<span style="flex-grow: 1; min-height: 24px;"></span>
+<a class="nav" href="#">Settings</a>
+</nav>
+<main class="main">
+<nav aria-label="Breadcrumb" style="font-size: 13px; color: var(--mu);"><a href="#">Tickets</a> / <span class="mono">#931</span></nav>
+<div style="display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: flex-start;">
+<div style="display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1 1 420px;">
+<h1 style="margin: 0; font-size: 26px; font-weight: 700; line-height: 1.2;">Replace native drag &amp; drop with dnd-kit</h1>
+<div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+<span class="chip c-run">Running</span>
+<span class="chip c-q">Build</span>
+<span style="font-size: 13px; color: var(--mu);">builder · Sonnet · started 10:31 · heartbeat 20 s ago</span>
+</div>
+</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+<button type="button" class="btn bo">Steer</button>
+<button type="button" class="btn bg">Stop run</button>
+</div>
+</div>
+<div class="card" style="padding: 14px 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+<span class="step done"><i>✓</i>Brief</span><span class="line"></span>
+<span class="step cur"><i>2</i>Build</span><span class="line"></span>
+<span class="step"><i>3</i>Review</span><span class="line"></span>
+<span class="step"><i>4</i>Verify</span><span class="line"></span>
+<span class="step"><i>5</i>Done</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start;">
+
+<section class="card" style="padding: 18px 20px; flex: 2 1 520px; min-width: 0;" aria-label="Run timeline">
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+<h2 style="margin: 0; font-size: 16px; font-weight: 600;">Run timeline</h2>
+<span class="rm">live</span>
+</div>
+<ol class="tl">
+<li class="row"><span class="ic i-th">···</span><div><p class="rt" style="color: var(--mu);">Thinking · 3 steps</p><details><summary class="rm" style="cursor: pointer;">Show reasoning</summary><p class="rt" style="color: var(--mu); margin-top: 6px;">The whole card is the drag source today, so the link and drag fight. A handle as activator fixes both.</p></details></div></li>
+<li class="row"><span class="ic i-ac">▸</span><div><p class="rt">Read <span class="mono">factory/SortableCards.tsx</span>, <span class="mono">useDrag.ts</span>, <span class="mono">CardMenu.tsx</span></p><span class="rm">10:32 · 3 files</span></div></li>
+<li class="row"><span class="ic i-q">?</span><div><p class="rt"><strong>Asked you:</strong> add @dnd-kit/core (MIT) as a dependency?</p><span class="rm">10:33 · <span class="chip c-ok" style="padding: 0 8px;">Approved by you 10:42</span></span></div></li>
+<li class="row"><span class="ic i-ac">▸</span><div><p class="rt">Ran <span class="mono">pnpm add @dnd-kit/core @dnd-kit/sortable</span></p><div class="out mono">+ @dnd-kit/core 6.3.1<br>+ @dnd-kit/sortable 10.0.0</div></div></li>
+<li class="row"><span class="ic i-er">!</span><div><p class="rt">Ran <span class="mono">pnpm lint</span> — 2 errors</p><div class="out mono">SortableCards.tsx:41 no-restricted-syntax: use Button from @/components/ui/button<br>CardMenu.tsx:18 no-restricted-imports: @radix-ui/* only inside components/ui</div></div></li>
+<li class="row"><span class="ic i-ac">▸</span><div><p class="rt">Fixed both: grip uses <span class="mono">Button variant="ghost" size="icon"</span>, menu uses <span class="mono">DropdownMenu</span></p><span class="rm">10:51 · lint clean</span></div></li>
+<li class="row"><span class="ic i-ac" style="background: var(--a); color: var(--on);">●</span><div><p class="rt">Running <span class="mono">pnpm test:e2e factory-drag</span>…</p><span class="rm">now</span></div></li>
+</ol>
+<div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+<label for="steer" class="rm" style="width: 100%;">Steer this run</label>
+<input id="steer" type="text" placeholder="e.g. keep Alt+Arrow as an extra shortcut" style="flex: 1 1 260px; min-height: 40px; border: 1px solid var(--hl); border-radius: 8px; padding: 0 12px; background: var(--s0); color: var(--ink); font: 14px Archivo, system-ui, sans-serif;">
+<button type="button" class="btn bp">Send</button>
+</div>
+</section>
+
+<aside style="display: flex; flex-direction: column; gap: 16px; min-width: 0; flex: 1 1 300px;">
+<section class="card" style="padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;">
+<h2 class="k">Plan · 3 of 5</h2>
+<div class="ck"><b class="y">✓</b>Add dnd-kit</div>
+<div class="ck"><b class="y">✓</b>Grip handle as activator</div>
+<div class="ck"><b class="y">✓</b>Menu right-aligned in card header</div>
+<div class="ck"><b class="c"></b><strong>e2e: drag, keyboard, click</strong></div>
+<div class="ck"><b class="n"></b>Delete useDrag.ts</div>
+</section>
+<section class="card" style="padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;">
+<h2 class="k">Criteria</h2>
+<div class="ck"><b class="n"></b>A card moves only when dragged by its grip</div>
+<div class="ck"><b class="n"></b>Clicking the card body opens the ticket</div>
+<div class="ck"><b class="n"></b>Keyboard users can reorder and hear the new position</div>
+<h2 class="k" style="margin-top: 6px;">Constraints</h2>
+<div class="ck"><b class="y">✓</b>shadcn/ui + Radix only (lint)</div>
+<div class="ck"><b class="y">✓</b>New dependency MIT, listed in NOTICE</div>
+</section>
+<section class="card" style="padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;">
+<h2 class="k">Decision log</h2>
+<div style="font-size: 14px; line-height: 1.45;"><strong>10:42</strong> You approved @dnd-kit/core.<br><span class="rm">Undo available until 10:57 · <a href="#">Undo</a></span></div>
+<div style="font-size: 14px; line-height: 1.45;"><strong>10:30</strong> Brief auto-approved (factory ticket, low risk).</div>
+</section>
+</aside>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"palette":{"editor":"enum","options":["Violet + Emerald","Plum + Sage","Indigo + Emerald","Lavender + Mint","Forest + Amethyst"],"default":"Indigo + Emerald"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { p: null, dark: null }; }
+  renderVals() {
+    const P = [
+      {n:'Violet + Emerald',l:{s0:'#f6f5f8',s1:'#ffffff',s2:'#eeecf2',ink:'#1a1625',mu:'#5e5a6b',hl:'#dcd9e3',a:'#6d28d9',as:'#5b21b6',on:'#ffffff',asf:'#efe9fc',g:'#147638',gs:'#0f5c2b',ong:'#ffffff',gsf:'#e3f5e9'},d:{s0:'#121018',s1:'#1b1823',s2:'#25212f',ink:'#ece9f2',mu:'#a29db0',hl:'#2e2a38',a:'#b79cff',as:'#cdb9ff',on:'#1e0b45',asf:'#2c2148',g:'#4ade80',gs:'#86efac',ong:'#052e16',gsf:'#13301f'}},
+      {n:'Plum + Sage',l:{s0:'#f7f5f6',s1:'#ffffff',s2:'#efecee',ink:'#1c171b',mu:'#5f5960',hl:'#ddd7db',a:'#7a2e74',as:'#63245e',on:'#ffffff',asf:'#f5e8f3',g:'#3f6b4c',gs:'#335a3f',ong:'#ffffff',gsf:'#e7efe8'},d:{s0:'#141113',s1:'#1d191c',s2:'#272226',ink:'#efe9ed',mu:'#a69fa5',hl:'#312b30',a:'#e0a3d8',as:'#ecbfe6',on:'#3a0f35',asf:'#33212f',g:'#9fc9a9',gs:'#b9dbc1',ong:'#132a1a',gsf:'#1c2b20'}},
+      {n:'Indigo + Emerald',l:{s0:'#f5f5fa',s1:'#ffffff',s2:'#ebebf3',ink:'#16162a',mu:'#585a6e',hl:'#d8d8e6',a:'#5b35e8',as:'#4a26cc',on:'#ffffff',asf:'#ebe7fd',g:'#126c35',gs:'#0f5e2c',ong:'#ffffff',gsf:'#e3f5e9'},d:{s0:'#0f0f17',s1:'#181823',s2:'#222230',ink:'#ebebf5',mu:'#9e9fb3',hl:'#2b2b3b',a:'#a594ff',as:'#c0b5ff',on:'#160a4d',asf:'#25214a',g:'#4ade80',gs:'#86efac',ong:'#052e16',gsf:'#0f2a1a'}},
+      {n:'Lavender + Mint',l:{s0:'#f8f7fb',s1:'#ffffff',s2:'#efedf5',ink:'#1b1828',mu:'#5f5b6e',hl:'#dddae6',a:'#7445c2',as:'#6036a8',on:'#ffffff',asf:'#f1ebfb',g:'#0b7358',gs:'#075e48',ong:'#ffffff',gsf:'#e0f5ee'},d:{s0:'#131219',s1:'#1c1a24',s2:'#26232f',ink:'#eeebf4',mu:'#a6a2b5',hl:'#302c3a',a:'#c7b0f5',as:'#dccbff',on:'#26114f',asf:'#2d2645',g:'#6ee7c3',gs:'#a0f0d6',ong:'#03291f',gsf:'#12302a'}},
+      {n:'Forest + Amethyst',l:{s0:'#f5f7f5',s1:'#ffffff',s2:'#eaeeeb',ink:'#151b17',mu:'#58625b',hl:'#d6ddd8',a:'#1d6b40',as:'#155532',on:'#ffffff',asf:'#e4f1e8',g:'#8a3fbf',gs:'#73319f',ong:'#ffffff',gsf:'#f3e8fa',ok:'#1d6b40',oksf:'#e4f1e8'},d:{s0:'#101411',s1:'#181e1a',s2:'#212822',ink:'#e8eee9',mu:'#9ea9a1',hl:'#2a322c',a:'#7fd6a0',as:'#a3e6bd',on:'#052914',asf:'#1a3024',g:'#d4a6f5',gs:'#e3c2fa',ong:'#33104d',gsf:'#2c2038',ok:'#7fd6a0',oksf:'#1a3024'}}
+    ];
+    const S = { l: { w: '#9a6200', wsf: '#fbf0dc', x: '#b42318', xsf: '#fbe6e4' }, d: { w: '#e3b04b', wsf: '#3a2c10', x: '#f08a7f', xsf: '#3d1d1a' } };
+    const fromProp = Math.max(0, P.findIndex((p) => p.n === this.props.palette));
+    const i = this.state.p ?? fromProp;
+    const dark = this.state.dark ?? (this.props.dark ?? false);
+    const t = dark ? 'd' : 'l';
+    const c = Object.assign({ ok: P[i][t].g, oksf: P[i][t].gsf }, P[i][t], S[t]);
+    return {
+      vars: Object.keys(c).map((k) => '--' + k + ':' + c[k]).join(';'),
+      pals: P.map((p, j) => ({ n: p.n, a: p.l.a, g: p.l.g, cls: j === i ? 'pill on' : 'pill', pick: () => this.setState({ p: j }) })),
+      lightCls: dark ? 'seg' : 'seg on', darkCls: dark ? 'seg on' : 'seg',
+      setLight: () => this.setState({ dark: false }), setDark: () => this.setState({ dark: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

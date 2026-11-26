@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Factory board</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:var(--a)}a:hover{color:var(--as)}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;background:#18181b;color:#fafafa;font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:999px;border:1px solid #3f3f46;background:#27272a;color:#fafafa;font:500 13px Archivo,system-ui,sans-serif;cursor:pointer}
+.pill.on{border-color:#fafafa;background:#3f3f46}
+.dot{width:12px;height:12px;border-radius:999px;display:inline-block}
+.seg{height:32px;padding:0 12px;border:1px solid #3f3f46;background:#27272a;color:#d4d4d8;font:500 13px Archivo,system-ui,sans-serif;cursor:pointer}
+.seg.on{background:#fafafa;color:#18181b}
+.side{flex:1 1 220px;max-width:100%;background:var(--s1);border-right:1px solid var(--hl);padding:20px 12px;display:flex;flex-direction:column;gap:4px;box-sizing:border-box}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;color:var(--ink);text-decoration:none;font-size:14px}
+.nav:hover{background:var(--s2);color:var(--ink)}
+.nav.on{background:var(--asf);font-weight:600}
+.cnt{font-size:12px;font-weight:600;min-width:20px;text-align:center;padding:1px 6px;border-radius:999px;background:var(--a);color:var(--on)}
+.main{flex:999 1 560px;min-width:0;padding:28px clamp(16px,3vw,40px);display:flex;flex-direction:column;gap:20px;box-sizing:border-box}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 14px;border-radius:8px;font:600 14px Archivo,system-ui,sans-serif;border:1px solid transparent;cursor:pointer;text-decoration:none}
+.bp{background:var(--a);color:var(--on)}.bo{background:var(--s1);color:var(--ink);border-color:var(--hl)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+.c-run{background:var(--asf);color:var(--a)}.c-ok{background:var(--oksf);color:var(--ok)}.c-warn{background:var(--wsf);color:var(--w)}.c-err{background:var(--xsf);color:var(--x)}.c-q{background:var(--s2);color:var(--mu)}.c-stale{background:transparent;color:var(--mu);border:1px dashed var(--mu)}
+.lanes{display:grid;grid-template-columns:repeat(5,minmax(240px,1fr));gap:14px;overflow-x:auto;padding-bottom:8px}
+.lane{background:var(--s2);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.lh{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;padding:2px 4px}
+.ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.tc{display:flex;gap:4px;background:var(--s1);border:1px solid var(--hl);border-radius:10px;padding:10px 8px 10px 4px}
+.tc.drag{border-color:var(--a);box-shadow:0 8px 24px rgba(0,0,0,.18);transform:rotate(-1deg)}
+.drop{height:3px;border-radius:3px;background:var(--a);margin:-2px 6px}
+.grip{flex:none;width:24px;min-height:44px;border:0;background:none;border-radius:6px;color:var(--mu);cursor:grab;display:flex;align-items:flex-start;justify-content:center;padding-top:2px}
+.grip:hover{background:var(--s2);color:var(--ink)}
+.more{flex:none;width:28px;height:28px;border:0;background:none;border-radius:6px;color:var(--mu);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.more:hover{background:var(--s2);color:var(--ink)}
+.tb{flex-grow:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.th{display:flex;align-items:center;gap:6px}
+.ref{font-size:12px;color:var(--mu)}
+.tt{font-size:14px;font-weight:600;color:var(--ink);text-decoration:none;line-height:1.35}
+.tt:hover{color:var(--a);text-decoration:underline}
+.tm{font-size:12px;color:var(--mu)}
+.prog{height:4px;border-radius:4px;background:var(--s2);overflow:hidden}
+.prog span{display:block;height:100%;background:var(--a)}
+</style>
+</helmet>
+<div style="{{vars}}; font-family: Archivo, system-ui, sans-serif; background: var(--s0); color: var(--ink); min-height: 1080px; display: flex; flex-direction: column;">
+<div class="bar">
+<span style="font-weight: 600; margin-right: 4px;">Palette</span>
+<sc-for list="{{pals}}" as="it" hint-placeholder-count="5">
+<button type="button" class="{{it.cls}}" onClick="{{it.pick}}"><span class="dot" style="background: {{it.a}};"></span><span class="dot" style="background: {{it.g}};"></span>{{it.n}}</button>
+</sc-for>
+<span style="flex-grow: 1;"></span>
+<div style="display: flex;"><button type="button" class="{{lightCls}}" style="border-radius: 8px 0 0 8px;" onClick="{{setLight}}">Light</button><button type="button" class="{{darkCls}}" style="border-radius: 0 8px 8px 0;" onClick="{{setDark}}">Dark</button></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; flex-grow: 1;">
+<nav class="side" aria-label="Main">
+<div style="display: flex; align-items: center; gap: 10px; padding: 4px 10px 18px;">
+<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="4" fill="none" stroke="var(--ink)" stroke-width="2"></rect><rect x="12" y="12" width="10" height="10" rx="2" fill="var(--a)"></rect></svg>
+<span style="font-size: 18px; font-weight: 700;">Bauherr</span>
+</div>
+<a class="nav" href="#">Inbox <span class="cnt">3</span></a>
+<a class="nav on" href="#">Factory</a>
+<a class="nav" href="#">Requests</a>
+<a class="nav" href="#">Tickets</a>
+<a class="nav" href="#">Runs</a>
+<a class="nav" href="#">Memory</a>
+<a class="nav" href="#">Insights</a>
+<a class="nav" href="#">Releases</a>
+<span style="flex-grow: 1; min-height: 24px;"></span>
+<a class="nav" href="#">Settings</a>
+</nav>
+<main class="main">
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap;">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<h1 style="margin: 0; font-size: 28px; font-weight: 700;">Factory</h1>
+<p style="margin: 0; font-size: 14px; color: var(--mu);">2 builders · 3 of 8 slots busy · drag by the grip, or focus a grip and use the arrow keys</p>
+</div>
+<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+<button type="button" class="btn bo">Filter</button>
+<button type="button" class="btn bp">New request</button>
+</div>
+</div>
+<div class="lanes">
+
+<section class="lane" aria-label="Backlog">
+<div class="lh"><span>Backlog</span><span style="color: var(--mu);">3</span></div>
+<ul class="ul">
+<li class="tc"><button type="button" class="grip" aria-label="Move #936"><svg width="14" height="20" viewBox="0 0 14 20" aria-hidden="true" fill="currentColor"><circle cx="4" cy="4" r="1.6"></circle><circle cx="10" cy="4" r="1.6"></circle><circle cx="4" cy="10" r="1.6"></circle><circle cx="10" cy="10" r="1.6"></circle><circle cx="4" cy="16" r="1.6"></circle><circle cx="10" cy="16" r="1.6"></circle></svg></button><div class="tb"><div class="th"><span class="mono ref">#936</span><span class="chip c-q">Queued</span><span style="flex-grow: 1;"></span><button type="button" class="more" aria-label="Card menu for #936"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg></button></div><a class="tt" href="#">Scoped auto-refresh per page</a><span class="tm">request · today</span></div></li>
+<li class="tc"><button type="button" class="grip" aria-label="Move #937"><svg width="14" height="20" viewBox="0 0 14 20" aria-hidden="true" fill="currentColor"><circle cx="4" cy="4" r="1.6"></circle><circle cx="10" cy="4" r="1.6"></circle><circle cx="4" cy="10" r="1.6"></circle><circle cx="10" cy="10" r="1.6"></circle><circle cx="4" cy="16" r="1.6"></circle><circle cx="10" cy="16" r="1.6"></circle></svg></button><div class="tb"><div class="th"><span class="mono ref">#937</span><span class="chip c-q">Queued</span><span style="flex-grow: 1;"></span><button type="button" class="more" aria-label="Card menu for #937"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg></button></div><a class="tt" href="#">Tokens in DTCG format</a><span class="tm">request · today</span></div></li>
+<li class="tc"><button type="button" class="grip" aria-label="Move #938"><svg width="14" height="20" viewBox="0 0 14 20" aria-hidden="true" fill="currentColor"><circle cx="4" cy="4" r="1.6"></circle><circle cx="10" cy="4" r="1.6"></circle><circle cx="4" cy="10" r="1.6"></circle><circle cx="10" cy="10" r="1.6"></circle><circle cx="4" cy="16" r="1.6"></circle><circle cx="10" cy="16" r="1.6"></circle></svg></button><div class="tb"><div class="th"><span class="mono ref">#938</span><span class="chip c-q">Queued</span><span style="flex-grow: 1;"></span><button type="button" class="more" aria-label="Card menu for #938"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg></button></div><a class="tt" href="#">Storybook + MCP for builders</a><span class="tm">request · yesterday</span></div></li>
+</ul>
+</section>
+
+<section class="lane" aria-label="Brief">
+<div class="lh"><span>Brief</span><span style="color: var(--mu);">2</span></div>
+<ul class="ul">
+<li class="tc"><button type="button" class="grip" aria-label="Move #934"><svg width="14" height="20" viewBox="0 0 14 20" aria-hidden="true" fill="currentColor"><circle cx="4" cy="4" r="1.6"></circle><circle cx="10" cy="4" r="1.6"></circle><circle cx="4" cy="10" r="1.6"></circle><circle cx="10" cy="10" r="1.6"></circle><circle cx="4" cy="16" r="1.6"></circle><circle cx="10" cy="16" r="1.6"></circle></svg></button><div class="tb"><div class="th"><span class="mono ref">#934</span><span class="chip c-warn">Needs you</span><span style="flex-grow: 1;"></span><button type="button" class="more" aria-label="Card menu for #934"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg></button></div><a class="tt" href="#">Loading state for the Inbox</a><span class="tm">question waiting · 11 min</span></div></li>
+<li class="tc"><button type="button" class="grip" aria-label="Move #935"><svg width="14" height="20" viewBox="0 0 14 20" aria-hidden="true" fill="currentColor"><circle cx="4" cy="4" r="1.6"></circle><circle cx="10" cy="4" r="1.6"></circle><circle cx="4" cy="10" r="1.6"></circle><circle cx="10" cy="10" r="1.6"></circle><circle cx="4" cy="16" r="1.6"></circle><circle cx="10" cy="16" r="1.6"></circle></svg></button><div class="tb"><div class="th"><span class="mono ref">#935</span><span class="chip c-run">Running</span><span style="flex-grow: 1;"></span><button type="button" class="more" aria-label="Card menu for #935"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg></button></div><a class="tt" href="#">Parallel queries in stageStats</a><div class="prog" aria-label="Step 2 of 4"><span style="width: 50%;"></span></div><span class="tm">briefer · step 2 of 4</span></div></li>
+</ul>
+</section>
+
+<section class="lane" aria-label="Build">
+<div class="lh"><span>Build</span><span style="color: var(--mu);">3</span></div>
+<ul class="ul">
+<li class="tc"><button type="button" class="grip" aria-label="Move #931"><svg width="14" height="20" viewBox="0 0 14 20" aria-hidden="true" fill="currentColor"><circle cx="4" cy="4" r="1.6"></circle><circle cx="10" cy="4" r="1.6"></circle><circle cx="4" cy="10" r="1.6"></circle><circle cx="10" cy="10" r="1.6"></circle><circle cx="4" cy="16" r="1.6"></circle><circle cx="10" cy="16" r="1.6"></circle></svg></button><div class="tb"><div class="th"><span class="mono ref">#931</span><span class="chip c-warn">Needs you</span><span style="flex-grow: 1;"></span><button type="button" class="more" aria-label="Card menu for #931"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg></button></div><a class="tt" href="#">Replace native drag &amp; drop with dnd-kit</a><span class="tm">approval waiting · 4 min</span></div></li>
+<li class="tc drag"><button type="button" class="grip" aria-label="Move #932" style="cursor: grabbing; color: var(--a);"><svg width="14" height="20" viewBox="0 0 14 20" aria-hidden="true" fill="currentColor"><circle cx="4" cy="4" r="1.6"></circle><circle cx="10" cy="4" r="1.6"></circle><circle cx="4" cy="10" r="1.6"></circle><circle cx="10" cy="10" r="1.6"></circle><circle cx="4" cy="16" r="1.6"></circle><circle cx="10" cy="16" r="1.6"></circle></svg></button><div class="tb"><div class="th"><span class="mono ref">#932</span><span class="chip c-run">Running</span><span style="flex-grow: 1;"></span><button type="button" class="more" aria-label="Card menu for #932"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg></button></div><a class="tt" href="#">Loading skeletons for all shell routes</a><div class="prog" aria-label="Step 3 of 5"><span style="width: 60%;"></span></div><span class="tm">builder · Sonnet · step 3 of 5</span></div></li>
+<li class="drop" aria-hidden="true"></li>
+<li class="tc"><button type="button" class="grip" aria-label="Move #930"><svg width="14" height="20" viewBox="0 0 14 20" aria-hidden="true" fill="currentColor"><circle cx="4" cy="4" r="1.6"></circle><circle cx="10" cy="4" r="1.6"></circle><circle cx="4" cy="10" r="1.6"></circle><circle cx="10" cy="10" r="1.6"></circle><circle cx="4" cy="16" r="1.6"></circle><circle cx="10" cy="16" r="1.6"></circle></svg></button><div class="tb"><div class="th"><span class="mono ref">#930</span><span class="chip c-stale">Stale</span><span style="flex-grow: 1;"></span><button type="button" class="more" aria-label="Card menu for #930"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg></button></div><a class="tt" href="#">Scope loadCandidates to the workspace</a><span class="tm">no heartbeat for 12 min · <a href="#">restart</a></span></div></li>
+</ul>
+</section>
+
+<section class="lane" aria-label="Review">
+<div class="lh"><span>Review</span><span style="color: var(--mu);">2</span></div>
+<ul class="ul">
+<li class="tc"><button type="button" class="grip" aria-label="Move #928"><svg width="14" height="20" viewBox="0 0 14 20" aria-hidden="true" fill="currentColor"><circle cx="4" cy="4" r="1.6"></circle><circle cx="10" cy="4" r="1.6"></circle><circle cx="4" cy="10" r="1.6"></circle><circle cx="10" cy="10" r="1.6"></circle><circle cx="4" cy="16" r="1.6"></circle><circle cx="10" cy="16" r="1.6"></circle></svg></button><div class="tb"><div class="th"><span class="mono ref">#928</span><span class="chip c-ok">Ready</span><span style="flex-grow: 1;"></span><button type="button" class="more" aria-label="Card menu for #928"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg></button></div><a class="tt" href="#">Retro chat on assistant-ui</a><span class="tm">6 of 6 criteria met</span></div></li>
+<li class="tc"><button type="button" class="grip" aria-label="Move #927"><svg width="14" height="20" viewBox="0 0 14 20" aria-hidden="true" fill="currentColor"><circle cx="4" cy="4" r="1.6"></circle><circle cx="10" cy="4" r="1.6"></circle><circle cx="4" cy="10" r="1.6"></circle><circle cx="10" cy="10" r="1.6"></circle><circle cx="4" cy="16" r="1.6"></circle><circle cx="10" cy="16" r="1.6"></circle></svg></button><div class="tb"><div class="th"><span class="mono ref">#927</span><span class="chip c-err">Failed</span><span style="flex-grow: 1;"></span><button type="button" class="more" aria-label="Card menu for #927"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg></button></div><a class="tt" href="#">ESLint ban on raw form controls</a><span class="tm">verify: 2 lint errors · retry 1 of 2</span></div></li>
+</ul>
+</section>
+
+<section class="lane" aria-label="Done">
+<div class="lh"><span>Done</span><span style="color: var(--mu);">2 this week</span></div>
+<ul class="ul">
+<li class="tc" style="padding-left: 10px;"><div class="tb"><div class="th"><span class="mono ref">#925</span><span class="chip c-ok">Merged</span></div><a class="tt" href="#">Lockfile maintenance</a><span class="tm">auto-approved · 2 h ago</span></div></li>
+<li class="tc" style="padding-left: 10px;"><div class="tb"><div class="th"><span class="mono ref">#926</span><span class="chip c-ok">Merged</span></div><a class="tt" href="#">Docs typo in ui.md</a><span class="tm">auto-approved · 3 h ago</span></div></li>
+</ul>
+</section>
+
+</div>
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"palette":{"editor":"enum","options":["Violet + Emerald","Plum + Sage","Indigo + Emerald","Lavender + Mint","Forest + Amethyst"],"default":"Indigo + Emerald"},"dark":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { p: null, dark: null }; }
+  renderVals() {
+    const P = [
+      {n:'Violet + Emerald',l:{s0:'#f6f5f8',s1:'#ffffff',s2:'#eeecf2',ink:'#1a1625',mu:'#5e5a6b',hl:'#dcd9e3',a:'#6d28d9',as:'#5b21b6',on:'#ffffff',asf:'#efe9fc',g:'#147638',gs:'#0f5c2b',ong:'#ffffff',gsf:'#e3f5e9'},d:{s0:'#121018',s1:'#1b1823',s2:'#25212f',ink:'#ece9f2',mu:'#a29db0',hl:'#2e2a38',a:'#b79cff',as:'#cdb9ff',on:'#1e0b45',asf:'#2c2148',g:'#4ade80',gs:'#86efac',ong:'#052e16',gsf:'#13301f'}},
+      {n:'Plum + Sage',l:{s0:'#f7f5f6',s1:'#ffffff',s2:'#efecee',ink:'#1c171b',mu:'#5f5960',hl:'#ddd7db',a:'#7a2e74',as:'#63245e',on:'#ffffff',asf:'#f5e8f3',g:'#3f6b4c',gs:'#335a3f',ong:'#ffffff',gsf:'#e7efe8'},d:{s0:'#141113',s1:'#1d191c',s2:'#272226',ink:'#efe9ed',mu:'#a69fa5',hl:'#312b30',a:'#e0a3d8',as:'#ecbfe6',on:'#3a0f35',asf:'#33212f',g:'#9fc9a9',gs:'#b9dbc1',ong:'#132a1a',gsf:'#1c2b20'}},
+      {n:'Indigo + Emerald',l:{s0:'#f5f5fa',s1:'#ffffff',s2:'#ebebf3',ink:'#16162a',mu:'#585a6e',hl:'#d8d8e6',a:'#5b35e8',as:'#4a26cc',on:'#ffffff',asf:'#ebe7fd',g:'#126c35',gs:'#0f5e2c',ong:'#ffffff',gsf:'#e3f5e9'},d:{s0:'#0f0f17',s1:'#181823',s2:'#222230',ink:'#ebebf5',mu:'#9e9fb3',hl:'#2b2b3b',a:'#a594ff',as:'#c0b5ff',on:'#160a4d',asf:'#25214a',g:'#4ade80',gs:'#86efac',ong:'#052e16',gsf:'#0f2a1a'}},
+      {n:'Lavender + Mint',l:{s0:'#f8f7fb',s1:'#ffffff',s2:'#efedf5',ink:'#1b1828',mu:'#5f5b6e',hl:'#dddae6',a:'#7445c2',as:'#6036a8',on:'#ffffff',asf:'#f1ebfb',g:'#0b7358',gs:'#075e48',ong:'#ffffff',gsf:'#e0f5ee'},d:{s0:'#131219',s1:'#1c1a24',s2:'#26232f',ink:'#eeebf4',mu:'#a6a2b5',hl:'#302c3a',a:'#c7b0f5',as:'#dccbff',on:'#26114f',asf:'#2d2645',g:'#6ee7c3',gs:'#a0f0d6',ong:'#03291f',gsf:'#12302a'}},
+      {n:'Forest + Amethyst',l:{s0:'#f5f7f5',s1:'#ffffff',s2:'#eaeeeb',ink:'#151b17',mu:'#58625b',hl:'#d6ddd8',a:'#1d6b40',as:'#155532',on:'#ffffff',asf:'#e4f1e8',g:'#8a3fbf',gs:'#73319f',ong:'#ffffff',gsf:'#f3e8fa',ok:'#1d6b40',oksf:'#e4f1e8'},d:{s0:'#101411',s1:'#181e1a',s2:'#212822',ink:'#e8eee9',mu:'#9ea9a1',hl:'#2a322c',a:'#7fd6a0',as:'#a3e6bd',on:'#052914',asf:'#1a3024',g:'#d4a6f5',gs:'#e3c2fa',ong:'#33104d',gsf:'#2c2038',ok:'#7fd6a0',oksf:'#1a3024'}}
+    ];
+    const S = { l: { w: '#9a6200', wsf: '#fbf0dc', x: '#b42318', xsf: '#fbe6e4' }, d: { w: '#e3b04b', wsf: '#3a2c10', x: '#f08a7f', xsf: '#3d1d1a' } };
+    const fromProp = Math.max(0, P.findIndex((p) => p.n === this.props.palette));
+    const i = this.state.p ?? fromProp;
+    const dark = this.state.dark ?? (this.props.dark ?? false);
+    const t = dark ? 'd' : 'l';
+    const c = Object.assign({ ok: P[i][t].g, oksf: P[i][t].gsf }, P[i][t], S[t]);
+    return {
+      vars: Object.keys(c).map((k) => '--' + k + ':' + c[k]).join(';'),
+      pals: P.map((p, j) => ({ n: p.n, a: p.l.a, g: p.l.g, cls: j === i ? 'pill on' : 'pill', pick: () => this.setState({ p: j }) })),
+      lightCls: dark ? 'seg' : 'seg on', darkCls: dark ? 'seg on' : 'seg',
+      setLight: () => this.setState({ dark: false }), setDark: () => this.setState({ dark: true })
+    };
+  }
+}
+</script>
+</body>
+</html>
