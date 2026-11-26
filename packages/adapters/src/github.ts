@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { GithubAuth } from './github-auth.js';
 import { GithubError } from './github-error.js';
 import { timedFetch } from './http.js';
@@ -24,7 +25,46 @@ const rateLimitWaitMs = (res: Response): number => {
   return reset ? Math.max(0, Number(reset) * 1000 - Date.now()) + 1000 : 60_000;
 };
 
-/** Minimal REST client: Link pagination, backoff on 403/429 honouring Retry-After. */
+type Cached = { etag: string; body: string; headers: [string, string][] };
+
+const CACHE_LIMIT = 2000;
+const CACHE_BODY_LIMIT = 1_000_000;
+const KEPT_HEADERS = ['content-type', 'link'];
+const conditional = new Map<string, Cached>();
+
+const cacheKey = (token: string, accept: string, url: string): string =>
+  `${createHash('sha256').update(token).digest('hex').slice(0, 16)} ${accept} ${url}`;
+
+const remember = async (key: string, res: Response): Promise<void> => {
+  const etag = res.headers.get('etag');
+  if (!etag || !(res.headers.get('content-type') ?? '').includes('json')) return;
+  const body = await res.clone().text();
+  if (body.length > CACHE_BODY_LIMIT) return;
+  conditional.delete(key);
+  if (conditional.size >= CACHE_LIMIT) conditional.delete(conditional.keys().next().value!);
+  const headers = KEPT_HEADERS.flatMap((h): [string, string][] => {
+    const v = res.headers.get(h);
+    return v === null ? [] : [[h, v]];
+  });
+  conditional.set(key, { etag, body, headers });
+};
+
+const lookup = (key: string | undefined): Cached | undefined => (key === undefined ? undefined : conditional.get(key));
+
+const settle = async (
+  res: Response,
+  o: { method: string; path: string; key: string | undefined; cached: Cached | undefined },
+): Promise<Response> => {
+  if (res.status === 304 && o.cached) return new Response(o.cached.body, { status: 200, headers: o.cached.headers });
+  if (!res.ok) throw new GithubError(res.status, o.method, o.path, await res.text());
+  if (o.key !== undefined) await remember(o.key, res);
+  return res;
+};
+
+/**
+ * Minimal REST client: Link pagination, backoff on 403/429 honouring Retry-After, and conditional GETs
+ * (If-None-Match) whose 304 answers GitHub does not count against the rate limit.
+ */
 export class Http {
   private base: string;
   private doFetch: typeof fetch;
@@ -42,33 +82,36 @@ export class Http {
 
   async raw(method: string, path: string, body?: unknown, accept = 'application/vnd.github+json'): Promise<Response> {
     const url = path.startsWith('http') ? path : this.base + path;
+    const token = await this.o.auth.token();
+    const key = method === 'GET' && body === undefined ? cacheKey(token, accept, url) : undefined;
     for (let attempt = 0; ; attempt++) {
-      const res = await timedFetch(
-        this.doFetch,
-        url,
-        {
-          cache: 'no-store',
-          method,
-          headers: {
-            authorization: `Bearer ${await this.o.auth.token()}`,
-            accept,
-            'x-github-api-version': '2022-11-28',
-            'user-agent': 'bauherr',
-            ...(body === undefined ? {} : { 'content-type': 'application/json' }),
-          },
-          body: body === undefined ? undefined : JSON.stringify(body),
-        },
-        this.o.timeoutMs,
-      );
+      const cached = lookup(key);
+      const res = await this.send(method, url, { token, accept, body, etag: cached?.etag });
       if (isRateLimited(res) && attempt < this.maxRetries) {
-        const wait = rateLimitWaitMs(res);
-        if (wait > MAX_WAIT_MS) throw new GithubError(res.status, method, path, `rate limited for ${wait} ms`);
-        await this.sleep(wait);
+        await this.waitOut(res, method, path);
         continue;
       }
-      if (!res.ok) throw new GithubError(res.status, method, path, await res.text());
-      return res;
+      return settle(res, { method, path, key, cached });
     }
+  }
+
+  private send(method: string, url: string, o: { token: string; accept: string; body: unknown; etag?: string }) {
+    const headers: Record<string, string> = {
+      authorization: `Bearer ${o.token}`,
+      accept: o.accept,
+      'x-github-api-version': '2022-11-28',
+      'user-agent': 'bauherr',
+    };
+    if (o.body !== undefined) headers['content-type'] = 'application/json';
+    if (o.etag !== undefined) headers['if-none-match'] = o.etag;
+    const body = o.body === undefined ? undefined : JSON.stringify(o.body);
+    return timedFetch(this.doFetch, url, { cache: 'no-store', method, headers, body }, this.o.timeoutMs);
+  }
+
+  private async waitOut(res: Response, method: string, path: string): Promise<void> {
+    const wait = rateLimitWaitMs(res);
+    if (wait > MAX_WAIT_MS) throw new GithubError(res.status, method, path, `rate limited for ${wait} ms`);
+    await this.sleep(wait);
   }
 
   async json<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {

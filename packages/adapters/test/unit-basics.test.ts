@@ -65,6 +65,47 @@ void describe('stage helpers', () => {
 });
 
 void describe('http', () => {
+  void it('repeats a GET with If-None-Match and answers a 304 from the stored body', async () => {
+    const seen: (string | null)[] = [];
+    const responses = [
+      new Response(JSON.stringify([{ n: 1 }]), {
+        status: 200,
+        headers: {
+          etag: 'W/"v1"',
+          'content-type': 'application/json',
+          link: '<https://api.github.com/p2>; rel="last"',
+        },
+      }),
+      new Response(null, { status: 304 }),
+      new Response(JSON.stringify([{ n: 2 }]), {
+        status: 200,
+        headers: { etag: 'W/"v2"', 'content-type': 'application/json' },
+      }),
+    ];
+    const fetch = async (_: unknown, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get('if-none-match'));
+      return responses.shift()!;
+    };
+    const h = new Http({ auth: patAuth('etag-test'), fetch });
+    assert.deepEqual(await h.json('GET', '/etag-cache'), [{ n: 1 }]);
+    const again = await new Http({ auth: patAuth('etag-test'), fetch }).raw('GET', '/etag-cache');
+    assert.equal(again.status, 200);
+    assert.match(again.headers.get('link') ?? '', /rel="last"/);
+    assert.deepEqual(await again.json(), [{ n: 1 }]);
+    assert.deepEqual(await h.json('GET', '/etag-cache'), [{ n: 2 }]);
+    assert.deepEqual(seen, [null, 'W/"v1"', 'W/"v1"']);
+  });
+  void it('keeps conditional answers apart per token and never conditions writes', async () => {
+    const seen: (string | null)[] = [];
+    const fetch = async (_: unknown, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers).get('if-none-match'));
+      return new Response('{}', { status: 200, headers: { etag: '"same"', 'content-type': 'application/json' } });
+    };
+    await new Http({ auth: patAuth('token-a'), fetch }).json('GET', '/etag-split');
+    await new Http({ auth: patAuth('token-b'), fetch }).json('GET', '/etag-split');
+    await new Http({ auth: patAuth('token-a'), fetch }).json('POST', '/etag-split', {});
+    assert.deepEqual(seen, [null, null, null]);
+  });
   void it('backs off on 429 / 403 with Retry-After, then succeeds', async () => {
     const sleeps: number[] = [];
     const responses = [
