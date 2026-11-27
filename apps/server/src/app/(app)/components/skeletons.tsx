@@ -26,7 +26,7 @@ export function GroupsSkeleton({ groups = 4 }: { groups?: number }) {
 
 export function BoardSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-4 md:min-w-380 md:grid-cols-6" {...BUSY}>
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-6" {...BUSY}>
       {Array.from({ length: 6 }, (_, lane) => (
         <div key={lane} className="flex flex-col gap-3">
           <Skeleton className="h-10 w-full" />

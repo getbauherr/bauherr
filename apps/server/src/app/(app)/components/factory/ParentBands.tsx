@@ -13,7 +13,7 @@ import { itemOf } from './lane-items'
 import { TicketCard } from './TicketCard'
 
 const STAGES = Object.keys(STAGE_NAMES) as Stage[]
-const BAND = 'grid min-w-0 gap-3 rounded-md border border-border bg-secondary p-3 md:min-w-387'
+const BAND = 'grid min-w-0 gap-3 rounded-md border border-border bg-secondary p-3'
 const COLUMNS = 'grid grid-cols-1 items-start gap-4 md:grid-cols-6'
 const COLUMN = 'grid min-w-0 content-start gap-2'
 
