@@ -74,4 +74,37 @@ describe('forge effects during a forge outage', () => {
     await runEffects(s.deps(NOW), s.record.id, [{ kind: 'question', body: 'why?' }])
     expect(await forgeEvents(s.record.id)).not.toContain('forge.write.deferred')
   })
+
+  it('keeps a reopen through an outage and sends it after the hold', async () => {
+    const s = await setup()
+    const tickets = s.fake.tickets(s.repo)
+    await tickets.close('1', 'completed')
+    const reopen = vi
+      .spyOn(tickets, 'reopen')
+      .mockRejectedValue(new GithubError(502, 'POST', '/issues/1', 'Bad Gateway'))
+
+    await runEffects(s.deps(NOW), s.record.id, [{ kind: 'reopen' }])
+    expect((await readEvents(h.payload(), s.record.id)).map((e) => e.data)).toContainEqual(
+      expect.objectContaining({ kind: 'reopen' }),
+    )
+
+    reopen.mockRestore()
+    await sendHeld(s.deps(LATER))
+    expect((await tickets.get('1')).state).toBe('open')
+  })
+
+  it('defers a status comment at once while the Connection is held, without calling the forge', async () => {
+    const s = await setup()
+    const comment = vi.spyOn(s.fake.tickets(s.repo), 'comment')
+    const until = new Date(NOW.getTime() + 60_000).toISOString()
+    const limits = JSON.stringify({ pausedUntil: until, pauseReason: 'outage' })
+    await h.rows(sql`UPDATE "connections" SET "forge_limits" = ${limits}::jsonb`)
+
+    await runEffects(s.deps(NOW), s.record.id, [{ kind: 'status' }, { kind: 'status' }])
+    expect(comment).not.toHaveBeenCalled()
+    expect((await forgeEvents(s.record.id)).filter((type) => type === 'forge.write.deferred')).toHaveLength(1)
+
+    await sendHeld(s.deps(LATER))
+    expect(comment).toHaveBeenCalledOnce()
+  })
 })

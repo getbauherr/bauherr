@@ -37,6 +37,10 @@ const effectOf = (data: z.infer<typeof deferredSchema>): Effect => {
       return { kind: 'close', reason: data.reason }
     case 'review':
       return { kind: 'review', pr: data.target.number, body: data.body }
+    case 'status-comment':
+      return { kind: 'status' }
+    case 'reopen':
+      return { kind: 'reopen' }
   }
 }
 

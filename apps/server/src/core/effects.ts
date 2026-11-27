@@ -5,7 +5,7 @@ import type { AdvanceDeps } from './engine'
 import type { Deferred } from './events'
 import { fold, type State } from './fold'
 import { ProductObserving, TargetNotFound, WrongItemKind } from './forge/errors'
-import { holdForRecordError } from './forge/limits'
+import { holdForRecordError, holdOfRecord } from './forge/limits'
 import { renderStatus } from './forge/status'
 import type { ForgeWriter, Target } from './forge/writer'
 import { foldOptions } from './lifecycle'
@@ -98,8 +98,9 @@ const deferral = (effect: Effect, target: Deferred['target']): Deferred | null =
     case 'review':
       return { kind: 'review', target: { ...target, number: effect.pr }, body: effect.body }
     case 'status':
+      return { kind: 'status-comment', target }
     case 'reopen':
-      return null
+      return { kind: 'reopen', target }
   }
 }
 
@@ -110,7 +111,8 @@ const targetOf = (stored: StoredRecord, effect: Effect) => {
 
 const recordRefusal = async (deps: AdvanceDeps, stored: StoredRecord, effect: Effect, error: Error) => {
   const target = targetOf(stored, effect)
-  const deferred = error instanceof ProductObserving ? deferral(effect, target) : null
+  const draft = effect.kind !== 'status' && effect.kind !== 'reopen'
+  const deferred = error instanceof ProductObserving && draft ? deferral(effect, target) : null
   if (deferred !== null) {
     await appendEvent(deps.payload, stored.id, { type: 'forge.write.deferred', data: deferred, actor: 'factory' })
     return
@@ -142,6 +144,10 @@ export const runEffects = async (deps: AdvanceDeps, recordId: number, effects: E
   for (const effect of effects) {
     const itemId = await itemOf(deps.payload, stored, effect)
     if (itemId === null) continue
+    if (await holdOfRecord(deps.payload, recordId, deps.now)) {
+      await deferUntilHeldEnds(deps, stored, effect)
+      continue
+    }
     const target = { recordId, itemId }
     try {
       await perform(deps, stored, target, effect, writer)
