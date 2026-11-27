@@ -1,12 +1,10 @@
 import type { Payload, User } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { BAUHERR_COLLECTIONS, COLLECTIONS, PO_COLLECTIONS } from './helpers/guard-lists'
 import {
-  BAUHERR_COLLECTIONS,
-  COLLECTIONS,
   type Guard,
   o,
   PASSWORD,
-  PO_COLLECTIONS,
   stringsOf,
   partition,
   setupGuard,

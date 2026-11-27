@@ -1,14 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { BAUHERR_ACTIONS, OPEN_ACTIONS, PO_ACTIONS } from './helpers/guard-lists'
 import {
   APP,
   appModules,
   appSources,
-  BAUHERR_ACTIONS,
   type Guard,
   notFound,
-  OPEN_ACTIONS,
   partition,
-  PO_ACTIONS,
   session,
   setupGuard,
   teardownGuard,
