@@ -28,7 +28,7 @@ test('Inbox: Waiting on you is complete, Decided loads 50 rows and Show more add
   await expect(waiting).toHaveCount(youTotal)
 
   const rows = page.locator('[data-inbox-row]').filter({ has: page.locator('svg.lucide-check') })
-  const more = page.getByRole('button', { name: 'Show more' })
+  const more = page.getByRole('button', { name: 'Show more' }).last()
   await expect(rows).toHaveCount(50)
   await more.scrollIntoViewIfNeeded()
   await expect.poll(() => rows.count()).toBeGreaterThanOrEqual(100)
