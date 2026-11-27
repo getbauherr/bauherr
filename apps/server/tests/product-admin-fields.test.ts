@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { type Guard, o, setupGuard, teardownGuard } from './helpers/product-owner-guard'
 
@@ -64,6 +65,9 @@ describe('PATCH /api/products/:id', () => {
 
   it('does not let a non-admin Bauherr move a Product to another Workspace', async () => {
     const other = await guard.payload.find({ collection: 'workspaces', where: { slug: { equals: 'b' } }, ...o })
+    const own = z.array(z.object({ tenant: z.number() })).parse(guard.bauherr.tenants ?? [])
+    const tenants = [{ tenant: other.docs[0]?.id }, ...own]
+    await guard.payload.update({ collection: 'bauherren', id: guard.bauherrId, data: { tenants }, ...o })
     await patch(guard.bauherrCookie, { workspace: other.docs[0]?.id })
     const { sql } = await import('@payloadcms/db-postgres')
     const query = sql`SELECT "workspace_id" FROM "products" WHERE "id" = ${product}`
