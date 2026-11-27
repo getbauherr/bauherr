@@ -327,7 +327,8 @@
     },
     "assistant-ui/elements/thread-composer.tsx": {
       "registry": "thread",
-      "source": "assistant-ui"
+      "source": "assistant-ui",
+      "localChange": "Composer takes field, sendable and nested props so a comment field reuses it inside a form"
     },
     "assistant-ui/elements/thread-context.tsx": {
       "registry": "thread",

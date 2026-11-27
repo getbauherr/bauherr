@@ -1,7 +1,8 @@
-import type { Actor, EventType } from '../events'
+import type { Actor, EventType, Stage } from '../events'
 import type { StoredEvent } from '../record/store'
 import { OWN_ANSWER } from '../decisions'
 import { labelOf } from './labels'
+import { timelineOf, type TimelineKind, type TimelineTone } from './timeline'
 
 export type EventView = {
   id: number
@@ -9,6 +10,10 @@ export type EventView = {
   actor: Actor
   at: string
   label: string
+  kind: TimelineKind
+  tone: TimelineTone
+  state: string | null
+  enters: Stage | null
 }
 
 const ANSWER_MARK = '\nAnswer: '
@@ -41,7 +46,7 @@ export const activityOf = (events: StoredEvent[]): EventView[] => {
     }
     const sentBack = event.type === 'brief.changes-requested' && approved
     const label = sentBack ? `Sent back to Brief: ${event.data.note}` : labelOf(event)
-    views.push({ id: event.id, type: event.type, actor: event.actor, at: event.createdAt, label })
+    views.push({ id: event.id, type: event.type, actor: event.actor, at: event.createdAt, label, ...timelineOf(event) })
     previous = event
     approved = approvedAfter(approved, event)
   }

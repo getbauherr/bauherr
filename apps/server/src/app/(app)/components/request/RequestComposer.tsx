@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useCallback, useRef, useState } from 'react'
 import { commentOnRequestAction, startRequestConversation } from '../../(shell)/requests/actions'
-import { Composer } from '../conversation/Composer'
+import { Composer } from '../assistant-ui/elements/thread-composer'
 import { CommentRuntime } from '../ticket/CommentRuntime'
 import { Label } from '../ui/label'
 import { COMMENT_FIELD } from './comment-field'
@@ -34,7 +34,7 @@ export function RequestComposer({ recordId, placeholder = 'Write a comment, add 
     <section aria-label="Conversation" className="grid gap-2">
       <Label htmlFor={COMMENT_FIELD}>Add to the conversation</Label>
       <CommentRuntime conversation={ensure} onSend={send}>
-        <Composer placeholder={placeholder} inputId={COMMENT_FIELD} />
+        <Composer autoFocus={false} nested field={{ id: COMMENT_FIELD, placeholder }} />
       </CommentRuntime>
       {error && (
         <p role="alert" className="small m-0 text-destructive">

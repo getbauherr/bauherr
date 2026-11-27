@@ -1,5 +1,5 @@
 import type { Ref } from 'react'
-import { Composer } from '../conversation/Composer'
+import { Composer } from '../assistant-ui/elements/thread-composer'
 import { Button } from '../ui/button'
 import { Label } from '../ui/label'
 
@@ -51,13 +51,17 @@ export function DecisionComment({ left, max, hint, missing, areaRef }: Props) {
       <Label htmlFor={FIELD_ID}>Comment</Label>
       {hint && <p id={HINT_ID} className="small m-0 text-muted-foreground">{hint}</p>}
       <Composer
-        placeholder="Write a comment"
-        inputId={FIELD_ID}
-        inputRef={areaRef}
-        maxLength={max}
+        autoFocus={false}
+        nested
         sendable={false}
-        describedBy={describedBy || undefined}
-        invalid={Boolean(missing)}
+        field={{
+          id: FIELD_ID,
+          ref: areaRef,
+          placeholder: 'Write a comment',
+          maxLength: max,
+          'aria-describedby': describedBy || undefined,
+          'aria-invalid': missing ? true : undefined,
+        }}
       />
       <CommentFoot missing={missing} left={left} />
     </div>

@@ -15,7 +15,7 @@ export function ReleasesNow({ view }: { view: ReleasesView }) {
   return (
     <dl className="m-0 flex flex-wrap gap-x-8 gap-y-4">
       <div className="grid gap-0.5">
-        <dd className="order-1 m-0 mono text-2xl font-semibold leading-[30px]">
+        <dd className="order-1 m-0 mono text-2xl font-medium leading-[30px]">
           {production ? (production.tag ?? production.sha.slice(0, 7)) : 'Nothing yet'}
         </dd>
         <dt className="small order-2 text-muted-foreground">
@@ -31,7 +31,7 @@ export function ReleasesNow({ view }: { view: ReleasesView }) {
         </dt>
       </div>
       <div className="grid gap-0.5">
-        <dd className="order-1 m-0 mono text-2xl font-semibold leading-[30px]">
+        <dd className="order-1 m-0 mono text-2xl font-medium leading-[30px]">
           {staging ? staging.sha.slice(0, 7) : 'Nothing yet'}
         </dd>
         <dt className="small order-2 text-muted-foreground">

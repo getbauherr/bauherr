@@ -1,12 +1,13 @@
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import type { Stage } from '../events'
 import type { HeldItem } from '../intake/held'
 import type { WaitingOn } from '../record/store'
 import { classifiedIn } from './classified'
-import { loadLaneAfter, loadLanes, type LaneCursor } from './lanes'
+import { loadLaneAfter, loadLanes, loadLaneTotals, type LaneCursor } from './lanes'
 import { loadRelations, type CardRelations } from './relations'
 import { loadRows, type ClosedAs, type RowFilter, type TicketRow } from './rows'
-import { DAY_MS } from './sql'
+import { DAY_MS, LIVE_SQL, scope } from './sql'
 import { isStuck, stateOf, statusOf, type TicketState, type TicketStatus } from './status'
 
 export type BoardCard = {
@@ -31,7 +32,55 @@ export type BoardCard = {
   relations: CardRelations | null
 }
 
-export type Board = { stages: Record<Stage, BoardCard[]>; held: HeldItem[]; parked: BoardCard[] }
+export type Board = {
+  stages: Record<Stage, BoardCard[]>
+  held: HeldItem[]
+  parked: BoardCard[]
+  totals: Record<Stage, number> | null
+}
+
+type RelationKind = 'blocking' | 'blocked'
+
+export type BoardScope = { relation?: RelationKind | undefined; parent?: 'with' | 'without' | undefined }
+
+const MATCHES: Record<RelationKind, (relations: CardRelations) => boolean> = {
+  blocking: (relations) => relations.blocks.length > 0,
+  blocked: (relations) => relations.blockedBy.length > 0,
+}
+
+type Entry = [number, CardRelations]
+
+const scoped = (filter: RowFilter, relations: Map<number, CardRelations>, scope: BoardScope): RowFilter => {
+  const { relation, parent } = scope
+  if (relation === undefined && parent === undefined) return filter
+  const entries = [...relations]
+  const hasParent = ([, related]: Entry) => related.parent !== null
+  if (relation === undefined && parent === 'without') {
+    return { ...filter, without: entries.filter(hasParent).map(([id]) => id) }
+  }
+  const matches = ([, related]: Entry) => relation === undefined || MATCHES[relation](related)
+  const fits = (entry: Entry) => parent === undefined || hasParent(entry) === (parent === 'with')
+  return { ...filter, ids: entries.filter((entry) => matches(entry) && fits(entry)).map(([id]) => id) }
+}
+
+const isScoped = ({ relation, parent }: BoardScope): boolean => relation !== undefined || parent !== undefined
+
+const openAmong = async (payload: Payload, filter: RowFilter, ids: number[]): Promise<Set<number>> => {
+  if (ids.length === 0) return new Set()
+  const result = await payload.db.drizzle.execute(sql`
+    SELECT r."id" FROM "records" r
+    WHERE ${scope(filter.workspace, filter.product)} AND ${LIVE_SQL}
+      AND r."id" IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`)
+  return new Set(result.rows.map((row) => Number(row['id'])))
+}
+
+export const relationCounts = async (payload: Payload, filter: RowFilter): Promise<Record<RelationKind, number>> => {
+  const relations = await loadRelations(payload, filter.workspace)
+  const open = await openAmong(payload, filter, [...relations.keys()])
+  const count = (kind: RelationKind) =>
+    [...relations].filter(([id, related]) => open.has(id) && MATCHES[kind](related)).length
+  return { blocking: count('blocking'), blocked: count('blocked') }
+}
 
 const parkedOf = (row: TicketRow): string | null =>
   row.card?.reason === 'parked' ? `Parked: ${row.card.text ?? ''} (${row.stage})` : null
@@ -109,20 +158,25 @@ export const laneCursor = (card: BoardCard): LaneCursor => ({
 export const laneMore = async (
   payload: Payload,
   filter: RowFilter,
-  input: { stage: Stage; after: LaneCursor; limit: number },
+  input: { stage: Stage; after: LaneCursor; limit: number; scope?: BoardScope },
 ): Promise<BoardCard[]> => {
-  const [rows, relations] = await Promise.all([
-    loadLaneAfter(payload, filter, input),
-    loadRelations(payload, filter.workspace),
-  ])
+  const relations = await loadRelations(payload, filter.workspace)
+  const rows = await loadLaneAfter(payload, scoped(filter, relations, input.scope ?? {}), input)
   return rows.map((row) => ({ ...toCard(row), relations: relations.get(row.recordId) ?? null }))
 }
 
-export const board = async (payload: Payload, filter: RowFilter, limit?: number): Promise<Board> => {
-  const [rows, relations, held] = await Promise.all([
-    limit === undefined ? loadRows(payload, filter) : loadLanes(payload, filter, limit),
-    loadRelations(payload, filter.workspace),
-    heldOf(payload, filter),
+export const board = async (
+  payload: Payload,
+  filter: RowFilter,
+  limit?: number,
+  boardScope: BoardScope = {},
+): Promise<Board> => {
+  const relations = await loadRelations(payload, filter.workspace)
+  const only = scoped(filter, relations, boardScope)
+  const [rows, held, totals] = await Promise.all([
+    limit === undefined ? loadRows(payload, only) : loadLanes(payload, only, limit),
+    isScoped(boardScope) ? Promise.resolve([]) : heldOf(payload, filter),
+    isScoped(boardScope) && limit !== undefined ? loadLaneTotals(payload, only) : Promise.resolve(null),
   ])
   const toRelatedCard = (row: TicketRow): BoardCard => ({
     ...toCard(row),
@@ -134,5 +188,5 @@ export const board = async (payload: Payload, filter: RowFilter, limit?: number)
     if (row.parked !== null) parked.push(toRelatedCard(row))
     else if (row.stage !== 'done' || recentlyEnded(row, filter.now)) stages[row.stage].push(toRelatedCard(row))
   }
-  return { stages, held, parked }
+  return { stages, held, parked, totals }
 }

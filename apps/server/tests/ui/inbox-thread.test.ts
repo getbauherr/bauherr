@@ -11,6 +11,10 @@ const event = (id: number, actor: 'owner' | 'factory', label: string) => ({
   actor,
   at: new Date().toISOString(),
   label,
+  kind: 'other' as const,
+  tone: 'neutral' as const,
+  state: null,
+  enters: null,
 })
 
 const textOf = (message: { content: unknown }): string =>

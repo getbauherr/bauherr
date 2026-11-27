@@ -59,6 +59,9 @@
 :root {
   --font-sans: var(--font-archivo), "Archivo", "Helvetica Neue", Arial, sans-serif;
   --font-mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --composer-bg: color-mix(in oklab, var(--color-muted) 30%, transparent);
+  --composer-radius: 1rem;
+  --composer-padding: 8px;
 }
 
 @layer base {
