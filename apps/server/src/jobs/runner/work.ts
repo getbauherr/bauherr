@@ -2,6 +2,7 @@ import { cloneRepo } from '@bauherr/runner'
 import { z } from 'zod'
 import { fold } from '../../core/fold'
 import { foldOptions } from '../../core/lifecycle'
+import { holdForRecordError } from '../../core/forge/limits'
 import { LeaseLost, ModuleMissing } from '../../core/run/errors'
 import { markDelivered, unseenComments, type NewComment } from '../../core/requests/handover'
 import { heartbeat, type Claimed } from '../../core/run/leases'
@@ -156,6 +157,11 @@ const run = async (claimed: Claimed, deps: RunnerDeps, checkout: Checkout, setup
   return sealed.ok ? conclude(working, sealed.facts) : fail(claimed, deps, sealed.reason)
 }
 
+const waitOutForge = async (claimed: Claimed, deps: RunnerDeps): Promise<Ended> => {
+  await releaseRun(claimed.run.id, claimed.token, deps.engine())
+  return 'released'
+}
+
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 export const workRun = async (claimed: Claimed, deps: RunnerDeps): Promise<Ended> => {
@@ -172,6 +178,8 @@ export const workRun = async (claimed: Claimed, deps: RunnerDeps): Promise<Ended
     if (error instanceof LeaseLost) return 'expired'
     const current = await readRun(deps.engine().payload, claimed.run.id)
     if (current.status !== 'claimed') throw error
+    const { payload, now } = deps.engine()
+    if (await holdForRecordError(payload, claimed.run.recordId, error, now)) return waitOutForge(claimed, deps)
     return fail(claimed, deps, messageOf(error))
   } finally {
     await checkout?.cleanup()

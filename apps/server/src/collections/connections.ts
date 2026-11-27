@@ -63,6 +63,7 @@ export const connections = col(
     },
     date('webhookDeliveredAt'),
     json('capabilities'),
+    { name: 'forgeLimits', type: 'json', admin: { hidden: true } },
   ],
   {
     indexes: [{ fields: ['workspace', 'slug'], unique: true }],

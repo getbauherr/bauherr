@@ -1,3 +1,4 @@
+import { IDEMPOTENT } from './retry.js';
 import type { Branch, RepoRef } from './contracts.js';
 import { Conflict } from './contracts.js';
 import type { GithubApi } from './github-api.js';
@@ -21,7 +22,8 @@ export class GithubForgeBase {
   ) {}
 
   protected async graphql(query: string, variables: Record<string, unknown>): Promise<unknown> {
-    const r = wire(await this.h.json('POST', '/graphql', { query, variables }));
+    const readOnly = !/\bmutation\b/.test(query);
+    const r = wire(await this.h.json('POST', '/graphql', { query, variables }, { idempotent: readOnly }));
     const errors = list(r.errors);
     if (errors.length) throw new Error(`GitHub GraphQL: ${errors.map((e) => field(e, 'message')).join('; ')}`);
     return r.data;
@@ -61,14 +63,16 @@ export class GithubForgeBase {
   }
   async resetBranch(repo: RepoRef, branch: string, sha: string) {
     try {
-      await this.h.json('PATCH', `/repos/${repo}/git/refs/heads/${encodePath(branch)}`, { sha, force: true });
+      const url = `/repos/${repo}/git/refs/heads/${encodePath(branch)}`;
+      await this.h.json('PATCH', url, { sha, force: true }, IDEMPOTENT);
     } catch (e) {
       if (!(e instanceof GithubError && ignoredRefStatuses.includes(e.status))) throw e;
       await this.h.json('POST', `/repos/${repo}/git/refs`, { ref: `refs/heads/${branch}`, sha });
     }
   }
   async deleteBranch(repo: RepoRef, branch: string) {
-    await this.h.json('DELETE', `/repos/${repo}/git/refs/heads/${encodePath(branch)}`).catch((e) => {
+    const url = `/repos/${repo}/git/refs/heads/${encodePath(branch)}`;
+    await this.h.json('DELETE', url, undefined, IDEMPOTENT).catch((e) => {
       if (!(e instanceof GithubError && ignoredRefStatuses.includes(e.status))) throw e;
     });
   }
@@ -78,7 +82,7 @@ export class GithubForgeBase {
         base: branch,
         head: headSha,
         commit_message: `bauherr train: merge ${headSha.slice(0, 7)}`,
-      });
+      }, IDEMPOTENT);
       if (m) return { sha: field(m, 'sha') };
       const ref = await this.h.json('GET', `/repos/${repo}/git/ref/heads/${encodePath(branch)}`);
       return { sha: field(get(ref, 'object'), 'sha') };

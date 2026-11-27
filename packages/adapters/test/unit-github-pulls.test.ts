@@ -79,6 +79,7 @@ void describe('github mergePullRequest', () => {
     const calls: { method: string; url: string; body: Wire | undefined }[] = [];
     const b = new GithubBackend({
       auth: patAuth('t'),
+      sleep: async () => {},
       fetch: async (u, init) => {
         const method = String(init?.method);
         calls.push({
@@ -87,7 +88,7 @@ void describe('github mergePullRequest', () => {
           body: bodyOf(init),
         });
         if (method === 'PUT') return json({ sha: 'm1', merged: true });
-        if (method === 'DELETE') return del;
+        if (method === 'DELETE') return del.clone();
         if (method === 'PATCH') return patch ?? json({});
         if (method === 'GET' && new URL(urlOf(u)).pathname === '/repos/o/r/pulls')
           return json(stacked.map((number) => ({ number })));

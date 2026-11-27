@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
+import { activeHolds } from '../../../core/forge/limits'
 import { isProductOwner } from '../../../lib/people'
 import { AutoRefresh } from '../components/AutoRefresh'
 import { EmptyState } from '../components/EmptyState'
+import { ForgeHoldBanner } from '../components/factory/ForgeHoldBanner'
 import { FactoryBody, FactoryTotals } from '../components/factory/FactorySections'
 import { BoardSkeleton } from '../components/skeletons'
 import { Skeleton } from '../components/ui/skeleton'
@@ -23,9 +25,12 @@ export default async function Factory({ searchParams }: { searchParams: Promise<
   const { show, product } = parseSearch(raw)
   const boardView = parseView(raw)
   const chunked = boardView.relation === undefined && !boardView.group
-  const factory = loadFactory(await payloadClient(), { workspace: workspace.id, ...(product && { product }) }, chunked)
+  const payload = await payloadClient()
+  const factory = loadFactory(payload, { workspace: workspace.id, ...(product && { product }) }, chunked)
+  const holds = await activeHolds(payload, workspace.id, new Date())
   return (
     <>
+      <ForgeHoldBanner holds={holds} />
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
         <h1 className="title">Factory</h1>
         <Suspense fallback={<Skeleton className="h-4 w-72" />}>

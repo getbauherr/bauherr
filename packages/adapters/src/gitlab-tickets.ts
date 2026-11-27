@@ -1,3 +1,4 @@
+import { IDEMPOTENT } from './retry.js';
 import type {
   CloseReason,
   LabelEvent,
@@ -49,7 +50,7 @@ export class GitlabTickets implements TicketSource {
     return this.h.json('GET', `${this.p}/issues/${id}`);
   }
   private edit(id: string, body: Record<string, unknown>) {
-    return this.h.json('PUT', `${this.p}/issues/${id}`, body);
+    return this.h.json('PUT', `${this.p}/issues/${id}`, body, IDEMPOTENT);
   }
   private async assigneesOf(id: string): Promise<unknown[]> {
     return list(wire(await this.issue(id)).assignees);
@@ -109,7 +110,7 @@ export class GitlabTickets implements TicketSource {
     return gitlabNote(await this.h.json('POST', `${this.p}/issues/${id}/notes`, { body }));
   }
   async updateComment(id: string, commentId: string, body: string) {
-    return gitlabNote(await this.h.json('PUT', `${this.p}/issues/${id}/notes/${commentId}`, { body }));
+    return gitlabNote(await this.h.json('PUT', `${this.p}/issues/${id}/notes/${commentId}`, { body }, IDEMPOTENT));
   }
   async listComments(id: string, since?: string) {
     const notes = (

@@ -1,3 +1,4 @@
+import { IDEMPOTENT } from './retry.js';
 import type { Deployment, DeploymentState, Release, RepoRef } from './contracts.js';
 import { GithubError } from './github-error.js';
 import { GithubMergeQueue } from './github-merge-queue.js';
@@ -61,7 +62,12 @@ export class GithubReleases extends GithubMergeQueue {
     );
     const fields = { tag_name: o.tag, target_commitish: o.sha, name: o.name, body: o.body, prerelease: !!o.prerelease };
     const r = draft
-      ? await this.h.json('PATCH', `/repos/${repo}/releases/${idText(wire(draft).id)}`, { ...fields, draft: false })
+      ? await this.h.json(
+          'PATCH',
+          `/repos/${repo}/releases/${idText(wire(draft).id)}`,
+          { ...fields, draft: false },
+          IDEMPOTENT,
+        )
       : await this.h.json('POST', `/repos/${repo}/releases`, fields);
     return {
       id: idText(wire(r).id),
@@ -101,7 +107,7 @@ export class GithubReleases extends GithubMergeQueue {
       draft: false,
       body: o.body,
       make_latest: 'true',
-    });
+    }, IDEMPOTENT);
     return (await this.releaseOf(repo, r))!;
   }
   async startDeploy(repo: RepoRef, o: { workflow: string; ref: string; inputs: Record<string, string> }) {
@@ -123,7 +129,7 @@ export class GithubReleases extends GithubMergeQueue {
     }
   }
   async updateRelease(repo: RepoRef, id: string, o: { body: string }) {
-    const r = await this.h.json('PATCH', `/repos/${repo}/releases/${id}`, { body: o.body });
+    const r = await this.h.json('PATCH', `/repos/${repo}/releases/${id}`, { body: o.body }, IDEMPOTENT);
     return (await this.releaseOf(repo, r))!;
   }
   async latestRelease(repo: RepoRef) {

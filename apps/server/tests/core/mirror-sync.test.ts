@@ -113,13 +113,14 @@ describe('failures and scope', () => {
     })
 
     const result = await sync({ [good]: readerOf(goodFake), [bad]: broken })
-    expect(result).toEqual({ synced: 1, failed: 1 })
+    expect(result).toEqual({ synced: 1, failed: 1, paused: 0 })
     expect(await numbersOf(good)).toEqual([1])
     expect((await source(goodId))?.last_error).toBeNull()
     expect((await source(badId))?.last_error).toBe('forge says 502')
     expect((await source(badId))?.cursor).toBeNull()
 
-    expect(await sync({ [good]: readerOf(goodFake), [bad]: readerOf(badFake) })).toEqual({ synced: 2, failed: 0 })
+    const both = await sync({ [good]: readerOf(goodFake), [bad]: readerOf(badFake) })
+    expect(both).toEqual({ synced: 2, failed: 0, paused: 0 })
     expect((await source(badId))?.last_error).toBeNull()
     expect(await numbersOf(bad)).toEqual([1, 2])
   })

@@ -5,6 +5,7 @@ import type { AdvanceDeps } from './engine'
 import type { Deferred } from './events'
 import { fold, type State } from './fold'
 import { ProductObserving, TargetNotFound, WrongItemKind } from './forge/errors'
+import { holdForRecordError } from './forge/limits'
 import { renderStatus } from './forge/status'
 import type { ForgeWriter, Target } from './forge/writer'
 import { foldOptions } from './lifecycle'
@@ -125,6 +126,7 @@ export const runEffects = async (deps: AdvanceDeps, recordId: number, effects: E
     try {
       await perform(deps, stored, target, effect, writer)
     } catch (error) {
+      await holdForRecordError(deps.payload, recordId, error, deps.now)
       if (REFUSALS.some((refusal) => error instanceof refusal) && error instanceof Error) {
         await recordRefusal(deps, stored, effect, error)
       }

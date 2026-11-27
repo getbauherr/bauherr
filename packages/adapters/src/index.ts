@@ -9,4 +9,5 @@ export * from './github-error.js';
 export * from './gitlab.js';
 export * from './gitlab-backend.js';
 export * from './http.js';
+export * from './retry.js';
 export * from './closing-issues.js';

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import {
   bootBlankPayload,
   forPayload,
+  insertConnection,
   insertProduct,
   insertSource,
   runSql,
@@ -44,9 +45,7 @@ it(
     await payload.db.migrate({ migrations: migrations.slice(0, i).map(forPayload) })
     const workspace = (await payload.create({ collection: 'workspaces', data: { name: 'W', slug: 'w' }, ...o })).id
     const product = await insertProduct(payload, workspace, 'p')
-    const connection = (
-      await payload.create({ collection: 'connections', data: { name: 'gh', kind: 'github', workspace }, ...o })
-    ).id
+    const connection = await insertConnection(payload, workspace, 'gh')
     await insertSource(payload, { repo: 'acme/app', product, connection, workspace })
     await runSql(
       payload,

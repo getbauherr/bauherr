@@ -1,3 +1,4 @@
+import { IDEMPOTENT } from './retry.js';
 import type {
   Check,
   Comment,
@@ -73,7 +74,7 @@ export class GithubPulls extends GithubForgeBase {
     return out.slice(0, limit);
   }
   async closePullRequest(repo: RepoRef, n: number) {
-    await this.h.json('PATCH', `/repos/${repo}/pulls/${n}`, { state: 'closed' });
+    await this.h.json('PATCH', `/repos/${repo}/pulls/${n}`, { state: 'closed' }, IDEMPOTENT);
   }
   async commentOnPullRequest(repo: RepoRef, n: number, body: string) {
     return githubComment(await this.h.json('POST', `/repos/${repo}/issues/${n}/comments`, { body }));
@@ -117,7 +118,7 @@ export class GithubPulls extends GithubForgeBase {
     }));
   }
   async retargetPullRequest(repo: RepoRef, n: number, base: string) {
-    await this.h.json('PATCH', `/repos/${repo}/pulls/${n}`, { base });
+    await this.h.json('PATCH', `/repos/${repo}/pulls/${n}`, { base }, IDEMPOTENT);
   }
   async mergePullRequest(
     repo: RepoRef,
@@ -143,7 +144,8 @@ export class GithubPulls extends GithubForgeBase {
           branchDeleteError: `kept ${p.head}: retargeting stacked PRs failed: ${errorMessage(e)}`,
         };
       }
-      await this.h.json('DELETE', `/repos/${repo}/git/refs/heads/${encodePath(p.head)}`).catch((e) => {
+      const ref = `/repos/${repo}/git/refs/heads/${encodePath(p.head)}`;
+      await this.h.json('DELETE', ref, undefined, IDEMPOTENT).catch((e) => {
         if (!(e instanceof GithubError && [404, 422].includes(e.status))) branchDeleteError = errorMessage(e);
       });
     }

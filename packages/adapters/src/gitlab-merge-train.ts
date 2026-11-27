@@ -1,3 +1,4 @@
+import { IDEMPOTENT } from './retry.js';
 import type { PullRequest, RepoRef } from './contracts.js';
 import { MergePendingError, NotQueueableError } from './contracts.js';
 import { GitlabError } from './gitlab.js';
@@ -180,7 +181,8 @@ export class GitlabMergeTrain extends GitlabMergeRequests {
           branchDeleteError: `kept ${before.head}: retargeting stacked MRs failed: ${errorMessage(e)}`,
         };
       }
-      await this.h.json('DELETE', `/projects/${enc(repo)}/repository/branches/${enc(before.head)}`).catch((e) => {
+      const branch = `/projects/${enc(repo)}/repository/branches/${enc(before.head)}`;
+      await this.h.json('DELETE', branch, undefined, IDEMPOTENT).catch((e) => {
         if (!(e instanceof GitlabError && e.status === 404)) branchDeleteError = errorMessage(e);
       });
     }

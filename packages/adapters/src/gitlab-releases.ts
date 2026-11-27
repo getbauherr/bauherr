@@ -1,3 +1,4 @@
+import { IDEMPOTENT } from './retry.js';
 import type { Deployment, DeploymentState, RepoRef } from './contracts.js';
 import { GitlabError } from './gitlab.js';
 import { gitlabRelease, isGitlabPrerelease } from './gitlab-mappers.js';
@@ -76,7 +77,7 @@ export class GitlabReleases extends GitlabMergeTrain {
       await this.h.json('PUT', `/projects/${enc(repo)}/releases/${enc(id)}`, {
         description: o.body,
         released_at: new Date().toISOString(),
-      }),
+      }, IDEMPOTENT),
     );
   }
   async startDeploy(repo: RepoRef, o: { workflow: string; ref: string; inputs: Record<string, string> }) {
@@ -97,7 +98,7 @@ export class GitlabReleases extends GitlabMergeTrain {
   }
   async updateRelease(repo: RepoRef, id: string, o: { body: string }) {
     return gitlabRelease(
-      await this.h.json('PUT', `/projects/${enc(repo)}/releases/${enc(id)}`, { description: o.body }),
+      await this.h.json('PUT', `/projects/${enc(repo)}/releases/${enc(id)}`, { description: o.body }, IDEMPOTENT),
     );
   }
   async latestRelease(repo: RepoRef) {

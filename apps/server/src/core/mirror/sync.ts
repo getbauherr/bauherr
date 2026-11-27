@@ -2,6 +2,7 @@ import type { Ticket } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { syncRelations } from '../relations/sync'
 import { connectionInput } from '../../lib/connection'
+import { holdForError, pollWaits, saveBudget } from '../forge/limits'
 import { readerFor, type ForgeReader, type ReadTickets } from '../forge/reader'
 import { refreshFacts } from './facts'
 import { commentRow, errorText, isDue, itemFromTicket, laterOf, lookbackFrom, takeBatch } from './map'
@@ -28,7 +29,7 @@ export type SyncDeps = {
   afterStored?: (source: SourceRow, itemIds: number[]) => Promise<void>
 }
 
-export type SyncResult = { synced: number; failed: number }
+export type SyncResult = { synced: number; failed: number; paused: number }
 
 export type StoredIssue = { item: number; ticket: Ticket }
 
@@ -119,17 +120,27 @@ const syncOne = async (payload: Payload, source: SourceRow, reader: ForgeReader,
 }
 
 export const syncSources = async (payload: Payload, deps: SyncDeps): Promise<SyncResult> => {
-  const result: SyncResult = { synced: 0, failed: 0 }
+  const result: SyncResult = { synced: 0, failed: 0, paused: 0 }
   for (const source of await liveSources(payload)) {
     const now = deps.now()
+    if (await pollWaits(payload, source, now)) {
+      result.paused++
+      continue
+    }
     try {
       const stored = await syncOne(payload, source, await deps.reader(source), now)
       await deps.afterStored?.(source, stored)
       result.synced++
     } catch (error) {
-      result.failed++
-      await finishSource(payload, source.id, { error: errorText(error), polledAt: now })
+      const held = await holdForError(payload, source.connection, error, now)
+      if (held?.reason === 'rate-limit') {
+        result.paused++
+      } else {
+        result.failed++
+        await finishSource(payload, source.id, { error: errorText(error), polledAt: now })
+      }
     }
+    await saveBudget(payload, source.connection)
   }
   return result
 }
