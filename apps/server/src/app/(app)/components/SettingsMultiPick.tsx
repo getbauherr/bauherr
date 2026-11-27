@@ -143,7 +143,7 @@ export function MultiPick({
     >
       <legend className="small p-0 font-medium text-foreground">{legend}</legend>
       {hint && <span className="small text-muted-foreground">{hint}</span>}
-      <input
+      <Input
         type="hidden"
         name={name}
         value={items

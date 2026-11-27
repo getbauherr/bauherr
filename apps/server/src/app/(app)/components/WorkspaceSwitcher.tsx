@@ -35,11 +35,15 @@ function WorkspaceItems({
     <>
       {workspaces.map((w) => (
         <form key={w.slug} action={selectWorkspace.bind(null, w.slug)}>
-          <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
-            <button aria-current={w.slug === current}>
-              {w.name}
-              {w.slug === current && <Check />}
-            </button>
+          <DropdownMenuItem
+            aria-current={w.slug === current}
+            onSelect={(e) => {
+              e.preventDefault()
+              if (e.target instanceof Element) e.target.closest('form')?.requestSubmit()
+            }}
+          >
+            {w.name}
+            {w.slug === current && <Check />}
           </DropdownMenuItem>
         </form>
       ))}

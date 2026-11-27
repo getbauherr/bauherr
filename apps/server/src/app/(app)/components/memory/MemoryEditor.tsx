@@ -10,6 +10,7 @@ import { memoryState } from './editor-view'
 import { MemoryFooter } from './MemoryFooter'
 import { MemoryPreview } from './MemoryPreview'
 import { MemoryToolbar } from './MemoryToolbar'
+import { Button } from '../ui/button'
 
 type Props = { choice: DocumentChoice; initial: string; maxLines: number; mayChange: boolean; whoMay: string }
 type Tab = 'write' | 'preview'
@@ -57,22 +58,23 @@ export function MemoryEditor({ choice, initial, maxLines, mayChange, whoMay }: P
       <div className="rounded-md border border-border bg-card">
         <div role="tablist" aria-label="Document view" className="flex border-b border-border px-3">
           {TABS.map(({ id, label }) => (
-            <button
+            <Button
               key={id}
               type="button"
+              variant="ghost"
               role="tab"
               id={`memory-tab-${id}`}
               aria-selected={tab === id}
               aria-controls={`memory-panel-${id}`}
               onClick={() => setTab(id)}
               className={cn(
-                '-mb-px border-b-2 border-transparent bg-transparent px-3 py-2.5 text-muted-foreground outline-none',
-                'focus-visible:ring-2 focus-visible:ring-ring',
+                '-mb-px h-auto rounded-none border-b-2 border-transparent px-3 py-2.5 font-normal',
+                'text-[length:inherit] text-muted-foreground hover:bg-transparent',
                 tab === id && 'border-primary font-medium text-foreground',
               )}
             >
               {label}
-            </button>
+            </Button>
           ))}
         </div>
         <div role="tabpanel" id="memory-panel-write" aria-labelledby="memory-tab-write" hidden={tab !== 'write'}>

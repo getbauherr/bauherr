@@ -210,7 +210,7 @@ Use the primitive in the right column; do not build another.
 | Action | `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `success`, `link`; `icon` sizes) |
 | Status word or count | `Badge` (`success`, `warning`, `destructive`, `accent`, `secondary`, `outline`) or `WordBadge` for activity words |
 | Text, long text, option list | `Input`, `Textarea`, `Select` (searchable or styled), `NativeSelect` (plain list, form posts) |
-| Yes or no | `Checkbox` (one of many), `Switch` (takes effect), `ToggleGroup` (pick one or more from a short row) |
+| Yes or no | `Checkbox` (one of many), `Radio` (one of a few in a form), `Switch` (takes effect), `ToggleGroup` (pick one or more from a short row) |
 | Form with validation | `Form` (react-hook-form and zod) with `Label` |
 | Surface, notice, data | `Card`, `Alert`, `Table` |
 | Switch views of one page | `Tabs` |
@@ -230,6 +230,7 @@ Use the primitive in the right column; do not build another.
 - `card.tsx`: `asChild`. `command.tsx`: `trigger`, `shouldFilter={false}` (the palette filters its own list), and the sr-only title and description inside the content so a closed palette adds no heading or text to the page.
 - `breadcrumb.tsx`: the nav label is `Breadcrumb`, which tests and e2e query.
 - `checkbox.tsx`: the previous native `<input type="checkbox">`, not Radix. The Radix version made `/settings/bauherren` hydrate 100 ms slower (e2e/perf.spec.ts budget).
+- `radio.tsx`: not from the registry (the shadcn `RadioGroup` is Radix). A native `<input type="radio">` so form posts and `has-checked:` label styles keep working.
 - `skeleton.tsx`: `shimmer shimmer-bg` (tw-shimmer, a 6% ink band) instead of `animate-pulse`; still under `prefers-reduced-motion`.
 - `sonner.tsx`: no `next-themes`; colors come from the tokens.
 - `sidebar.tsx`, `sidebar-context.tsx`, `sidebar-menu.tsx`, `sidebar-cookie.ts`: not re-pulled; the registry file is over the 300-line limit, so it stays split.

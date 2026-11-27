@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../ui/dialog'
+import { Input } from '../ui/input'
 
 type Setting = 'required-checks' | 'risk-areas'
 
@@ -52,8 +53,8 @@ export function SettingFix({ product, check, setting, label, value }: FixProps &
       </DialogTrigger>
       <DialogContent>
         <form action={action} className="grid gap-4">
-          <input type="hidden" name="id" value={product} />
-          <input type="hidden" name="check" value={check} />
+          <Input type="hidden" name="id" value={product} />
+          <Input type="hidden" name="check" value={check} />
           <DialogHeader>
             <DialogTitle>{words.title}</DialogTitle>
             <DialogDescription>{words.text}</DialogDescription>
@@ -76,28 +77,30 @@ export function TicketFix({ product, check, label }: FixProps & { label: string 
   const [state, action, pending] = useActionState(makeReadinessTicket, {})
   return (
     <form action={action} className="grid justify-items-end gap-1">
-      <input type="hidden" name="id" value={product} />
-      <input type="hidden" name="check" value={check} />
+      <Input type="hidden" name="id" value={product} />
+      <Input type="hidden" name="check" value={check} />
       <Button variant="outline" disabled={pending}>{label}</Button>
       {state.error && <span role="alert" className="small max-w-64 text-destructive">{state.error}</span>}
     </form>
   )
 }
 
-const LINK_BUTTON =
-  'small cursor-pointer border-0 bg-transparent p-0 text-primary underline underline-offset-2 disabled:no-underline'
-
 export function CheckNow({ product, button = false }: { product: number; button?: boolean }) {
   const [state, action, pending] = useActionState(checkReadinessNow, {})
   return (
     <form action={action} className="inline-flex flex-wrap items-baseline gap-2">
-      <input type="hidden" name="id" value={product} />
+      <Input type="hidden" name="id" value={product} />
       {button ? (
         <Button variant="outline" disabled={pending}>{pending ? 'Checking' : 'Check now'}</Button>
       ) : (
-        <button type="submit" disabled={pending} className={LINK_BUTTON}>
+        <Button
+          type="submit"
+          variant="link"
+          disabled={pending}
+          className="small h-auto p-0 font-normal underline underline-offset-2 disabled:no-underline"
+        >
           {pending ? 'Checking' : 'Check now'}
-        </button>
+        </Button>
       )}
       {state.error && <span role="alert" className="small text-destructive">{state.error}</span>}
     </form>

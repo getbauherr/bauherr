@@ -6,6 +6,7 @@ import { DAYS, LIMIT } from '../../lib/product-sections'
 import { Field, MultiPick, SettingsForm } from '../SettingsForm'
 import { SettingsSection, ToggleRow } from '../SettingsParts'
 import { Editable } from './Editable'
+import { Input } from '../ui/input'
 
 const PURPOSE = 'Which issues enter, how many an outsider may add and when a reporter is chased.'
 
@@ -26,7 +27,7 @@ export function IntakeSection({ product, admin }: Props) {
       </p>
       <Editable admin={admin}>
         <SettingsForm action={saveIntake} submit="Save intake">
-          <input type="hidden" name="id" value={product.id} />
+          <Input type="hidden" name="id" value={product.id} />
           <MultiPick
             name="excludedLabels"
             legend="Excluded labels"

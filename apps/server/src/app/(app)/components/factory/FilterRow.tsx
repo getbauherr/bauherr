@@ -4,6 +4,7 @@ import { RELATION_FILTERS, RELATION_LABELS, type BoardView, type RelationFilter 
 import { filterHref, SHOW_LABELS, SHOWS, type Show } from '../../lib/factory'
 import { Button } from '../ui/button'
 import { NativeSelect } from '../ui/native-select'
+import { Input } from '../ui/input'
 
 type Props = {
   show: Show
@@ -61,9 +62,9 @@ export function FilterRow({ show, product, counts, products, view, relationCount
       </nav>
       {products.length > 1 && (
         <form action="/" method="get" className="ml-auto flex items-center gap-2">
-          {show !== 'all' && <input type="hidden" name="show" value={show} />}
-          {view.relation && <input type="hidden" name="relation" value={view.relation} />}
-          {view.group && <input type="hidden" name="group" value="parent" />}
+          {show !== 'all' && <Input type="hidden" name="show" value={show} />}
+          {view.relation && <Input type="hidden" name="relation" value={view.relation} />}
+          {view.group && <Input type="hidden" name="group" value="parent" />}
           <label htmlFor="factory-product" className="small text-muted-foreground">Product</label>
           <NativeSelect id="factory-product" name="product" defaultValue={product ?? ''} className="h-8">
             <option value="">All</option>

@@ -1,6 +1,7 @@
 import { SettingsForm } from '../SettingsForm'
 import { Table } from '../ui/table'
 import { revokeOwnAgentKey } from '../../(shell)/settings/actions'
+import { Input } from '../ui/input'
 
 type Key = { id: number; label: string; prefix: string; lastUsedAt?: string; revokedAt?: string }
 
@@ -29,7 +30,7 @@ export function AgentKeyTable({ keys }: { keys: Key[] }) {
             <td>
               {!k.revokedAt && (
                 <SettingsForm action={revokeOwnAgentKey} submit="Revoke" confirm="Confirm revoke" inline>
-                  <input type="hidden" name="id" value={k.id} />
+                  <Input type="hidden" name="id" value={k.id} />
                 </SettingsForm>
               )}
             </td>

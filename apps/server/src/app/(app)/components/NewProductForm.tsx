@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createProductWithRepo, repositoriesOf } from '../(shell)/settings/actions'
 import { OTHER_REPO, slugOf } from '../lib/new-product'
 import { Field, SettingsForm } from './SettingsForm'
+import { Input } from './ui/input'
 
 type Listing = string[] | null | 'loading'
 
@@ -35,7 +36,7 @@ function AccountField({
 }) {
   return connections.length === 1 ? (
     <>
-      <input type="hidden" name="connection" value={connection} />
+      <Input type="hidden" name="connection" value={connection} />
       <p className="small">
         Account <span className="font-medium text-foreground">{connections[0].name}</span>
       </p>
@@ -113,7 +114,7 @@ export function NewProductForm({ connections }: { connections: { id: number; nam
   const [slugEdited, setSlugEdited] = useState(false)
   return (
     <SettingsForm action={createProductWithRepo} submit="Add Product" primary>
-      <input type="hidden" name="open" value="1" />
+      <Input type="hidden" name="open" value="1" />
       <Field
         name="name"
         label="Product name"

@@ -7,6 +7,7 @@ import { Field, SettingsForm } from '../SettingsForm'
 import { SettingsSection, ToggleRow } from '../SettingsParts'
 import { Editable } from './Editable'
 import { RiskAreaPicks } from './RiskAreaPicks'
+import { Input } from '../ui/input'
 
 const PURPOSE =
   'A Brief card goes to you when it has an open decision, a change that cannot be undone, ' +
@@ -25,7 +26,7 @@ export function GatesSection({ product, admin }: Props) {
     <SettingsSection id="gates" title="Gates" purpose={PURPOSE}>
       <Editable admin={admin}>
         <SettingsForm action={saveGates} submit="Save gates">
-          <input type="hidden" name="id" value={product.id} />
+          <Input type="hidden" name="id" value={product.id} />
           <RiskAreaPicks sets={product.pathSets} chosen={product.riskAreas} />
           <Field
             name="backlogBriefLimit"
@@ -53,7 +54,7 @@ export function GatesSection({ product, admin }: Props) {
           />
         </SettingsForm>
         <SettingsForm action={savePathSets} submit="Save path sets">
-          <input type="hidden" name="id" value={product.id} />
+          <Input type="hidden" name="id" value={product.id} />
           <Field
             name="sets"
             label="Path sets"

@@ -10,6 +10,7 @@ import { Editable } from './Editable'
 import { MirrorState } from './MirrorState'
 import { ProductStateForm } from './ProductStateForm'
 import { RemoveDoc } from './RemoveDoc'
+import { Input } from '../ui/input'
 
 const EXECUTORS = [
   { value: 'session', title: 'An agent session', text: 'Your own agent connects over MCP and takes the queued runs.' },
@@ -72,7 +73,7 @@ function AddRepository({ product, connections }: { product: ProductSettings; con
       <summary className="small cursor-pointer text-primary">Add a repository</summary>
       <div className="mt-3">
         <SettingsForm action={addRepository} submit="Add repository" reset>
-          <input type="hidden" name="id" value={product.id} />
+          <Input type="hidden" name="id" value={product.id} />
           <RepositoryFields connections={connections} />
         </SettingsForm>
       </div>
@@ -113,7 +114,7 @@ export function RepositorySection({ product, connections, admin }: Props) {
       <Repositories product={product} />
       <Editable admin={admin}>
         <SettingsForm action={saveExecutor} submit="Save">
-          <input type="hidden" name="id" value={product.id} />
+          <Input type="hidden" name="id" value={product.id} />
           <RadioCards name="executor" legend="Who works the runs?" value={product.executor} options={EXECUTORS} />
         </SettingsForm>
       </Editable>

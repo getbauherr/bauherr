@@ -4,6 +4,7 @@ import { DEPLOY_MINUTES, namesIn } from '../../lib/product-sections'
 import { Field, MultiPick, SettingsForm } from '../SettingsForm'
 import { SettingsSection } from '../SettingsParts'
 import { Editable } from './Editable'
+import { Input } from '../ui/input'
 
 type Props = { product: ProductSettings; forgeChecks: string[]; admin: boolean }
 
@@ -16,14 +17,14 @@ export function ProofSection({ product, forgeChecks, admin }: Props) {
       <Editable admin={admin}>
         {offer && (
           <SettingsForm action={copyForgeChecks} submit="Use the checks the forge requires">
-            <input type="hidden" name="id" value={product.id} />
+            <Input type="hidden" name="id" value={product.id} />
             <p className="small text-muted-foreground">
               The forge requires <span className="mono">{forgeChecks.join(' · ')}</span>.
             </p>
           </SettingsForm>
         )}
         <SettingsForm action={saveProof} submit="Save proof">
-          <input type="hidden" name="id" value={product.id} />
+          <Input type="hidden" name="id" value={product.id} />
           <MultiPick
             name="requiredChecks"
             legend="Required checks"

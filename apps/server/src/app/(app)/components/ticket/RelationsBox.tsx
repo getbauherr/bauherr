@@ -37,15 +37,17 @@ function Row({ ticket, group, label, remove, disabled }: Props & { ticket: Relat
         {ticket.title} <span className="text-muted-foreground">{ticket.stage}</span>
       </span>
       {remove && (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="xs"
           disabled={disabled}
           aria-label={`Remove ${label} #${ticket.number}`}
           onClick={() => remove(group, ticket.itemId)}
           className="shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-50"
         >
           ✕
-        </button>
+        </Button>
       )}
     </li>
   )
@@ -83,14 +85,15 @@ function TicketPicker({
   const results = useSearch(recordId, query)
   if (chosen) {
     return (
-      <button
+      <Button
         type="button"
+        variant="outline"
         aria-label="Ticket"
-        className="small truncate rounded-md border px-3 py-2 text-left"
+        className="small h-auto justify-start truncate rounded-md px-3 py-2 text-left font-normal"
         onClick={() => choose(null)}
       >
         #{chosen.number} {chosen.title} ✕
-      </button>
+      </Button>
     )
   }
   return (
@@ -105,16 +108,17 @@ function TicketPicker({
         <ul aria-label="Matching tickets" className="m-0 grid max-h-48 list-none gap-0 overflow-y-auto p-0">
           {results.map((candidate) => (
             <li key={candidate.itemId}>
-              <button
+              <Button
                 type="button"
-                className="small w-full truncate rounded px-2 py-1 text-left hover:bg-secondary"
+                variant="ghost"
+                className="small h-auto w-full justify-start truncate rounded px-2 py-1 font-normal hover:bg-secondary"
                 onClick={() => {
                   setQuery('')
                   choose(candidate)
                 }}
               >
                 #{candidate.number} {candidate.title}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

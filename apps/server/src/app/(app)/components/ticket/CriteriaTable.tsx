@@ -5,6 +5,7 @@ import { CRITERION_WORDS, PROOF_WORDS, ticketHref, VERIFY_WORDS, type Tab } from
 import { WordBadge } from '../WordBadge'
 import { ImageGallery } from './ImageGallery'
 import { RefText } from '../RefText'
+import { Table } from '../ui/table'
 
 const TABLE = 'w-full border-collapse overflow-hidden rounded-md border border-border'
 const TH = 'label border-b border-border bg-secondary px-3 py-2 text-left font-medium text-muted-foreground'
@@ -39,7 +40,7 @@ export function CriteriaTable(props: Props) {
   const result = props.mode === 'result' ? props : null
   return (
     <div className="overflow-x-auto">
-      <table className={TABLE}>
+      <Table className={TABLE}>
         <caption className="sr-only">Acceptance criteria</caption>
         <thead>
           <tr>
@@ -64,7 +65,7 @@ export function CriteriaTable(props: Props) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </Table>
     </div>
   )
 }

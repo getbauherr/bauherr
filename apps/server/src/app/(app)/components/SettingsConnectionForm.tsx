@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { saveConnection } from '../(shell)/settings/actions'
 import { Field, PickField, SettingsForm } from './SettingsForm'
+import { Input } from './ui/input'
 
 const LABELS: Record<string, string> = {
   baseUrl: 'Base URL',
@@ -189,7 +190,7 @@ export function ConnectionForm({
   const preset = presets[provider]
   return (
     <SettingsForm action={saveConnection} submit={submit} reset={reset} primary={primary}>
-      {value?.id && <input type="hidden" name="id" value={value.id} />}
+      {value?.id && <Input type="hidden" name="id" value={value.id} />}
       <Field name="name" label="Name" defaultValue={value?.name} required />
       <Field
         name="kind"

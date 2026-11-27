@@ -6,6 +6,7 @@ import { Button } from '../ui/button'
 import { NativeSelect } from '../ui/native-select'
 import { RangeFields } from './RangeFields'
 import { StartButton } from './StartButton'
+import { Input } from '../ui/input'
 
 type Props = { data: StartData; params: Record<string, string | undefined> }
 
@@ -53,7 +54,7 @@ export function StartForm({ data, params }: Props) {
         to={params.to ?? ''}
         lastLabel={last ? `Since the last Retro (${shortDate(last.to.toISOString())})` : 'Last 30 days'}
       />
-      {since && <input type="hidden" name="since" value={since} />}
+      {since && <Input type="hidden" name="since" value={since} />}
       <Button type="submit" variant="outline" className="w-fit">
         Show what this range holds
       </Button>

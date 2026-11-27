@@ -7,6 +7,7 @@ import { DeleteWorkspace } from '../../../components/DeleteWorkspace'
 import { currentWorkspace, payloadClient } from '../../../lib/session'
 import { archivedWorkspaces, deleteImpact, RESTORE_DAYS } from '../../../../../lib/workspace-delete'
 import { createWorkspace, restoreWorkspaceAction, rotateWorkspaceKey, saveGeneral } from '../actions'
+import { Input } from '../../../components/ui/input'
 
 export const dynamic = 'force-dynamic'
 
@@ -40,7 +41,7 @@ const Archived = ({ list }: { list: Awaited<ReturnType<typeof archivedWorkspaces
               <td>Restorable until {new Date(a.purgeAt).toLocaleDateString('en-GB', { dateStyle: 'medium' })}</td>
               <td>
                 <SettingsForm action={restoreWorkspaceAction} submit="Restore" inline>
-                  <input type="hidden" name="id" value={a.id} />
+                  <Input type="hidden" name="id" value={a.id} />
                 </SettingsForm>
               </td>
             </tr>

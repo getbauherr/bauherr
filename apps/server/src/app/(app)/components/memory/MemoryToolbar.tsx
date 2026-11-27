@@ -7,6 +7,7 @@ import { SECTIONS } from '../../../../core/memory-sections'
 import { Badge } from '../ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip'
 import { TOOLS } from './editor-commands'
+import { Button } from '../ui/button'
 
 const ICONS: Record<string, LucideIcon> = {
   bold: Bold,
@@ -38,20 +39,21 @@ export function MemoryToolbar({ view, disabled }: Props) {
               return (
                 <Tooltip key={tool.id}>
                   <TooltipTrigger asChild>
-                    <button
+                    <Button
                       type="button"
+                      variant="ghost"
+                      size="icon-sm"
                       disabled={disabled}
                       aria-label={tool.label}
                       aria-keyshortcuts={tool.shortcut?.replace('Ctrl', 'Control')}
                       onClick={() => press(tool.run)}
                       className={cn(
-                        'inline-flex size-8 items-center justify-center rounded-md text-foreground outline-none',
-                        'hover:bg-secondary focus-visible:ring-2 focus-visible:ring-ring',
+                        'rounded-md text-foreground hover:bg-secondary',
                         'disabled:cursor-not-allowed disabled:text-muted-foreground',
                       )}
                     >
                       <Icon className="size-4" aria-hidden />
-                    </button>
+                    </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
                     {tool.label}

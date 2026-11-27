@@ -65,6 +65,10 @@
       "registry": "popover",
       "source": "shadcn"
     },
+    "ui/radio.tsx": {
+      "registry": null,
+      "source": "local"
+    },
     "ui/resizable.tsx": {
       "registry": "resizable",
       "source": "shadcn"

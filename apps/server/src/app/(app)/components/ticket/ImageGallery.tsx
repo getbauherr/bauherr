@@ -2,8 +2,9 @@
 import { useRef, useState } from 'react'
 import { sourceOf, type ImageRef } from './image-ref'
 import { ImageViewer } from './ImageViewer'
+import { Button } from '../ui/button'
 
-const TRIGGER = 'block rounded-md border border-border outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const TRIGGER = 'block h-auto rounded-md border border-border p-0 hover:bg-transparent'
 const THUMB = 'block h-24 w-auto max-w-56 rounded-md object-cover'
 const LAYOUTS = {
   row: { list: 'm-0 flex list-none flex-wrap gap-4 p-0', item: 'grid max-w-56 gap-1', thumb: THUMB },
@@ -32,12 +33,12 @@ export function ImageGallery({ images, captions = false, columns = false, large 
       <ul className={layout.list}>
         {images.map((image, index) => (
           <li key={image.id} className={layout.item}>
-            <button type="button" className={TRIGGER} onClick={(event) => {
+            <Button type="button" variant="ghost" className={TRIGGER} onClick={(event) => {
                 opener.current = event.currentTarget
                 setShown(index)
               }}>
               <img src={sourceOf(image)} alt={image.caption} className={layout.thumb} />
-            </button>
+            </Button>
             {captions && <span className="small text-muted-foreground">{image.caption}</span>}
           </li>
         ))}
