@@ -1,19 +1,23 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RUN_GID, RUN_UID, runIdentity } from '../src/identity.js';
+import { claimIdentity } from '../src/identity.js';
 
-if (runIdentity()) {
-  const config = join(mkdtempSync(join(tmpdir(), 'gitconfig-')), 'config');
+if (process.getuid?.() === 0) {
+  const folder = mkdtempSync(join(tmpdir(), 'gitconfig-'));
+  chmodSync(folder, 0o755);
+  const config = join(folder, 'config');
   writeFileSync(config, '[safe]\n\tdirectory = *\n');
+  chmodSync(config, 0o644);
   process.env.GIT_CONFIG_GLOBAL = config;
 }
 
 export function handOver<T extends string>(path: T): T {
-  if (runIdentity()) execFileSync('chown', ['-R', `${RUN_UID}:${RUN_GID}`, path]);
+  const owner = claimIdentity(path);
+  if (owner) execFileSync('chown', ['-R', `${owner.uid}:${owner.gid}`, path]);
   return path;
 }
 
@@ -113,5 +117,6 @@ export function makeBareRepo(): string {
   g(work, 'add', '-A');
   g(work, 'commit', '-m', 'init');
   g(work, 'push', bare, 'main');
-  return `file://${handOver(root)}`;
+  execFileSync('chmod', ['-R', 'a+rwX', root]);
+  return `file://${root}`;
 }

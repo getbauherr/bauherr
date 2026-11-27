@@ -14,7 +14,7 @@ const freshState = (): AgentState => ({ toolCalls: [], steps: [], results: [], a
 const agentOptions = (over: Partial<AgentOptions> = {}): AgentOptions => ({
   runId: 'r1',
   model: 'stub-model',
-  cwd: tmpdir(),
+  cwd: handOver(mkdtempSync(join(tmpdir(), 'opts-'))),
   home: tmpdir(),
   proxyUrl: 'http://127.0.0.1:1',
   instructions: '',
@@ -106,7 +106,7 @@ for (const preset of PRESET_KEYS) {
 }
 
 await test('a read-only agent has no shell and no Edit, and writes only its writable paths', async () => {
-  const cwd = mkdtempSync(join(tmpdir(), 'ro-'));
+  const cwd = handOver(mkdtempSync(join(tmpdir(), 'ro-')));
   mkdirSync(join(cwd, 'src'));
   const state = freshState();
   const opts = buildOptions(agentOptions({ cwd, home: cwd, readOnly: true, writablePaths: ['.bauherr/'] }), state);

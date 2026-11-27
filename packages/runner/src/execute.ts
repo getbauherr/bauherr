@@ -1,4 +1,5 @@
 import { buildOptions, runAgent, type AgentOptions, type AgentState } from './agent.js';
+import { killRunProcesses } from './identity.js';
 import { startProxy } from './proxy.js';
 
 export type ExecuteOptions = Omit<AgentOptions, 'proxyUrl' | 'instructions'> & {
@@ -55,6 +56,7 @@ export async function execute(o: ExecuteOptions): Promise<Executed> {
   } finally {
     clearTimeout(timer);
     await proxy.close();
+    await killRunProcesses(o.cwd);
   }
   const reason = failure(state, timedOut, o.timeoutMs, crash) ?? crash;
   if (reason !== null || !state.result) return { ok: false, reason: reason ?? 'the agent did not run' };

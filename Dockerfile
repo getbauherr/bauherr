@@ -1,7 +1,7 @@
 FROM node:24-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates procps && rm -rf /var/lib/apt/lists/* && corepack enable
-# The Runner drops to this user (uid/gid = RUN_UID/RUN_GID in packages/runner/src/identity.ts) for the agent, its git and its proof commands.
-RUN groupadd --gid 10001 runner && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin runner
+# Each concurrent Run drops to its own user of this pool (uid = gid = FIRST_RUN_UID + slot, RUN_SLOTS in packages/runner/src/identity.ts) for the agent, its git and its proof commands.
+RUN for i in $(seq 0 31); do groupadd --gid $((10001+i)) runner$i && useradd --uid $((10001+i)) --gid $((10001+i)) --no-create-home --shell /usr/sbin/nologin runner$i; done
 WORKDIR /repo
 # Manifests first: the install layer is reused until a manifest or the lockfile changes.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./

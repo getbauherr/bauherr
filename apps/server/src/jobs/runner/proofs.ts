@@ -84,7 +84,7 @@ const run = async (checkout: Checkout, command: string): Promise<Ran> => {
     timeout: COMMAND_TIMEOUT_MS,
     maxBuffer: BUFFER_BYTES,
     killSignal: 'SIGKILL' as const,
-    ...runIdentity(),
+    ...runIdentity(checkout.dir),
   }
   const header = (exitCode: number, note = '') => `$ ${command}\nexit code: ${exitCode}${note}\n\n`
   try {
