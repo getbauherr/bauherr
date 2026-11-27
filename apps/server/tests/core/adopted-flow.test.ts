@@ -106,7 +106,11 @@ describe('an adopted pull request against the fake forge', () => {
       adopted: { pr: s.pr, author: 'jo' },
     })
     expect(card && whoOf(card)).toBe('others')
-    const inbox = await loadInbox(f.h.payload(), { workspace: f.h.ids.workspace, now: f.clock.now }, 50)
+    const inbox = await loadInbox(f.h.payload(), { workspace: f.h.ids.workspace, now: f.clock.now }, {
+      working: 50,
+      others: 50,
+      done: 50,
+    })
     expect(inbox.others.cards.some((c) => c.recordId === s.id)).toBe(true)
     const view = await ticket(f.h.payload(), { workspace: f.h.ids.workspace, recordId: s.id })
     expect(view).toMatchObject({ status: 'waiting-on-author', adopted: { pr: s.pr, author: 'jo' } })

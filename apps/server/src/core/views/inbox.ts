@@ -9,6 +9,7 @@ import { ago, LIVE_RUN_SQL, LIVE_SQL, scope, STUCK_SQL, TERMINAL_LIST } from './
 export const INBOX_GROUPS = ['you', 'working', 'others', 'done'] as const
 export type InboxGroupId = (typeof INBOX_GROUPS)[number]
 
+export type PagedInboxGroup = Exclude<InboxGroupId, 'you'>
 export type InboxCursor = { updatedAt: string; id: number }
 export type InboxChunk = { cards: BoardCard[]; total: number; cursor: InboxCursor | null }
 
@@ -61,14 +62,17 @@ const chunkOf = (keys: z.infer<typeof keyRow>[], cards: Map<number, BoardCard>, 
 export const loadInbox = async (
   payload: Payload,
   filter: RowFilter,
-  pageSize: number,
+  firstSizes: Record<PagedInboxGroup, number>,
 ): Promise<Record<InboxGroupId, InboxChunk>> => {
   const result = await payload.db.drizzle.execute(sql`
     SELECT w.* FROM (
       SELECT k.*, row_number() OVER (PARTITION BY grp ORDER BY at DESC, id DESC) AS rn,
         count(*) OVER (PARTITION BY grp) AS n
       FROM (${keys(filter)}) k) w
-    WHERE w.grp = 'you' OR w.rn <= ${pageSize}
+    WHERE w.grp = 'you' OR w.rn <= CASE w.grp
+      WHEN 'working' THEN ${firstSizes.working}::int
+      WHEN 'others' THEN ${firstSizes.others}::int
+      ELSE ${firstSizes.done}::int END
     ORDER BY w.grp, w.rn`)
   const found = result.rows.map((row) => keyRow.parse(row))
   const cards = await cardsOf(payload, filter, found.map((row) => row.id))
