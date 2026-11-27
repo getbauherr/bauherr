@@ -19,6 +19,14 @@ import { RequestQuestions } from './RequestQuestions'
 import { useRequestSession, type Initial } from './useRequestSession'
 import type { DraftView } from '../../../../core/requests/view'
 
+const COLUMN = [
+  'flex min-h-[calc(100dvh-12rem)] min-w-0 flex-col',
+  '[&_.aui-thread-root]:h-auto [&_.aui-thread-root]:flex-1',
+  '[&_[data-slot$=thread-viewport]]:overflow-visible',
+  '[&_.aui-thread-viewport-footer]:bottom-0',
+  '[&_.aui-thread-viewport-footer]:shadow-[0_-14px_14px_-6px_var(--color-background)]',
+].join(' ')
+
 type Props = {
   workspace: number
   products: { id: number; name: string }[]
@@ -89,9 +97,9 @@ export function NewRequest({ workspace, products, product, initial }: Props) {
   return (
     <>
       <ProductHeader products={products} product={chosen} locked={session.started} onChange={change} />
-      <div className="grid h-[calc(100dvh-12rem)] min-h-0 gap-6 lg:grid-cols-[1fr_24rem]">
+      <div className="grid items-start gap-6 pb-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <AssistantRuntimeProvider runtime={session.runtime}>
-          <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]">
+          <div className={COLUMN}>
             <Thread
               autoFocus={false}
               components={{
@@ -129,7 +137,9 @@ export function NewRequest({ workspace, products, product, initial }: Props) {
               }}
             />
           </div>
-          <RequestCard draft={draft} busy={busy} act={session.act} />
+          <div className="lg:sticky lg:top-4">
+            <RequestCard draft={draft} busy={busy} act={session.act} />
+          </div>
         </AssistantRuntimeProvider>
       </div>
     </>

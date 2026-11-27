@@ -58,7 +58,12 @@ function Actions({ draft, busy, act }: { draft: DraftView; busy: boolean; act: (
           Close the question
         </Button>
       ) : (
-        <Button type="button" disabled={busy || !draft.complete} onClick={() => act({ action: 'send' })}>
+        <Button
+          type="button"
+          variant={draft.questions.length > 0 ? 'outline' : 'default'}
+          disabled={busy || !draft.complete}
+          onClick={() => act({ action: 'send' })}
+        >
           Send request
         </Button>
       )}

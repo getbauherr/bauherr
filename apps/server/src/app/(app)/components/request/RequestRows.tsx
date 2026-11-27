@@ -9,7 +9,7 @@ import { RequestsMore, type MoreRequests } from './RequestsMore'
 const TYPES: Record<string, string> = { bug: 'Bug', feature: 'Feature', change: 'Change', chore: 'Chore' }
 const MARK_TONE = {
   neutral: 'text-muted-foreground',
-  accent: 'text-muted-foreground',
+  accent: 'text-primary',
   ok: 'text-ok',
   warn: 'text-destructive',
 }
@@ -23,11 +23,9 @@ export function RequestRow({ item, staff }: { item: RequestListRow; staff: boole
   const { row, status, mine } = item
   return (
     <div role="row" className={cn(GRID, 'border-t border-border hover:bg-secondary')}>
-      <span
-        role="cell"
-        data-mark={status.mark}
-        className={cn('text-center font-semibold after:content-[attr(data-mark)]', MARK_TONE[status.tone], WIDE)}
-      />
+      <span role="cell" className={cn('flex justify-center', MARK_TONE[status.tone], WIDE)}>
+        <span aria-hidden className="size-2 rounded-full bg-current" />
+      </span>
       <span role="cell" className="mono text-muted-foreground">
         #{row.number}
       </span>

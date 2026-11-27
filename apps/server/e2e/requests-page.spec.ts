@@ -27,7 +27,6 @@ test('Requests lists mark, number, title, type, creator, status, created and las
   await expect(page.getByRole('button', { name: 'Product' })).toContainText('Requests App')
   await expect(page.getByRole('columnheader')).toHaveText(['State', '#', 'Request', 'Status', 'Created', 'Last change'])
   const asked = rowOf(page, 'The factory asked me a question')
-  await expect(asked.getByRole('cell').first()).toHaveAttribute('data-mark', '!')
   await expect(asked.getByRole('cell').nth(1)).toHaveText(/^#\d+$/)
   await expect(asked.getByRole('link')).toHaveAttribute('href', /^\/requests\/\d+$/)
   await expect(asked).toContainText('Bug · You')
