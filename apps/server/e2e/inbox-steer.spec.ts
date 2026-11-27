@@ -21,21 +21,25 @@ const say = async (page: Page, text: string) => {
   await composer.press('Enter')
 }
 
-test('the composer answers a question and turns a request into an intent that Undo cancels', async ({ page }) => {
-  await signIn(page)
-  const href = await inboxHref(page, /Question to steer from the composer 1/)
-  await page.goto(href.replace('/tickets/', '/inbox?t='))
-  const composer = page.locator('.aui-composer-input')
-  await expect(composer).toHaveAttribute('placeholder', /Tell the factory what to do with #\d+/)
-  const stamp = Date.now()
-  await say(page, `Why was this asked ${stamp}?`)
-  await expect(page.getByText('Because the first answer was a draft.').first()).toBeVisible()
-  await say(page, `Skip the email checks ${stamp}`)
-  const receipt = page.getByRole('status').filter({ hasText: 'Passed to the agent' })
-  await expect(receipt).toBeVisible()
-  await receipt.getByRole('button', { name: 'Undo' }).click()
-  await expect(receipt).toHaveCount(0)
-  await page.reload()
-  await expect(page.getByText('Because the first answer was a draft.').first()).toBeVisible()
-  await expect(page.getByText(`I will pass this to the agent working on`).first()).toBeVisible()
-})
+test(
+  'the composer answers a question and turns a request into an intent that Undo cancels',
+  { tag: '@fake-forge' },
+  async ({ page }) => {
+    await signIn(page)
+    const href = await inboxHref(page, /Question to steer from the composer 1/)
+    await page.goto(href.replace('/tickets/', '/inbox?t='))
+    const composer = page.locator('.aui-composer-input')
+    await expect(composer).toHaveAttribute('placeholder', /Tell the factory what to do with #\d+/)
+    const stamp = Date.now()
+    await say(page, `Why was this asked ${stamp}?`)
+    await expect(page.getByText('Because the first answer was a draft.').first()).toBeVisible()
+    await say(page, `Skip the email checks ${stamp}`)
+    const receipt = page.getByRole('status').filter({ hasText: 'Passed to the agent' })
+    await expect(receipt).toBeVisible()
+    await receipt.getByRole('button', { name: 'Undo' }).click()
+    await expect(receipt).toHaveCount(0)
+    await page.reload()
+    await expect(page.getByText('Because the first answer was a draft.').first()).toBeVisible()
+    await expect(page.getByText(`I will pass this to the agent working on`).first()).toBeVisible()
+  },
+)
