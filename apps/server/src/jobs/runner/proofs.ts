@@ -1,9 +1,8 @@
 import { execFile } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { sql } from '@payloadcms/db-postgres'
-import { egressGuard, git, runIdentity, WORK_DIR } from '@bauherr/runner'
+import { egressGuard, git, readAgentFile, runIdentity, WORK_DIR } from '@bauherr/runner'
 import { z } from 'zod'
 import type { Conn } from '../../core/conn'
 import type { Problem } from '../../core/module'
@@ -102,7 +101,7 @@ const run = async (checkout: Checkout, command: string): Promise<Ran> => {
 type Read = { entries: Entry[] } | { problems: Problem[] }
 
 const readEntries = async (dir: string): Promise<Read | null> => {
-  const text = await readFile(join(dir, WORK_DIR, PROOFS_FILE), 'utf8').catch(() => null)
+  const text = await readAgentFile(join(dir, WORK_DIR, PROOFS_FILE))
   if (text === null) return null
   let parsed: unknown
   try {

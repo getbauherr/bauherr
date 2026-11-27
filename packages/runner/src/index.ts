@@ -4,4 +4,12 @@ export { agentEnv, buildOptions, runAgent, type AgentOptions, type AgentState } 
 export { egressGuard, writeScopeGuard } from './guards.js';
 export { cloneRepo, commitAndPush, fetchBase, git, mergeBase, patchId, useToken, WORK_DIR } from './clone.js';
 export { execute, type Executed, type ExecuteOptions } from './execute.js';
-export { mkdirAsRunUser, RUN_GID, RUN_UID, runIdentity, spawnAsRunUser, writeFileAsRunUser } from './identity.js';
+export {
+  mkdirAsRunUser,
+  readAgentFile,
+  RUN_GID,
+  RUN_UID,
+  runIdentity,
+  spawnAsRunUser,
+  writeFileAsRunUser,
+} from './identity.js';

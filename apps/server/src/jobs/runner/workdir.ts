@@ -1,6 +1,5 @@
-import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { mkdirAsRunUser, WORK_DIR, writeFileAsRunUser as writeFile } from '@bauherr/runner'
+import { mkdirAsRunUser, readAgentFile, WORK_DIR, writeFileAsRunUser as writeFile } from '@bauherr/runner'
 import type { Problem } from '../../core/module'
 import type { ContextPack } from '../../core/run/pack'
 import type { NewComment } from '../../core/requests/handover'
@@ -64,7 +63,7 @@ export const writeProblems = (dir: string, problems: Problem[]): Promise<void> =
   writeFile(join(dir, WORK_DIR, 'problems.json'), json(problems))
 
 export const readResult = async (dir: string): Promise<Record<string, unknown> | null> => {
-  const text = await readFile(join(dir, WORK_DIR, 'result.json'), 'utf8').catch(() => null)
+  const text = await readAgentFile(join(dir, WORK_DIR, 'result.json'))
   if (text === null) return null
   try {
     const parsed: unknown = JSON.parse(text)

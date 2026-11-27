@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, mkdir, open, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import type { SpawnOptions, SpawnedProcess } from '@anthropic-ai/claude-agent-sdk';
 
 export const RUN_UID = 10001;
@@ -27,3 +29,20 @@ export const mkdirAsRunUser = (path: string): Promise<void> =>
 
 export const writeFileAsRunUser = (path: string, content: string): Promise<void> =>
   runIdentity() ? asRunUser('tee', [path], content) : writeFile(path, content);
+
+const AGENT_FILE_MAX_BYTES = 1024 * 1024;
+
+export const readAgentFile = async (path: string): Promise<string | null> => {
+  try {
+    if (!(await lstat(dirname(path))).isDirectory()) return null;
+    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const info = await handle.stat();
+      return info.isFile() && info.size <= AGENT_FILE_MAX_BYTES ? await handle.readFile('utf8') : null;
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return null;
+  }
+};

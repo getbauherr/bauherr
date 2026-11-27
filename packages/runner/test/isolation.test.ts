@@ -1,10 +1,18 @@
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { agentEnv } from '../src/agent.js';
-import { mkdirAsRunUser, RUN_GID, RUN_UID, runIdentity, spawnAsRunUser, writeFileAsRunUser } from '../src/identity.js';
+import {
+  mkdirAsRunUser,
+  readAgentFile,
+  RUN_GID,
+  RUN_UID,
+  runIdentity,
+  spawnAsRunUser,
+  writeFileAsRunUser,
+} from '../src/identity.js';
 
 const asRoot = process.getuid?.() === 0;
 
@@ -53,4 +61,22 @@ await test('files the worker hands over are owned by the run user', { skip: !asR
   assert.equal(statSync(join(root, '.bauherr')).uid, RUN_UID);
   assert.equal(statSync(join(root, '.bauherr', 'context.json')).uid, RUN_UID);
   assert.equal(readFileSync(join(root, '.bauherr', 'context.json'), 'utf8'), '{}\n');
+});
+
+await test('agent-written files are read without following symlinks and capped', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'read-'));
+  const folder = join(dir, '.bauherr');
+  mkdirSync(folder);
+  const target = join(dir, 'secret');
+  writeFileSync(target, '{"leak":"hunter2"}');
+  writeFileSync(join(folder, 'plain.json'), '{"a":1}');
+  symlinkSync(target, join(folder, 'result.json'));
+  writeFileSync(join(folder, 'big.json'), 'x'.repeat(2 * 1024 * 1024));
+  assert.equal(await readAgentFile(join(folder, 'plain.json')), '{"a":1}');
+  assert.equal(await readAgentFile(join(folder, 'result.json')), null);
+  assert.equal(await readAgentFile(join(folder, 'big.json')), null);
+  assert.equal(await readAgentFile(join(folder, 'missing.json')), null);
+  const swapped = mkdtempSync(join(tmpdir(), 'swap-'));
+  symlinkSync(folder, join(swapped, '.bauherr'));
+  assert.equal(await readAgentFile(join(swapped, '.bauherr', 'plain.json')), null);
 });
