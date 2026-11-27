@@ -22,7 +22,7 @@ A Product owner gets a smaller shell: Requests only.
 2. **Intake**: code selects the issue. The factory may ask the reporter one numbered round of questions.
 3. **Approve the Brief**: a ticket that needs you shows the Brief card. Approve it, request changes or discard it. A low-risk Brief is approved by the risk rule and never reaches you.
 4. **Build and Verify**: agents build, then a reviewer and a verifier check the patch. You are not asked.
-5. **Accept the Result**: the Result card shows before and after pictures and proof per criterion. Accept it, or send it back with a note. A Product may let the factory accept low-risk Results itself (Settings, Gates, off by default); the activity then says "Accepted by the factory".
+5. **Accept the Result**: the Result card shows before and after pictures and proof per criterion. Accept it, or send it back with a note. A Product may let the factory accept low-risk Results itself, see [Auto-accept](auto-accept.md).
 6. **Done**: the ticket closes. Production approval is a switch per Product.
 
 ## Pages
@@ -31,7 +31,7 @@ A Product owner gets a smaller shell: Requests only.
 |---|---|
 | `/` | See the Factory view: tickets by stage, filters, holds and loops. |
 | `/inbox` | Decide what waits for you, as a conversation with the factory. Keys: `j`/`k` move, `/` writes. |
-| `/requests` | Follow the requests of one Product, chosen with the switcher by the title. |
+| `/requests` | Follow the requests of one Product, chosen with the switcher by the title. See [Requests](requests.md). |
 | `/requests/<id>` | Read one request: whose turn it is, then its story. |
 | `/tickets/<id>` | Decide one ticket. Tabs Now, Brief, Result and Activity. |
 | `/memory` | Edit the factory, workspace or product document. `/memory/retro` starts a Retro. |
@@ -56,9 +56,7 @@ The page refreshes from the database on its own.
 
 ## Inbox
 
-A list on the left, one conversation on the right. The list groups tickets by who has to act: Waiting on you, Failed, Working (runs and connected sessions), Waiting on others and Decided (last 7 days). The first waiting ticket is open; the selection is `?t=<id>` in the address. The badge on the sidebar counts what waits on you.
-
-The conversation shows the ticket's thread, what you decided before and the pending decision as a card: the question, one reason, one Recommended action and the other options. Pressing an action shows the receipt and a toast with Undo for six seconds; the decision is written when the toast runs out or when you leave the ticket. The next waiting ticket opens after it. The composer is always there: a question gets an answer, an action request shows the Undo receipt, and without a model your text is a comment. Every `#ref` links to its ticket.
+A list on the left, one conversation on the right. Each decision is one card with an Undo toast, and the composer steers the factory. See [Deciding in the Inbox](inbox.md).
 
 ## Ticket page
 
