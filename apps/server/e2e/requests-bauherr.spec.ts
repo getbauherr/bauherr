@@ -46,6 +46,8 @@ test('@fake-forge a new request goes to the switched Product and the Product is 
   await page.goto('/requests')
   await product(page).click()
   await page.getByRole('menuitem', { name: 'Switch Beta' }).click()
+  await expect(page).toHaveURL(/\/requests\?product=\d+$/)
+  await expect(product(page)).toContainText('Switch Beta')
   await page.getByRole('link', { name: 'New request' }).click()
   await expect(page).toHaveURL(/\/requests\/new\?product=\d+$/)
   await expect(product(page)).toContainText('Switch Beta')
