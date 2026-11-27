@@ -2,9 +2,9 @@ import type { ProductSettings } from '../../../../core/views/product-settings'
 import { formatPathSets } from '../../../../lib/path-sets'
 import { savePathSets } from '../../(shell)/settings/actions'
 import { saveGates } from '../../(shell)/settings/products/[id]/actions'
-import { LIMIT } from '../../lib/product-sections'
+import { LIMIT, PERCENT } from '../../lib/product-sections'
 import { Field, SettingsForm } from '../SettingsForm'
-import { SettingsSection } from '../SettingsParts'
+import { SettingsSection, ToggleRow } from '../SettingsParts'
 import { Editable } from './Editable'
 import { RiskAreaPicks } from './RiskAreaPicks'
 
@@ -12,6 +12,9 @@ const PURPOSE =
   'A Brief card goes to you when it has an open decision, a change that cannot be undone, ' +
   'a change in a risk area, a change a user will see on a screen, a request from an outside author, ' +
   'when it comes from the backlog, or when it is a check asked for from a memory.'
+const AUTO_ACCEPT_HELP =
+  'The factory accepts a Result as its own decision when the change can be undone, every criterion is met, ' +
+  'the checks are green, nothing is waiting on a picture, and the ticket is not labelled bauherr:needs-owner.'
 const PATH_SET_HINT =
   'One set per line: its name, a colon, then paths separated by commas. A path may use * and **.'
 
@@ -32,6 +35,21 @@ export function GatesSection({ product, admin }: Props) {
             max={LIMIT.max}
             inputMode="numeric"
             defaultValue={product.backlogBriefLimit}
+          />
+          <ToggleRow
+            name="autoAccept"
+            label="Accept low-risk Results by themselves"
+            help={AUTO_ACCEPT_HELP}
+            defaultChecked={product.autoAccept}
+          />
+          <Field
+            name="autoAcceptMaxSendBack"
+            label="Accept by itself while at most this share (%) of tickets was sent back in 30 days"
+            type="number"
+            min={PERCENT.min}
+            max={PERCENT.max}
+            inputMode="numeric"
+            defaultValue={product.autoAcceptMaxSendBack}
           />
         </SettingsForm>
         <SettingsForm action={savePathSets} submit="Save path sets">

@@ -25,6 +25,7 @@ import type { Effect } from './module'
 import type { ProposedRelation, TicketRecord } from './record/schema'
 import { appendEvent, patchRecord, readEvents, readRecord, type StoredRecord } from './record/store'
 import { dropCriteria } from './record/drop'
+import { unfinishedParts } from './relations/parts'
 import { releaseLive } from './run/leases'
 
 
@@ -131,6 +132,14 @@ export const droppedOf = (decision: Decision, record: TicketRecord): string[] =>
   return dropped
 }
 
+const assertPartsFinished = async (tx: Conn, recordId: number, asked: string | null, choice: string) => {
+  if (asked !== 'result' || choice !== 'accept') return
+  const open = await unfinishedParts(tx, recordId)
+  if (open.length === 0) return
+  const named = open.map((number) => `#${number}`).join(', ')
+  throw new InvalidDecision(`The parts ${named} are not Done or closed yet: accept this Result after they are.`)
+}
+
 const passIfSettled = async (tx: Conn, recordId: number, asked: string | null, person: Person): Promise<void> => {
   if (asked === 'result') return
   const { record } = await readRecord(tx, recordId)
@@ -208,6 +217,7 @@ export const decide = async (
     const state = fold(await readEvents(tx, recordId), foldOptions(config))
     const asked = askedOf(next(stored.record, state, config), state)
     const { entry, note } = entryOf(asked, stored.card?.seq ?? 0, decision, state)
+    await assertPartsFinished(tx, recordId, asked, decision.choice)
     const answers = answersOf(asked, decision, stored.record)
     const kept = keptRelations(asked, decision, stored.record)
     const criteria = droppedOf(decision, stored.record)

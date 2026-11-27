@@ -22,7 +22,7 @@ A Product owner gets a smaller shell today. Requests from Product owners are pla
 2. **Intake**: code selects the issue. The factory may ask the reporter one numbered round of questions.
 3. **Approve the Brief**: a ticket that needs you shows the Brief card. Approve it, request changes or discard it. A low-risk Brief is approved by the risk rule and never reaches you.
 4. **Build and Verify**: agents build, then a reviewer and a verifier check the patch. You are not asked.
-5. **Accept the Result**: the Result card shows before and after pictures and proof per criterion. Accept it, or send it back with a note.
+5. **Accept the Result**: the Result card shows before and after pictures and proof per criterion. Accept it, or send it back with a note. A Product may let the factory accept low-risk Results itself (Settings, Gates, off by default); the activity then says "Accepted by the factory".
 6. **Done**: the ticket closes. Production approval is a switch per Product.
 
 ## Pages
@@ -35,7 +35,7 @@ A Product owner gets a smaller shell today. Requests from Product owners are pla
 | `/requests/<id>` | Read one request: whose turn it is, then its story. |
 | `/tickets/<id>` | Decide one ticket. Tabs Now, Brief, Result and Activity. |
 | `/memory` | Edit the factory, workspace or product document. `/memory/retro` starts a Retro. |
-| `/releases` | See what is live and ready to release, write the release notes, and release the next version with one button. A release covers everything merged since the last real release (release candidates do not count) and its notes are written when you press the button. Before the repository was read it shows when the last readiness check ran, its error and, for an Admin, Check now. |
+| `/releases` | See what is live and ready to release, write the release notes, and release the next version with one button. A release covers everything merged since the last real release; its notes are written when you press the button. Before the repository was read, the page shows the last readiness check, its error and, for an Admin, Check now. |
 | `/insights` | Read time per stage and cost. Choose 7, 30 or 90 days. |
 | `/settings/products/<id>` | Read Repo readiness and set gates, intake and proof for a Product. |
 | `/settings/products/<id>/connect` | Connect a project: import, first look and switch on. |
@@ -47,9 +47,9 @@ A Product owner gets a smaller shell today. Requests from Product owners are pla
 The six stages are fixed: Intake, Brief, Build, Verify, Ship and Done. Each shows its count, a bar by state, who works there and the median time in the stage. Tickets sit as cards under their stage.
 
 - **Filters**: All, Waiting on you, Agents working, Stuck and Waiting on others. With several Products, a Product filter joins them.
-- **Holding up work**: one line per cause that stops several tickets. Examples are no connected session for a role, a Product that is still observing and a repository whose sync failed.
+- **Holding up work**: one line per cause that stops several tickets.
 - **Loops**: dashed lines count tickets sent back from Verify and from Ship in the last 7 days.
-- **Order**: drag a card, press `Alt` and an arrow key, or use the card menu. Priority changes inside a stage only. A stage changes through the card's actions.
+- **Order**: drag a card, press `Alt` and an arrow key, or use the card menu. Priority changes inside a stage only.
 - **Someday**: the label `bauherr:someday` parks an issue. The view shows how many are parked and links to them.
 
 The page refreshes from the database on its own.
@@ -58,7 +58,7 @@ The page refreshes from the database on its own.
 
 A list on the left, one conversation on the right. The list groups tickets by who has to act: Waiting on you, Failed, Working (runs and connected sessions), Waiting on others and Decided (last 7 days). The first waiting ticket is open; the selection is `?t=<id>` in the address. The badge on the sidebar counts what waits on you.
 
-The conversation shows the ticket's thread, what you decided before and the pending decision as a card: the question, one reason, one Recommended action and the other options. Edit-style options open a note field in the card. Pressing an action shows the receipt and a toast with Undo for six seconds; the decision is written when the toast runs out or when you leave the ticket. The next waiting ticket opens after it. The composer is always there: a question gets an answer, an action request shows the Undo receipt, and without a model your text is a comment. Every `#ref` links to its ticket. On a narrow screen the list opens in a sheet.
+The conversation shows the ticket's thread, what you decided before and the pending decision as a card: the question, one reason, one Recommended action and the other options. Pressing an action shows the receipt and a toast with Undo for six seconds; the decision is written when the toast runs out or when you leave the ticket. The next waiting ticket opens after it. The composer is always there: a question gets an answer, an action request shows the Undo receipt, and without a model your text is a comment. Every `#ref` links to its ticket.
 
 ## Ticket page
 
@@ -75,6 +75,7 @@ Each card has the ask in one sentence, the reason you are asked, options and a f
 ### Other actions
 
 - **Back to Brief** returns a ticket in Build or Verify to Brief with a note.
+- A ticket that others are **part of** is an epic. Its Result card waits until every part is Done or closed.
 - **Archive** hides a ticket before Ship, releases its run and closes the issue as not planned. **Restore** reverses it.
 - A note you give with a decision is kept as a memory.
 

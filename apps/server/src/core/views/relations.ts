@@ -80,7 +80,7 @@ const openRefs = (ids: number[], items: Map<number, RelationItem>): RelatedTicke
 const partsOf = (ids: number[], items: Map<number, RelationItem>): Parts => {
   const present = ids.flatMap((id) => items.get(id) ?? []).filter((item) => !item.gone)
   return {
-    done: present.filter((item) => !item.open).length,
+    done: present.filter((item) => !item.open || item.stage === 'done').length,
     total: present.length,
     tickets: present.map(refOf).sort(byNumber),
   }

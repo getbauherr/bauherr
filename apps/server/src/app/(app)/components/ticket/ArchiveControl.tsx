@@ -2,6 +2,7 @@
 import { useState, useTransition } from 'react'
 import { archiveTicket, restoreTicket } from '../../(shell)/tickets/archive-actions'
 import type { TicketView } from '../../../../core/views/ticket'
+import type { TicketRelations } from '../../../../core/views/ticket-relations'
 import { Button } from '../ui/button'
 import {
   Dialog,
@@ -32,7 +33,9 @@ function Restore({ recordId }: { recordId: number }) {
   )
 }
 
-function Archive({ recordId, number }: { recordId: number; number: number }) {
+type OpenParts = { number: number; title: string }[]
+
+function Archive({ recordId, number, openParts }: { recordId: number; number: number; openParts: OpenParts }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, start] = useTransition()
@@ -57,6 +60,18 @@ function Archive({ recordId, number }: { recordId: number; number: number }) {
             on the forge. Restore it later from this page.
           </DialogDescription>
         </DialogHeader>
+        {openParts.length > 0 && (
+          <div className="small grid gap-1">
+            <p className="m-0 font-medium">Parts still open</p>
+            <ul className="m-0 grid list-none gap-0.5 p-0">
+              {openParts.map((part) => (
+                <li key={part.number}>
+                  <span className="mono">#{part.number}</span> {part.title}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {error && <p role="alert" className="small text-destructive">{error}</p>}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => setOpen(false)}>
@@ -71,7 +86,9 @@ function Archive({ recordId, number }: { recordId: number; number: number }) {
   )
 }
 
-export function ArchiveControl({ view, may }: { view: TicketView; may: boolean }) {
+type ControlProps = { view: TicketView; may: boolean; relations: TicketRelations | null }
+
+export function ArchiveControl({ view, may, relations }: ControlProps) {
   if (view.restorable) {
     return (
       <Card>
@@ -91,7 +108,11 @@ export function ArchiveControl({ view, may }: { view: TicketView; may: boolean }
   if (!may || !view.canArchive) return null
   return (
     <div className="flex justify-end">
-      <Archive recordId={view.recordId} number={view.number} />
+      <Archive
+        recordId={view.recordId}
+        number={view.number}
+        openParts={relations?.parts.tickets.filter((part) => !part.finished) ?? []}
+      />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
+import { partsOf } from '../relations/parts'
 import { stageWord } from './relations'
 
 export const RELATION_GROUPS = ['part-of', 'blocked-by', 'blocks', 'relates-to'] as const
@@ -15,7 +16,12 @@ export type RelatedTicket = {
   recordId: number | null
 }
 export type Candidate = { itemId: number; number: number; title: string }
-export type TicketRelations = { itemId: number; groups: Record<RelationGroup, RelatedTicket[]> }
+export type PartTicket = RelatedTicket & { finished: boolean }
+export type TicketRelations = {
+  itemId: number
+  groups: Record<RelationGroup, RelatedTicket[]>
+  parts: { done: number; total: number; tickets: PartTicket[] }
+}
 
 const SEARCH_LIMIT = 20
 
@@ -97,7 +103,17 @@ export const loadTicketRelations = async (
       recordId: row.record,
     })
   }
-  return { itemId, groups }
+  const tickets = (await partsOf(payload, recordId)).map((part) => ({
+    itemId: part.itemId,
+    number: part.number,
+    title: part.title,
+    stage: stageWord(part),
+    open: part.open,
+    recordId: part.recordId,
+    finished: part.finished,
+  }))
+  const done = tickets.filter((ticket) => ticket.finished).length
+  return { itemId, groups, parts: { done, total: tickets.length, tickets } }
 }
 
 const escapeLike = (text: string): string => text.replace(/[\\%_]/g, (c) => `\\${c}`)

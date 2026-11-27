@@ -108,7 +108,7 @@ describe('saveGates', () => {
   it('saves risk areas and the Brief limit, and touches nothing else', async () => {
     const { saveGates } = await actions()
     const { product } = await setup('sec-gates')
-    const chosen = { riskAreas: ['security', 'ui'], backlogBriefLimit: '9' }
+    const chosen = { riskAreas: ['security', 'ui'], backlogBriefLimit: '9', autoAcceptMaxSendBack: '10' }
     expect((await saveGates({}, form({ id: String(product), ...chosen }))).saved).toBe(true)
     expect(await read(product)).toMatchObject({
       riskAreas: ['security', 'ui'],
@@ -116,14 +116,30 @@ describe('saveGates', () => {
       outsideIssuesPerDay: 5,
       autoClose: true,
     })
-    await saveGates({}, form({ id: String(product), backlogBriefLimit: '9' }))
+    await saveGates({}, form({ id: String(product), backlogBriefLimit: '9', autoAcceptMaxSendBack: '10' }))
     expect(await read(product)).toMatchObject({ riskAreas: [], backlogBriefLimit: 9 })
+  })
+
+  it('keeps auto-accept off unless switched on and stores its send-back threshold', async () => {
+    const { saveGates } = await actions()
+    const { product } = await setup('sec-gates-auto')
+    const fields = { id: String(product), backlogBriefLimit: '5', autoAcceptMaxSendBack: '15' }
+    expect(await read(product)).toMatchObject({ autoAccept: false, autoAcceptMaxSendBack: 10 })
+    expect((await saveGates({}, form({ ...fields, autoAccept: 'on' }))).saved).toBe(true)
+    expect(await read(product)).toMatchObject({ autoAccept: true, autoAcceptMaxSendBack: 15 })
+    await saveGates({}, form(fields))
+    expect(await read(product)).toMatchObject({ autoAccept: false, autoAcceptMaxSendBack: 15 })
+    const send = (percent: string) => saveGates({}, form({ ...fields, autoAcceptMaxSendBack: percent }))
+    expect((await send('101')).fields?.autoAcceptMaxSendBack).toContain('0 to 100')
+    expect((await send('-1')).fields?.autoAcceptMaxSendBack).toContain('0 to 100')
   })
 
   it('refuses a risk area that is not a path set and a limit out of bounds', async () => {
     const { saveGates } = await actions()
     const { product } = await setup('sec-gates-bad')
-    const send = (fields: Record<string, string | string[]>) => saveGates({}, form({ id: String(product), ...fields }))
+    const base = { autoAcceptMaxSendBack: '10' }
+    const send = (fields: Record<string, string | string[]>) =>
+      saveGates({}, form({ id: String(product), ...base, ...fields }))
     expect((await send({ riskAreas: ['billing'], backlogBriefLimit: '5' })).fields?.riskAreas).toContain('billing')
     expect((await send({ backlogBriefLimit: '0' })).fields?.backlogBriefLimit).toContain('1 to 50')
     expect((await send({ backlogBriefLimit: '51' })).fields?.backlogBriefLimit).toContain('1 to 50')
