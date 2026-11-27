@@ -88,7 +88,7 @@ const decideIntent = (view: TicketView, reply: SteerReply): Intent => {
   const input = card && decision ? inputOf(view, reply, decision.ask, card.seq) : null
   const problem = problemOf(view, reply, input)
   if (problem !== null || input === null) return refused(reply, number, problem ?? '')
-  return { kind: 'decide', input, text: joined(reply.say, `I will ${actionOf(input, number)}.`) }
+  return { kind: 'decide', input, text: joined(reply.say, `You asked me to ${actionOf(input, number)}.`) }
 }
 
 const commentIntent = (view: TicketView, reply: SteerReply): Intent => {
@@ -96,7 +96,7 @@ const commentIntent = (view: TicketView, reply: SteerReply): Intent => {
   return {
     kind: 'comment',
     body: reply.note,
-    text: joined(reply.say, `I will pass this to the agent working on #${view.number}: "${reply.note}"`),
+    text: joined(reply.say, `You asked me to pass this to the agent working on #${view.number}: "${reply.note}"`),
   }
 }
 

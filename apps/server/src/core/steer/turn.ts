@@ -9,6 +9,8 @@ import { steerConversation } from './store'
 
 const HISTORY = 6
 
+export const UNDONE_NOTE = '*Undone. Nothing was written.*'
+
 export const FALLBACK_NOTE = 'The factory model is not available, so your words went to the ticket as a comment.'
 
 export type SteerDeps = { model: RetroModel; comment: (text: string) => Promise<string | null> }

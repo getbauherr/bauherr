@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
+import { noteUndone } from '../../(shell)/inbox/steer'
 import { decideTicket } from '../../(shell)/tickets/actions'
 import {
   mergeEntries,
@@ -38,6 +39,9 @@ export function useInboxState(first: InboxEntry[], paging: Record<PagedGroup, Pa
     notify,
     delay: UNDO_MS,
     onError: (_staged, message) => toast.error(message),
+    onUndo: (staged) => {
+      if (staged.steered) void noteUndone(staged.recordId).then(() => router.refresh())
+    },
     onSettled: (staged, advance) => {
       router.refresh()
       const decided = staged.comment === undefined

@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePendingDecisions, type Staged } from '../../src/app/(app)/components/inbox/use-pending-decisions'
-import { stagedOf } from '../../src/app/(app)/lib/inbox-steer'
+import { proposalOf, stagedOf } from '../../src/app/(app)/lib/inbox-steer'
 import { threadOf } from '../../src/app/(app)/lib/inbox-thread'
 import type { ConversationMessage } from '../../src/core/conversations/store'
 import { cardOf, refsOf, sourceOf } from '../helpers/ticket-source'
@@ -55,6 +55,35 @@ describe('an intent from the composer', () => {
     await act(() => vi.advanceTimersByTimeAsync(6000))
     expect(deps.run).toHaveBeenCalledTimes(1)
     expect(deps.run.mock.calls[0]?.[0].input).toEqual(drop.input)
+  })
+})
+
+describe('a tool call from the model', () => {
+  it('only yields a proposal: nothing is staged or written until the owner clicks', async () => {
+    const { deps, result } = setup()
+    const proposal = proposalOf(target, null, drop, 'p1')
+    expect(proposal).toMatchObject({ kind: 'decide', input: drop.input })
+    await act(() => vi.advanceTimersByTimeAsync(20_000))
+    expect(result.current.staged).toEqual({})
+    expect(deps.notify).not.toHaveBeenCalled()
+    expect(deps.run).not.toHaveBeenCalled()
+    act(() => result.current.stage(stagedOf(target, drop, 1)!))
+    await act(() => vi.advanceTimersByTimeAsync(6000))
+    expect(deps.run).toHaveBeenCalledTimes(1)
+  })
+
+  it('makes no proposal for an answer or a fallback', () => {
+    expect(proposalOf(target, null, { kind: 'answer' }, 'p1')).toBeNull()
+  })
+
+  it('reports an undo of a steered write so the thread can say so', () => {
+    const onUndo = vi.fn()
+    const deps = { run: vi.fn(), notify: vi.fn(), onError: vi.fn(), onSettled: vi.fn(), onUndo, delay: 6000 }
+    const { result } = renderHook(() => usePendingDecisions(deps))
+    const staged = stagedOf(target, drop, 1)!
+    act(() => result.current.stage(staged))
+    act(() => result.current.undo(staged.key))
+    expect(onUndo).toHaveBeenCalledWith(expect.objectContaining({ steered: true }))
   })
 })
 

@@ -4,8 +4,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { steerTicket } from '../../(shell)/inbox/steer'
-import { stagedOf } from '../../lib/inbox-steer'
-import { intentMessage, userText, type ThreadModel } from '../../lib/inbox-thread'
+import { proposalOf, type Proposal } from '../../lib/inbox-steer'
+import { intentMessage, proposalMessage, userText, type ThreadModel } from '../../lib/inbox-thread'
 import type { Pending } from './use-pending-decisions'
 
 type Sent = { id: string; text: string }
@@ -19,16 +19,22 @@ export const withOutbox = (messages: Thread, sent: Sent[], intents: Thread): Thr
   return last?.id?.startsWith('ask-') ? [...messages.slice(0, -1), ...own, last] : [...messages, ...own]
 }
 
-export const intentsOf = (pending: Pending, recordId: number | null): ThreadMessageLike[] =>
-  Object.values(pending.staged)
-    .filter((staged) => staged.comment !== undefined && staged.recordId === recordId)
-    .map(({ key, number }) => intentMessage({ key, recordId: recordId ?? 0, number }))
+type Intents = { pending: Pending; recordId: number | null; proposal: Proposal | null }
 
-export function useOutbox(thread: ThreadModel, pending: Pending) {
+export const intentsOf = ({ pending, recordId, proposal }: Intents): ThreadMessageLike[] => [
+  ...(proposal ? [proposalMessage(proposal)] : []),
+  ...Object.values(pending.staged)
+    .filter((staged) => staged.comment !== undefined && staged.recordId === recordId)
+    .map(({ key, number }) => intentMessage({ key, recordId: recordId ?? 0, number })),
+]
+
+export function useOutbox(thread: ThreadModel) {
   const router = useRouter()
   const [sent, setSent] = useState<Sent[]>([])
   const [busy, setBusy] = useState(false)
+  const [proposal, setProposal] = useState<Proposal | null>(null)
   useEffect(() => setSent([]), [thread.id, thread.messages.length])
+  useEffect(() => setProposal(null), [thread.id])
   const fail = (item: Sent, error: string) => {
     setSent((current) => current.filter((candidate) => candidate !== item))
     toast.error(error)
@@ -44,12 +50,11 @@ export function useOutbox(thread: ThreadModel, pending: Pending) {
         const { outcome } = result
         const error = result.error ?? (outcome?.kind === 'fallback' ? outcome.error : null)
         if (error) return fail(item, error)
-        const staged = outcome ? stagedOf({ recordId, number }, outcome, Date.now()) : null
-        if (staged) pending.stage(staged)
+        if (outcome) setProposal(proposalOf({ recordId, number }, thread.decision, outcome, String(Date.now())))
         router.refresh()
       })
       .catch(() => fail(item, 'The message was not sent.'))
       .finally(() => setBusy(false))
   }
-  return { sent, busy, send }
+  return { sent, busy, send, proposal, clearProposal: () => setProposal(null) }
 }

@@ -6,7 +6,7 @@ import { decisionOf, type DecisionModel, type DecisionSource } from './inbox-dec
 import { ticketPath, type InboxEntry } from './inbox-entries'
 import { SUGGESTIONS } from './inbox-words'
 import { ago } from './format'
-import { INTENT_TOOL } from './inbox-steer'
+import { INTENT_TOOL, PROPOSAL_TOOL, type Proposal } from './inbox-steer'
 import { CLOSED_WORDS, STATUS_WORDS } from './status-words'
 
 export const DECISION_TOOL = 'decision'
@@ -95,6 +95,13 @@ export const intentMessage = (args: { key: string; recordId: number; number: num
   role: 'assistant',
   status: { type: 'complete', reason: 'stop' },
   content: [{ type: 'tool-call', toolCallId: `call-intent-${args.key}`, toolName: INTENT_TOOL, args }],
+})
+
+export const proposalMessage = (args: Proposal): ThreadMessageLike => ({
+  id: `proposal-${args.id}`,
+  role: 'assistant',
+  status: { type: 'complete', reason: 'stop' },
+  content: [{ type: 'tool-call', toolCallId: `call-proposal-${args.id}`, toolName: PROPOSAL_TOOL, args }],
 })
 
 export const decisionMessage = (decision: DecisionModel): ThreadMessageLike => ({

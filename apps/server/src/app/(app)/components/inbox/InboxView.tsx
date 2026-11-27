@@ -61,19 +61,19 @@ function NarrowBar({ thread, sheet, onSheet, children }: NarrowProps) {
 export function InboxView({ entries: first, paging, thread }: Props) {
   const state = useInboxState(first, paging, thread.id)
   const { entries, more, pending, select, sheet, setSheet } = state
-  const outbox = useOutbox(thread, pending)
+  const outbox = useOutbox(thread)
   const stick = useStickyTop<HTMLDivElement>()
   useScrollToNewest(thread.id, thread.messages.length)
-  const intents = intentsOf(pending, thread.recordId)
+  const intents = intentsOf({ pending, recordId: thread.recordId, proposal: outbox.proposal })
   const messages = useMemo(
     () => withOutbox(thread.messages, outbox.sent, intents),
-    [thread.messages, outbox.sent, intents.length],
+    [thread.messages, outbox.sent, intents.length, outbox.proposal],
   )
   const threads = entries.filter(selectable).map((e) => ({ status: 'regular' as const, id: e.id, title: e.title }))
   const threadList: ExternalStoreThreadListAdapter = { threadId: thread.id, threads, onSwitchToThread: select }
   const list = <InboxList entries={entries} selected={thread.id} more={more} />
   return (
-    <PendingProvider pending={pending}>
+    <PendingProvider pending={pending} onProposalDone={outbox.clearProposal}>
       <InboxThread
         messages={messages}
         suggestions={thread.suggestions}
