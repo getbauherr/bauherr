@@ -71,7 +71,7 @@ describe('release checks', () => {
     const fake = f.fake()
     let sha = ''
     for (const [path, source] of ownWorkflows()) sha = fake.commit(s.repo, 'main', path, source)
-    fake.setDeployment(s.repo, 'staging', { sha, url: 'https://bauherr-staging.einsfuenf.de', state: 'success' })
+    fake.setDeployment(s.repo, 'staging', { sha, url: 'https://staging.example.com', state: 'success' })
     fake.setCommitEndpoint(s.repo, true)
     fake.setCanWrite(s.repo, true)
     fake.addTag(s.repo, 'v0.7.0', sha)

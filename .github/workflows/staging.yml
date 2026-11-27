@@ -1,6 +1,6 @@
 name: staging
 # Every merge to main: build the image (a test build: the staging site runs the fake forge), start it once against a throw-away Postgres (migrates on start like compose.yaml) and report the check `staging` on that sha.
-# A passing image is pushed as ghcr.io/getbauherr/bauherr:sha-<sha> and deployed to https://bauherr-staging.einsfuenf.de by the services pipeline (stack bauherr-staging); the deployment reports the commit at /api/health.
+# A passing image is pushed as ghcr.io/getbauherr/bauherr:sha-<sha> and deployed to the staging site (repository variable BAUHERR_STAGING_URL) by the services pipeline; the deployment reports the commit at /api/health.
 # Version images are built by release.yml and deployed to production by deploy.yml.
 on:
   push:
@@ -85,14 +85,16 @@ jobs:
       cancel-in-progress: false
     environment:
       name: staging
-      url: https://bauherr-staging.einsfuenf.de
+      url: ${{ vars.BAUHERR_STAGING_URL }}
     permissions:
       contents: read
     env:
       SERVICES_TRIGGER_TOKEN: ${{ secrets.SERVICES_TRIGGER_TOKEN }}
+      SERVICES_TRIGGER_URL: ${{ vars.SERVICES_TRIGGER_URL }}
+      SITE_URL: ${{ vars.BAUHERR_STAGING_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Deploy the image to staging
         run: .github/scripts/trigger-services.sh staging "ghcr.io/getbauherr/bauherr:sha-$GITHUB_SHA"
       - name: Wait until staging reports this commit
-        run: .github/scripts/wait-health.sh https://bauherr-staging.einsfuenf.de commit "${GITHUB_SHA::7}"
+        run: .github/scripts/wait-health.sh "$SITE_URL" commit "${GITHUB_SHA::7}"
