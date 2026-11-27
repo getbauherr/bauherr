@@ -10,7 +10,7 @@ import {
 } from '../../lib/inbox-entries'
 import { useChunks } from '../useChunks'
 
-export type More = { left: number; loading: boolean; load: () => void }
+export type More = { left: number; loading: boolean; load: () => void; auto: boolean }
 
 const fetcher = (group: PagedGroup) => async (after: Paging['cursor'] & object, limit: number) => {
   const chunk = await moreInbox(group, after, limit)
@@ -24,7 +24,8 @@ const useMoreOf = (group: PagedGroup, paging: Record<PagedGroup, Paging>) => {
     fetcher(group),
   )
   const left = chunks.cursor === null ? 0 : paging[group].total - paging[group].shown - chunks.items.length
-  return { items: chunks.items, more: { left: Math.max(0, left), loading: chunks.loading, load: chunks.load } }
+  const more = { left: Math.max(0, left), loading: chunks.loading, load: chunks.load, auto: group !== 'done' }
+  return { items: chunks.items, more }
 }
 
 export function usePagedGroups(paging: Record<PagedGroup, Paging>) {

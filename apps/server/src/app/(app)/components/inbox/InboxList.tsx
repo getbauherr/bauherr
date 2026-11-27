@@ -13,7 +13,7 @@ function LoadMore({ more }: { more: More }) {
   const sentinel = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const node = sentinel.current
-    if (!node) return undefined
+    if (!node || !more.auto) return undefined
     const watcher = new IntersectionObserver((seen) => seen[0]?.isIntersecting && more.load())
     watcher.observe(node)
     return () => watcher.disconnect()
