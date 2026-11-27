@@ -46,6 +46,7 @@ export const POOL_TITLES = {
   question: 'Question from the agent',
   questionBack: 'Question to send back to Brief',
   questionOwn: 'Question to answer in own words',
+  questionSteer: 'Question to steer from the composer',
   briefComment: 'Brief to comment on',
   briefRelations: 'Brief with proposed relations',
 } as const
@@ -290,10 +291,11 @@ export const seedTickets = async (e: Engine): Promise<TicketNames> => {
   const intake = await intakeTicket(e, mirror.item)
   const questionBack = await pooled((n) => asking(`${POOL_TITLES.questionBack} ${n}`))
   const questionOwn = await pooled((n) => asking(`${POOL_TITLES.questionOwn} ${n}`))
-  for (const id of [...questionBack, ...questionOwn]) {
+  const questionSteer = await pooled((n) => asking(`${POOL_TITLES.questionSteer} ${n}`))
+  for (const id of [...questionBack, ...questionOwn, ...questionSteer]) {
     const { source } = (await readRecord(e.db.payload, id)).record
     await mirror.item(source.number, { title: titled.find(([found]) => found === id)?.[1] ?? '' })
   }
   const waiting = { adoptedWaiting, adoptedResult, deployStalled, verifyRounds, intake }
-  return { ...names, ...runs, questionBack, questionOwn, briefComment, briefRelations, ...waiting }
+  return { ...names, ...runs, questionBack, questionOwn, questionSteer, briefComment, briefRelations, ...waiting }
 }

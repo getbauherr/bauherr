@@ -7,6 +7,8 @@ export type Staged = {
   number: number
   receipt: string
   input: Record<string, unknown>
+  comment?: string
+  steered?: boolean
 }
 
 type Deps = {
@@ -14,6 +16,7 @@ type Deps = {
   notify: (staged: Staged, undo: () => void) => void
   onError: (staged: Staged, message: string) => void
   onSettled: (staged: Staged, advance: boolean) => void
+  onUndo?: (staged: Staged) => void
   delay: number
 }
 
@@ -55,6 +58,7 @@ export function usePendingDecisions(deps: Deps): Pending {
       clearTimeout(entry.timer)
       waiting.current.delete(key)
       drop(key)
+      latest.current.onUndo?.(entry.staged)
     },
     [drop],
   )

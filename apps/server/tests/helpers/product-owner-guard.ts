@@ -73,7 +73,7 @@ export const BAUHERR_ACTIONS = [
   'lib/actions.ts#selectWorkspace',
   '(shell)/actions.ts#moveCard',
   '(shell)/lane-actions.tsx#moreCards',
-  '(shell)/inbox/actions.ts#moreInbox',
+  '(shell)/inbox/actions.ts#moreInbox', '(shell)/inbox/steer.ts#steerTicket', '(shell)/inbox/steer.ts#noteUndone',
   '(shell)/releases/actions.ts#writeNotesAction',
   '(shell)/releases/actions.ts#editNoteAction',
   '(shell)/releases/actions.ts#addNoteAction',

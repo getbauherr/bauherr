@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
+import { noteUndone } from '../../(shell)/inbox/steer'
 import { decideTicket } from '../../(shell)/tickets/actions'
 import {
   mergeEntries,
@@ -11,12 +12,14 @@ import {
   type PagedGroup,
   type Paging,
 } from '../../lib/inbox-entries'
+import { sendComment } from '../../lib/inbox-send'
 import { UNDO_MS } from '../../lib/inbox-words'
 import { useInboxKeys } from './use-inbox-keys'
 import { usePagedGroups } from './use-paged-groups'
 import { usePendingDecisions, type Staged } from './use-pending-decisions'
 
-const run = async ({ input }: Staged): Promise<string | null> => (await decideTicket(input)).error ?? null
+const run = async ({ input, comment, recordId }: Staged): Promise<string | null> =>
+  comment === undefined ? ((await decideTicket(input)).error ?? null) : sendComment(recordId, comment)
 
 const notify = ({ receipt, number }: Staged, undo: () => void) =>
   toast(`${receipt} on #${number}`, { duration: UNDO_MS, action: { label: 'Undo', onClick: undo } })
@@ -36,9 +39,13 @@ export function useInboxState(first: InboxEntry[], paging: Record<PagedGroup, Pa
     notify,
     delay: UNDO_MS,
     onError: (_staged, message) => toast.error(message),
+    onUndo: (staged) => {
+      if (staged.steered) void noteUndone(staged.recordId).then(() => router.refresh())
+    },
     onSettled: (staged, advance) => {
       router.refresh()
-      if (advance && String(staged.recordId) === selected) open(nextWaiting(entries, selected))
+      const decided = staged.comment === undefined
+      if (advance && decided && String(staged.recordId) === selected) open(nextWaiting(entries, selected))
     },
   })
   const select = useCallback(

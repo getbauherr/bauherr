@@ -6,10 +6,18 @@ import { DECISION_TOOL } from '../../lib/inbox-thread'
 import { DecisionCard } from './DecisionCard'
 import type { Pending } from './use-pending-decisions'
 
-const PendingContext = createContext<Pending | null>(null)
+export const PendingContext = createContext<Pending | null>(null)
 
-export function PendingProvider({ pending, children }: { pending: Pending; children: ReactNode }) {
-  return <PendingContext.Provider value={pending}>{children}</PendingContext.Provider>
+export const ProposalDoneContext = createContext<() => void>(() => undefined)
+
+type ProviderProps = { pending: Pending; onProposalDone: () => void; children: ReactNode }
+
+export function PendingProvider({ pending, onProposalDone, children }: ProviderProps) {
+  return (
+    <PendingContext.Provider value={pending}>
+      <ProposalDoneContext.Provider value={onProposalDone}>{children}</ProposalDoneContext.Provider>
+    </PendingContext.Provider>
+  )
 }
 
 function Rendered({ model }: { model: DecisionModel }) {

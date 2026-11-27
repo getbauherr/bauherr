@@ -1,10 +1,12 @@
 import type { ThreadMessageLike } from '@assistant-ui/react'
+import type { ConversationMessage } from '../../../core/conversations/store'
 import { resolveMention, type TicketRefs } from '../../../core/views/refs'
 import type { TicketView } from '../../../core/views/ticket'
 import { decisionOf, type DecisionModel, type DecisionSource } from './inbox-decision'
 import { ticketPath, type InboxEntry } from './inbox-entries'
 import { SUGGESTIONS } from './inbox-words'
 import { ago } from './format'
+import { INTENT_TOOL, PROPOSAL_TOOL, type Proposal } from './inbox-steer'
 import { CLOSED_WORDS, STATUS_WORDS } from './status-words'
 
 export const DECISION_TOOL = 'decision'
@@ -61,17 +63,46 @@ const decidedMessage = (view: ThreadSource): ThreadMessageLike[] => {
   return [assistantText(`decided-${view.recordId}`, text)]
 }
 
-const commentMessages = (view: ThreadSource): ThreadMessageLike[] =>
-  view.comments.map((comment) =>
-    comment.role === 'bauherr'
-      ? userText(`comment-${comment.id}`, comment.text)
-      : assistantText(`comment-${comment.id}`, `**${comment.author}**: ${comment.text}`),
-  )
+type Timed = { at: string; message: ThreadMessageLike }
+
+const commentMessages = (view: ThreadSource): Timed[] =>
+  view.comments.map((comment) => ({
+    at: comment.at,
+    message:
+      comment.role === 'bauherr'
+        ? userText(`comment-${comment.id}`, comment.text)
+        : assistantText(`comment-${comment.id}`, `**${comment.author}**: ${comment.text}`),
+  }))
+
+const steerMessages = (steer: ConversationMessage[]): Timed[] =>
+  steer.map((item) => ({
+    at: item.createdAt,
+    message: (item.role === 'user' ? userText : assistantText)(`steer-${item.id}`, item.text),
+  }))
+
+const timeline = (view: ThreadSource, steer: ConversationMessage[]): ThreadMessageLike[] =>
+  [...commentMessages(view), ...steerMessages(steer)]
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+    .map((item) => item.message)
 
 const statusMessage = (view: ThreadSource): ThreadMessageLike => {
   const word = view.closedAs ? CLOSED_WORDS[view.closedAs] : STATUS_WORDS[view.status].word
   return assistantText(`status-${view.recordId}`, `${word}. Nothing needs you right now.`)
 }
+
+export const intentMessage = (args: { key: string; recordId: number; number: number }): ThreadMessageLike => ({
+  id: `intent-${args.key}`,
+  role: 'assistant',
+  status: { type: 'complete', reason: 'stop' },
+  content: [{ type: 'tool-call', toolCallId: `call-intent-${args.key}`, toolName: INTENT_TOOL, args }],
+})
+
+export const proposalMessage = (args: Proposal): ThreadMessageLike => ({
+  id: `proposal-${args.id}`,
+  role: 'assistant',
+  status: { type: 'complete', reason: 'stop' },
+  content: [{ type: 'tool-call', toolCallId: `call-proposal-${args.id}`, toolName: PROPOSAL_TOOL, args }],
+})
 
 export const decisionMessage = (decision: DecisionModel): ThreadMessageLike => ({
   id: `ask-${decision.key}`,
@@ -80,7 +111,7 @@ export const decisionMessage = (decision: DecisionModel): ThreadMessageLike => (
   content: [{ type: 'tool-call', toolCallId: `call-${decision.key}`, toolName: DECISION_TOOL, args: decision }],
 })
 
-export const threadOf = (view: ThreadSource, refs: TicketRefs): ThreadModel => {
+export const threadOf = (view: ThreadSource, refs: TicketRefs, steer: ConversationMessage[] = []): ThreadModel => {
   const decision = decisionOf(view)
   const { repo } = view.record.source
   const linked = (message: ThreadMessageLike): ThreadMessageLike =>
@@ -92,7 +123,7 @@ export const threadOf = (view: ThreadSource, refs: TicketRefs): ThreadModel => {
           ),
         }
       : message
-  const body = [...decidedMessage(view), ...(decision ? [] : [statusMessage(view)]), ...commentMessages(view)]
+  const body = [...decidedMessage(view), ...(decision ? [] : [statusMessage(view)]), ...timeline(view, steer)]
   return {
     id: String(view.recordId),
     recordId: view.recordId,

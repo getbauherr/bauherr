@@ -13,6 +13,8 @@ import { FlatToolGroup } from '../conversation/tool-ui'
 import { LiveDot } from '../LiveDot'
 import { DecisionToolUI } from './DecisionToolUI'
 import { FactoryMessage } from './FactoryMessage'
+import { IntentToolUI } from './IntentToolUI'
+import { ProposalToolUI } from './ProposalToolUI'
 
 type Props = {
   messages: ThreadMessageLike[]
@@ -48,6 +50,8 @@ export function InboxThread({ messages, suggestions, sending, placeholder, threa
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <DecisionToolUI />
+      <IntentToolUI />
+      <ProposalToolUI />
       {frame(
         <div role="log" aria-label="Conversation" className="flex flex-1 flex-col">
           <Thread
