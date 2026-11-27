@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { isLowBudget, type ForgeLimits } from '../../../../../core/forge/limits'
 import { EmptyState } from '../../../components/EmptyState'
 import { Table } from '../../../components/ui/table'
 import { isAdmin, loadHealth, loadWorkspaceSettings } from '../../../lib/settings'
@@ -16,6 +17,17 @@ const budgetBadge = (gatewayOn: boolean, spend: Spend): [string, string] => {
   if (spend.spentUsd >= spend.limitUsd) return ['Exhausted', 'text-destructive']
   if (spend.spentUsd >= 0.8 * spend.limitUsd) return ['Near limit', 'text-warn']
   return ['OK', 'text-ok']
+}
+
+const forgeBudget = (limits: ForgeLimits, now: Date): string => {
+  const left =
+    limits.limit === undefined || limits.remaining === undefined
+      ? 'not measured yet'
+      : `${limits.remaining} of ${limits.limit} calls left`
+  const slowed = isLowBudget(limits, now) ? ' · polling slowed' : ''
+  const until = limits.pausedUntil !== undefined && new Date(limits.pausedUntil) > now ? limits.pausedUntil : null
+  const paused = until === null ? '' : ` · paused until ${until.slice(11, 16)} UTC (${limits.pauseReason})`
+  return `${left}${slowed}${paused}`
 }
 
 function HealthTable({
@@ -50,6 +62,12 @@ function HealthTable({
               {s.polledAt ? ago(s.polledAt) : 'never'}
               {s.error && <span className="text-destructive"> · Failed: {s.error}</span>}
             </td>
+          </tr>
+        ))}
+        {health.forges.map((f) => (
+          <tr key={f.name}>
+            <th>Forge budget, {f.name}</th>
+            <td>{forgeBudget(f.limits, new Date())}</td>
           </tr>
         ))}
         <tr>

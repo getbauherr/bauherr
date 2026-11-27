@@ -61,6 +61,15 @@ export const insertProduct = async (payload: Payload, workspace: Id, slug: strin
     ),
   )
 
+export const insertConnection = async (payload: Payload, workspace: Id, name: string): Promise<number> =>
+  idOf(
+    await runSql(
+      payload,
+      sql`INSERT INTO "connections" ("name", "kind", "workspace_id", "updated_at", "created_at")
+        VALUES (${name}, 'github', ${workspace}, now(), now()) RETURNING "id"`,
+    ),
+  )
+
 export const insertSource = async (
   payload: Payload,
   o: { repo: string; product: Id; connection: Id; workspace: Id },

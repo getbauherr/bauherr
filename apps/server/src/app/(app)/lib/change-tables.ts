@@ -5,6 +5,7 @@ export const CHANGE_TABLES = [
   'mirror_items',
   'mirror_checks',
   'ticket_sources',
+  'connections',
   'agent_sessions',
 ] as const
 
@@ -16,6 +17,7 @@ export const BOARD_TABLES = [
   'stage_runs',
   'mirror_items',
   'ticket_sources',
+  'connections',
   'agent_sessions',
 ] as const
 export const TICKET_TABLES = ['records', 'events', 'stage_runs', 'mirror_items', 'mirror_checks'] as const

@@ -45,10 +45,16 @@ export const backendFor = (connection: ConnectionInput, limits: Limits = {}): Ba
   if (fakeForge) return fakeForge()
   if (!connection.secret) throw new Error(`connection ${connection.id} has no secret`)
   if (connection.kind === 'gitlab')
-    return new GitlabBackend({ auth: gitlabPat(connection.secret), baseUrl: webOrigin(connection), ...limits })
+    return new GitlabBackend({
+      auth: gitlabPat(connection.secret),
+      baseUrl: webOrigin(connection),
+      budgetKey: String(connection.id),
+      ...limits,
+    })
   const baseUrl = connection.config.apiUrl
   return new GithubBackend({
     auth: githubAuth(connection, connection.secret, limits),
+    budgetKey: String(connection.id),
     ...(typeof baseUrl === 'string' ? { baseUrl } : {}),
     ...limits,
   })

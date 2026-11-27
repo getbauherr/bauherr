@@ -1,5 +1,5 @@
-import { MAX_WAIT_MS } from './github.js';
 import { timedFetch } from './http.js';
+import { IDEMPOTENT_METHODS, sendWithRetry, type RetryKit, type WriteOptions } from './retry.js';
 import { num, wire } from './wire.js';
 
 export interface GitlabAuth {
@@ -30,53 +30,57 @@ export interface GitlabOptions {
   timeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
   maxRetries?: number;
+  random?: () => number;
+  budgetKey?: string;
 }
 
 /** Minimal REST client: `Link rel="next"` pagination, backoff on 429 honouring Retry-After. */
 export class GitlabHttp {
   private base: string;
   private doFetch: typeof fetch;
-  private sleep: (ms: number) => Promise<void>;
-  private maxRetries: number;
+  private kit: RetryKit;
   constructor(private o: GitlabOptions) {
     this.base = `${(o.baseUrl ?? 'https://gitlab.com').replace(/\/+$/, '')}/api/v4`;
     this.doFetch = o.fetch ?? fetch;
-    this.sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
-    this.maxRetries = o.maxRetries ?? 3;
+    this.kit = {
+      sleep: o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
+      maxRetries: o.maxRetries ?? 3,
+      random: o.random ?? Math.random,
+      budgetKey: o.budgetKey,
+    };
   }
 
-  async raw(method: string, path: string, body?: unknown): Promise<Response> {
+  async raw(method: string, path: string, body?: unknown, opts: WriteOptions = {}): Promise<Response> {
     const url = path.startsWith('http') ? path : this.base + path;
-    for (let attempt = 0; ; attempt++) {
-      const res = await timedFetch(
-        this.doFetch,
-        url,
-        {
-          cache: 'no-store',
-          method,
-          headers: {
-            'private-token': await this.o.auth.token(),
-            accept: 'application/json',
-            'user-agent': 'bauherr',
-            ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    const res = await sendWithRetry(this.kit, {
+      forge: 'GitLab',
+      method,
+      path,
+      idempotent: opts.idempotent ?? IDEMPOTENT_METHODS.includes(method),
+      send: async () =>
+        timedFetch(
+          this.doFetch,
+          url,
+          {
+            cache: 'no-store',
+            method,
+            headers: {
+              'private-token': await this.o.auth.token(),
+              accept: 'application/json',
+              'user-agent': 'bauherr',
+              ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+            },
+            body: body === undefined ? undefined : JSON.stringify(body),
           },
-          body: body === undefined ? undefined : JSON.stringify(body),
-        },
-        this.o.timeoutMs,
-      );
-      if (res.status === 429 && attempt < this.maxRetries) {
-        const wait = Number(res.headers.get('retry-after') ?? 60) * 1000;
-        if (wait > MAX_WAIT_MS) throw new GitlabError(429, method, path, `rate limited for ${wait} ms`);
-        await this.sleep(wait);
-        continue;
-      }
-      if (!res.ok) throw new GitlabError(res.status, method, path, await res.text());
-      return res;
-    }
+          this.o.timeoutMs,
+        ),
+    });
+    if (!res.ok) throw new GitlabError(res.status, method, path, await res.text());
+    return res;
   }
 
-  async json<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await this.raw(method, path, body);
+  async json<T = unknown>(method: string, path: string, body?: unknown, opts?: WriteOptions): Promise<T> {
+    const res = await this.raw(method, path, body, opts);
     return (res.status === 204 ? undefined : await res.json()) as T;
   }
 

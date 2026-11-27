@@ -1,3 +1,4 @@
+import { IDEMPOTENT } from './retry.js';
 import type { Branch, RepoRef } from './contracts.js';
 import { Conflict } from './contracts.js';
 import type { GitlabApi } from './gitlab-api.js';
@@ -45,11 +46,13 @@ export class GitlabForgeBase {
     return { name, sha: field(get(b, 'commit'), 'id') };
   }
   async resetBranch(repo: RepoRef, branch: string, sha: string) {
-    await this.h.json('DELETE', `/projects/${enc(repo)}/repository/branches/${enc(branch)}`).catch(ignoreMissing);
+    const url = `/projects/${enc(repo)}/repository/branches/${enc(branch)}`;
+    await this.h.json('DELETE', url, undefined, IDEMPOTENT).catch(ignoreMissing);
     await this.h.json('POST', `/projects/${enc(repo)}/repository/branches?branch=${enc(branch)}&ref=${enc(sha)}`);
   }
   async deleteBranch(repo: RepoRef, branch: string) {
-    await this.h.json('DELETE', `/projects/${enc(repo)}/repository/branches/${enc(branch)}`).catch(ignoreMissing);
+    const url = `/projects/${enc(repo)}/repository/branches/${enc(branch)}`;
+    await this.h.json('DELETE', url, undefined, IDEMPOTENT).catch(ignoreMissing);
   }
   async isBranchProtected(repo: RepoRef, branch: string) {
     try {

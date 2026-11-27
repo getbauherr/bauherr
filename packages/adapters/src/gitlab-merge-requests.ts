@@ -1,3 +1,4 @@
+import { IDEMPOTENT } from './retry.js';
 import type {
   Check,
   InlineComment,
@@ -129,10 +130,10 @@ export class GitlabMergeRequests extends GitlabForgeBase {
     return Promise.all(ms.map((m) => this.pr(repo, m)));
   }
   async closePullRequest(repo: RepoRef, n: number) {
-    await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${n}`, { state_event: 'close' });
+    await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${n}`, { state_event: 'close' }, IDEMPOTENT);
   }
   async retargetPullRequest(repo: RepoRef, n: number, base: string) {
-    await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${n}`, { target_branch: base });
+    await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${n}`, { target_branch: base }, IDEMPOTENT);
   }
   async commentOnPullRequest(repo: RepoRef, n: number, body: string) {
     return gitlabNote(await this.h.json('POST', `/projects/${enc(repo)}/merge_requests/${n}/notes`, { body }));
@@ -161,7 +162,8 @@ export class GitlabMergeRequests extends GitlabForgeBase {
     return all.filter(isInlineThread).map(reviewThread);
   }
   async resolveReviewThread(repo: RepoRef, n: number, threadId: string) {
-    await this.h.json('PUT', `/projects/${enc(repo)}/merge_requests/${n}/discussions/${threadId}?resolved=true`);
+    const url = `/projects/${enc(repo)}/merge_requests/${n}/discussions/${threadId}?resolved=true`;
+    await this.h.json('PUT', url, undefined, IDEMPOTENT);
   }
   async listPullRequestComments(repo: RepoRef, n: number) {
     const notes = await this.h.paginate(

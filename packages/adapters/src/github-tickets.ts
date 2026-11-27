@@ -1,3 +1,4 @@
+import { IDEMPOTENT } from './retry.js';
 import type {
   CloseReason,
   LabelEvent,
@@ -96,38 +97,38 @@ export class GithubTickets implements TicketSource {
     return this.get(idText(wire(i).number));
   }
   async update(id: string, patch: { title?: string; body?: string }) {
-    await this.h.json('PATCH', `${this.p}/issues/${id}`, patch);
+    await this.h.json('PATCH', `${this.p}/issues/${id}`, patch, IDEMPOTENT);
   }
   async comment(id: string, body: string) {
     return githubComment(await this.h.json('POST', `${this.p}/issues/${id}/comments`, { body }));
   }
   async updateComment(_id: string, commentId: string, body: string) {
-    return githubComment(await this.h.json('PATCH', `${this.p}/issues/comments/${commentId}`, { body }));
+    return githubComment(await this.h.json('PATCH', `${this.p}/issues/comments/${commentId}`, { body }, IDEMPOTENT));
   }
   async listComments(id: string, since?: string) {
     const q = since ? `&since=${enc(sinceParam(since))}` : '';
     return (await this.h.paginate(`${this.p}/issues/${id}/comments?per_page=100${q}`)).map(githubComment);
   }
   async addLabels(id: string, labels: string[]) {
-    await this.h.json('POST', `${this.p}/issues/${id}/labels`, { labels });
+    await this.h.json('POST', `${this.p}/issues/${id}/labels`, { labels }, IDEMPOTENT);
   }
   async removeLabels(id: string, labels: string[]) {
     for (const l of labels) {
       try {
-        await this.h.json('DELETE', `${this.p}/issues/${id}/labels/${enc(l)}`);
+        await this.h.json('DELETE', `${this.p}/issues/${id}/labels/${enc(l)}`, undefined, IDEMPOTENT);
       } catch (e) {
         if (!(e instanceof GithubError && e.status === 404)) throw e;
       }
     }
   }
   async claim(id: string, assignee: string) {
-    const i = await this.h.json('POST', `${this.p}/issues/${id}/assignees`, { assignees: [assignee] });
+    const i = await this.h.json('POST', `${this.p}/issues/${id}/assignees`, { assignees: [assignee] }, IDEMPOTENT);
     if (!list(wire(i).assignees).some((a) => field(a, 'login').toLowerCase() === assignee.toLowerCase()))
       throw Object.assign(new Error(`claim failed: ${assignee} not assigned to #${id}`), { status: 422 });
   }
   async release(id: string) {
     const assignees = list(wire(await this.issue(id)).assignees).map((a) => field(a, 'login'));
-    if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees });
+    if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees }, IDEMPOTENT);
   }
   async userExists(login: string) {
     try {
@@ -146,13 +147,13 @@ export class GithubTickets implements TicketSource {
     return field(await this.h.json('GET', '/user'), 'login');
   }
   async unassign(id: string, assignees: string[]) {
-    if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees });
+    if (assignees.length) await this.h.json('DELETE', `${this.p}/issues/${id}/assignees`, { assignees }, IDEMPOTENT);
   }
   async close(id: string, reason: CloseReason) {
-    await this.h.json('PATCH', `${this.p}/issues/${id}`, { state: 'closed', state_reason: reason });
+    await this.h.json('PATCH', `${this.p}/issues/${id}`, { state: 'closed', state_reason: reason }, IDEMPOTENT);
   }
   async reopen(id: string) {
-    await this.h.json('PATCH', `${this.p}/issues/${id}`, { state: 'open' });
+    await this.h.json('PATCH', `${this.p}/issues/${id}`, { state: 'open' }, IDEMPOTENT);
   }
   async addSubTicket(parentId: string, childId: string) {
     await this.h.json('POST', `${this.p}/issues/${parentId}/sub_issues`, {
@@ -179,7 +180,7 @@ export class GithubTickets implements TicketSource {
     const body = text(wire(await this.issue(id)).body);
     const { relations } = parseRelations(body);
     relations.links.push(url);
-    await this.h.json('PATCH', `${this.p}/issues/${id}`, { body: renderRelations(body, relations) });
+    await this.h.json('PATCH', `${this.p}/issues/${id}`, { body: renderRelations(body, relations) }, IDEMPOTENT);
   }
   async frontier(parentId: string) {
     const open = (await this.listSubTickets(parentId)).filter((s) => s.state === 'open');

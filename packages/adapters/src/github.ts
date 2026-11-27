@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { GithubAuth } from './github-auth.js';
 import { GithubError } from './github-error.js';
 import { timedFetch } from './http.js';
+import { IDEMPOTENT_METHODS, sendWithRetry, type RetryKit, type WriteOptions } from './retry.js';
 
 export interface GithubOptions {
   auth: GithubAuth;
@@ -10,20 +11,9 @@ export interface GithubOptions {
   timeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
   maxRetries?: number;
+  random?: () => number;
+  budgetKey?: string;
 }
-
-export const MAX_WAIT_MS = 300_000;
-
-const isRateLimited = (res: Response): boolean =>
-  res.status === 429 ||
-  (res.status === 403 && (res.headers.has('retry-after') || res.headers.get('x-ratelimit-remaining') === '0'));
-
-const rateLimitWaitMs = (res: Response): number => {
-  const retryAfter = res.headers.get('retry-after');
-  const reset = res.headers.get('x-ratelimit-reset');
-  if (retryAfter) return Number(retryAfter) * 1000;
-  return reset ? Math.max(0, Number(reset) * 1000 - Date.now()) + 1000 : 60_000;
-};
 
 type Cached = { etag: string; body: string; headers: [string, string][] };
 
@@ -80,31 +70,40 @@ const settle = async (
 export class Http {
   private base: string;
   private doFetch: typeof fetch;
-  private sleep: (ms: number) => Promise<void>;
-  private maxRetries: number;
+  private kit: RetryKit;
   get authKind() {
     return this.o.auth.kind;
   }
   constructor(private o: GithubOptions) {
     this.base = o.baseUrl ?? 'https://api.github.com';
     this.doFetch = o.fetch ?? fetch;
-    this.sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
-    this.maxRetries = o.maxRetries ?? 3;
+    this.kit = {
+      sleep: o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
+      maxRetries: o.maxRetries ?? 3,
+      random: o.random ?? Math.random,
+      budgetKey: o.budgetKey,
+    };
   }
 
-  async raw(method: string, path: string, body?: unknown, accept = 'application/vnd.github+json'): Promise<Response> {
+  async raw(
+    method: string,
+    path: string,
+    body?: unknown,
+    accept = 'application/vnd.github+json',
+    opts: WriteOptions = {},
+  ): Promise<Response> {
     const url = path.startsWith('http') ? path : this.base + path;
     const token = await this.o.auth.token();
     const key = method === 'GET' && body === undefined ? cacheKey(token, accept, url) : undefined;
-    for (let attempt = 0; ; attempt++) {
-      const cached = lookup(key);
-      const res = await this.send(method, url, { token, accept, body, etag: cached?.etag });
-      if (isRateLimited(res) && attempt < this.maxRetries) {
-        await this.waitOut(res, method, path);
-        continue;
-      }
-      return settle(res, { method, path, key, cached });
-    }
+    const cached = lookup(key);
+    const res = await sendWithRetry(this.kit, {
+      forge: 'GitHub',
+      method,
+      path,
+      idempotent: opts.idempotent ?? IDEMPOTENT_METHODS.includes(method),
+      send: () => this.send(method, url, { token, accept, body, etag: cached?.etag }),
+    });
+    return settle(res, { method, path, key, cached });
   }
 
   private send(method: string, url: string, o: { token: string; accept: string; body: unknown; etag?: string }) {
@@ -120,14 +119,8 @@ export class Http {
     return timedFetch(this.doFetch, url, { cache: 'no-store', method, headers, body }, this.o.timeoutMs);
   }
 
-  private async waitOut(res: Response, method: string, path: string): Promise<void> {
-    const wait = rateLimitWaitMs(res);
-    if (wait > MAX_WAIT_MS) throw new GithubError(res.status, method, path, `rate limited for ${wait} ms`);
-    await this.sleep(wait);
-  }
-
-  async json<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await this.raw(method, path, body);
+  async json<T = unknown>(method: string, path: string, body?: unknown, opts?: WriteOptions): Promise<T> {
+    const res = await this.raw(method, path, body, undefined, opts);
     return (res.status === 204 ? undefined : await res.json()) as T;
   }
 

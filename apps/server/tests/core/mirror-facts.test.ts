@@ -130,7 +130,7 @@ describe('repository facts in the sync', () => {
     later(DAY + HOUR)
     const result = await sync({ [repo]: failing(readerOf(fake)) })
     const after = await source(id)
-    expect(result).toEqual({ synced: 1, failed: 0 })
+    expect(result).toEqual({ synced: 1, failed: 0, paused: 0 })
     expect(await numbersOf(repo)).toEqual([1])
     expect(after).toMatchObject({
       branch_protected: 'yes', required_check_names: ['ci', 'lint'], facts_at: stored?.facts_at,
@@ -156,7 +156,7 @@ describe('repository facts in the sync', () => {
     const fake = prepared(repo)
     const id = await newSource(repo)
     const broken = withTickets(failing(readerOf(fake)), { poll: () => Promise.reject(new Error('poll failed')) })
-    expect(await sync({ [repo]: broken })).toEqual({ synced: 0, failed: 1 })
+    expect(await sync({ [repo]: broken })).toEqual({ synced: 0, failed: 1, paused: 0 })
     expect((await source(id))?.last_error).toBe('poll failed')
   })
 })

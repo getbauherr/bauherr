@@ -1,4 +1,5 @@
 import type { Payload } from 'payload'
+import { holdForRecordError, holdOfRecord } from './forge/limits'
 import { MergePending } from './forge/merge-pending'
 import { stackBaseOf, stackedOnRecord } from './forge/stack'
 import { mirrorItem, runEffects, type ForgePort } from './effects'
@@ -86,9 +87,15 @@ const bringUp = async (ctx: Ctx, retarget: boolean): Promise<'ready' | 'restart'
   return 'restart'
 }
 
+const startVerdict = async (ctx: Ctx, stage: Stage): Promise<{ ok: true } | { ok: false; reason: string }> => {
+  const held = await holdOfRecord(ctx.deps.payload, ctx.stored.id, ctx.deps.now)
+  if (held) return { ok: false, reason: held.message }
+  return (await ctx.deps.mayStart?.(ctx.stored, stage)) ?? { ok: true }
+}
+
 const runStep = async (step: Extract<Step, { kind: 'run' }>, ctx: Ctx): Promise<Outcome> => {
   const print = fingerprint({ stage: step.stage, version: ctx.stored.version, note: ctx.state.note })
-  const verdict = (await ctx.deps.mayStart?.(ctx.stored, step.stage)) ?? { ok: true }
+  const verdict = await startVerdict(ctx, step.stage)
   if (!verdict.ok) {
     await setParked(ctx.deps.payload, ctx.stored.id, verdict.reason)
     await project(ctx, 'nobody', null, step.stage)
@@ -118,17 +125,25 @@ const cardStep = async (step: Extract<Step, { kind: 'card' }>, ctx: Ctx): Promis
   return 'stop'
 }
 
+const mergeFailure = async (ctx: Ctx, error: unknown): Promise<AppEvent | MergePending> => {
+  if (error instanceof MergePending) return error
+  const held = await holdForRecordError(ctx.deps.payload, ctx.stored.id, error, ctx.deps.now)
+  if (held) return new MergePending(held.message)
+  const reason = error instanceof Error && error.message.trim() !== '' ? error.message : 'merge failed'
+  return { type: 'run.failed', data: { stage: 'ship', runId: 'merge', reason } }
+}
+
 const attemptMerge = async (ctx: Ctx): Promise<AppEvent | MergePending> => {
   const pr = ctx.state.patch?.pr
   const headSha = ctx.state.verdict?.headSha
-  const failed = (reason: string): AppEvent => ({ type: 'run.failed', data: { stage: 'ship', runId: 'merge', reason } })
-  if (pr === undefined || headSha === undefined) return failed('no verified patch to merge')
+  if (pr === undefined || headSha === undefined) return mergeFailure(ctx, new Error('no verified patch to merge'))
+  const waiting = await holdOfRecord(ctx.deps.payload, ctx.stored.id, ctx.deps.now)
+  if (waiting) return new MergePending(waiting.message)
   try {
     const { sha } = await ctx.deps.merge({ recordId: ctx.stored.id, source: ctx.stored.record.source, pr, headSha })
     return { type: 'ship.merged', data: { sha } }
   } catch (error) {
-    if (error instanceof MergePending) return error
-    return failed(error instanceof Error && error.message.trim() !== '' ? error.message : 'merge failed')
+    return mergeFailure(ctx, error)
   }
 }
 
