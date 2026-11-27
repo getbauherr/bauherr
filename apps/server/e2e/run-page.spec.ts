@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { openFromInbox } from './inbox'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -15,8 +16,7 @@ const signIn = async (page: Page, who = email) => {
 }
 
 const runOf = async (page: Page, title: string) => {
-  await page.goto('/inbox')
-  await page.getByRole('link', { name: new RegExp(title) }).first().click()
+  await openFromInbox(page, new RegExp(title))
   await page.locator('main a[href^="/runs/"]').last().click()
   await expect(page).toHaveURL(/\/runs\/\d+$/)
 }

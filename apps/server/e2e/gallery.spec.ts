@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { openFromInbox } from './inbox'
 
 const TITLE = 'Brief with a mockup'
 const PICTURES = 3
@@ -13,8 +14,7 @@ const openBrief = async (page: Page) => {
   await page.getByLabel('Password').fill(readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim())
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('banner')).toBeVisible()
-  await page.goto('/inbox')
-  await page.getByRole('link', { name: new RegExp(TITLE) }).click()
+  await openFromInbox(page, new RegExp(TITLE))
   await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible()
 }
 

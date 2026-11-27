@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { openFromInbox } from './inbox'
 
 const TITLE = 'Brief with a mockup'
 const CAPTION = 'Export page, progress bar filling'
@@ -13,8 +14,7 @@ test('the Result card shows a screenshot proof as a picture and opens the galler
   await page.getByLabel('Password').fill(readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim())
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('banner')).toBeVisible()
-  await page.goto('/inbox')
-  await page.getByRole('link', { name: new RegExp(TITLE) }).click()
+  await openFromInbox(page, new RegExp(TITLE))
   await expect(page.getByRole('heading', { level: 1, name: TITLE })).toBeVisible()
   await page.goto(`${new URL(page.url()).pathname}?tab=result`)
 

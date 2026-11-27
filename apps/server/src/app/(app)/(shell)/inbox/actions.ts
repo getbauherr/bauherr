@@ -1,11 +1,9 @@
 'use server'
 import { notFound } from 'next/navigation'
-import type { ReactNode } from 'react'
 import { z } from 'zod'
 import { INBOX_GROUPS, inboxMore, type InboxCursor } from '../../../../core/views/inbox'
-import { InboxRow, rowKeyOf } from '../../components/inbox/InboxRow'
 import { MAX_WINDOW } from '../../lib/chunks'
-import { INBOX_PAGE } from '../../lib/inbox'
+import { entryOfCard, INBOX_PAGE, type InboxEntry } from '../../lib/inbox-entries'
 import { currentWorkspace, payloadClient } from '../../lib/session'
 
 const input = z.object({
@@ -18,7 +16,7 @@ export async function moreInbox(
   group: string,
   cursor: InboxCursor,
   limit = INBOX_PAGE,
-): Promise<{ rows: ReactNode[]; cursor: InboxCursor | null }> {
+): Promise<{ entries: InboxEntry[]; cursor: InboxCursor | null }> {
   const { workspace } = await currentWorkspace()
   const parsed = input.safeParse({ group, cursor, limit })
   if (!workspace || !parsed.success) return notFound()
@@ -27,9 +25,6 @@ export async function moreInbox(
     after: parsed.data.cursor,
     limit: parsed.data.limit,
   })
-  const rows = chunk.cards.map((card) => {
-    const row = { kind: 'ticket', card } as const
-    return <li key={rowKeyOf(row)}><InboxRow row={row} /></li>
-  })
-  return { rows, cursor: rows.length === parsed.data.limit ? chunk.cursor : null }
+  const entries = chunk.cards.map((card) => entryOfCard(card, parsed.data.group))
+  return { entries, cursor: entries.length === parsed.data.limit ? chunk.cursor : null }
 }

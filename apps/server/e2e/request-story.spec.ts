@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { inboxHref } from './inbox'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -16,10 +17,8 @@ const requestPath = async (page: Page, title: string) => {
   const url = process.env.BASE_URL ?? 'http://localhost:3000'
   await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url }])
   await signIn(page, email)
-  await page.goto('/inbox')
-  const href = await page.getByRole('link', { name: new RegExp(title) }).first().getAttribute('href')
-  expect(href, `a ticket titled ${title}`).toBeTruthy()
-  return href!.replace('/tickets/', '/requests/')
+  const href = await inboxHref(page, new RegExp(title))
+  return href.replace('/tickets/', '/requests/')
 }
 
 test('a plan that waits shows the Now box, the story and its pictures', async ({ page }, testInfo) => {

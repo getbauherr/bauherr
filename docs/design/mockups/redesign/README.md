@@ -11,3 +11,7 @@ Approved reference designs for the UI redesign. Palette: Indigo + Emerald (owner
 | `Chat.dc.html` | assistant-ui thread and composer, tool call states, recommendation card |
 
 They are in the Design canvas format (`.dc.html`). Read the markup for layout, tokens and copy; build with shadcn/ui and assistant-ui, never by copying the markup.
+
+## Decisions (Inbox)
+
+Approved screenshots of the owner-decisions design are in `decisions/` (`d-*.png`); `built-*.png` are the built Inbox for comparison.

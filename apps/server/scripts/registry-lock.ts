@@ -14,6 +14,7 @@ const lockSchema = z.object({
       registry: z.string().nullable(),
       source: z.enum(SOURCES),
       lookalike: z.boolean().optional(),
+      localChange: z.string().optional(),
     }),
   ),
 })

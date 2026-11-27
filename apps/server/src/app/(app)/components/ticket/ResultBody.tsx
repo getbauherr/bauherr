@@ -5,6 +5,7 @@ import { BeforeAfter } from './BeforeAfter'
 import { CriteriaTable } from './CriteriaTable'
 import { DiffBlock } from './DiffBlock'
 import { ProofPanel } from './ProofPanel'
+import { ResultExceptions } from './ResultExceptions'
 import { Facts, Section } from './Section'
 import { RefText } from '../RefText'
 
@@ -46,6 +47,7 @@ export function ResultBody({ view, tab, proof }: { view: TicketView; tab: Tab; p
       <Section title="Acceptance criteria">
         <CriteriaTable criteria={record.criteria} repo={repo} mode="result" {...{ recordId, tab, proofs, selected }} />
       </Section>
+      <ResultExceptions view={view} />
       <ProofPanel group={group} number={position + 1} />
       <BeforeAfter pairs={view.pairs} />
       {result && result.changes.length > 0 && (
