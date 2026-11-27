@@ -7,6 +7,8 @@ import {
   agentEntry,
   BACK_TO_BRIEF,
   DECISIONS,
+  DROP_CRITERIA,
+  VERIFY_EXITS,
   WORKING_ASK,
   withComment,
   type DecisionEntry,
@@ -22,10 +24,11 @@ import { canGoBack, foldOptions, next, type State, type Step } from './lifecycle
 import type { Effect } from './module'
 import type { ProposedRelation, TicketRecord } from './record/schema'
 import { appendEvent, patchRecord, readEvents, readRecord, type StoredRecord } from './record/store'
+import { dropCriteria } from './record/drop'
 import { releaseLive } from './run/leases'
 
 
-const DISCARDING = ['brief', 'question:failed-runs', 'question:verify-rounds']
+const DISCARDING = ['brief', 'question:failed-runs', 'question:verify-rounds', 'question:brief-failed']
 
 export class DecisionError extends Error {
   constructor(message: string) {
@@ -49,6 +52,7 @@ export type Decision = {
   note?: string
   answers?: Answers
   dropRelations?: number[]
+  criteria?: string[]
 }
 
 const noteSchema = z.string().trim().min(1).max(NOTE_MAX)
@@ -64,6 +68,7 @@ const askedOf = (step: Step, state: State): string | null => {
 const choiceOf = (asked: string, choice: string, state: State): DecisionEntry | undefined => {
   if (asked !== AGENT_ASK) return DECISIONS[asked]?.[choice]
   if (choice === BACK_TO_BRIEF && !canGoBack(state)) return undefined
+  if (VERIFY_EXITS.includes(choice) && !state.card?.options.includes(choice)) return undefined
   return DECISIONS[asked]?.[choice] ?? agentEntry(state.card, choice)
 }
 
@@ -108,9 +113,40 @@ const keptRelations = (asked: string | null, decision: Decision, record: TicketR
   return record.relations.filter((_, i) => !dropped.includes(i))
 }
 
-const eventsOf = (entry: DecisionEntry, state: State, note: string): AppEvent[] => {
+const droppedOf = (decision: Decision, record: TicketRecord): string[] => {
+  const dropped = decision.criteria ?? []
+  if (decision.choice !== DROP_CRITERIA) {
+    if (dropped.length === 0) return []
+    throw new InvalidDecision(`Only ${DROP_CRITERIA} names criteria: leave criteria out of ${decision.choice}.`)
+  }
+  const active = record.criteria.map((criterion) => criterion.id)
+  const unknown = dropped.filter((id) => !active.includes(id))
+  if (dropped.length === 0 || new Set(dropped).size !== dropped.length || unknown.length > 0) {
+    const ids = active.join(', ')
+    throw new InvalidDecision(`${DROP_CRITERIA} needs distinct ids of active criteria (${ids}): pick from them.`)
+  }
+  if (dropped.length === active.length) {
+    throw new InvalidDecision('Dropping every criterion leaves nothing to verify: keep at least one.')
+  }
+  return dropped
+}
+
+const passIfSettled = async (tx: Conn, recordId: number, asked: string | null, person: Person): Promise<void> => {
+  if (asked === 'result') return
+  const { record } = await readRecord(tx, recordId)
+  const state = fold(await readEvents(tx, recordId))
+  const live = record.findings.some((f) => (f.status === 'open' || f.status === 'fixing') && f.followUp !== true)
+  const settled = record.criteria.every((c) => c.status === 'met') && !live && !record.visible
+  if (!settled || state.patch === null || state.stage !== 'verify') return
+  const { id: patchId, headSha } = state.patch
+  const data = { runId: 'dropped-criteria', patchId, headSha }
+  await appendEvent(tx, recordId, { type: 'verify.passed', data, actor: 'owner', actorId: person.id })
+}
+
+const eventsOf = (entry: DecisionEntry, state: State, note: string, criteria: string[]): AppEvent[] => {
   const input = {
     note,
+    criteria,
     patchId: state.patch?.id ?? '',
     headSha: state.patch?.headSha ?? '',
     question: state.card?.text ?? '',
@@ -174,8 +210,13 @@ export const decide = async (
     const { entry, note } = entryOf(asked, stored.card?.seq ?? 0, decision, state)
     const answers = answersOf(asked, decision, stored.record)
     const kept = keptRelations(asked, decision, stored.record)
-    const events = eventsOf(entry, state, note)
+    const criteria = droppedOf(decision, stored.record)
+    const events = eventsOf(entry, state, note, criteria)
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
+    if (criteria.length > 0) {
+      await dropCriteria(tx, recordId, criteria, note)
+      await passIfSettled(tx, recordId, asked, person)
+    }
     await settle(tx, stored, { entry, answers }, deps.now)
     if (kept.length !== stored.record.relations.length) await keepOnly(tx, recordId, kept)
     return {

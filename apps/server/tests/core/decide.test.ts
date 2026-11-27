@@ -21,6 +21,9 @@ const ROWS: Row[] = [
   ['brief', 'discard', ['brief.discarded']],
   ['result', 'accept', ['result.accepted']],
   ['result', 'send-back', ['result.sent-back']],
+  ['result', 'drop-criteria', ['criteria.dropped']],
+  ['question:brief-failed', 'retry-brief', ['question.answered']],
+  ['question:brief-failed', 'discard', ['question.answered', 'ticket.closed']],
   ['question:failed-runs', 'retry', ['question.answered']],
   ['question:failed-runs', 'retry-with-guidance', ['question.answered', 'owner.note']],
   ['question:failed-runs', 'discard', ['question.answered', 'ticket.closed']],
@@ -33,7 +36,8 @@ const ROWS: Row[] = [
   ['question:disputed', 'accept', ['question.answered', 'intake.accepted']],
   ['question:disputed', 'ask-again', ['question.answered']],
   ['question:verify-rounds', 'one-more-round', ['question.answered']],
-  ['question:verify-rounds', 'accept-as-is', ['question.answered', 'verify.overridden']],
+  ['question:verify-rounds', 'accept-anyway', ['question.answered', 'verify.overridden']],
+  ['question:verify-rounds', 'drop-criteria', ['question.answered', 'criteria.dropped']],
   ['question:verify-rounds', 'discard', ['question.answered', 'ticket.closed']],
   ['question:already-done', 'close-as-done', ['question.answered', 'ticket.done-elsewhere']],
   ['question:already-done', 're-run-build', ['question.answered']],
@@ -41,6 +45,8 @@ const ROWS: Row[] = [
   ['question:deploy-stalled', 'continue', ['question.answered', 'ship.deployed']],
   ['question:agent', 'back-to-brief', ['question.answered', 'brief.changes-requested']],
   ['question:agent', 'own-answer', ['question.answered', 'owner.note']],
+  ['question:agent', 'drop-criteria', ['question.answered', 'criteria.dropped', 'owner.note']],
+  ['question:agent', 'accept-anyway', ['question.answered', 'verify.overridden']],
   ['working', 'back-to-brief', ['brief.changes-requested']],
 ]
 
@@ -51,18 +57,18 @@ describe('the decision table', () => {
   })
 
   it.each(ROWS)('%s %s appends the specified events', (ask, choice, types) => {
-    const input = { note: 'because', patchId: 'p1', headSha: 'h1', question: 'Q' }
+    const input = { note: 'because', patchId: 'p1', headSha: 'h1', question: 'Q', criteria: ['c1'] }
     const events = DECISIONS[ask]?.[choice]?.events(input) ?? []
     expect(events.map((e) => e.type)).toEqual(types)
   })
 
   it('carries the note and the latest patch where the specification says so', () => {
-    const input = { note: 'because', patchId: 'p9', headSha: 'h9', question: 'Q' }
+    const input = { note: 'because', patchId: 'p9', headSha: 'h9', question: 'Q', criteria: ['c1'] }
     const note = (ask: string, choice: string) => DECISIONS[ask]?.[choice]?.events(input).map((e) => e.data)
     expect(note('brief', 'request-changes')).toEqual([{ note: 'because' }])
     expect(note('result', 'send-back')).toEqual([{ note: 'because' }])
     expect(note('question:failed-runs', 'retry-with-guidance')?.[1]).toEqual({ note: 'because' })
-    expect(note('question:verify-rounds', 'accept-as-is')?.[1]).toEqual({ patchId: 'p9', headSha: 'h9' })
+    expect(note('question:verify-rounds', 'accept-anyway')?.[1]).toEqual({ patchId: 'p9', headSha: 'h9' })
     expect(note('brief', 'approve')).toEqual([{ by: 'owner' }])
   })
 })

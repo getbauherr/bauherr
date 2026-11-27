@@ -89,6 +89,7 @@ const eventSchema = z.discriminatedUnion('type', [
   event('ticket.closed', z.object({ reason: z.enum(['discarded', 'closed-on-forge', 'archived']) })),
   event('ticket.restored', none),
   event('ticket.blocked', z.object({ reason: z.string().min(1).nullable() })),
+  event('criteria.dropped', z.object({ criteria: z.array(id).min(1), note: z.string() })),
   event('verify.overridden', z.object({ patchId: id, headSha: id })),
   event(
     'question.asked',

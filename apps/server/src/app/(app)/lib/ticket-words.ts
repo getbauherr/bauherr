@@ -2,6 +2,7 @@ import type { BriefReason } from '../../../core/lifecycle'
 
 export type QuestionReason =
   | 'failed-runs'
+  | 'brief-failed'
   | 'reporter-silent'
   | 'disputed'
   | 'verify-rounds'
@@ -22,6 +23,7 @@ export const REASON_WORDS: Record<BriefReason | QuestionReason, string> = {
     'Check the Brief before the build goes on.',
   'sent-back': 'You sent this ticket back to Brief. Check the new Brief before the build goes on.',
   'failed-runs': 'Runs on this ticket failed several times in a row. What should the factory do?',
+  'brief-failed': 'The Brief rewrite failed. The old Brief is not offered again. What should the factory do?',
   'reporter-silent': 'The reporter did not answer the questions the factory asked. What should the factory do?',
   disputed: 'The agent disputes that this issue is a change to make. What should the factory do?',
   'verify-rounds': 'The patch was sent back from review several times. What should the factory do?',
@@ -33,7 +35,8 @@ export const REASON_WORDS: Record<BriefReason | QuestionReason, string> = {
 
 export const CHOICE_WORDS: Record<string, Record<string, string>> = {
   brief: { approve: 'Approve Brief', 'request-changes': 'Request changes', discard: 'Discard' },
-  result: { accept: 'Accept', 'send-back': 'Send back with note' },
+  result: { accept: 'Accept', 'send-back': 'Send back with note', 'drop-criteria': 'Drop criteria' },
+  'question:brief-failed': { 'retry-brief': 'Retry the Brief', discard: 'Discard' },
   'question:failed-runs': { retry: 'Retry', 'retry-with-guidance': 'Retry with guidance', discard: 'Discard' },
   'question:parked': { resume: 'Resume', discard: 'Discard' },
   'question:reporter-silent': {
@@ -48,12 +51,18 @@ export const CHOICE_WORDS: Record<string, Record<string, string>> = {
   },
   'question:verify-rounds': {
     'one-more-round': 'One more review round',
-    'accept-as-is': 'Accept the patch as it is',
+    'accept-anyway': 'Accept anyway',
+    'drop-criteria': 'Drop criteria',
     discard: 'Discard',
   },
   'question:already-done': { 'close-as-done': 'Close as done', 're-run-build': 'Re-run build' },
   'question:deploy-stalled': { 'check-again': 'Check again', continue: 'It is deployed: go on' },
-  'question:agent': { 'back-to-brief': 'Back to Brief', 'own-answer': 'None of these, my answer:' },
+  'question:agent': {
+    'back-to-brief': 'Back to Brief',
+    'own-answer': 'None of these, my answer:',
+    'drop-criteria': 'Drop criteria',
+    'accept-anyway': 'Accept anyway',
+  },
   working: { 'back-to-brief': 'Back to Brief' },
 }
 

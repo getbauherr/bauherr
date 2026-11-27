@@ -88,6 +88,7 @@ export const SAMPLES: Record<EventType, unknown> = {
   'ticket.closed': { reason: 'discarded' },
   'ticket.restored': {},
   'ticket.blocked': { reason: 'Waiting for #1' },
+  'criteria.dropped': { criteria: ['c1'], note: 'not needed' },
   'verify.overridden': { patchId: 'p1', headSha: 'h1' },
   'question.asked': { reason: 'failed-runs', options: ['retry', 'discard'] },
   'question.answered': { option: 'retry' },

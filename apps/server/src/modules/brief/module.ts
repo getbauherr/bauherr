@@ -95,6 +95,7 @@ export const brief = defineModule({
   writes: [
     'goal',
     'criteria',
+    'dropped',
     'constraints',
     'outOfScope',
     'visible',
@@ -127,6 +128,7 @@ export const brief = defineModule({
     patch: {
       goal: result.goal,
       criteria: result.criteria.map((c, i) => ({ id: `c${i + 1}`, ...c, status: 'open', proof: [] })),
+      dropped: [],
       constraints: result.constraints,
       outOfScope: result.outOfScope,
       visible: result.visible,

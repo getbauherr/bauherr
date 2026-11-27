@@ -15,7 +15,7 @@ const run = (stage: 'brief' | 'build' | 'verify', role: 'builder' | 'reviewer' |
 const wait = (on: WaitOn): Step => ({ kind: 'wait', on })
 const question = (reason: string, options: string[]): Step => ({ kind: 'card', card: 'question', reason, options })
 const resultCard: Step = { kind: 'card', card: 'result', reason: 'result', options: [] }
-const verifyRounds = question('verify-rounds', ['one-more-round', 'accept-as-is', 'discard'])
+const verifyRounds = question('verify-rounds', ['one-more-round', 'accept-anyway', 'drop-criteria', 'discard'])
 const merge: Step = { kind: 'effect', effect: 'merge' }
 const reviewerRun = run('verify', 'reviewer')
 
@@ -107,11 +107,11 @@ const CASES: Case[] = [
     expected: run('verify', 'verifier'),
   },
   {
-    name: 'accept-as-is at the cap shows the Result card before any merge',
+    name: 'accept-anyway at the cap shows the Result card before any merge',
     events: [
       ...atCap,
       ev('question.asked'),
-      ev('question.answered', { option: 'accept-as-is' }),
+      ev('question.answered', { option: 'accept-anyway' }),
       ev('verify.overridden', { patchId: 'adopted:h2', headSha: 'h2' }),
     ],
     expected: resultCard,

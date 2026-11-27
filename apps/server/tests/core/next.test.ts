@@ -45,7 +45,8 @@ const atVerifyCap = [...inVerify, ...changed, ...secondBuild, ...changed]
 const briefWritten = [...inBrief, start('brief'), ev('brief.submitted')]
 const noted = [...briefWritten, ev('brief.changes-requested')]
 const merge: Step = { kind: 'effect', effect: 'merge' }
-const verifyRounds = question('verify-rounds', ['one-more-round', 'accept-as-is', 'discard'])
+const verifyRounds = question('verify-rounds', ['one-more-round', 'accept-anyway', 'drop-criteria', 'discard'])
+const verifyRoundsAgain = question('verify-rounds', ['drop-criteria', 'accept-anyway', 'one-more-round', 'discard'])
 const disputed = question('disputed', ['not-a-bug', 'accept', 'ask-again'])
 const sentBack = [...merged, ev('result.sent-back')]
 const secondPatch = [start('build', 'r3'), ev('build.submitted', { runId: 'r3', patchId: 'p2' })]
@@ -222,7 +223,7 @@ const CASES: Case[] = [
       ev('build.submitted', { runId: 'r4' }),
       ...changed,
     ],
-    expected: verifyRounds,
+    expected: verifyRoundsAgain,
   },
   {
     name: 'the verify-round cap respects the configuration',
