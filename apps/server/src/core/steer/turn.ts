@@ -11,13 +11,12 @@ const HISTORY = 6
 
 export const UNDONE_NOTE = '*Undone. Nothing was written.*'
 
-export const FALLBACK_NOTE = 'The factory model is not available, so your words went to the ticket as a comment.'
+export const FALLBACK_NOTE = 'The factory could not answer; post this as a comment?'
 
-export type SteerDeps = { model: RetroModel; comment: (text: string) => Promise<string | null> }
+export type SteerDeps = { model: RetroModel }
 export type SteerInput = { workspace: number; recordId: number; text: string }
 export type SteerOutcome =
   | { kind: 'answer' }
-  | { kind: 'fallback'; error: string | null }
   | { kind: 'comment'; body: string }
   | { kind: 'decide'; input: DecideIntent }
 
@@ -42,15 +41,6 @@ const store = async (payload: Payload, input: SteerInput, conversationId: number
   })
 }
 
-const fallback = async (payload: Payload, deps: SteerDeps, input: SteerInput, id: number): Promise<SteerOutcome> => {
-  const error = await deps.comment(input.text)
-  if (error === null) {
-    const note = { workspace: input.workspace, conversationId: id, role: 'assistant' as const, fileIds: [] }
-    await appendMessage(payload, { ...note, text: FALLBACK_NOTE })
-  }
-  return { kind: 'fallback', error }
-}
-
 export const steerTurn = async (payload: Payload, deps: SteerDeps, input: SteerInput): Promise<SteerOutcome> => {
   const { workspace, recordId } = input
   const view = await ticket(payload, { workspace, recordId })
@@ -60,7 +50,8 @@ export const steerTurn = async (payload: Payload, deps: SteerDeps, input: SteerI
   try {
     raw = await deps.model(workspace, systemOf(view), turns)
   } catch {
-    return fallback(payload, deps, input, conversationId)
+    await store(payload, input, conversationId, [FALLBACK_NOTE])
+    return { kind: 'comment', body: input.text }
   }
   const intent = intentOf(view, parseReply(raw))
   await store(payload, input, conversationId, [intent.text])

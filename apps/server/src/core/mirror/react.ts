@@ -12,7 +12,7 @@ export type ReactItem = {
   conflicts: boolean
 }
 export type ReactComment = { author: string; body: string; createdAt: string }
-export type ReactCheck = { status: string; conclusion: string | null }
+export type ReactCheck = { name: string; status: string; conclusion: string | null }
 
 export type ReactInput = {
   record: TicketRecord
@@ -22,6 +22,7 @@ export type ReactInput = {
   pull: ReactItem | null
   comments: ReactComment[]
   checks: ReactCheck[]
+  requiredNames?: string[]
   deploy: DeployWait | null
   closeWritten: boolean
 }
@@ -43,16 +44,27 @@ export const reporterReplied: Reaction = ({ record, state, postedAt, comments })
   return replied ? [{ type: 'reporter.replied', data: {} }] : []
 }
 
-export const checksState = (checks: ReactCheck[]): 'pending' | 'passed' | 'failed' => {
+const isPassing = (check: ReactCheck): boolean => check.conclusion !== null && PASSING.includes(check.conclusion)
+
+const requiredState = (checks: ReactCheck[], names: string[]): 'pending' | 'passed' | 'failed' => {
+  const reported = names.map((name) => checks.filter((check) => check.name === name))
+  const failed = (check: ReactCheck): boolean => check.status === 'completed' && !isPassing(check)
+  if (reported.some((group) => group.some(failed))) return 'failed'
+  const settled = reported.every((group) => group.length > 0 && group.every((check) => check.status === 'completed'))
+  return settled ? 'passed' : 'pending'
+}
+
+export const checksState = (checks: ReactCheck[], requiredNames: string[] = []): 'pending' | 'passed' | 'failed' => {
+  if (requiredNames.length > 0) return requiredState(checks, requiredNames)
   if (checks.length === 0 || checks.some((check) => check.status !== 'completed')) return 'pending'
-  const passed = checks.every((check) => check.conclusion !== null && PASSING.includes(check.conclusion))
+  const passed = checks.every(isPassing)
   return passed ? 'passed' : 'failed'
 }
 
-export const checksFinished: Reaction = ({ state, pull, checks }) => {
+export const checksFinished: Reaction = ({ state, pull, checks, requiredNames = [] }) => {
   const patch = state.patch
   if (state.checks !== 'pending' || patch === null || pull === null || pull.headSha !== patch.headSha) return []
-  const outcome = checksState(checks)
+  const outcome = checksState(checks, requiredNames)
   if (outcome === 'pending') return []
   return [{ type: 'checks.finished', data: { patchId: patch.id, passed: outcome === 'passed' } }]
 }

@@ -25,6 +25,7 @@ describe('lifecycleConfig', () => {
       deployNames: [],
       deployWaitMinutes: 60,
       requiredChecks: false,
+      requiredCheckNames: [],
       autoClose: true,
     })
     expect(CAPS.verifyRounds).toBe(3)

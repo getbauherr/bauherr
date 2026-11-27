@@ -36,7 +36,8 @@ Any other sender can post `{"title": "...", "description": "...", "severity": "c
 
 ## Limits
 
-- A wrong or missing secret answers 401.
-- A Product accepts 30 requests a minute, then answers 429. Grafana retries later.
-- A request is at most 256 KB and carries at most 20 alerts.
+- A wrong or missing secret, an unknown Product and a Product with alerts off all answer 404.
+- A Product accepts 30 alerts a minute (each alert in a request counts), then answers 429. Grafana retries later.
+- A Product opens at most 20 new tickets an hour. Further new alerts comment on one "alert storm" ticket.
+- A request is at most 256 KB, read as a stream, and carries at most 20 alerts.
 - The limit counts per process.

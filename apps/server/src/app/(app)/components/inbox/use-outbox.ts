@@ -48,8 +48,7 @@ export function useOutbox(thread: ThreadModel) {
     steerTicket({ recordId, text })
       .then((result) => {
         const { outcome } = result
-        const error = result.error ?? (outcome?.kind === 'fallback' ? outcome.error : null)
-        if (error) return fail(item, error)
+        if (result.error) return fail(item, result.error)
         if (outcome) setProposal(proposalOf({ recordId, number }, thread.decision, outcome, String(Date.now())))
         router.refresh()
       })

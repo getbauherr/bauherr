@@ -21,7 +21,7 @@ const itemRow = z.object({
 })
 
 const commentRow = z.object({ author: z.string().nullable(), body: z.string().nullable(), at: z.coerce.date() })
-const checkRow = z.object({ status: z.string().nullable(), conclusion: z.string().nullable() })
+const checkRow = z.object({ name: z.string(), status: z.string().nullable(), conclusion: z.string().nullable() })
 const deployCheckRow = z.object({
   name: z.string(),
   status: z.string().nullable(),
@@ -54,11 +54,11 @@ const readComments = async (conn: Conn, item: number): Promise<ReactComment[]> =
 
 const readChecks = async (conn: Conn, item: number, sha: string): Promise<ReactCheck[]> => {
   const result = await conn.db.drizzle.execute(
-    sql`SELECT "status", "conclusion" FROM "mirror_checks" WHERE "item_id" = ${item} AND "sha" = ${sha}`,
+    sql`SELECT "name", "status", "conclusion" FROM "mirror_checks" WHERE "item_id" = ${item} AND "sha" = ${sha}`,
   )
   return result.rows.map((row) => {
     const parsed = checkRow.parse(row)
-    return { status: parsed.status ?? '', conclusion: parsed.conclusion }
+    return { name: parsed.name, status: parsed.status ?? '', conclusion: parsed.conclusion }
   })
 }
 
@@ -124,6 +124,7 @@ export const loadReactInput = async (
     pull: pr?.item ?? null,
     comments: await readComments(conn, issue.id),
     checks: pr && state.patch ? await readChecks(conn, pr.id, state.patch.headSha) : [],
+    requiredNames: config.requiredCheckNames ?? [],
     deploy: await loadDeployWait(conn, stored, state, events, config, now),
     closeWritten: closeWritten(events),
   }

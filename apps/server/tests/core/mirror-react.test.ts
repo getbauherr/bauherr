@@ -111,6 +111,22 @@ describe('the checks finished', () => {
     expect(await s.count('run.started')).toBe(1)
   })
 
+  it('waits for a required check that has not reported, even when the reported ones passed', async () => {
+    await product(sql`"required_checks" = 'ci, e2e'`)
+    const s = await setup()
+    const pull = await openPull(s)
+    await toBuilt(s, pull.headSha, pull.number)
+    s.fake.setChecks(s.repo, pull.headSha, [finished('success')])
+    await s.sync()
+    await s.sync()
+    expect(await s.count('checks.finished')).toBe(0)
+    s.fake.setChecks(s.repo, pull.headSha, [finished('success'), { ...finished('success'), name: 'e2e' }])
+    await s.sync()
+    await s.sync()
+    await s.sync()
+    expect(await s.count('checks.finished')).toBe(1)
+  })
+
   it('appends passed false for a failed check', async () => {
     await product(sql`"required_checks" = 'ci'`)
     const s = await setup()

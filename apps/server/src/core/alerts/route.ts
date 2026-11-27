@@ -19,10 +19,25 @@ export const bearerFits = (header: string | null, secret: string): boolean => {
 
 const status = (code: number, headers: Record<string, string> = {}) => new Response(null, { status: code, headers })
 
-const readBody = async (req: Request): Promise<unknown> => {
+const readText = async (req: Request): Promise<string | undefined> => {
   if (Number(req.headers.get('content-length') ?? 0) > MAX_ALERT_BYTES) return undefined
-  const text = await req.text()
-  if (text.length > MAX_ALERT_BYTES) return undefined
+  const reader = req.body?.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (let part = await reader?.read(); part && !part.done; part = await reader?.read()) {
+    size += part.value.byteLength
+    if (size > MAX_ALERT_BYTES) {
+      await reader?.cancel()
+      return undefined
+    }
+    chunks.push(part.value)
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+const readBody = async (req: Request): Promise<unknown> => {
+  const text = await readText(req)
+  if (text === undefined) return undefined
   try {
     return JSON.parse(text)
   } catch {
@@ -30,11 +45,8 @@ const readBody = async (req: Request): Promise<unknown> => {
   }
 }
 
-const refusal = (target: AlertTarget | null, req: Request, product: number, now: number): Response | null => {
-  if (!target?.enabled || !target.secret) return status(404)
-  if (!bearerFits(req.headers.get('authorization'), target.secret)) return status(401)
-  return allowAlerts(product, now) ? null : status(429, { 'retry-after': '60' })
-}
+const authorised = (target: AlertTarget | null, req: Request): target is AlertTarget =>
+  Boolean(target?.enabled && target.secret && bearerFits(req.headers.get('authorization'), target.secret))
 
 const receiveAll = async (payload: Payload, deps: AlertDeps, where: Where, alerts: Alert[]): Promise<Response> => {
   const counts = { opened: 0, commented: 0, ignored: 0 }
@@ -55,11 +67,11 @@ export const handleAlert = async (
   now: number,
 ): Promise<Response> => {
   const target = Number.isInteger(product) && product > 0 ? await alertTarget(payload, product) : null
-  const refused = refusal(target, req, product, now)
-  if (refused || !target) return refused ?? status(404)
+  if (!authorised(target, req)) return status(404)
   const body = await readBody(req)
+  const alerts = body === undefined ? null : parseAlerts(body)
+  if (!allowAlerts(product, now, alerts?.length ?? 1)) return status(429, { 'retry-after': '60' })
   if (body === undefined) return status(413)
-  const alerts = parseAlerts(body)
   if (!alerts) {
     return Response.json({ error: 'Send Grafana or Alertmanager JSON, or {title, fingerprint}.' }, { status: 400 })
   }

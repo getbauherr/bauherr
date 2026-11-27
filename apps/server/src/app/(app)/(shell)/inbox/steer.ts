@@ -5,14 +5,12 @@ import { appendMessage } from '../../../../core/conversations/store'
 import { MESSAGE_TEXT_MAX } from '../../../../core/conversations/limits'
 import { mayDecide } from '../../../../core/decide'
 import { RecordNotFound } from '../../../../core/record/errors'
-import { requestConversation } from '../../../../core/requests/comments'
 import { steerConversation } from '../../../../core/steer/store'
 import { steerTurn, UNDONE_NOTE, type SteerOutcome } from '../../../../core/steer/turn'
 import { requestScope } from '../../../../core/views/request-access'
 import { personOf } from '../../../../lib/person'
 import { steerModel } from '../../lib/steer-model'
 import { currentWorkspace, payloadClient } from '../../lib/session'
-import { commentOnRequestAction } from '../requests/actions'
 
 const input = z.object({
   recordId: z.number().int().positive(),
@@ -36,17 +34,8 @@ export async function steerTicket(raw: unknown): Promise<SteerResult> {
   if (!parsed.success) return notFound()
   const { recordId, text } = parsed.data
   const { payload, workspace } = await allowed(recordId)
-  const comment = async (said: string): Promise<string | null> =>
-    (
-      await commentOnRequestAction({
-        recordId,
-        conversationId: await requestConversation(payload, workspace, recordId),
-        text: said,
-        fileIds: [],
-      })
-    ).error ?? null
   try {
-    const deps = { model: await steerModel(payload), comment }
+    const deps = { model: await steerModel(payload) }
     return { outcome: await steerTurn(payload, deps, { workspace, recordId, text }) }
   } catch (error) {
     if (error instanceof RecordNotFound) return notFound()

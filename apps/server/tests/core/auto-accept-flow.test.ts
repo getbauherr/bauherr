@@ -47,7 +47,8 @@ const history = async (repo: string, first: number, accepted: number, sentBack: 
 }
 
 const turnOn = (max = 10) =>
-  h.rows(sql`UPDATE "products" SET "auto_accept" = true, "auto_accept_max_send_back" = ${max}`)
+  h.rows(sql`UPDATE "products" SET "auto_accept" = true, "auto_accept_max_send_back" = ${max},
+    "required_checks" = 'test'`)
 
 const atResult = async (change: Record<string, unknown> = LOW_RISK) => {
   const s = await setup(['subject'])
@@ -63,7 +64,7 @@ beforeEach(async () => {
   await h.rows(sql`DELETE FROM "events"`)
   await h.rows(sql`DELETE FROM "records"`)
   await h.rows(sql`UPDATE "products" SET "state" = 'active', "auto_accept" = false,
-    "auto_accept_max_send_back" = 10`)
+    "auto_accept_max_send_back" = 10, "required_checks" = NULL`)
   OWNER.workspaceIds = [h.ids.workspace]
 })
 
@@ -101,6 +102,30 @@ describe('a Result the factory may accept', () => {
     ['dropped criterion', { dropped: [{ id: 'c3', text: 'dropped', note: '' }] }],
   ])('goes to the owner on a %s', async (_name, change) => {
     const s = await atResult({ ...LOW_RISK, ...change })
+    await history(s.repo, 100, 10, 0)
+    await turnOn()
+    await advance(s.record.id, deps())
+    expect((await readRecord(h.payload(), s.record.id)).card).toMatchObject({ card: 'result' })
+    expect(await acceptedEvents(s.record.id)).toEqual([])
+  })
+
+  it('goes to the owner when the Product has no required checks', async () => {
+    const s = await atResult()
+    await history(s.repo, 100, 10, 0)
+    await turnOn()
+    await h.rows(sql`UPDATE "products" SET "required_checks" = NULL`)
+    await advance(s.record.id, deps())
+    expect((await readRecord(h.payload(), s.record.id)).card).toMatchObject({ card: 'result' })
+    expect(await acceptedEvents(s.record.id)).toEqual([])
+  })
+
+  it.each([
+    ['an alert', { alert: 'abc123' }],
+    ['a reporter outside the team', { external: true }],
+  ])('goes to the owner when the ticket came from %s', async (_name, source) => {
+    const s = await atResult()
+    const { record } = await readRecord(h.payload(), s.record.id)
+    await writeRecord(s.record.id, { ...LOW_RISK, source: { ...record.source, ...source } })
     await history(s.repo, 100, 10, 0)
     await turnOn()
     await advance(s.record.id, deps())

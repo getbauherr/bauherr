@@ -1,5 +1,6 @@
-import type { CollectionAfterDeleteHook } from 'payload'
+import type { CollectionAfterDeleteHook, Field } from 'payload'
 import { assignmentRows } from '../lib/people'
+import { isAdmin } from './access'
 import { col, date, text } from './fields'
 import { seal } from './seal'
 
@@ -38,9 +39,38 @@ const dropProductFromAssignments: CollectionAfterDeleteHook = async ({ id, req }
   }
 }
 
+const ADMIN_FIELDS = new Set([
+  'stagingUrl',
+  'state',
+  'deployChecks',
+  'deployWaitMinutes',
+  'riskAreas',
+  'intakeExcludedLabels',
+  'outsideIssuesPerDay',
+  'reporterRemindDays',
+  'reporterSilentDays',
+  'executor',
+  'autoClose',
+  'autoAccept',
+  'autoAcceptMaxSendBack',
+  'backlogBriefLimit',
+  'releaseMode',
+  'requiredChecks',
+  'pathSets',
+  'incidentIntake',
+  'incidentSecret',
+])
+
+const adminOnly = (fields: Field[]): Field[] =>
+  fields.map((field) => {
+    if (!('name' in field) || !ADMIN_FIELDS.has(field.name)) return field
+    const { access } = field as { access?: object }
+    return { ...field, access: { ...access, update: isAdmin } } as Field
+  })
+
 export const products = col(
   'products',
-  [
+  adminOnly([
     text('name', { required: true }),
     text('slug', { required: true }),
     text('stagingUrl'),
@@ -145,6 +175,6 @@ export const products = col(
       access: { read: () => false },
       hooks: { beforeChange: [({ value }) => seal(value)] },
     },
-  ],
+  ]),
   { hooks: { afterDelete: [dropProductFromAssignments] } },
 )

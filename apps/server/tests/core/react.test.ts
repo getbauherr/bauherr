@@ -60,7 +60,7 @@ describe('reporterReplied', () => {
 })
 
 const verifying = (extra: Partial<ReactInput> = {}) =>
-  input([...inVerify], { pull: pull(), checks: [{ status: 'completed', conclusion: 'success' }], ...extra })
+  input([...inVerify], { pull: pull(), checks: [{ name: 'ci', status: 'completed', conclusion: 'success' }], ...extra })
 
 describe('checksFinished', () => {
   it('fires passed when every check of the head commit succeeded', () => {
@@ -69,8 +69,8 @@ describe('checksFinished', () => {
 
   it('fires failed when one check did not conclude successfully', () => {
     const checks = [
-      { status: 'completed', conclusion: 'success' },
-      { status: 'completed', conclusion: 'failure' },
+      { name: 'ci', status: 'completed', conclusion: 'success' },
+      { name: 'ci', status: 'completed', conclusion: 'failure' },
     ]
     expect(checksFinished(verifying({ checks }))).toEqual([
       { type: 'checks.finished', data: { patchId: 'p1', passed: false } },
@@ -79,16 +79,43 @@ describe('checksFinished', () => {
 
   it('accepts skipped and neutral checks as passing', () => {
     const checks = [
-      { status: 'completed', conclusion: 'skipped' },
-      { status: 'completed', conclusion: 'neutral' },
+      { name: 'ci', status: 'completed', conclusion: 'skipped' },
+      { name: 'ci', status: 'completed', conclusion: 'neutral' },
     ]
     expect(checksFinished(verifying({ checks }))[0]).toMatchObject({ data: { passed: true } })
   })
 
   it('waits while a check is not completed or none is reported', () => {
-    const running = [{ status: 'completed', conclusion: 'success' }, { status: 'in_progress', conclusion: null }]
+    const running = [
+      { name: 'ci', status: 'completed', conclusion: 'success' },
+      { name: 'ci', status: 'in_progress', conclusion: null },
+    ]
     expect(checksFinished(verifying({ checks: running }))).toEqual([])
     expect(checksFinished(verifying({ checks: [] }))).toEqual([])
+  })
+
+  it('with required names, waits for a required check that has not reported yet', () => {
+    const done = { name: 'lint', status: 'completed', conclusion: 'success' }
+    expect(checksFinished(verifying({ checks: [done], requiredNames: ['lint', 'test'] }))).toEqual([])
+    const both = [done, { name: 'test', status: 'completed', conclusion: 'success' }]
+    expect(checksFinished(verifying({ checks: both, requiredNames: ['lint', 'test'] }))[0]).toMatchObject({
+      data: { passed: true },
+    })
+  })
+
+  it('with required names, fails on a required failure and ignores other checks', () => {
+    const checks = [
+      { name: 'lint', status: 'completed', conclusion: 'failure' },
+      { name: 'test', status: 'in_progress', conclusion: null },
+      { name: 'extra', status: 'completed', conclusion: 'failure' },
+    ]
+    expect(checksFinished(verifying({ checks, requiredNames: ['lint', 'test'] }))[0]).toMatchObject({
+      data: { passed: false },
+    })
+    const ok = [{ name: 'lint', status: 'completed', conclusion: 'success' }, ...checks.slice(2)]
+    expect(checksFinished(verifying({ checks: ok, requiredNames: ['lint'] }))[0]).toMatchObject({
+      data: { passed: true },
+    })
   })
 
   it('waits when the pull request head is not the head of the patch', () => {

@@ -58,3 +58,10 @@ export const alertTicketCount = async (db: Conn, product: number, hash: string):
     SELECT count(*) AS n FROM "records" WHERE "product_id" = ${product} AND "data"->'source'->>'alert' = ${hash}`)
   return z.coerce.number().parse(found.rows[0]?.n ?? 0)
 }
+
+export const recentAlertTickets = async (db: Conn, product: number, except: string, now: Date): Promise<number> => {
+  const found = await db.db.drizzle.execute(sql`
+    SELECT count(*) AS n FROM "records" WHERE "product_id" = ${product} AND "data"->'source'->>'alert' <> ${except}
+      AND "created_at" > ${new Date(now.getTime() - 3_600_000).toISOString()}::timestamptz`)
+  return z.coerce.number().parse(found.rows[0]?.n ?? 0)
+}
