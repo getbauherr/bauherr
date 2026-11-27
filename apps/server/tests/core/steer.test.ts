@@ -40,19 +40,15 @@ const toVerifyQuestion = async () => {
   return id
 }
 
-type Calls = { turns: number; comments: string[]; prompts: { system: string; turns: number }[] }
+type Calls = { turns: number; prompts: { system: string; turns: number }[] }
 const dependsOn = (replies: (string | Error)[]): { deps: SteerDeps; calls: Calls } => {
-  const calls: Calls = { turns: 0, comments: [], prompts: [] }
+  const calls: Calls = { turns: 0, prompts: [] }
   const deps: SteerDeps = {
     model: (_workspace, system, turns) => {
       const next = replies[Math.min(calls.turns, replies.length - 1)]
       calls.turns += 1
       calls.prompts.push({ system, turns: turns.length })
       return next instanceof Error ? Promise.reject(next) : Promise.resolve(next ?? '')
-    },
-    comment: (text) => {
-      calls.comments.push(text)
-      return Promise.resolve(null)
     },
   }
   return { deps, calls }
@@ -140,12 +136,16 @@ describe('steering a ticket from the composer', () => {
     expect(await eventCount(id)).toBe(before)
   })
 
-  it('falls back to a comment and says so when the model fails', async () => {
+  it('proposes the words as a comment, writing nothing, when the model fails', async () => {
     const id = await toVerifyQuestion()
-    const { deps, calls } = dependsOn([new Error('GATEWAY_URL is empty')])
-    expect(await say(id, 'please hurry', deps)).toEqual({ kind: 'fallback', error: null })
-    expect(calls.comments).toEqual(['please hurry'])
-    expect(await texts(id)).toEqual([['assistant', FALLBACK_NOTE]])
+    const before = await eventCount(id)
+    const { deps } = dependsOn([new Error('GATEWAY_URL is empty')])
+    expect(await say(id, 'please hurry', deps)).toEqual({ kind: 'comment', body: 'please hurry' })
+    expect(await eventCount(id)).toBe(before)
+    expect(await texts(id)).toEqual([
+      ['user', 'please hurry'],
+      ['assistant', FALLBACK_NOTE],
+    ])
   })
 
   it('keeps one conversation per ticket and sends its history to the next turn', async () => {

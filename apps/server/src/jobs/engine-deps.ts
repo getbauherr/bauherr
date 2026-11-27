@@ -31,13 +31,15 @@ export const lifecycleConfig = async (payload: Payload, recordId: number): Promi
     JOIN "products" p ON p."id" = r."product_id" WHERE r."id" = ${recordId}`)
   const row = found.rows[0] ? productRow.parse(found.rows[0]) : null
   const deployNames = deployNamesOf(row)
+  const requiredCheckNames = namesOf(row?.required_checks)
   return {
     caps: { ...CAPS },
     riskAreas: row?.risk_areas ?? [],
     deployChecks: deployNames.length > 0,
     deployNames,
     deployWaitMinutes: row?.deploy_wait_minutes ?? 60,
-    requiredChecks: namesOf(row?.required_checks).length > 0,
+    requiredChecks: requiredCheckNames.length > 0,
+    requiredCheckNames,
     autoClose: row?.auto_close !== false,
   }
 }

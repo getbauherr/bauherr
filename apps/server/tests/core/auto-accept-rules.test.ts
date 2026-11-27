@@ -9,6 +9,8 @@ const ELIGIBLE: AutoAcceptFacts = {
   dropped: 0,
   overridden: false,
   checks: 'passed',
+  requiredChecks: 2,
+  outsider: false,
   openPictures: 0,
   needsOwner: false,
   history: { done: 20, sentBack: 1 },
@@ -28,6 +30,8 @@ describe('the auto-accept rule', () => {
 
   it.each<[string, Partial<AutoAcceptFacts>]>([
     ['the change cannot be undone', { door: 'one-way' }],
+    ['no required checks are known', { requiredChecks: 0 }],
+    ['the ticket came from outside', { outsider: true }],
     ['the Brief names no risk', { door: null }],
     ['a criterion is not met', { criteria: { met: 3, total: 4 } }],
     ['there is no criterion', { criteria: { met: 0, total: 0 } }],

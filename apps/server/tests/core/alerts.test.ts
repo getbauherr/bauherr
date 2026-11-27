@@ -1,6 +1,7 @@
 import { FakeBackend } from '@bauherr/adapters'
 import { sql } from '@payloadcms/db-postgres'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { NEW_TICKETS_PER_HOUR } from '../../src/core/alerts/receive'
 import { resetAlertLimits, ALERTS_PER_MINUTE } from '../../src/core/alerts/limit'
 import { parseAlerts } from '../../src/core/alerts/parse'
 import { handleAlert } from '../../src/core/alerts/route'
@@ -64,12 +65,33 @@ describe('access', () => {
     expect((await send(generic())).status).toBe(404)
   })
 
-  it('answers 401 for a missing, wrong or non-bearer secret', async () => {
-    expect((await send(generic(), {})).status).toBe(401)
-    expect((await send(generic(), { authorization: 'Bearer nope' })).status).toBe(401)
-    expect((await send(generic(), { authorization: SECRET })).status).toBe(401)
-    expect((await send(generic(), { authorization: 'Bearer ' })).status).toBe(401)
+  it('answers 404, like an unknown Product, for a missing, wrong or non-bearer secret', async () => {
+    expect((await send(generic(), {})).status).toBe(404)
+    expect((await send(generic(), { authorization: 'Bearer nope' })).status).toBe(404)
+    expect((await send(generic(), { authorization: SECRET })).status).toBe(404)
+    expect((await send(generic(), { authorization: 'Bearer ' })).status).toBe(404)
     expect(await alertRecords()).toHaveLength(0)
+  })
+
+  it('refuses a body above the cap while reading it, even without a content-length', async () => {
+    const chunk = new TextEncoder().encode('x'.repeat(64 * 1024))
+    let sent = 0
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        sent += 1
+        controller.enqueue(chunk)
+        if (sent > 100) controller.close()
+      },
+    })
+    const request = new Request('http://t/api/alerts/1', {
+      method: 'POST',
+      body,
+      headers: { authorization: `Bearer ${SECRET}` },
+      duplex: 'half',
+    } as RequestInit)
+    const writer = createWriter(h.payload(), { backend: () => Promise.resolve(fake), now: () => new Date() })
+    expect((await handleAlert(h.payload(), { writer }, h.ids.product, request, Date.now())).status).toBe(413)
+    expect(sent).toBeLessThan(10)
   })
 
   it('stores the secret encrypted', async () => {
@@ -82,6 +104,30 @@ describe('access', () => {
     resetAlertLimits()
     for (let i = 0; i < ALERTS_PER_MINUTE; i++) expect((await send({ nothing: true })).status).toBe(400)
     expect((await send(generic())).status).toBe(429)
+  })
+
+  it('charges the window per alert, not per request', async () => {
+    const batch = (round: number) => ({
+      alerts: Array.from({ length: 20 }, (_, i) => ({ labels: { alertname: `a${round}-${i}` }, annotations: {} })),
+    })
+    expect((await send(batch(1))).status).toBe(202)
+    expect((await send(batch(2))).status).toBe(429)
+  })
+})
+
+describe('an alert storm', () => {
+  it('opens at most the cap of tickets an hour and comments on one storm ticket beyond it', async () => {
+    for (let i = 0; i < NEW_TICKETS_PER_HOUR; i++) {
+      expect((await send(generic({ fingerprint: `f${i}` }))).status).toBe(202)
+    }
+    const first = await send(generic({ fingerprint: 'extra-1' }))
+    expect(await first.json()).toEqual({ opened: 1, commented: 0, ignored: 0 })
+    const second = await send(generic({ fingerprint: 'extra-2', title: 'Another one' }))
+    expect(await second.json()).toEqual({ opened: 0, commented: 1, ignored: 0 })
+    expect(await alertRecords()).toHaveLength(NEW_TICKETS_PER_HOUR + 1)
+    const storm = (await issues()).filter((issue) => issue.title.includes('new alerts in an hour'))
+    expect(storm).toHaveLength(1)
+    expect((await commentsOf(storm[0]?.number)).at(-1)?.body).toContain('Another one')
   })
 })
 

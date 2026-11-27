@@ -1,9 +1,11 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import { z } from 'zod'
+import { namesOf } from './deploy'
 import { loadShots, pairProblems, pairsOf } from './attachments/pairs'
 import type { AutoAccepted } from './events'
 import type { State } from './lifecycle'
+import type { TicketRecord } from './record/schema'
 import { appendEvent, type StoredRecord } from './record/store'
 import { loadMockups } from './views/attachments'
 import { doneTickets } from './views/time-load'
@@ -19,14 +21,23 @@ export type AutoAcceptFacts = {
   dropped: number
   overridden: boolean
   checks: State['checks']
+  requiredChecks: number
+  outsider: boolean
   openPictures: number
   needsOwner: boolean
   history: { done: number; sentBack: number } | null
 }
 
+const eligibilityBlocker = (facts: AutoAcceptFacts): string | null => {
+  if (facts.outsider) return 'The ticket came from outside the team.'
+  if (facts.door !== 'two-way') return 'The change cannot be undone.'
+  return facts.requiredChecks === 0 ? 'No required checks are configured.' : null
+}
+
 const earlyBlocker = (facts: AutoAcceptFacts): string | null => {
   const { criteria } = facts
-  if (facts.door !== 'two-way') return 'The change cannot be undone.'
+  const eligibility = eligibilityBlocker(facts)
+  if (eligibility !== null) return eligibility
   if (criteria.total === 0 || criteria.met < criteria.total || facts.overridden) return 'A criterion is not met.'
   if (facts.dropped > 0) return 'A criterion was dropped.'
   if (facts.checks !== 'passed') return 'The checks are not green.'
@@ -62,8 +73,12 @@ const productRow = z.object({
   product_id: count,
   auto_accept: z.boolean().nullable(),
   max_send_back: count.nullable(),
+  required_checks: z.string().nullable(),
 })
 const DEFAULT_MAX_SEND_BACK = 10
+
+const isOutsider = (source: TicketRecord['source']): boolean =>
+  source.external || source.alert !== undefined
 
 type Deps = { payload: Payload; now: Date }
 
@@ -96,7 +111,8 @@ const sendBacks = async (deps: Deps, stored: StoredRecord, product: number) => {
 
 export const autoAcceptFor = async (deps: Deps, stored: StoredRecord, state: State): Promise<AutoAccepted | null> => {
   const found = await deps.payload.db.drizzle.execute(sql`
-    SELECT p."id" AS product_id, p."auto_accept", p."auto_accept_max_send_back" AS max_send_back
+    SELECT p."id" AS product_id, p."auto_accept", p."auto_accept_max_send_back" AS max_send_back,
+      p."required_checks"
     FROM "records" r JOIN "products" p ON p."id" = r."product_id" WHERE r."id" = ${stored.id}`)
   const row = found.rows[0] ? productRow.parse(found.rows[0]) : null
   if (row === null || row.auto_accept !== true) return null
@@ -108,6 +124,8 @@ export const autoAcceptFor = async (deps: Deps, stored: StoredRecord, state: Sta
     dropped: record.dropped.length,
     overridden: state.overridden,
     checks: state.checks,
+    requiredChecks: namesOf(row.required_checks).length,
+    outsider: isOutsider(record.source),
     openPictures: await openPictures(deps.payload, stored, state),
     needsOwner: await needsOwner(deps.payload, stored),
     history: null,

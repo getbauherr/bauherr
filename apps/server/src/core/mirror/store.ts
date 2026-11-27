@@ -145,11 +145,15 @@ export const pullsAwaitingChecks = async (payload: Payload, source: number): Pro
     SELECT i."number" FROM "mirror_items" i
     JOIN "records" r ON r."workspace_id" = i."workspace_id" AND r."source_repo" = i."repo" AND r."pr" = i."number"
       AND r."waiting_on" <> 'nobody'
+    JOIN "products" p ON p."id" = r."product_id"
     WHERE i."source_id" = ${source} AND i."kind" = 'pr' AND i."state" = 'open' AND i."gone_at" IS NULL
       AND coalesce(i."head_sha", '') <> '' AND (
         NOT EXISTS (SELECT 1 FROM "mirror_checks" c WHERE c."item_id" = i."id" AND c."sha" = i."head_sha")
         OR EXISTS (SELECT 1 FROM "mirror_checks" c
-          WHERE c."item_id" = i."id" AND c."sha" = i."head_sha" AND c."status" <> 'completed'))`)
+          WHERE c."item_id" = i."id" AND c."sha" = i."head_sha" AND c."status" <> 'completed')
+        OR EXISTS (SELECT 1 FROM unnest(string_to_array(coalesce(p."required_checks", ''), ',')) AS n
+          WHERE btrim(n) <> '' AND NOT EXISTS (SELECT 1 FROM "mirror_checks" c
+            WHERE c."item_id" = i."id" AND c."sha" = i."head_sha" AND c."name" = btrim(n))))`)
   return new Set(result.rows.map((row) => numberRowSchema.parse(row).number))
 }
 

@@ -34,9 +34,8 @@ describe('an intent from the composer', () => {
     expect(staged).toMatchObject({ key: 'comment:126:5', comment: 'Skip emails.', receipt: 'Passed to the agent' })
   })
 
-  it('stages nothing for an answer or a fallback', () => {
+  it('stages nothing for an answer', () => {
     expect(stagedOf(target, { kind: 'answer' }, 1)).toBeNull()
-    expect(stagedOf(target, { kind: 'fallback', error: null }, 1)).toBeNull()
   })
 
   it('writes nothing before the toast runs out and nothing after an undo', async () => {
@@ -72,7 +71,7 @@ describe('a tool call from the model', () => {
     expect(deps.run).toHaveBeenCalledTimes(1)
   })
 
-  it('makes no proposal for an answer or a fallback', () => {
+  it('makes no proposal for an answer', () => {
     expect(proposalOf(target, null, { kind: 'answer' }, 'p1')).toBeNull()
   })
 

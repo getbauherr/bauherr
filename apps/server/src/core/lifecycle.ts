@@ -20,6 +20,7 @@ export type Config = {
   deployNames: string[]
   deployWaitMinutes: number
   requiredChecks: boolean
+  requiredCheckNames?: string[]
   autoClose: boolean
 }
 

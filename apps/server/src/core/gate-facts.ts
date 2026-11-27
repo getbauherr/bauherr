@@ -12,7 +12,7 @@ import { loadMockups } from './views/attachments'
 
 const rowOf = z.object({ id: z.coerce.number(), head_sha: z.string().nullable() })
 const leasedOf = z.object({ leased_by: z.string().nullable() })
-const checkOf = z.object({ status: z.string().nullable(), conclusion: z.string().nullable() })
+const checkOf = z.object({ name: z.string(), status: z.string().nullable(), conclusion: z.string().nullable() })
 
 const builder = async (tx: Conn, recordId: number): Promise<string | null> => {
   const found = await tx.db.drizzle.execute(sql`
@@ -29,16 +29,16 @@ const pullOf = async (tx: Conn, stored: StoredRecord, pr: number) => {
   return found.rows[0] ? rowOf.parse(found.rows[0]) : null
 }
 
-const checksOf = async (tx: Conn, item: number, sha: string, required: boolean): Promise<GateFacts['checks']> => {
-  if (!required) return 'none'
+const checksOf = async (tx: Conn, item: number, sha: string, required: string[] = []): Promise<GateFacts['checks']> => {
+  if (required.length === 0) return 'none'
   const found = await tx.db.drizzle.execute(
-    sql`SELECT "status", "conclusion" FROM "mirror_checks" WHERE "item_id" = ${item} AND "sha" = ${sha}`,
+    sql`SELECT "name", "status", "conclusion" FROM "mirror_checks" WHERE "item_id" = ${item} AND "sha" = ${sha}`,
   )
   const checks = found.rows.map((row) => {
     const parsed = checkOf.parse(row)
-    return { status: parsed.status ?? '', conclusion: parsed.conclusion }
+    return { name: parsed.name, status: parsed.status ?? '', conclusion: parsed.conclusion }
   })
-  return checksState(checks)
+  return checksState(checks, required)
 }
 
 const proofRow = z.object({ id: z.coerce.number(), exit_code: z.coerce.number().nullable() })
@@ -63,7 +63,7 @@ export const loadGateFacts = async (tx: Conn, stored: StoredRecord, run: Run, co
     verifyHeldBy: run.leasedBy,
     patch,
     headCommit,
-    checks: pull && headCommit ? await checksOf(tx, pull.id, headCommit, config.requiredChecks) : 'pending',
+    checks: pull && headCommit ? await checksOf(tx, pull.id, headCommit, config.requiredCheckNames) : 'pending',
     ...(await proofsOf(tx, stored.id)),
     screens: stored.record.visible ? (await loadMockups(tx, stored.id)).map((mockup) => mockup.screen) : [],
     shots: await loadShots(tx, stored.id),
