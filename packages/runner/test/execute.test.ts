@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { execute } from '../src/execute.js';
-import { startStubGateway } from './helpers.js';
+import { handOver, startStubGateway } from './helpers.js';
 
 const TIMEOUT = { timeout: 120_000 };
 
 const options = () => {
-  const cwd = mkdtempSync(join(tmpdir(), 'exec-'));
+  const cwd = handOver(mkdtempSync(join(tmpdir(), 'exec-')));
   return {
     runId: 'r2',
     stage: 'build',

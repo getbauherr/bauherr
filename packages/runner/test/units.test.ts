@@ -7,7 +7,7 @@ import type { PreToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
 import { agentEnv, buildOptions, runAgent, trackSpin, type AgentOptions, type AgentState } from '../src/agent.js';
 import { egressGuard, writeScopeGuard } from '../src/guards.js';
 import { startProxy } from '../src/proxy.js';
-import { startStubGateway } from './helpers.js';
+import { handOver, startStubGateway } from './helpers.js';
 
 const freshState = (): AgentState => ({ toolCalls: [], steps: [], results: [], abort: new AbortController() });
 
@@ -52,7 +52,9 @@ await test('agent env carries no gateway key and no process env', () => {
     'ANTHROPIC_BASE_URL',
     'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
     'HOME',
+    'LANG',
     'PATH',
+    'TMPDIR',
   ]);
   assert.equal(env.ANTHROPIC_API_KEY, 'proxy');
   assert.ok(!JSON.stringify(env).includes('leak'));
@@ -88,7 +90,9 @@ for (const preset of PRESET_KEYS) {
         'ANTHROPIC_BASE_URL',
         'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
         'HOME',
+        'LANG',
         'PATH',
+        'TMPDIR',
       ]);
       assert.deepEqual(
         Object.keys(env).filter((k) => CLOUD_ENV.test(k)),
@@ -143,7 +147,7 @@ await test(
   async () => {
     const gw = await startStubGateway('I am done.');
     const proxy = await startProxy({ gatewayUrl: gw.url, gatewayKey: 'REAL-GATEWAY-KEY', runId: 'r1', stage: 'build' });
-    const cwd = mkdtempSync(join(tmpdir(), 'agent-'));
+    const cwd = handOver(mkdtempSync(join(tmpdir(), 'agent-')));
     const state = freshState();
     try {
       await runAgent(

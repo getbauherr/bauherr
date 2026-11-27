@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process';
-import { appendFile, mkdtemp, rm } from 'node:fs/promises';
+import { appendFile, chown, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { runIdentity } from './identity.js';
 
 const exec = promisify(execFile);
 
@@ -21,6 +22,7 @@ export function gitEnv(token: string, home: string, user = 'x-access-token'): No
   return {
     PATH: process.env.PATH,
     HOME: home,
+    TMPDIR: home,
     GIT_TERMINAL_PROMPT: '0',
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_AUTHOR_NAME: 'Bauherr',
@@ -34,7 +36,8 @@ export function gitEnv(token: string, home: string, user = 'x-access-token'): No
 }
 
 export function git(dir: string, env: NodeJS.ProcessEnv, ...args: string[]): Promise<string> {
-  return exec('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd: dir, env }).then((r) => r.stdout.trim());
+  const options = { cwd: dir, env, ...runIdentity() };
+  return exec('git', ['-c', 'core.hooksPath=/dev/null', ...args], options).then((r) => r.stdout.trim());
 }
 
 export async function cloneRepo(o: {
@@ -52,7 +55,9 @@ export async function cloneRepo(o: {
   const env = gitEnv(o.token, home, o.user);
   const cleanup = () => rm(root, { recursive: true, force: true });
   try {
-    await exec('mkdir', ['-p', home]);
+    await mkdir(home);
+    const owner = runIdentity();
+    if (owner) await Promise.all([root, home].map((path) => chown(path, owner.uid, owner.gid)));
     const url = `${o.baseUrl.replace(/\/$/, '')}/${o.repo}.git`;
     await git(root, env, 'clone', '--depth', '50', '--no-tags', '--branch', o.checkout ?? o.defaultBranch, url, dir);
     if (!o.checkout) await git(dir, env, 'switch', '-c', o.branch);
@@ -100,6 +105,7 @@ export async function patchId(c: Clone, env: NodeJS.ProcessEnv, base: string, re
     cwd: c.dir,
     env,
     maxBuffer: 1 << 28,
+    ...runIdentity(),
   });
   return stdout.split(' ')[0].trim();
 }

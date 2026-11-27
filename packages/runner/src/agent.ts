@@ -1,5 +1,6 @@
 import { query, type Options, type SDKAssistantMessage, type SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import { buildHooks } from './hooks.js';
+import { runIdentity, spawnAsRunUser } from './identity.js';
 import type { StepRecord, ToolCallRecord } from './types.js';
 
 export { SPIN_LIMIT, trackSpin } from './hooks.js';
@@ -44,6 +45,8 @@ export function agentEnv(home: string, proxyUrl: string): Record<string, string>
   return {
     PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
     HOME: home,
+    TMPDIR: home,
+    LANG: process.env.LANG ?? 'C.UTF-8',
     ANTHROPIC_BASE_URL: proxyUrl,
     ANTHROPIC_API_KEY: 'proxy',
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
@@ -81,6 +84,7 @@ export function buildOptions(o: AgentOptions, state: AgentState): Options {
     abortController: state.abort,
     env: agentEnv(o.home, o.proxyUrl),
     hooks: buildHooks(o, state),
+    ...(runIdentity() && { spawnClaudeCodeProcess: spawnAsRunUser }),
   };
 }
 

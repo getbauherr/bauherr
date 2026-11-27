@@ -158,6 +158,22 @@ describe('proofs recorded by the Runner', () => {
   })
 })
 
+describe('proof command isolation', () => {
+  const proofBody = async (command: string) => {
+    const s = await toVerify()
+    r.state.behaviour = verifier((request) => claim(request, commands(command)))
+    expect(await r.next()).toBe('accepted')
+    return String((await stored(s.id))[0]?.body)
+  }
+
+  it('sees only the allowlisted environment', async () => {
+    const body = await proofBody('env')
+    expect(Object.keys(process.env)).toContain('DATABASE_URL')
+    expect(body).not.toContain('DATABASE_URL')
+    expect(body).toContain('CI=1')
+  })
+})
+
 describe('a verdict of changes with nothing to fix', () => {
   it('gets one more turn, not a Build run, and passes once the criteria are proven', async () => {
     const s = await toVerify()
