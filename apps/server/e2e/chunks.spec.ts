@@ -23,7 +23,7 @@ test('Inbox: Waiting on you is complete, Decided loads 50 rows and Show more add
   const waiting = page.locator('[data-inbox-row]').filter({ has: page.locator('.bg-warn') })
   await expect(waiting.first()).toBeVisible()
   const heading = page.getByRole('heading', { level: 2, name: /Waiting on you/ })
-  const youTotal = Number(await heading.locator('span').innerText())
+  const youTotal = Number(await heading.locator('[data-slot="badge"]').innerText())
   expect(youTotal).toBeGreaterThan(50)
   await expect(waiting).toHaveCount(youTotal)
 
