@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { sql } from '@payloadcms/db-postgres'
-import { egressGuard, git, WORK_DIR } from '@bauherr/runner'
+import { egressGuard, git, runIdentity, WORK_DIR } from '@bauherr/runner'
 import { z } from 'zod'
 import type { Conn } from '../../core/conn'
 import type { Problem } from '../../core/module'
@@ -76,6 +76,8 @@ const run = async (checkout: Checkout, command: string): Promise<Ran> => {
     env: {
       PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
       HOME: checkout.home,
+      TMPDIR: checkout.home,
+      LANG: process.env.LANG ?? 'C.UTF-8',
       CI: '1',
       NODE_ENV: 'test' as const,
     },
@@ -83,6 +85,7 @@ const run = async (checkout: Checkout, command: string): Promise<Ran> => {
     timeout: COMMAND_TIMEOUT_MS,
     maxBuffer: BUFFER_BYTES,
     killSignal: 'SIGKILL' as const,
+    ...runIdentity(),
   }
   const header = (exitCode: number, note = '') => `$ ${command}\nexit code: ${exitCode}${note}\n\n`
   try {

@@ -49,9 +49,11 @@ services:
     command: >
       sh -c "for n in payload_secret encryption_key; do
       [ -s /run/secrets/$$n ] || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /run/secrets/$$n; done;
+      chmod 0600 /run/secrets/*; chmod 0700 /run/secrets /gateway;
       mkdir -p /gateway/providers /gateway/catalogs; cp /deploy/gateway/catalogs/*.json /gateway/catalogs/;
       if [ ! -s /gateway/config.yaml ]; then
-      sed -e \"s|__GATEWAY_DATABASE_URL__|$$GATEWAY_DATABASE_URL|\" /deploy/gateway/config.yaml.tmpl > /gateway/config.yaml; fi"
+      sed -e \"s|__GATEWAY_DATABASE_URL__|$$GATEWAY_DATABASE_URL|\" /deploy/gateway/config.yaml.tmpl > /gateway/config.yaml; fi;
+      chmod 0600 /gateway/config.yaml"
   db:
     image: postgres:17
     command: [postgres, -c, max_connections=300]
@@ -85,6 +87,12 @@ services:
   worker: # own process: a long agent Run must not delay the minute jobs; limit on its Runs: BAUHERR_MAX_RUNS (default 2)
     <<: *app
     command: [pnpm, jobs]
+    # The agent runs as the unprivileged runner user: root only spawns it, so the caps are the ones that drop, chown and clean up.
+    read_only: true
+    tmpfs: ["/tmp:exec,nosuid,mode=1777,size=4g", "/root:mode=0700,size=256m"]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    security_opt: ["no-new-privileges:true"]
     depends_on:
       app: {condition: service_healthy}
     healthcheck:

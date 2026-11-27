@@ -1,6 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { WORK_DIR } from '@bauherr/runner'
+import { mkdirAsRunUser, WORK_DIR, writeFileAsRunUser as writeFile } from '@bauherr/runner'
 import type { Problem } from '../../core/module'
 import type { ContextPack } from '../../core/run/pack'
 import type { NewComment } from '../../core/requests/handover'
@@ -50,7 +50,7 @@ const json = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`
 
 export const writeContext = async (dir: string, pack: ContextPack): Promise<void> => {
   const folder = join(dir, WORK_DIR)
-  await mkdir(folder, { recursive: true })
+  await mkdirAsRunUser(folder)
   const { skill, resultSchema, ...context } = pack
   await writeFile(join(folder, 'context.json'), json(context))
   await writeFile(join(folder, 'SKILL.md'), skill ?? NO_SKILL)
