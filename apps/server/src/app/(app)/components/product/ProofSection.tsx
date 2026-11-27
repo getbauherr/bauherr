@@ -10,19 +10,23 @@ type Props = { product: ProductSettings; forgeChecks: string[]; admin: boolean }
 
 const optionsOf = (forgeChecks: string[]) => forgeChecks.map((value) => ({ value, meta: 'required by the forge' }))
 
+function ForgeChecksOffer({ id, forgeChecks }: { id: number; forgeChecks: string[] }) {
+  return (
+    <SettingsForm action={copyForgeChecks} submit="Use the checks the forge requires">
+      <Input type="hidden" name="id" value={id} />
+      <p className="small text-muted-foreground">
+        The forge requires <span className="mono">{forgeChecks.join(' · ')}</span>.
+      </p>
+    </SettingsForm>
+  )
+}
+
 export function ProofSection({ product, forgeChecks, admin }: Props) {
   const offer = namesIn(product.requiredChecks).length === 0 && forgeChecks.length > 0
   return (
     <SettingsSection id="proof" title="Proof" purpose="What a change must show before you are asked to accept it.">
       <Editable admin={admin}>
-        {offer && (
-          <SettingsForm action={copyForgeChecks} submit="Use the checks the forge requires">
-            <Input type="hidden" name="id" value={product.id} />
-            <p className="small text-muted-foreground">
-              The forge requires <span className="mono">{forgeChecks.join(' · ')}</span>.
-            </p>
-          </SettingsForm>
-        )}
+        {offer && <ForgeChecksOffer id={product.id} forgeChecks={forgeChecks} />}
         <SettingsForm action={saveProof} submit="Save proof">
           <Input type="hidden" name="id" value={product.id} />
           <MultiPick

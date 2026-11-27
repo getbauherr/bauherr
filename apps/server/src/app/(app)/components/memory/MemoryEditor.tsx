@@ -37,6 +37,32 @@ function useEditor(initial: string, readOnly: boolean, onChange: (body: string) 
   return { host, view }
 }
 
+function MemoryTabs({ tab, onSelect }: { tab: Tab; onSelect: (tab: Tab) => void }) {
+  return (
+    <div role="tablist" aria-label="Document view" className="flex border-b border-border px-3">
+      {TABS.map(({ id, label }) => (
+        <Button
+          key={id}
+          type="button"
+          variant="ghost"
+          role="tab"
+          id={`memory-tab-${id}`}
+          aria-selected={tab === id}
+          aria-controls={`memory-panel-${id}`}
+          onClick={() => onSelect(id)}
+          className={cn(
+            '-mb-px h-auto rounded-none border-b-2 border-transparent px-3 py-2.5 font-normal',
+            'text-[length:inherit] text-muted-foreground hover:bg-transparent',
+            tab === id && 'border-primary font-medium text-foreground',
+          )}
+        >
+          {label}
+        </Button>
+      ))}
+    </div>
+  )
+}
+
 export function MemoryEditor({ choice, initial, maxLines, mayChange, whoMay }: Props) {
   const router = useRouter()
   const [body, setBody] = useState(initial)
@@ -56,27 +82,7 @@ export function MemoryEditor({ choice, initial, maxLines, mayChange, whoMay }: P
   return (
     <TooltipProvider delayDuration={300}>
       <div className="rounded-md border border-border bg-card">
-        <div role="tablist" aria-label="Document view" className="flex border-b border-border px-3">
-          {TABS.map(({ id, label }) => (
-            <Button
-              key={id}
-              type="button"
-              variant="ghost"
-              role="tab"
-              id={`memory-tab-${id}`}
-              aria-selected={tab === id}
-              aria-controls={`memory-panel-${id}`}
-              onClick={() => setTab(id)}
-              className={cn(
-                '-mb-px h-auto rounded-none border-b-2 border-transparent px-3 py-2.5 font-normal',
-                'text-[length:inherit] text-muted-foreground hover:bg-transparent',
-                tab === id && 'border-primary font-medium text-foreground',
-              )}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
+        <MemoryTabs tab={tab} onSelect={setTab} />
         <div role="tabpanel" id="memory-panel-write" aria-labelledby="memory-tab-write" hidden={tab !== 'write'}>
           <MemoryToolbar view={view} disabled={!mayChange} />
           <div ref={host} />

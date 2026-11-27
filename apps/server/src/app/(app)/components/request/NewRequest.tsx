@@ -85,11 +85,55 @@ function JoinOffer({ draft, busy, join }: { draft: DraftView | null; busy: boole
   )
 }
 
+type Session = ReturnType<typeof useRequestSession>
+
+function RequestThread({ session }: { session: Session }) {
+  const { draft, busy, error } = session
+  const open = draft === null || draft.state === 'open'
+  return (
+    <Thread
+      autoFocus={false}
+      components={{
+        placeholder: 'Describe your request',
+        composer: open,
+        AssistantMessage: FactoryMessage,
+        welcome: (
+          <p className="small m-0 px-2 text-muted-foreground">
+            Describe what you need in your own words. Nothing is written to the issue tracker until you send it.
+          </p>
+        ),
+        afterMessages: (
+          <div className="grid gap-2 pb-4">
+            {open && draft && (
+              <RequestQuestions
+                key={draft.rounds}
+                questions={draft.questions}
+                busy={busy}
+                onAnswer={session.answer}
+              />
+            )}
+            {busy && <p className="small m-0 text-muted-foreground">The factory is reading your message…</p>}
+          </div>
+        ),
+        aboveComposer: (
+          <>
+            {error && (
+              <p role="alert" className="small m-0 text-destructive">
+                {error}
+              </p>
+            )}
+            {open && <JoinOffer draft={draft} busy={busy} join={() => session.act({ action: 'join' })} />}
+          </>
+        ),
+      }}
+    />
+  )
+}
+
 export function NewRequest({ workspace, products, product, initial }: Props) {
   const [chosen, setChosen] = useState(product)
   const session = useRequestSession(workspace, product, initial)
-  const { draft, busy, error } = session
-  const open = draft === null || draft.state === 'open'
+  const { draft, busy } = session
   const change = (id: number) => {
     setChosen(id)
     session.setProduct(id)
@@ -100,42 +144,7 @@ export function NewRequest({ workspace, products, product, initial }: Props) {
       <div className="grid items-start gap-6 pb-8 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <AssistantRuntimeProvider runtime={session.runtime}>
           <div className={COLUMN}>
-            <Thread
-              autoFocus={false}
-              components={{
-                placeholder: 'Describe your request',
-                composer: open,
-                AssistantMessage: FactoryMessage,
-                welcome: (
-                  <p className="small m-0 px-2 text-muted-foreground">
-                    Describe what you need in your own words. Nothing is written to the issue tracker until you send it.
-                  </p>
-                ),
-                afterMessages: (
-                  <div className="grid gap-2 pb-4">
-                    {open && draft && (
-                      <RequestQuestions
-                        key={draft.rounds}
-                        questions={draft.questions}
-                        busy={busy}
-                        onAnswer={session.answer}
-                      />
-                    )}
-                    {busy && <p className="small m-0 text-muted-foreground">The factory is reading your message…</p>}
-                  </div>
-                ),
-                aboveComposer: (
-                  <>
-                    {error && (
-                      <p role="alert" className="small m-0 text-destructive">
-                        {error}
-                      </p>
-                    )}
-                    {open && <JoinOffer draft={draft} busy={busy} join={() => session.act({ action: 'join' })} />}
-                  </>
-                ),
-              }}
-            />
+            <RequestThread session={session} />
           </div>
           <div className="lg:sticky lg:top-4">
             <RequestCard draft={draft} busy={busy} act={session.act} />
