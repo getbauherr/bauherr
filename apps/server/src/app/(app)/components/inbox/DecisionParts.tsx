@@ -20,11 +20,12 @@ export function CriteriaPicker({ criteria, ticked, onChange }: PickerProps) {
           <span>{text}</span>
         </label>
       ))}
-      {criteria.dropped.map((id) => (
+      {criteria.dropped.map(({ id, text }) => (
         <p key={id} className="small text-muted-foreground m-0 flex items-center gap-2.5 py-1.5">
           <CheckIcon className="size-4" aria-hidden />
           <span className="mono">{id}</span>
-          <span>Dropped earlier</span>
+          <span>{text}</span>
+          <span>Dropped by you</span>
         </p>
       ))}
     </fieldset>

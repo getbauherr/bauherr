@@ -10,7 +10,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { InboxView } from '../../components/inbox/InboxView'
 import { BOARD_TABLES } from '../../lib/change-tables'
 import { defaultSelection, INBOX_PAGE, listOf, pagingOf, type InboxEntry } from '../../lib/inbox-entries'
-import { emptyThread, sessionThread, threadOf, type ThreadModel } from '../../lib/inbox-thread'
+import { emptyThread, sessionThread, unreadableThread, threadOf, type ThreadModel } from '../../lib/inbox-thread'
 import { ticketRefs } from '../../lib/refs'
 import { currentWorkspace, payloadClient } from '../../lib/session'
 
@@ -33,7 +33,7 @@ const threadFor = async (
     return threadOf(await ticket(payload, { workspace, recordId }), await ticketRefs())
   } catch (error) {
     if (error instanceof RecordNotFound) return emptyThread()
-    throw error
+    return unreadableThread(entries.find((candidate) => candidate.id === selected))
   }
 }
 

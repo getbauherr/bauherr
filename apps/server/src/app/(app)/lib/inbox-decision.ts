@@ -1,27 +1,17 @@
-import { OWN_ANSWER } from '../../../core/decisions'
+import { DROP_CRITERIA } from '../../../core/decisions'
 import type { StoredCard } from '../../../core/record/store'
+import type { DecisionView } from '../../../core/views/decision'
 import type { TicketView } from '../../../core/views/ticket'
-import {
-  ACCEPT_ANYWAY,
-  DROP_CRITERIA,
-  EXTRA_CHOICE_WORDS,
-  GHOST_CHOICES,
-  HEADLINES,
-  OPTIONAL_NOTE,
-  PREFERRED_CHOICES,
-  PRIMARY_CHOICE,
-  RESULT_REASON,
-} from './inbox-words'
-import { recommendedOption } from './question-facts'
+import { GHOST_CHOICES, HEADLINES, OPTIONAL_NOTE, PRIMARY_CHOICE, RESULT_REASON } from './inbox-words'
 import { CHOICE_WORDS, NOTE_PROMPTS, NOTE_SAYS, REASON_WORDS } from './ticket-words'
 
-export type DecisionSource = Pick<TicketView, 'recordId' | 'number' | 'card' | 'record' | 'deploy'>
+export type DecisionSource = Pick<TicketView, 'recordId' | 'number' | 'card' | 'record' | 'decision' | 'acceptedUnmet'>
 
 export type Tier = 'primary' | 'secondary' | 'ghost'
 export type NoteSpec = { prompt: string; say: string; required: boolean }
 export type DecisionOption = { choice: string; label: string; tier: Tier; note: NoteSpec | null; criteria: boolean }
 export type CriterionRow = { id: string; text: string }
-export type CriteriaModel = { active: CriterionRow[]; dropped: string[]; suggested: string[] }
+export type CriteriaModel = { active: CriterionRow[]; dropped: CriterionRow[]; suggested: string[] }
 export type OpenAnswer = {
   id: string
   question: string
@@ -45,8 +35,15 @@ export type DecisionModel = {
 export const askOf = (card: Pick<StoredCard, 'card' | 'reason'>): string =>
   card.card === 'question' ? `question:${card.reason}` : card.card
 
-const reasonOf = (card: StoredCard): string => {
-  if (card.card === 'result') return RESULT_REASON
+const exceptionsOf = (view: DecisionSource): string => {
+  const dropped = view.record.dropped.map((row) => row.id)
+  const dropping = dropped.length > 0 ? ` Dropped by you: ${dropped.join(', ')}.` : ''
+  const unmet = view.acceptedUnmet.length > 0 ? ` Not met, accepted by you: ${view.acceptedUnmet.join(', ')}.` : ''
+  return `${RESULT_REASON}${dropping}${unmet}`
+}
+
+const reasonOf = (card: StoredCard, view: DecisionSource): string => {
+  if (card.card === 'result') return exceptionsOf(view)
   if (card.reason === 'agent') return card.text ?? REASON_WORDS.agent
   if (card.reason === 'parked') return `${REASON_WORDS.parked}: ${card.text ?? ''}`
   return REASON_WORDS[card.reason as keyof typeof REASON_WORDS] ?? card.reason
@@ -58,22 +55,11 @@ const headlineOf = (card: StoredCard, number: number): string => {
   return (HEADLINES[key] ?? 'What should the factory do on #{n}?').replace('{n}', String(number))
 }
 
-const choicesOf = (card: StoredCard): string[] => {
-  if (card.card === 'brief') return ['approve', 'request-changes', 'discard']
-  if (card.card === 'result') return ['accept', 'send-back']
-  return card.reason === 'agent' ? [...card.options, OWN_ANSWER] : card.options
-}
-
-const primaryOf = (card: StoredCard, choices: string[], view: DecisionSource): string => {
-  const ask = askOf(card)
+const primaryOf = (card: StoredCard, decision: DecisionView): string => {
   const key = card.card === 'question' ? card.reason : card.card
-  const wanted = [
-    ...PREFERRED_CHOICES,
-    recommendedOption(view, card.reason),
-    PRIMARY_CHOICE[key],
-    choices.find((choice) => choice !== OWN_ANSWER),
-  ]
-  return wanted.find((choice) => choice != null && choices.includes(choice)) ?? choices[0] ?? ask
+  const fixed = PRIMARY_CHOICE[key]
+  const wanted = card.card === 'question' ? [decision.recommended, fixed] : [fixed, decision.recommended]
+  return wanted.find((choice) => choice != null && decision.options.includes(choice)) ?? decision.options[0] ?? ''
 }
 
 const noteOf = (ask: string, choice: string): NoteSpec | null => {
@@ -88,15 +74,14 @@ const tierOf = (choice: string, primary: string): Tier => {
   return GHOST_CHOICES.includes(choice) ? 'ghost' : 'secondary'
 }
 
-const optionsOf = (card: StoredCard, view: DecisionSource): DecisionOption[] => {
-  const ask = askOf(card)
-  const choices = choicesOf(card)
-  const primary = primaryOf(card, choices, view)
+const optionsOf = (card: StoredCard, decision: DecisionView): DecisionOption[] => {
+  const { ask } = decision
+  const primary = primaryOf(card, decision)
   const order = ['primary', 'secondary', 'ghost']
-  return choices
+  return decision.options
     .map((choice): DecisionOption => ({
       choice,
-      label: CHOICE_WORDS[ask]?.[choice] ?? EXTRA_CHOICE_WORDS[choice] ?? choice,
+      label: CHOICE_WORDS[ask]?.[choice] ?? choice,
       tier: tierOf(choice, primary),
       note: noteOf(ask, choice),
       criteria: choice === DROP_CRITERIA,
@@ -106,14 +91,13 @@ const optionsOf = (card: StoredCard, view: DecisionSource): DecisionOption[] => 
 
 const UNMET = ['open', 'missing', 'partial']
 
-export const criteriaOf = (view: DecisionSource, choices: string[]): CriteriaModel | null => {
-  if (!choices.includes(DROP_CRITERIA) && !choices.includes(ACCEPT_ANYWAY)) return null
-  const rows = view.record.criteria
-  const active = rows.filter((row) => row.status !== 'waived')
+export const criteriaOf = (view: DecisionSource, decision: DecisionView): CriteriaModel | null => {
+  if (!decision.options.includes(DROP_CRITERIA)) return null
+  const status = new Map(view.record.criteria.map((row) => [row.id, row.status]))
   return {
-    active: active.map(({ id, text }) => ({ id, text })),
-    dropped: rows.filter((row) => row.status === 'waived').map((row) => row.id),
-    suggested: active.filter((row) => UNMET.includes(row.status)).map((row) => row.id),
+    active: decision.criteria,
+    dropped: decision.dropped.map(({ id, text }) => ({ id, text })),
+    suggested: decision.criteria.filter((row) => UNMET.includes(status.get(row.id) ?? '')).map((row) => row.id),
   }
 }
 
@@ -130,19 +114,18 @@ const answersOf = (view: DecisionSource, card: StoredCard): OpenAnswer[] =>
         }))
 
 export const decisionOf = (view: DecisionSource): DecisionModel | null => {
-  const { card } = view
-  if (card === null) return null
-  const options = optionsOf(card, view)
+  const { card, decision } = view
+  if (card === null || decision === null) return null
   return {
-    key: `${view.recordId}:${askOf(card)}:${card.seq}`,
+    key: `${view.recordId}:${decision.ask}:${card.seq}`,
     recordId: view.recordId,
     number: view.number,
-    ask: askOf(card),
+    ask: decision.ask,
     seq: card.seq,
     headline: headlineOf(card, view.number),
-    reason: reasonOf(card),
-    options,
-    criteria: criteriaOf(view, options.map((option) => option.choice)),
+    reason: reasonOf(card, view),
+    options: optionsOf(card, decision),
+    criteria: criteriaOf(view, decision),
     answers: answersOf(view, card),
   }
 }

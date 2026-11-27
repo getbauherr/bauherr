@@ -22,7 +22,7 @@ const input = z.object({
 
 export type DecisionResult = { error?: string }
 
-const decisionOf = (given: z.infer<typeof input>): Decision & { criteria?: string[] } => ({
+const decisionOf = (given: z.infer<typeof input>): Decision => ({
   ask: given.ask,
   choice: given.choice,
   seq: given.seq,

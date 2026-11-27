@@ -59,14 +59,15 @@ describe('decision model', () => {
   it('renders the criteria picker with the unmet criteria ticked when drop-criteria is offered', () => {
     const record = {
       ...emptyRecord(source, 'change'),
-      criteria: [criterion('c1', 'met'), criterion('c2', 'missing'), criterion('c3', 'waived')],
+      criteria: [criterion('c1', 'met'), criterion('c2', 'missing')],
+      dropped: [{ id: 'c3', text: 'Criterion c3', note: 'out of scope' }],
     }
-    const card = cardOf('question', 'verify-rounds', ['one-more-round', 'drop-criteria', 'accept-anyway'])
+    const card = cardOf('question', 'verify-rounds', ['drop-criteria', 'accept-anyway', 'one-more-round', 'discard'])
     const model = need(decisionOf(sourceOf(card, { record })))
     expect(model.options.filter((o) => o.tier === 'primary').map((o) => o.choice)).toEqual(['drop-criteria'])
     expect(model.criteria).toEqual({
       active: [{ id: 'c1', text: 'Criterion c1' }, { id: 'c2', text: 'Criterion c2' }],
-      dropped: ['c3'],
+      dropped: [{ id: 'c3', text: 'Criterion c3' }],
       suggested: ['c2'],
     })
   })

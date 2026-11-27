@@ -139,3 +139,13 @@ export const emptyThread = (): ThreadModel => ({
   decision: null,
   suggestions: [],
 })
+
+export const unreadableThread = (entry: InboxEntry | undefined): ThreadModel => ({
+  ...emptyThread(),
+  id: entry?.id ?? 'none',
+  title: entry?.title ?? 'Inbox',
+  href: entry?.href ?? null,
+  number: entry?.number ?? null,
+  recordId: null,
+  messages: [assistantText('note-unreadable', 'This ticket could not be read. Open it to see what is wrong.')],
+})

@@ -105,7 +105,7 @@ function Heading({ model }: { model: DecisionModel }) {
         </Link>
         {primary && <Badge variant="accent">Recommended: {primary.label}</Badge>}
       </div>
-      <h3 className="m-0 text-xl leading-tight font-bold">{model.headline}</h3>
+      <h2 className="m-0 text-xl leading-tight font-bold">{model.headline}</h2>
       <p className="small text-muted-foreground m-0 line-clamp-2">{model.reason}</p>
     </>
   )

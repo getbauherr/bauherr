@@ -1,17 +1,8 @@
-export const DROP_CRITERIA = 'drop-criteria'
-export const ACCEPT_ANYWAY = 'accept-anyway'
-export const RETRY_BRIEF = 'retry-brief'
-
-export const EXTRA_CHOICE_WORDS: Record<string, string> = {
-  [DROP_CRITERIA]: 'Drop the ticked criteria',
-  [ACCEPT_ANYWAY]: 'Accept anyway',
-  [RETRY_BRIEF]: 'Write the Brief again',
-}
-
 export const HEADLINES: Record<string, string> = {
   brief: 'Approve the Brief for #{n}?',
   result: 'Accept the result of #{n}?',
   'failed-runs': 'Try #{n} again?',
+  'brief-failed': 'Write the Brief for #{n} again?',
   'verify-rounds': 'How should #{n} go on after the review rounds?',
   'reporter-silent': 'The reporter of #{n} did not answer. What now?',
   disputed: 'Is #{n} a change to make?',
@@ -27,6 +18,7 @@ export const PRIMARY_CHOICE: Record<string, string> = {
   result: 'accept',
   'failed-runs': 'retry',
   'verify-rounds': 'one-more-round',
+  'brief-failed': 'retry-brief',
   'reporter-silent': 'ask-again',
   disputed: 'accept',
   'already-done': 'close-as-done',
@@ -34,15 +26,12 @@ export const PRIMARY_CHOICE: Record<string, string> = {
   parked: 'resume',
 }
 
-export const PREFERRED_CHOICES = [DROP_CRITERIA, RETRY_BRIEF]
-
 export const GHOST_CHOICES = ['discard', 'close', 'not-a-bug']
 
 export const OPTIONAL_NOTE = 'The agent keeps this as a memory.'
 
 export const SUGGESTIONS = [
   { title: 'Why this recommendation?', prompt: 'Why do you recommend this?' },
-  { title: 'What changed since the last round?', prompt: 'What changed since the last round?' },
 ]
 
 export const UNDO_MS = 6000
@@ -56,8 +45,7 @@ export const RECEIPTS: Record<string, string> = {
   retry: 'Retrying',
   'retry-with-guidance': 'Retrying with your guidance',
   'one-more-round': 'One more round granted',
-  'accept-as-is': 'Patch accepted as it is',
-  [DROP_CRITERIA]: 'Criteria dropped',
-  [ACCEPT_ANYWAY]: 'Accepted anyway',
-  [RETRY_BRIEF]: 'Writing the Brief again',
+  'accept-anyway': 'Accepted anyway',
+  'drop-criteria': 'Criteria dropped',
+  'retry-brief': 'Writing the Brief again',
 }

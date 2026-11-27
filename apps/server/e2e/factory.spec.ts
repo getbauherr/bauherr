@@ -53,7 +53,7 @@ test('a filter marks the URL and dims the cards that do not match', async ({ pag
 
 test('the Inbox lists the tickets waiting on the owner first and opens the first one', async ({ page }) => {
   await enter(page, '/inbox')
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText(GROUPS)
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(GROUPS.map((group) => new RegExp(`^${group}`)))
   const rows = page.locator('[data-inbox-row]')
   for (const title of ['Export fails for large files', 'Add target-year check']) {
     const link = rows.filter({ hasText: title }).locator('a[href^="/tickets/"]').first()
