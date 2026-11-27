@@ -21,6 +21,8 @@ export function SummaryRow({ view }: { view: InsightsView }) {
       <Figure value={rounds(time.verifyRoundsMedian)} label="median Verify rounds per ticket" />
       <Figure value={percent(time.moreThanOneRoundShare)} label="tickets with more than one Verify round" />
       <Figure value={percent(time.sentBackShare)} label="tickets with a Result you sent back" />
+      <Figure value={String(view.autoAccepted.total)} label="Results accepted by the factory" />
+      <Figure value={String(view.autoAccepted.sentBack)} label="of those sent back later" />
       <Figure
         value={usd(cost.total.medianPerTicket)}
         label={`median cost per ticket, ${cost.tickets.measured} of ${cost.tickets.all} with measured runs`}

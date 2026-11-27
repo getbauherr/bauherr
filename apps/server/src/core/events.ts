@@ -40,6 +40,16 @@ export const deferredSchema = z.discriminatedUnion('kind', [
 ])
 export type Deferred = z.infer<typeof deferredSchema>
 
+export const autoAcceptedSchema = z.object({
+  door: z.literal('two-way'),
+  criteriaMet: z.number().int().min(1),
+  criteriaTotal: z.number().int().min(1),
+  checks: z.literal('passed'),
+  sendBackPercent: z.number().min(0).max(100),
+  maxSendBackPercent: z.number().min(0).max(100),
+})
+export type AutoAccepted = z.infer<typeof autoAcceptedSchema>
+
 const eventSchema = z.discriminatedUnion('type', [
   event('intake.accepted', none),
   event('intake.asked', z.object({ round: z.number().int().positive() })),
@@ -69,7 +79,7 @@ const eventSchema = z.discriminatedUnion('type', [
   event('ship.merged', z.object({ sha: id })),
   event('ship.deployed', none),
   event('ship.deploy-stalled', z.object({ reason: z.enum(['failed', 'overdue']), checks: z.array(id) })),
-  event('result.accepted', none),
+  event('result.accepted', z.object({ auto: autoAcceptedSchema.optional() })),
   event('result.sent-back', z.object({ note: id })),
   event('production.approved', none),
   event('production.held', none),

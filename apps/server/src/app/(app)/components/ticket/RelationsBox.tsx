@@ -157,6 +157,25 @@ function AddRelation({ recordId, add, disabled }: { recordId: number; add: Chang
   )
 }
 
+function Parts({ parts }: { parts: TicketRelations['parts'] }) {
+  if (parts.total === 0) return null
+  return (
+    <div className="grid gap-1">
+      <h3 className="small m-0 font-medium">
+        Has parts, {parts.done} of {parts.total} done
+      </h3>
+      <ul className="m-0 grid list-none gap-1 p-0">
+        {parts.tickets.map((ticket) => (
+          <li key={ticket.itemId} className="small">
+            <span className="mono">#{ticket.number}</span> {ticket.title}{' '}
+            <span className="text-muted-foreground">{ticket.stage}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 type BoxProps = { recordId: number; relations: TicketRelations; may: boolean }
 
 export function RelationsBox({ recordId, relations, may }: BoxProps) {
@@ -187,6 +206,7 @@ export function RelationsBox({ recordId, relations, may }: BoxProps) {
           </div>
         )
       })}
+      <Parts parts={relations.parts} />
       {may && <AddRelation recordId={recordId} add={run(addTicketRelation)} disabled={pending} />}
       {error && (
         <p role="alert" className="small m-0 text-destructive">

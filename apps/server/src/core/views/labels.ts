@@ -1,4 +1,4 @@
-import type { AppEvent, EventOf, EventType } from '../events'
+import type { AppEvent, AutoAccepted, EventOf, EventType } from '../events'
 
 type Labels = { [T in EventType]: (event: EventOf<T>) => string }
 
@@ -16,6 +16,10 @@ const WRITES: Record<EventOf<'forge.write.done'>['data']['kind'], string> = {
   comment: 'a request comment',
   'update-branch': 'bringing the branch up to date',
 }
+
+export const autoAcceptedText = (auto: AutoAccepted): string =>
+  `Accepted by the factory: ${auto.door}, ${auto.criteriaMet}/${auto.criteriaTotal} met, ` +
+  `send-back ${Math.round(auto.sendBackPercent)} %`
 
 const EXCERPT = 80
 
@@ -73,7 +77,7 @@ const LABELS: Labels = {
     e.data.reason === 'failed'
       ? `A deploy check failed: ${e.data.checks.join(', ')}`
       : `No deploy result arrived in time for: ${e.data.checks.join(', ')}`,
-  'result.accepted': () => 'The owner accepted the Result',
+  'result.accepted': (e) => (e.data.auto ? autoAcceptedText(e.data.auto) : 'The owner accepted the Result'),
   'result.sent-back': (e) => `The owner sent the Result back: ${e.data.note}`,
   'production.approved': () => 'The owner approved production',
   'production.held': () => 'The owner holds production',

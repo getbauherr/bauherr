@@ -67,7 +67,12 @@ const releaseModeSchema = z.object({
   releaseMode: z.enum(RELEASE_MODES, { error: 'Choose how releases happen.' }),
 })
 
-const backlogSchema = z.object({ backlogBriefLimit: whole(LIMIT.min, LIMIT.max) })
+export const PERCENT = { min: 0, max: 100 } as const
+
+const gatesSchema = z.object({
+  backlogBriefLimit: whole(LIMIT.min, LIMIT.max),
+  autoAcceptMaxSendBack: whole(PERCENT.min, PERCENT.max),
+})
 
 const textOf = (fd: FormData, key: string): string => {
   const value = fd.get(key)
@@ -100,11 +105,11 @@ export const parseIntake = (fd: FormData) => {
 export const parseProof = (fd: FormData) => parse(proofSchema, valuesOf(fd, Object.keys(proofSchema.shape)))
 
 export const parseGates = (fd: FormData, pathSets: Record<string, string[]>) => {
-  const { backlogBriefLimit } = parse(backlogSchema, valuesOf(fd, ['backlogBriefLimit']))
+  const limits = parse(gatesSchema, valuesOf(fd, Object.keys(gatesSchema.shape)))
   const chosen = fd.getAll('riskAreas').filter((name) => typeof name === 'string')
   const unknown = chosen.filter((name) => !(name in pathSets))
   if (unknown.length) {
     throw new SectionError([{ path: 'riskAreas', message: `${unknown.join(', ')} is not one of the path sets.` }])
   }
-  return { backlogBriefLimit, riskAreas: [...new Set(chosen)] }
+  return { ...limits, autoAccept: fd.get('autoAccept') === 'on', riskAreas: [...new Set(chosen)] }
 }

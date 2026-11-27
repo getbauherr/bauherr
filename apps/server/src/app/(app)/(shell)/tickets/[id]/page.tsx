@@ -47,7 +47,7 @@ export default async function TicketPage({ params, searchParams }: Props) {
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid min-w-0 gap-4">
           {current === 'now' && <NowPane view={view} proof={proof} may={may} />}
-          {current === 'now' && <ArchiveControl view={view} may={may} />}
+          {current === 'now' && <ArchiveControl view={view} may={may} relations={relations} />}
           {current === 'brief' && <BriefTab view={view} />}
           {current === 'result' && <ResultTab view={view} proof={proof} />}
           {current === 'activity' && <ActivityTab view={view} />}

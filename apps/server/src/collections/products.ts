@@ -93,6 +93,18 @@ export const products = col(
       admin: { description: 'Close an issue on the forge when intake finds a duplicate or declines it.' },
     },
     {
+      name: 'autoAccept',
+      type: 'checkbox',
+      defaultValue: false,
+      admin: { description: 'The factory accepts a low-risk Result itself, as its own decision, never the owner’s.' },
+    },
+    {
+      name: 'autoAcceptMaxSendBack',
+      type: 'number',
+      defaultValue: 10,
+      admin: { description: 'Percent of tickets sent back in the last 30 days at or below which the factory accepts.' },
+    },
+    {
       name: 'backlogBriefLimit',
       type: 'number',
       defaultValue: 5,

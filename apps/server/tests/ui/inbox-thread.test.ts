@@ -32,6 +32,18 @@ describe('thread of a ticket', () => {
     expect(thread.suggestions.length).toBeGreaterThan(0)
   })
 
+  it('lists a Result the factory accepted apart from what the owner decided', () => {
+    const accepted = {
+      ...event(2, 'factory', 'Accepted by the factory: two-way, 4/4 met, send-back 6 %'),
+      type: 'result.accepted' as const,
+    }
+    const events = [event(1, 'owner', 'The owner approved the Brief'), accepted]
+    const thread = threadOf(sourceOf(null, { events }), refsOf())
+    expect(thread.messages.map((m) => m.id)).toEqual(['decided-126', 'factory-126', 'status-126'])
+    expect(textOf(thread.messages[0])).not.toContain('Accepted by the factory')
+    expect(textOf(thread.messages[1])).toContain('Accepted by the factory: two-way, 4/4 met, send-back 6 %')
+  })
+
   it('links every #ref to its ticket page', () => {
     const view = sourceOf(null, { events: [event(1, 'owner', 'The owner moved #12 ahead of #99')] })
     const text = textOf(threadOf(view, refsOf({ recordId: 7, number: 12 })).messages[0])

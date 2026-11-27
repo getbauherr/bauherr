@@ -19,6 +19,8 @@ import {
   type WaitingOn,
 } from './record/store'
 import { blockedByRecord, blockersOf } from './relations/blockers'
+import { waitingEpicsOf } from './relations/parts'
+import { gateResult } from './result-gate'
 import { enqueue, releaseLive } from './run/leases'
 
 export const MAX_ADVANCE_STEPS = 10
@@ -114,7 +116,23 @@ const runStep = async (step: Extract<Step, { kind: 'run' }>, ctx: Ctx): Promise<
   return 'stop'
 }
 
+const resultGate = async (ctx: Ctx): Promise<Outcome | null> => {
+  const gate = await gateResult(ctx.deps, ctx.stored, ctx.state)
+  if (gate.kind === 'accepted') return 'repeat'
+  if (gate.kind === 'raise') {
+    if (ctx.stored.parked !== null) await setParked(ctx.deps.payload, ctx.stored.id, null)
+    return null
+  }
+  await setParked(ctx.deps.payload, ctx.stored.id, gate.reason)
+  await project(ctx, 'nobody', null)
+  return 'stop'
+}
+
 const cardStep = async (step: Extract<Step, { kind: 'card' }>, ctx: Ctx): Promise<Outcome> => {
+  if (step.card === 'result') {
+    const gated = await resultGate(ctx)
+    if (gated !== null) return gated
+  }
   const { card, reason, options } = step
   const text = step.text === undefined ? {} : { text: step.text }
   if (card === 'question') {
@@ -222,6 +240,7 @@ export const advance = async (recordId: number, deps: AdvanceDeps): Promise<void
   const waiting = new Set([
     ...(await blockedByRecord(deps.payload, stored)),
     ...(await stackedOnRecord(deps.payload, stored)),
+    ...(await waitingEpicsOf(deps.payload, stored.id)),
   ])
   for (const id of waiting) await advance(id, deps)
 }

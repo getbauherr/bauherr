@@ -46,6 +46,8 @@ it('productSettings answers null for a Product of another Workspace and reads th
       reporterSilentDays: 21,
       backlogBriefLimit: 5,
       autoClose: true,
+      autoAccept: false,
+      autoAcceptMaxSendBack: 10,
       sources: [],
     },
   )

@@ -63,6 +63,14 @@ const decidedMessage = (view: ThreadSource): ThreadMessageLike[] => {
   return [assistantText(`decided-${view.recordId}`, text)]
 }
 
+const factoryMessage = (view: ThreadSource): ThreadMessageLike[] => {
+  const lines = view.events
+    .filter((event) => event.type === 'result.accepted' && event.actor === 'factory')
+    .map((event) => `- ${ago(event.at)}: ${event.label}`)
+  if (lines.length === 0) return []
+  return [assistantText(`factory-${view.recordId}`, ['**Decided by the factory**', ...lines].join('\n'))]
+}
+
 type Timed = { at: string; message: ThreadMessageLike }
 
 const commentMessages = (view: ThreadSource): Timed[] =>
@@ -123,7 +131,8 @@ export const threadOf = (view: ThreadSource, refs: TicketRefs, steer: Conversati
           ),
         }
       : message
-  const body = [...decidedMessage(view), ...(decision ? [] : [statusMessage(view)]), ...timeline(view, steer)]
+  const status = decision ? [] : [statusMessage(view)]
+  const body = [...decidedMessage(view), ...factoryMessage(view), ...status, ...timeline(view, steer)]
   return {
     id: String(view.recordId),
     recordId: view.recordId,

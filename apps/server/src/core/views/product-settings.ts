@@ -32,6 +32,8 @@ export type ProductSettings = {
   reporterRemindDays: number
   reporterSilentDays: number
   backlogBriefLimit: number
+  autoAccept: boolean
+  autoAcceptMaxSendBack: number
   repositories: { id: number; fullName: string }[]
   sources: SourceState[]
 }
@@ -65,6 +67,8 @@ const productRow = z.object({
   reporter_remind_days: amount(7),
   reporter_silent_days: amount(21),
   backlog_brief_limit: amount(5),
+  auto_accept: flag(false),
+  auto_accept_max_send_back: amount(10),
 })
 
 const sourceRow = z.object({
@@ -134,13 +138,16 @@ const settingsOf = (row: z.output<typeof productRow>) => ({
   reporterRemindDays: row.reporter_remind_days,
   reporterSilentDays: row.reporter_silent_days,
   backlogBriefLimit: row.backlog_brief_limit,
+  autoAccept: row.auto_accept,
+  autoAcceptMaxSendBack: row.auto_accept_max_send_back,
 })
 
 export const productSettings = async (payload: Payload, f: ProductFilter): Promise<ProductSettings | null> => {
   const result = await payload.db.drizzle.execute(sql`
     SELECT "id", "name", "slug", "state", "executor", "release_mode", "risk_areas", "path_sets",
       "required_checks", "deploy_checks", "deploy_wait_minutes", "staging_url", "auto_close", "intake_excluded_labels",
-      "outside_issues_per_day", "reporter_remind_days", "reporter_silent_days", "backlog_brief_limit"
+      "outside_issues_per_day", "reporter_remind_days", "reporter_silent_days", "backlog_brief_limit", "auto_accept",
+      "auto_accept_max_send_back"
     FROM "products" WHERE "id" = ${f.product} AND "workspace_id" = ${f.workspace}`)
   if (!result.rows[0]) return null
   return {
