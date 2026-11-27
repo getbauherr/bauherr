@@ -1,5 +1,4 @@
 'use client'
-import { CheckIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -11,28 +10,12 @@ import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { CriteriaPicker, NoteField, OpenAnswers } from './DecisionParts'
+import { Receipt } from './Receipt'
 import type { Pending } from './use-pending-decisions'
 
 const VARIANT = { primary: 'default', secondary: 'outline', ghost: 'ghost' } as const
 
 type Props = { model: DecisionModel; pending: Pending }
-
-function Receipt({ model, pending }: Props) {
-  const staged = pending.staged[model.key]
-  return (
-    <div role="status" className={cn(paper, 'flex w-full max-w-lg items-center gap-3 rounded-[20px] p-4')}>
-      <CheckIcon className="text-ok size-4 shrink-0" aria-hidden />
-      <p className="small m-0 min-w-0 flex-1">
-        <span className="font-medium">{staged?.receipt}</span>
-        <span className="text-muted-foreground"> on </span>
-        <Link href={ticketPath(model.recordId)} className="mono hover:underline">#{model.number}</Link>
-      </p>
-      <Button variant="ghost" size="sm" onClick={() => pending.undo(model.key)}>
-        Undo
-      </Button>
-    </div>
-  )
-}
 
 const labelOf = (option: DecisionOption, form: FormState): string => {
   if (option.criteria) {
@@ -114,7 +97,11 @@ function Heading({ model }: { model: DecisionModel }) {
 export function DecisionCard({ model, pending }: Props) {
   const [form, setForm] = useState<FormState>(() => initialForm(model))
   const [open, setOpen] = useState<string | null>(null)
-  if (pending.staged[model.key]) return <Receipt model={model} pending={pending} />
+  const staged = pending.staged[model.key]
+  if (staged) {
+    const { recordId, number, key } = model
+    return <Receipt staged={staged} recordId={recordId} number={number} onUndo={() => pending.undo(key)} />
+  }
   const expanded = model.options.find((option) => option.choice === open)
   const send = (option: DecisionOption) =>
     pending.stage({

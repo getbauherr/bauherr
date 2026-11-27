@@ -7,6 +7,7 @@ export type Staged = {
   number: number
   receipt: string
   input: Record<string, unknown>
+  comment?: string
 }
 
 type Deps = {

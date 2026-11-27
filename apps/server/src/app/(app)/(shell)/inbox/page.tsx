@@ -2,7 +2,9 @@ import type { Payload } from 'payload'
 import { isProductOwner } from '../../../../lib/people'
 import { heldOf } from '../../../../core/views/board'
 import { loadInbox } from '../../../../core/views/inbox'
+import { listMessages } from '../../../../core/conversations/store'
 import { RecordNotFound } from '../../../../core/record/errors'
+import { findSteerConversation } from '../../../../core/steer/store'
 import { agentSessions } from '../../../../core/views/sessions'
 import { ticket } from '../../../../core/views/ticket'
 import { AutoRefresh } from '../../components/AutoRefresh'
@@ -30,7 +32,9 @@ const threadFor = async (
   const recordId = Number(selected)
   if (!Number.isInteger(recordId) || recordId <= 0) return emptyThread()
   try {
-    return threadOf(await ticket(payload, { workspace, recordId }), await ticketRefs())
+    const conversation = await findSteerConversation(payload, workspace, recordId)
+    const steer = conversation === null ? [] : await listMessages(payload, conversation)
+    return threadOf(await ticket(payload, { workspace, recordId }), await ticketRefs(), steer)
   } catch (error) {
     if (error instanceof RecordNotFound) return emptyThread()
     return unreadableThread(entries.find((candidate) => candidate.id === selected))

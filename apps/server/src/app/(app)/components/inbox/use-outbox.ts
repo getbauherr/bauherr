@@ -3,25 +3,28 @@ import type { ThreadMessageLike } from '@assistant-ui/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { commentOnRequestAction, startRequestConversation } from '../../(shell)/requests/actions'
-import { userText, type ThreadModel } from '../../lib/inbox-thread'
+import { steerTicket } from '../../(shell)/inbox/steer'
+import { stagedOf } from '../../lib/inbox-steer'
+import { intentMessage, userText, type ThreadModel } from '../../lib/inbox-thread'
+import type { Pending } from './use-pending-decisions'
 
 type Sent = { id: string; text: string }
 
-export const withOutbox = (messages: ThreadMessageLike[], sent: Sent[]): ThreadMessageLike[] => {
-  if (sent.length === 0) return messages
-  const own = sent.map((item) => userText(`sending-${item.id}`, item.text))
+type Thread = ThreadMessageLike[]
+
+export const withOutbox = (messages: Thread, sent: Sent[], intents: Thread): Thread => {
+  const own = [...sent.map((item) => userText(`sending-${item.id}`, item.text)), ...intents]
+  if (own.length === 0) return messages
   const last = messages.at(-1)
   return last?.id?.startsWith('ask-') ? [...messages.slice(0, -1), ...own, last] : [...messages, ...own]
 }
 
-const sendTo = async (recordId: number, text: string): Promise<string | null> => {
-  const conversationId = await startRequestConversation(recordId)
-  const result = await commentOnRequestAction({ recordId, conversationId, text, fileIds: [] })
-  return result.error ?? null
-}
+export const intentsOf = (pending: Pending, recordId: number | null): ThreadMessageLike[] =>
+  Object.values(pending.staged)
+    .filter((staged) => staged.comment !== undefined && staged.recordId === recordId)
+    .map(({ key, number }) => intentMessage({ key, recordId: recordId ?? 0, number }))
 
-export function useOutbox(thread: ThreadModel) {
+export function useOutbox(thread: ThreadModel, pending: Pending) {
   const router = useRouter()
   const [sent, setSent] = useState<Sent[]>([])
   const [busy, setBusy] = useState(false)
@@ -31,14 +34,21 @@ export function useOutbox(thread: ThreadModel) {
     toast.error(error)
   }
   const send = (text: string) => {
-    const { recordId } = thread
-    if (recordId === null) return void toast.error('Open a ticket to write to the factory.')
+    const { recordId, number } = thread
+    if (recordId === null || number === null) return void toast.error('Open a ticket to write to the factory.')
     const item = { id: String(Date.now()), text }
     setSent((current) => [...current, item])
     setBusy(true)
-    sendTo(recordId, text)
-      .then((error) => (error === null ? router.refresh() : fail(item, error)))
-      .catch(() => fail(item, 'The comment was not sent.'))
+    steerTicket({ recordId, text })
+      .then((result) => {
+        const { outcome } = result
+        const error = result.error ?? (outcome?.kind === 'fallback' ? outcome.error : null)
+        if (error) return fail(item, error)
+        const staged = outcome ? stagedOf({ recordId, number }, outcome, Date.now()) : null
+        if (staged) pending.stage(staged)
+        router.refresh()
+      })
+      .catch(() => fail(item, 'The message was not sent.'))
       .finally(() => setBusy(false))
   }
   return { sent, busy, send }

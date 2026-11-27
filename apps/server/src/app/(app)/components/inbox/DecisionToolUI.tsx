@@ -6,7 +6,7 @@ import { DECISION_TOOL } from '../../lib/inbox-thread'
 import { DecisionCard } from './DecisionCard'
 import type { Pending } from './use-pending-decisions'
 
-const PendingContext = createContext<Pending | null>(null)
+export const PendingContext = createContext<Pending | null>(null)
 
 export function PendingProvider({ pending, children }: { pending: Pending; children: ReactNode }) {
   return <PendingContext.Provider value={pending}>{children}</PendingContext.Provider>

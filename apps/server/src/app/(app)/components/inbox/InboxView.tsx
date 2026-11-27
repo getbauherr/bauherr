@@ -14,7 +14,7 @@ import { InboxThread } from './InboxThread'
 import { StatusLine } from './StatusLine'
 import { useScrollToNewest } from './use-inbox-keys'
 import { useInboxState } from './use-inbox-state'
-import { useOutbox, withOutbox } from './use-outbox'
+import { intentsOf, useOutbox, withOutbox } from './use-outbox'
 import { useStickyTop } from './use-sticky-top'
 
 const FRAME = [
@@ -35,7 +35,9 @@ const COLUMN = [
 type Props = { entries: InboxEntry[]; paging: Record<PagedGroup, Paging>; thread: ThreadModel }
 
 const placeholderOf = (thread: ThreadModel): string =>
-  thread.number === null ? 'Open a ticket to write to the factory' : `Write to the factory about #${thread.number}`
+  thread.number === null
+    ? 'Open a ticket to write to the factory'
+    : `Tell the factory what to do with #${thread.number}`
 
 type NarrowProps = { thread: ThreadModel; sheet: boolean; onSheet: (open: boolean) => void; children: ReactNode }
 
@@ -59,10 +61,14 @@ function NarrowBar({ thread, sheet, onSheet, children }: NarrowProps) {
 export function InboxView({ entries: first, paging, thread }: Props) {
   const state = useInboxState(first, paging, thread.id)
   const { entries, more, pending, select, sheet, setSheet } = state
-  const outbox = useOutbox(thread)
+  const outbox = useOutbox(thread, pending)
   const stick = useStickyTop<HTMLDivElement>()
   useScrollToNewest(thread.id, thread.messages.length)
-  const messages = useMemo(() => withOutbox(thread.messages, outbox.sent), [thread.messages, outbox.sent])
+  const intents = intentsOf(pending, thread.recordId)
+  const messages = useMemo(
+    () => withOutbox(thread.messages, outbox.sent, intents),
+    [thread.messages, outbox.sent, intents.length],
+  )
   const threads = entries.filter(selectable).map((e) => ({ status: 'regular' as const, id: e.id, title: e.title }))
   const threadList: ExternalStoreThreadListAdapter = { threadId: thread.id, threads, onSwitchToThread: select }
   const list = <InboxList entries={entries} selected={thread.id} more={more} />

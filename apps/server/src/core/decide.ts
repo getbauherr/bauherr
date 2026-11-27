@@ -113,7 +113,7 @@ const keptRelations = (asked: string | null, decision: Decision, record: TicketR
   return record.relations.filter((_, i) => !dropped.includes(i))
 }
 
-const droppedOf = (decision: Decision, record: TicketRecord): string[] => {
+export const droppedOf = (decision: Decision, record: TicketRecord): string[] => {
   const dropped = decision.criteria ?? []
   if (decision.choice !== DROP_CRITERIA) {
     if (dropped.length === 0) return []
