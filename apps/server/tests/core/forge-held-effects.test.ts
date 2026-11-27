@@ -107,4 +107,27 @@ describe('forge effects during a forge outage', () => {
     await sendHeld(s.deps(LATER))
     expect(comment).toHaveBeenCalledOnce()
   })
+
+  it.each([
+    ['close', 'reopen', 'closed'],
+    ['reopen', 'close', 'open'],
+  ] as const)('ends %s, %s, %s in the last state after the hold', async (first, second, final) => {
+    const s = await setup()
+    const tickets = s.fake.tickets(s.repo)
+    if (first === 'reopen') await tickets.close('1', 'completed')
+    const down = new GithubError(502, 'POST', '/issues/1', 'Bad Gateway')
+    vi.spyOn(tickets, 'close').mockRejectedValue(down)
+    vi.spyOn(tickets, 'reopen').mockRejectedValue(down)
+    const effect = (kind: 'close' | 'reopen') =>
+      kind === 'close' ? { kind: 'close' as const, reason: 'completed' as const } : { kind: 'reopen' as const }
+
+    await runEffects(s.deps(NOW), s.record.id, [effect(first)])
+    await runEffects(s.deps(NOW), s.record.id, [effect(second)])
+    await runEffects(s.deps(NOW), s.record.id, [effect(first)])
+    vi.restoreAllMocks()
+
+    await sendHeld(s.deps(LATER))
+    await sendHeld(s.deps(LATER))
+    expect((await tickets.get('1')).state).toBe(final === 'closed' ? 'closed' : 'open')
+  })
 })

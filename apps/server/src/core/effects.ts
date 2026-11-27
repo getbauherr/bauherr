@@ -34,6 +34,8 @@ const KINDS = {
   review: 'review',
 } as const
 
+const STATE_KINDS: string[] = ['close', 'reopen']
+
 const idRow = z.object({ id: z.coerce.number() })
 
 export const mirrorItem = async (
@@ -121,10 +123,13 @@ const recordRefusal = async (deps: AdvanceDeps, stored: StoredRecord, effect: Ef
   await appendEvent(deps.payload, stored.id, { type: 'forge.write.failed', data, actor: 'factory' })
 }
 
+const isKind = (event: StoredEvent, kind: string): boolean => 'kind' in event.data && event.data.kind === kind
+
 const alreadyDeferred = (events: StoredEvent[], kind: Deferred['kind']): boolean => {
-  const last = events.findLast((event) => event.type === 'forge.write.deferred' && event.data.kind === kind)
-  const sent = events.some((e) => e.type === 'forge.write.done' && e.data.kind === kind && e.id > (last?.id ?? 0))
-  return last !== undefined && !sent
+  const group: string[] = STATE_KINDS.includes(kind) ? STATE_KINDS : [kind]
+  const last = events.findLast((e) => e.type === 'forge.write.deferred' && group.includes(String(e.data.kind)))
+  if (last === undefined || !isKind(last, kind)) return false
+  return !events.some((e) => e.type === 'forge.write.done' && e.data.kind === kind && e.id > last.id)
 }
 
 const deferUntilHeldEnds = async (deps: AdvanceDeps, stored: StoredRecord, effect: Effect) => {

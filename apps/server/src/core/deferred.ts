@@ -18,6 +18,8 @@ const pendingOf = async (payload: Payload, where: ReturnType<typeof sql>) => {
     WHERE e."type" = 'forge.write.deferred' AND ${where}
       AND NOT EXISTS (SELECT 1 FROM "events" d WHERE d."record_id" = e."record_id" AND d."type" = 'forge.write.done'
         AND d."data"->>'kind' = e."data"->>'kind' AND d."id" > e."id")
+      AND NOT EXISTS (SELECT 1 FROM "events" s WHERE s."record_id" = e."record_id" AND s."type" = 'forge.write.deferred'
+        AND s."data"->>'kind' IN ('close', 'reopen') AND e."data"->>'kind' IN ('close', 'reopen') AND s."id" > e."id")
     ORDER BY e."id"`)
   return result.rows.map((row) => pendingRow.parse(row))
 }
