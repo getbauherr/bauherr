@@ -17,6 +17,15 @@ Rules every e2e test follows (the mechanical ones are pinned by `apps/server/tes
 - **OIDC sign-in specs** (`@oidc`, `apps/server/e2e/oidc.spec.ts`) run against a second server on :3001 with OIDC on and a fake provider on :4010 (`apps/server/e2e/fake-oidc.ts`, started by `apps/server/scripts/e2e-oidc.sh` in `e2e-fake` and the burn-in; Playwright gets `E2E_OIDC=http://localhost:3001`). The http issuer is allowed only by `BAUHERR_E2E_OIDC_INSECURE=1` in a `BAUHERR_TEST_BUILD=1` build or outside production.
 - **Prove a change to a spec the way CI does**: `BAUHERR_TEST_BUILD=1` production build, `apps/server/scripts/e2e-burnin.sh <spec files>` (3 passes, 3 workers, no retries, fresh DB each).
 
+## Adding a provider
+
+Presets live in `apps/server/src/lib/providers/`, one file per preset exporting a `Def`; `index.ts` lists them in `PRESETS` and `shared.ts` holds `Preset`, `Def` and the `entry` and `custom` helpers.
+
+1. Add the slug to `Preset` in `shared.ts`, create `providers/<slug>.ts` and register it in `PRESETS`.
+2. A `Def` needs `auth` (`file`, `inline` or `ambient`), `required` (the config fields the preset needs, from `PRESET_FIELDS`), `secret` (`ext` and a `hint` shown in the Connection form), `catalog` (whether the gateway reports USD cost), `defaultModels` (a model per Tier, or `null` so the Workspace sets `modelByTier`) and `render`, which returns the gateway config entry via `entry(...)`.
+3. A new config field goes into `PRESET_FIELDS` (and `FIELD_PATTERNS` in `index.ts` when it needs validation).
+4. Tests: a rendered-entry case in `apps/server/tests/providers.test.ts` and a gateway-config case in `apps/server/tests/gateway-config.test.ts`.
+
 ## UI rules for agents
 
 AI chat UIs use [assistant-ui](https://www.assistant-ui.com/elements/) (`@assistant-ui/react`, an approved dependency) as much as possible; see the Chat pattern in [DESIGN.md](DESIGN.md).
