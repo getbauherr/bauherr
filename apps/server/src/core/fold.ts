@@ -1,3 +1,4 @@
+import { questionKey, withVerifyExits } from './decisions'
 import { conflictNote } from './conflict-note'
 import type { AppEvent, EventOf, Stage } from './events'
 import { initialState, type FoldOptions, type State, type Verdict } from './state'
@@ -13,7 +14,7 @@ const enter = (state: State, stage: Stage): State =>
 const endRun = (state: State, runId: string): State =>
   state.run?.runId === runId ? { ...state, run: null } : state
 
-const submitted = (state: State, runId: string): State => ({ ...endRun(state, runId), failedRuns: 0 })
+const submitted = (state: State, runId: string): State => ({ ...endRun(state, runId), failedRuns: 0, failure: null })
 
 const endIntakeRun = (state: State): State =>
   state.run?.stage === 'intake' ? submitted(state, state.run.runId) : state
@@ -44,7 +45,11 @@ const runs: Reducer = (state, event) => {
       return { ...state, run: event.data, note: null }
     case 'run.failed':
     case 'run.expired':
-      return { ...endRun(state, event.data.runId), failedRuns: state.failedRuns + 1 }
+      return {
+        ...endRun(state, event.data.runId),
+        failedRuns: state.failedRuns + 1,
+        failure: event.data.stage === 'brief' ? event.data.reason : state.failure,
+      }
     case 'run.released':
       return endRun(state, event.data.runId)
     default:
@@ -79,17 +84,21 @@ const backToBrief = (state: State, note: string): State => ({
   run: null,
   verifyRounds: 0,
   extraRounds: 0,
+  rewriting: true,
+  failure: null,
   note,
 })
 
 const brief: Reducer = (state, event) => {
   switch (event.type) {
     case 'brief.submitted':
-      return { ...submitted(state, event.data.runId), brief: 'submitted' }
+      return { ...submitted(state, event.data.runId), brief: 'submitted', rewriting: false }
     case 'brief.approved':
       return { ...enter(state, state.adopted ? 'verify' : 'build'), brief: 'approved', returned: false }
     case 'brief.changes-requested':
-      return state.brief === 'approved' ? backToBrief(state, event.data.note) : { ...state, note: event.data.note }
+      return state.brief === 'approved'
+        ? backToBrief(state, event.data.note)
+        : { ...state, note: event.data.note, rewriting: true, failure: null }
     case 'brief.discarded':
       return { ...state, closed: 'discarded' }
     default:
@@ -228,22 +237,31 @@ const ship: Reducer = (state, event, options) => {
   }
 }
 
+const asked = (state: State, data: EventOf<'question.asked'>['data']): State => {
+  const { reason, options, text } = data
+  const key = text === undefined ? null : questionKey(text)
+  const exits = reason === 'agent' && state.stage === 'verify' && state.patch !== null
+  return {
+    ...state,
+    asked: key === null ? state.asked : [...state.asked, key],
+    card: {
+      card: 'question',
+      reason,
+      options: exits ? withVerifyExits(options, key !== null && state.asked.includes(key)) : options,
+      ...(text === undefined ? {} : { text }),
+    },
+  }
+}
+
 const questions: Reducer = (state, event) => {
   switch (event.type) {
     case 'question.asked':
-      return {
-        ...state,
-        card: {
-          card: 'question',
-          reason: event.data.reason,
-          options: event.data.options,
-          ...(event.data.text === undefined ? {} : { text: event.data.text }),
-        },
-      }
+      return asked(state, event.data)
     case 'question.answered':
       return {
         ...state,
         card: null,
+        failure: null,
         alreadyDone: null,
         deployStalled: null,
         failedRuns: 0,

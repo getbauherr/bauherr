@@ -27,6 +27,8 @@ export const criterionSchema = z.object({
   proof: z.array(z.string().trim().min(1)),
 })
 
+export const droppedSchema = z.object({ id: ident('c'), text: text(160), note: z.string().trim().max(1000) })
+
 export const riskSchema = z.object({
   door: z.enum(['one-way', 'two-way']),
   areas: z.array(z.string().trim().min(1)).max(5),
@@ -110,6 +112,7 @@ const shape = z.object({
   type: typeSchema,
   source,
   criteria: z.array(criterionSchema).max(7),
+  dropped: z.array(droppedSchema).max(7).default([]),
   constraints: z.array(text(200)).max(7).default([]),
   outOfScope: z.array(text(160)).max(5),
   visible: z.boolean().default(false),
@@ -151,6 +154,7 @@ export type TicketRecord = z.infer<typeof recordSchema>
 export type RecordSource = TicketRecord['source']
 export type RecordType = TicketRecord['type']
 export type Criterion = TicketRecord['criteria'][number]
+export type DroppedCriterion = TicketRecord['dropped'][number]
 export type Decision = TicketRecord['decisions'][number]
 export type RelationKind = (typeof RELATION_KINDS)[number]
 export type ProposedRelation = z.infer<typeof relationSchema>
@@ -165,6 +169,7 @@ export const emptyRecord = (recordSource: RecordSource, type: RecordType): Ticke
   type,
   source: recordSource,
   criteria: [],
+  dropped: [],
   constraints: [],
   outOfScope: [],
   visible: false,
