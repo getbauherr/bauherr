@@ -1,5 +1,7 @@
 name: staging
-# Every merge to main: build the image, start it once against a throw-away Postgres (migrates on start like compose.yaml) and report the check `staging` on that sha. Pushes no image: images exist only for versions (cut-rc.yml, promote.yml, release.yml).
+# Every merge to main: build the image (a test build: the staging site runs the fake forge), start it once against a throw-away Postgres (migrates on start like compose.yaml) and report the check `staging` on that sha.
+# A passing image is pushed as ghcr.io/getbauherr/bauherr:sha-<sha> and deployed to the staging site (repository variable BAUHERR_STAGING_URL) by the operator's deploy pipeline; the deployment reports the commit at /api/health.
+# Version images are built by release.yml and deployed to production by deploy.yml.
 on:
   push:
     branches: [main]
@@ -15,6 +17,7 @@ jobs:
     permissions:
       contents: read
       checks: write
+      packages: write
     env:
       GH_TOKEN: ${{ github.token }}
     services:
@@ -29,10 +32,18 @@ jobs:
       - name: Keep the scripts of main
         run: cp -r .github/scripts "$RUNNER_TEMP/scripts"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Make the test-build Dockerfile (the marker is inlined at build time and never in the shipped Dockerfile)
+        run: sed 's/^COPY \. \.$/&\nARG BAUHERR_TEST_BUILD=1/' Dockerfile > "$RUNNER_TEMP/Dockerfile.staging"
       - name: Build for the smoke run
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
+          file: ${{ runner.temp }}/Dockerfile.staging
           cache-from: type=gha
           load: true
           tags: bauherr:smoke
@@ -53,6 +64,10 @@ jobs:
       - name: Smoke logs
         if: failure()
         run: docker logs smoke 2>&1 | tail -n 50
+      - name: Push the image
+        run: |
+          docker tag bauherr:smoke "ghcr.io/getbauherr/bauherr:sha-$GITHUB_SHA"
+          docker push "ghcr.io/getbauherr/bauherr:sha-$GITHUB_SHA"
       - name: Report check staging
         if: always()
         env:
@@ -62,3 +77,24 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           "$RUNNER_TEMP/scripts/report-check.sh"
+  deploy:
+    needs: staging
+    runs-on: ubuntu-latest
+    concurrency:
+      group: staging-deploy-${{ github.sha }}
+      cancel-in-progress: false
+    environment:
+      name: staging
+      url: ${{ vars.BAUHERR_STAGING_URL }}
+    permissions:
+      contents: read
+    env:
+      DEPLOY_TRIGGER_TOKEN: ${{ secrets.DEPLOY_TRIGGER_TOKEN }}
+      DEPLOY_TRIGGER_URL: ${{ vars.DEPLOY_TRIGGER_URL }}
+      SITE_URL: ${{ vars.BAUHERR_STAGING_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Deploy the image to staging
+        run: .github/scripts/trigger-deploy.sh staging "ghcr.io/getbauherr/bauherr:sha-$GITHUB_SHA"
+      - name: Wait until staging reports this commit
+        run: .github/scripts/wait-health.sh "$SITE_URL" commit "${GITHUB_SHA::7}"

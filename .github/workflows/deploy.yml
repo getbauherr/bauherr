@@ -1,0 +1,59 @@
+name: deploy
+# Deploys one released version to the production site (repository variable BAUHERR_PRODUCTION_URL): the Release button of Bauherr itself starts it with --ref vX.Y.Z and the input version.
+# The image ghcr.io/getbauherr/bauherr:<version> is built by release.yml from the same tag; this workflow waits for it (and starts release.yml when the tag push did not), then the operator's deploy pipeline backs up both databases and pins the version.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to deploy, e.g. v0.8.0 (the workflow must run on that tag)
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.BAUHERR_PRODUCTION_URL }}
+    permissions:
+      contents: read
+      actions: write # starts release.yml when the tag push did not
+    env:
+      GH_TOKEN: ${{ github.token }}
+      INPUT_VERSION: ${{ inputs.version }}
+      DEPLOY_TRIGGER_TOKEN: ${{ secrets.DEPLOY_TRIGGER_TOKEN }}
+      DEPLOY_TRIGGER_URL: ${{ vars.DEPLOY_TRIGGER_URL }}
+      SITE_URL: ${{ vars.BAUHERR_PRODUCTION_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {fetch-depth: 0}
+      - name: The tag must be the version and on main
+        run: |
+          [ "$GITHUB_REF_TYPE" = tag ] || { echo "::error::run this workflow on a tag (--ref vX.Y.Z)"; exit 1; }
+          version="${INPUT_VERSION#v}"
+          [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "::error::input $INPUT_VERSION does not match tag $GITHUB_REF_NAME"; exit 1; }
+          echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' || { echo "::error::$INPUT_VERSION is not vX.Y.Z[-pre]"; exit 1; }
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::tag $GITHUB_REF_NAME is not on main"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Wait for the version image
+        run: |
+          image="ghcr.io/getbauherr/bauherr:$VERSION"
+          started=false
+          for _ in $(seq 120); do
+            docker buildx imagetools inspect "$image" > /dev/null 2>&1 && exit 0
+            if [ "$started" = false ] && [ "$SECONDS" -ge 180 ] && [ -z "$(gh run list --workflow release.yml --branch "$GITHUB_REF_NAME" --json databaseId --jq '.[].databaseId')" ]; then
+              gh workflow run release.yml --ref "$GITHUB_REF_NAME"
+              started=true
+            fi
+            sleep 15
+          done
+          echo "::error::$image was not published within 30 minutes"; exit 1
+      - name: Deploy through the operator's deploy pipeline
+        run: .github/scripts/trigger-deploy.sh production "$VERSION"
+      - name: Wait until production reports the version
+        run: .github/scripts/wait-health.sh "$SITE_URL" version "$VERSION" 20

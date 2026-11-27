@@ -1,4 +1,6 @@
 import type { FakeBackend } from '@bauherr/adapters'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { sql } from '@payloadcms/db-postgres'
 import { describe, expect, it, vi } from 'vitest'
 import { RELEASE_CHECK_IDS } from '../../src/core/readiness/release-checks'
@@ -56,6 +58,37 @@ describe('release checks', () => {
     expect(items.map((item) => [item.id, item.status])).toEqual(RELEASE_CHECK_IDS.map((id) => [id, 'ready']))
     expect(view?.release).toEqual({ mode: 'factory', blocked: false, offered: true })
     expect(await releaseBlockedOf(h.payload(), filter())).toBe(false)
+  })
+
+  const OWN_WORKFLOWS = join(__dirname, '../../../../.github/workflows')
+  const ownWorkflows = () =>
+    readdirSync(OWN_WORKFLOWS)
+      .filter((name) => name.endsWith('.yml'))
+      .map((name): [string, string] => [`.github/workflows/${name}`, readFileSync(join(OWN_WORKFLOWS, name), 'utf8')])
+
+  it('shows all seven checks ready for the workflows of this repository', async () => {
+    const s = await f.start('active')
+    const fake = f.fake()
+    let sha = ''
+    for (const [path, source] of ownWorkflows()) sha = fake.commit(s.repo, 'main', path, source)
+    fake.setDeployment(s.repo, 'staging', { sha, url: 'https://staging.example.com', state: 'success' })
+    fake.setCommitEndpoint(s.repo, true)
+    fake.setCanWrite(s.repo, true)
+    fake.addTag(s.repo, 'v0.7.0', sha)
+    await refreshReadiness(
+      h.payload(),
+      { reader: async () => readerOf(fake), now: () => new Date() },
+      { workspace: h.ids.workspace, product: h.ids.product },
+    )
+    const { items } = await releaseItems()
+    expect(items.map((item) => [item.id, item.status])).toEqual(RELEASE_CHECK_IDS.map((id) => [id, 'ready']))
+    expect(items.map((item) => item.detail)).toEqual(
+      expect.arrayContaining([
+        'Workflow .github/workflows/staging.yml, environment staging.',
+        'Workflow .github/workflows/deploy.yml, environment production.',
+        'Input version, no rebuild needed.',
+      ]),
+    )
   })
 
   const CASES: [Piece, string][] = [
