@@ -62,6 +62,15 @@ describe('PATCH /api/products/:id', () => {
     expect(await stored()).toEqual(before)
   })
 
+  it('does not let a non-admin Bauherr move a Product to another Workspace', async () => {
+    const other = await guard.payload.find({ collection: 'workspaces', where: { slug: { equals: 'b' } }, ...o })
+    await patch(guard.bauherrCookie, { workspace: other.docs[0]?.id })
+    const { sql } = await import('@payloadcms/db-postgres')
+    const query = sql`SELECT "workspace_id" FROM "products" WHERE "id" = ${product}`
+    const { rows } = await guard.payload.db.drizzle.execute(query)
+    expect(Number(rows[0]?.workspace_id)).not.toBe(other.docs[0]?.id)
+  })
+
   it('lets an Admin change them', async () => {
     const { signSession } = await import('../src/lib/oidc-session')
     const admin = (await guard.payload.find({ collection: 'bauherren', where: { role: { equals: 'admin' } }, ...o }))

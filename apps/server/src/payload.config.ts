@@ -53,7 +53,7 @@ export default buildConfig({
   plugins: [
     multiTenantPlugin({
       tenantsSlug: 'workspaces',
-      tenantField: { name: 'workspace' },
+      tenantField: { name: 'workspace', access: { update: isAdmin } },
       collections: tenantCollections,
       userHasAccessToAllTenants: (user) => (user as { role?: string }).role === 'admin',
     }),
