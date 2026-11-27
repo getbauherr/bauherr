@@ -1,6 +1,7 @@
 'use server'
 import { revalidatePath } from 'next/cache'
-import { notFound } from 'next/navigation'
+import { cookies } from 'next/headers'
+import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
 import { UploadRefused } from '../../../../core/attachments/image'
 import { MESSAGE_FILES_MAX, MESSAGE_TEXT_MAX } from '../../../../core/conversations/limits'
@@ -12,6 +13,7 @@ import { publicUrl } from '../../../../lib/oidc'
 import { secret } from '../../../../lib/secrets'
 import { isProductOwner } from '../../../../lib/people'
 import { personOf } from '../../../../lib/person'
+import { REQUEST_PRODUCT_COOKIE, readableProducts } from '../../lib/requests'
 import { payloadClient, requirePerson } from '../../lib/session'
 
 const input = z.object({
@@ -57,4 +59,13 @@ export async function commentOnRequestAction(raw: unknown): Promise<CommentResul
   revalidatePath(`/requests/${comment.recordId}`)
   revalidatePath(`/tickets/${comment.recordId}`)
   return {}
+}
+
+export async function chooseRequestProduct(product: number): Promise<void> {
+  const id = z.number().int().positive().parse(product)
+  const person = await requirePerson()
+  const readable = await readableProducts(await payloadClient(), person)
+  if (!readable.some((p) => p.id === id)) return notFound()
+  ;(await cookies()).set(REQUEST_PRODUCT_COOKIE, String(id), { path: '/', sameSite: 'lax', maxAge: 31536000 })
+  redirect(`/requests?product=${id}`)
 }

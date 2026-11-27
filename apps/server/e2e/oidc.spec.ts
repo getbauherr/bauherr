@@ -26,7 +26,7 @@ test.describe('with the fake OIDC provider', { tag: '@oidc' }, () => {
     await button(page).click()
     await expect(page).toHaveURL(/\/requests$/)
     await expect(page.getByRole('heading', { level: 1, name: 'Requests' })).toBeVisible()
-    await expect(page.getByRole('combobox', { name: 'Product' })).toContainText('Factory App')
+    await expect(page.getByRole('main')).toContainText('Factory App')
     await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link')).toHaveText(['Requests'])
   })
 })

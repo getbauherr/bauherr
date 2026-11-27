@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { Conn } from '../conn'
 import type { ForgeWriter } from '../forge/writer'
 import { appendEvent, createRecord, readEvents } from '../record/store'
+import { AUTHOR_WORDS, type CommentRole } from './comments'
 import { RequestInvalid } from './errors'
 import { inert, inertBlock, publicFileUrl } from './markdown'
 import { FIELDS, readiness, TYPE_WORDS, type Fields } from './fields'
@@ -19,7 +20,7 @@ export const titleOf = (draft: Draft): string => {
   return inert(draft.data.title || first).slice(0, 120)
 }
 
-export const bodyOf = (draft: Draft, files: DraftFile[], origin: string, key: string): string => {
+export const bodyOf = (draft: Draft, files: DraftFile[], origin: string, key: string, role: CommentRole): string => {
   const { type, fields, summary } = draft.data
   if (type === null) throw new RequestInvalid('The request has no type yet.')
   const sections = FIELDS[type].flatMap((field) => {
@@ -32,6 +33,7 @@ export const bodyOf = (draft: Draft, files: DraftFile[], origin: string, key: st
   })
   return [
     `Type: ${TYPE_WORDS[type]}`,
+    `Requested by ${AUTHOR_WORDS[role]} in Bauherr.`,
     `## Summary\n\n${inertBlock(summary) || inertBlock(titleOf(draft))}`,
     ...sections,
     ...(attached.length > 0 ? [`## Files\n\n${attached.join('\n')}`] : []),
@@ -51,7 +53,7 @@ const sourceOf = async (db: Conn, workspace: number, product: number) => {
 export const sendRequest = async (
   payload: Payload,
   deps: SendDeps,
-  input: { conversationId: number; reporter: string },
+  input: { conversationId: number; reporter: string; role: CommentRole },
 ): Promise<Sent> =>
   payload.db.drizzle.transaction(async (tx) => {
     const db: Conn = { db: { drizzle: tx } }
@@ -71,14 +73,22 @@ export const sendRequest = async (
     const where = { workspace: draft.workspace, product: draft.product }
     const issue = await deps.writer.openIssue(where, {
       title: titleOf(draft),
-      body: bodyOf(draft, await filesOf(db, draft.conversationId), deps.origin, deps.key),
+      body: bodyOf(draft, await filesOf(db, draft.conversationId), deps.origin, deps.key, input.role),
       reference: referenceOf(draft.conversationId),
     })
     const { kind, repo } = await sourceOf(db, draft.workspace, draft.product)
     const stored = await createRecord(db, {
       ...where,
       type,
-      source: { forge: kind, repo, number: issue.number, reporter: input.reporter, external: true, backlog: false },
+      source: {
+        forge: kind,
+        repo,
+        number: issue.number,
+        reporter: input.reporter,
+        reporterRole: input.role,
+        external: input.role === 'product-owner',
+        backlog: false,
+      },
     })
     if ((await readEvents(db, stored.id)).length === 0) {
       await appendEvent(db, stored.id, { type: 'intake.accepted', data: {}, actor: 'factory' })

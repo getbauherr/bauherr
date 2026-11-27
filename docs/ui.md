@@ -10,11 +10,11 @@ Pages are built from shadcn/ui components and assistant-ui. The colours are indi
 
 Every signed-in page has this frame.
 
-- **Sidebar**: Factory, Inbox, Memory and Insights. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
+- **Sidebar**: Factory, Inbox, Memory, Insights and Requests. Settings and the user menu sit at the bottom. `Ctrl/Cmd+B` collapses it.
 - **Header**: breadcrumb and Search on `Ctrl/Cmd+K`. Search jumps to any page and finds tickets.
 - **Workspace switcher**: appears with two or more Workspaces.
 
-A Product owner gets a smaller shell today. Requests from Product owners are planned, not built.
+A Product owner gets a smaller shell: Requests only.
 
 ## Get a ticket through
 
@@ -31,7 +31,7 @@ A Product owner gets a smaller shell today. Requests from Product owners are pla
 |---|---|
 | `/` | See the Factory view: tickets by stage, filters, holds and loops. |
 | `/inbox` | Decide what waits for you, as a conversation with the factory. Keys: `j`/`k` move, `/` writes. |
-| `/requests` | Follow your requests in four sections, starting with Needs you. |
+| `/requests` | Follow the requests of one Product, chosen with the switcher by the title. |
 | `/requests/<id>` | Read one request: whose turn it is, then its story. |
 | `/tickets/<id>` | Decide one ticket. Tabs Now, Brief, Result and Activity. |
 | `/memory` | Edit the factory, workspace or product document. `/memory/retro` starts a Retro. |

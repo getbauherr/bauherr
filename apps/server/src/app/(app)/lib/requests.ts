@@ -3,10 +3,13 @@ import type { Payload } from 'payload'
 import { loadRows, type TicketRow } from '../../../core/views/rows'
 import { requestCounts, requestPage, type RequestCursor } from '../../../core/views/request-list'
 import { listRequests, type RequestFilter, type Viewer } from '../../../core/views/request-status'
+import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { REQUEST_PAGE } from './chunks'
 import { assignmentRows, isBauherr, isProductOwner, loginsOf, mayWorkIn } from '../../../lib/people'
 import { currentPersonWorkspace, requirePerson, type Person } from './session'
+
+export const REQUEST_PRODUCT_COOKIE = 'bauherr-request-product'
 
 export type OwnedProduct = { id: number; name: string; workspace: number; requests: TicketRow[] }
 
@@ -87,4 +90,10 @@ export const requireRequestsReader = async (): Promise<Person> => {
 export const requireProductOwner = async () => {
   const person = await requirePerson()
   return isProductOwner(person) ? person : notFound()
+}
+
+export const chosenProduct = async <T extends { id: number }>(products: T[], asked: string | undefined) => {
+  const remembered = (await cookies()).get(REQUEST_PRODUCT_COOKIE)?.value
+  const match = (value: string | undefined) => products.find((p) => String(p.id) === value)
+  return match(asked) ?? match(remembered) ?? products[0]
 }

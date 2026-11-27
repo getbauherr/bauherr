@@ -16,6 +16,7 @@ const signInSpecs = [
   'people',
   'repo-files',
   'requests-page',
+  'requests-bauherr',
   'perf',
   'perf-load',
   'product-owner',

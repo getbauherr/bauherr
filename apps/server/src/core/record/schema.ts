@@ -13,6 +13,7 @@ const source = z.object({
   repo: z.string().trim().min(1),
   number: z.number().int().positive(),
   reporter: z.string().trim().min(1),
+  reporterRole: z.enum(['bauherr', 'product-owner']).optional(),
   external: z.boolean(),
   backlog: z.boolean(),
   adopted: z.object({ pr: z.number().int().positive() }).optional(),

@@ -1,6 +1,7 @@
 import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 import type { ForgeWriter } from '../forge/writer'
+import type { CommentRole } from './comments'
 import { RequestInvalid } from './errors'
 import { inertBlock } from './markdown'
 import { loadDraft, saveDraft, type Draft } from './store'
@@ -13,10 +14,13 @@ const openDraft = async (payload: Payload, conversationId: number): Promise<Draf
   return draft
 }
 
+const WHO_JOINS: Record<CommentRole, string> = { 'product-owner': 'Another product owner', bauherr: 'The Bauherr' }
+
 export const joinExisting = async (
   payload: Payload,
   deps: { writer: Pick<ForgeWriter, 'commentOnIssue'> },
   conversationId: number,
+  role: CommentRole,
 ): Promise<void> => {
   const draft = await openDraft(payload, conversationId)
   const { offer } = draft.data
@@ -24,7 +28,7 @@ export const joinExisting = async (
   await deps.writer.commentOnIssue(
     { workspace: draft.workspace, product: draft.product },
     offer.number,
-    `Another product owner has the same request: ${inertBlock(draft.data.title || draft.data.summary)}`,
+    `${WHO_JOINS[role]} has the same request: ${inertBlock(draft.data.title || draft.data.summary)}`,
   )
   const known = await payload.db.drizzle.execute(sql`
     SELECT "id" FROM "records" WHERE "product_id" = ${draft.product} AND "source_number" = ${offer.number}

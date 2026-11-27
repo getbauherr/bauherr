@@ -11,7 +11,7 @@ import { requestApi, type RequestAction, type RequestState } from './request-api
 const files = conversationApi()
 const requests = requestApi()
 
-export type Initial = { id: number; messages: ConversationEntry[]; draft: DraftView | null }
+export type Initial = { id: number; product: number; messages: ConversationEntry[]; draft: DraftView | null }
 
 const ensureConversation = (
   id: { current: number | null },

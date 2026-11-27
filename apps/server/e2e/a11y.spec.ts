@@ -136,6 +136,7 @@ const routes: Record<string, Target | Record<string, Target>> = {
     'cannot-run line': withHoldStrip('/'),
     'with relations': inWorkspace('relations', '/'), 'grouped by parent': inWorkspace('relations', '/?group=parent'),
   },
+  '/requests': { 'with a Product switcher': inWorkspace('request-switch', '/requests') },
   ...{ ...conversationTargets, ...requestTargets },
   '/inbox': { desktop: inboxAt(1280), 'at 390 px': inboxAt(390) },
   '/insights': {

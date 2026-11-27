@@ -4,7 +4,8 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { DISCLOSURE } from '../../src/core/forge/disclosure'
 import { createWriter } from '../../src/core/forge/writer'
 import { createConversation, storeFile } from '../../src/core/conversations/store'
-import { readEvents } from '../../src/core/record/store'
+import { readEvents, readRecord } from '../../src/core/record/store'
+import type { CommentRole } from '../../src/core/requests/comments'
 import { chooseType, closeRequest, joinExisting } from '../../src/core/requests/actions'
 import { RequestInvalid } from '../../src/core/requests/errors'
 import { tokenFits } from '../../src/core/requests/markdown'
@@ -12,6 +13,7 @@ import { sendRequest } from '../../src/core/requests/send'
 import { createDraft, loadDraft, saveDraft } from '../../src/core/requests/store'
 import { takeTurn, type TurnDeps } from '../../src/core/requests/turn'
 import { draftView } from '../../src/core/requests/view'
+import { requestStory } from '../../src/core/views/request-story'
 import { PNG } from './images'
 import { mirrorHarness, readerOf } from './mirror-harness'
 
@@ -70,8 +72,12 @@ const draft = async () => {
   return conversationId
 }
 
-const deliver = (conversationId: number) =>
-  sendRequest(h.payload(), { writer, origin: 'https://b.test', key: 'test-key' }, { conversationId, reporter: 'anna' })
+const deliver = (conversationId: number, role: CommentRole = 'product-owner') =>
+  sendRequest(
+    h.payload(),
+    { writer, origin: 'https://b.test', key: 'test-key' },
+    { conversationId, reporter: 'anna', role },
+  )
 
 const say = (deps: TurnDeps, conversationId: number, text: string) =>
   takeTurn(h.payload(), deps, { conversationId, text, fileIds: [] })
@@ -169,6 +175,23 @@ describe('sending', () => {
     expect((await draftView(h.payload(), id))?.state).toBe('sent')
   })
 
+  it.each([
+    ['bauherr', 'Requested by the Bauherr in Bauherr.', false, 'anna (Bauherr)'],
+    ['product-owner', 'Requested by a product owner in Bauherr.', true, 'anna (Product owner)'],
+  ] as const)('names a %s as the author in issue, ticket and story', async (role, line, external, by) => {
+    const { deps } = scripted(() => BUG)
+    const id = await draft()
+    await say(deps, id, 'It breaks')
+    const sent = await deliver(id, role)
+    const issue = await fake.tickets(repo).get(String(sent.issueNumber))
+    expect(issue.body).toContain(line)
+    const { source } = (await readRecord(h.payload(), sent.recordId)).record
+    expect(source).toMatchObject({ reporter: 'anna', reporterRole: role, external })
+    const story = await requestStory(h.payload(), { workspace: h.ids.workspace, recordId: sent.recordId })
+    expect(story.events[0]).toMatchObject({ kind: 'sent', who: by })
+    expect(story.about.by).toBe(by)
+  })
+
   it('refuses to send a draft that is not complete, and names what is missing', async () => {
     const { deps } = scripted(() => ({ ...BUG, fields: { happened: 'It stops' } }))
     const id = await draft()
@@ -189,7 +212,7 @@ describe('a similar open request', () => {
     const offered = await draftView(h.payload(), id)
     expect(offered?.offer).toMatchObject({ number: open.number })
     const before = await issueCount()
-    await joinExisting(h.payload(), { writer }, id)
+    await joinExisting(h.payload(), { writer }, id, 'product-owner')
     expect(await issueCount()).toBe(before)
     expect(await draftView(h.payload(), id)).toMatchObject({ state: 'joined', joined: { number: open.number } })
     const linked = await fake.tickets(repo).listComments(String(open.number))
@@ -198,6 +221,18 @@ describe('a similar open request', () => {
     const [stored] = await h.rows(sql`SELECT "issue_number" FROM "request_drafts" WHERE "conversation_id" = ${id}`)
     expect(Number(stored?.issue_number)).toBe(open.number)
     await expect(say(real, id, 'more')).rejects.toBeInstanceOf(RequestInvalid)
+  })
+
+  it('says it was the Bauherr when a Bauherr joins', async () => {
+    const open = await fake.tickets(repo).create({ title: 'Dashboard tiles flicker on every refresh' })
+    const { deps } = scripted(() => BUG)
+    const real: TurnDeps = { ...deps }
+    delete real.similar
+    const id = await draft()
+    await say(real, id, 'The dashboard tiles flicker on every refresh')
+    await joinExisting(h.payload(), { writer }, id, 'bauherr')
+    const body = (await fake.tickets(repo).listComments(String(open.number)))[0]?.body ?? ''
+    expect(body).toContain('The Bauherr has the same request')
   })
 
   it('writes the join comment with the title as inert text', async () => {
@@ -211,7 +246,7 @@ describe('a similar open request', () => {
     const stored = await loadDraft(h.payload(), id)
     if (!stored) throw new Error('no draft')
     await saveDraft(h.payload(), id, { data: { ...stored.data, title: evil } })
-    await joinExisting(h.payload(), { writer }, id)
+    await joinExisting(h.payload(), { writer }, id, 'product-owner')
     const body = (await fake.tickets(repo).listComments(String(open.number)))[0]?.body ?? ''
     expect(body).not.toContain('](https://evil.example)')
     expect(body).not.toMatch(/(?<!\\)<img/)
