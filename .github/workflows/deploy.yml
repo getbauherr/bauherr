@@ -1,6 +1,6 @@
 name: deploy
 # Deploys one released version to the production site (repository variable BAUHERR_PRODUCTION_URL): the Release button of Bauherr itself starts it with --ref vX.Y.Z and the input version.
-# The image ghcr.io/getbauherr/bauherr:<version> is built by release.yml from the same tag; this workflow waits for it (and starts release.yml when the tag push did not), then the services pipeline backs up both databases and pins bauherr/compose.yml to the version.
+# The image ghcr.io/getbauherr/bauherr:<version> is built by release.yml from the same tag; this workflow waits for it (and starts release.yml when the tag push did not), then the operator's deploy pipeline backs up both databases and pins the version.
 on:
   workflow_dispatch:
     inputs:
@@ -25,8 +25,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       INPUT_VERSION: ${{ inputs.version }}
-      SERVICES_TRIGGER_TOKEN: ${{ secrets.SERVICES_TRIGGER_TOKEN }}
-      SERVICES_TRIGGER_URL: ${{ vars.SERVICES_TRIGGER_URL }}
+      DEPLOY_TRIGGER_TOKEN: ${{ secrets.DEPLOY_TRIGGER_TOKEN }}
+      DEPLOY_TRIGGER_URL: ${{ vars.DEPLOY_TRIGGER_URL }}
       SITE_URL: ${{ vars.BAUHERR_PRODUCTION_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,7 +53,7 @@ jobs:
             sleep 15
           done
           echo "::error::$image was not published within 30 minutes"; exit 1
-      - name: Deploy through the services pipeline
-        run: .github/scripts/trigger-services.sh production "$VERSION"
+      - name: Deploy through the operator's deploy pipeline
+        run: .github/scripts/trigger-deploy.sh production "$VERSION"
       - name: Wait until production reports the version
         run: .github/scripts/wait-health.sh "$SITE_URL" version "$VERSION" 20
