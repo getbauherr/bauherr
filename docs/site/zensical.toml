@@ -11,8 +11,8 @@ screenshots/banner*.svg
 """
 nav = [
   { "Home" = "index.md" },
-  { "Using the factory" = ["ui.md"] },
-  { "Operating it" = ["auth.md", "gateway.md", "alerts.md"] },
+  { "Using the factory" = ["ui.md", "inbox.md", "requests.md", "auto-accept.md"] },
+  { "Operating it" = ["auth.md", "gateway.md", "alerts.md", "forge-limits.md", "deploy.md", "runner-isolation.md"] },
   { "Reference" = [
     { "People" = ["spec/people.md"] },
     { "Credits" = "references.md" },
