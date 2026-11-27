@@ -87,7 +87,7 @@ services:
   worker: # own process: a long agent Run must not delay the minute jobs; limit on its Runs: BAUHERR_MAX_RUNS (default 2)
     <<: *app
     command: [pnpm, jobs]
-    # The agent runs as the unprivileged runner user: root only spawns it, so the caps are the ones that drop, chown and clean up.
+    # Each Run's agent runs as its own unprivileged runner user: root only spawns it, so the caps are the ones that drop, chown and clean up.
     read_only: true
     tmpfs: ["/tmp:exec,nosuid,mode=1777,size=4g", "/root:mode=0700,size=256m"]
     cap_drop: [ALL]

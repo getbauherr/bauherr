@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process';
-import { appendFile, chown, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { appendFile, chmod, chown, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { runIdentity } from './identity.js';
+import { claimIdentity, killRunProcesses, releaseIdentity, runIdentity } from './identity.js';
 
 const exec = promisify(execFile);
 
@@ -14,8 +14,25 @@ export type Clone = { dir: string; branch: string; baseSha: string; cleanup(): P
 const authHeader = (token: string, user: string): string =>
   `Authorization: Basic ${Buffer.from(`${user}:${token}`).toString('base64')}`;
 
+const AUTH = 'BAUHERR_GIT_AUTH';
+const NETWORK = new Set(['clone', 'fetch', 'push']);
+const HARDENING = [
+  '--no-optional-locks',
+  ...[
+    'core.fsmonitor=false',
+    'core.hooksPath=/dev/null',
+    'core.sshCommand=ssh',
+    'core.pager=cat',
+    'core.attributesFile=/dev/null',
+    'credential.helper=',
+    'protocol.ext.allow=never',
+  ].flatMap((setting) => ['-c', setting]),
+];
+
+const configs = new Map<string, string>();
+
 export function useToken(c: { env: NodeJS.ProcessEnv }, token: string, user = 'x-access-token'): void {
-  c.env.GIT_CONFIG_VALUE_0 = authHeader(token, user);
+  c.env[AUTH] = authHeader(token, user);
 }
 
 export function gitEnv(token: string, home: string, user = 'x-access-token'): NodeJS.ProcessEnv {
@@ -25,20 +42,39 @@ export function gitEnv(token: string, home: string, user = 'x-access-token'): No
     TMPDIR: home,
     GIT_TERMINAL_PROMPT: '0',
     GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL ?? '/dev/null',
     GIT_AUTHOR_NAME: 'Bauherr',
     GIT_AUTHOR_EMAIL: 'bauherr@users.noreply.invalid',
     GIT_COMMITTER_NAME: 'Bauherr',
     GIT_COMMITTER_EMAIL: 'bauherr@users.noreply.invalid',
-    GIT_CONFIG_COUNT: '1',
-    GIT_CONFIG_KEY_0: 'http.extraheader',
-    GIT_CONFIG_VALUE_0: authHeader(token, user),
+    [AUTH]: authHeader(token, user),
   };
 }
 
-export function git(dir: string, env: NodeJS.ProcessEnv, ...args: string[]): Promise<string> {
-  const options = { cwd: dir, env, ...runIdentity() };
-  return exec('git', ['-c', 'core.hooksPath=/dev/null', ...args], options).then((r) => r.stdout.trim());
+const envFor = (env: NodeJS.ProcessEnv, network: boolean): NodeJS.ProcessEnv => {
+  const { [AUTH]: header, ...rest } = env;
+  return network && header
+    ? { ...rest, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'http.extraheader', GIT_CONFIG_VALUE_0: header }
+    : rest;
+};
+
+async function restoreConfig(dir: string): Promise<void> {
+  const snapshot = configs.get(dir);
+  if (snapshot === undefined) return;
+  const gitDir = join(dir, '.git');
+  if (!(await lstat(gitDir)).isDirectory()) throw new Error('the checkout lost its .git directory');
+  await Promise.all(['config', 'config.worktree', 'commondir'].map((name) => rm(join(gitDir, name), { force: true })));
+  await writeFile(join(gitDir, 'config'), snapshot, { flag: 'wx', mode: 0o644 });
 }
+
+async function run(dir: string, env: NodeJS.ProcessEnv, args: string[]): Promise<string> {
+  await restoreConfig(dir);
+  const options = { cwd: dir, env: envFor(env, NETWORK.has(args[0] ?? '')), maxBuffer: 1 << 28, ...runIdentity(dir) };
+  return (await exec('git', [...HARDENING, ...args], options)).stdout;
+}
+
+export const git = async (dir: string, env: NodeJS.ProcessEnv, ...args: string[]): Promise<string> =>
+  (await run(dir, env, args)).trim();
 
 export async function cloneRepo(o: {
   baseUrl: string;
@@ -53,16 +89,26 @@ export async function cloneRepo(o: {
   const dir = join(root, 'repo');
   const home = join(root, 'home');
   const env = gitEnv(o.token, home, o.user);
-  const cleanup = () => rm(root, { recursive: true, force: true });
+  const cleanup = async () => {
+    configs.delete(dir);
+    try {
+      await killRunProcesses(root);
+    } finally {
+      releaseIdentity(root);
+      await rm(root, { recursive: true, force: true });
+    }
+  };
   try {
+    const owner = claimIdentity(root);
     await mkdir(home);
-    const owner = runIdentity();
+    await chmod(root, 0o700);
     if (owner) await Promise.all([root, home].map((path) => chown(path, owner.uid, owner.gid)));
     const url = `${o.baseUrl.replace(/\/$/, '')}/${o.repo}.git`;
     await git(root, env, 'clone', '--depth', '50', '--no-tags', '--branch', o.checkout ?? o.defaultBranch, url, dir);
     if (!o.checkout) await git(dir, env, 'switch', '-c', o.branch);
     await appendFile(join(dir, '.git/info/exclude'), `\n/${WORK_DIR}/\n`);
     const baseSha = await git(dir, env, 'rev-parse', 'HEAD');
+    configs.set(dir, await readFile(join(dir, '.git/config'), 'utf8'));
     return { dir, branch: o.checkout ?? o.branch, baseSha, cleanup, env, home };
   } catch (e) {
     await cleanup();
@@ -101,13 +147,14 @@ export async function mergeBase(
 
 export async function patchId(c: Clone, env: NodeJS.ProcessEnv, base: string, rev = 'HEAD'): Promise<string> {
   const range = `${await git(c.dir, env, 'merge-base', `origin/${base}`, rev)}..${rev}`;
-  const { stdout } = await exec('sh', ['-c', 'git diff "$0" | git patch-id --stable', range], {
+  const diff = await run(c.dir, env, ['diff', '--no-ext-diff', '--no-textconv', range]);
+  const child = exec('git', [...HARDENING, 'patch-id', '--stable'], {
     cwd: c.dir,
-    env,
-    maxBuffer: 1 << 28,
-    ...runIdentity(),
+    env: envFor(env, false),
+    ...runIdentity(c.dir),
   });
-  return stdout.split(' ')[0].trim();
+  child.child.stdin?.end(diff);
+  return (await child).stdout.split(' ')[0].trim();
 }
 
 export async function commitAll(c: Clone, env: NodeJS.ProcessEnv, message: string): Promise<boolean> {

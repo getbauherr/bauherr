@@ -54,7 +54,7 @@ void test('useToken replaces the credential the git commands receive, and writes
   const c = await open(makeBareRepo());
   try {
     useToken(c, 'NEW-TOKEN', 'oauth2');
-    const header = c.env.GIT_CONFIG_VALUE_0 ?? '';
+    const header = c.env.BAUHERR_GIT_AUTH ?? '';
     assert.equal(Buffer.from(header.replace('Authorization: Basic ', ''), 'base64').toString(), 'oauth2:NEW-TOKEN');
     assert.ok(!readFileSync(join(c.dir, '.git/config'), 'utf8').includes('NEW-TOKEN'));
   } finally {

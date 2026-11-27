@@ -84,7 +84,7 @@ export function buildOptions(o: AgentOptions, state: AgentState): Options {
     abortController: state.abort,
     env: agentEnv(o.home, o.proxyUrl),
     hooks: buildHooks(o, state),
-    ...(runIdentity() && { spawnClaudeCodeProcess: spawnAsRunUser }),
+    ...(runIdentity(o.cwd) && { spawnClaudeCodeProcess: spawnAsRunUser }),
   };
 }
 

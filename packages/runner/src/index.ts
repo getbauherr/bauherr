@@ -7,8 +7,8 @@ export { execute, type Executed, type ExecuteOptions } from './execute.js';
 export {
   mkdirAsRunUser,
   readAgentFile,
-  RUN_GID,
-  RUN_UID,
+  claimIdentity,
+  releaseIdentity,
   runIdentity,
   spawnAsRunUser,
   writeFileAsRunUser,
