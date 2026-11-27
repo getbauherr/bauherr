@@ -5,6 +5,7 @@ import { ConnectionForm } from '../SettingsConnectionForm'
 import { SettingsForm } from '../SettingsForm'
 import { Badge } from '../ui/badge'
 import { Table } from '../ui/table'
+import { Input } from '../ui/input'
 
 type Connection = Awaited<ReturnType<typeof loadConnections>>[number]
 
@@ -49,7 +50,7 @@ export function ConnectionsTable({ connections }: { connections: Connection[] })
                   />
                 </EditDrawer>
                 <SettingsForm action={verifyConnection} submit="Verify again" inline>
-                  <input type="hidden" name="id" value={c.id} />
+                  <Input type="hidden" name="id" value={c.id} />
                 </SettingsForm>
               </div>
             </td>

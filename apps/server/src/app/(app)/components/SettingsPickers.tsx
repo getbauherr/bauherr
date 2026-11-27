@@ -92,7 +92,7 @@ function Picker({
         {label}
       </Label>
       {hint && <FieldHint id={`${uid}-h`}>{hint}</FieldHint>}
-      <input ref={hidden} type="hidden" name={name} value={choice === OTHER ? typed : choice} />
+      <Input ref={hidden} type="hidden" name={name} value={choice === OTHER ? typed : choice} />
       <PickerSelect
         uid={uid}
         options={options}

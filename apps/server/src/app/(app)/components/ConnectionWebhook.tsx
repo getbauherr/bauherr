@@ -4,6 +4,7 @@ import { CopyField, SettingsForm } from './SettingsForm'
 import { SettingsSection } from './SettingsParts'
 import { Time } from './Time'
 import type { WebhookState } from '../lib/webhook'
+import { Input } from './ui/input'
 
 const EVENTS: Record<string, string[]> = {
   github: [
@@ -49,7 +50,7 @@ export function ConnectionWebhook({ connection, webhook }: Props) {
         noticeHint="Shown once. Paste it into the webhook settings at the forge."
         copy
       >
-        <input type="hidden" name="id" value={id} />
+        <Input type="hidden" name="id" value={id} />
       </SettingsForm>
       <p className="small text-muted-foreground">
         {webhook.deliveredAt ? <>Last delivery <Time iso={webhook.deliveredAt} /></> : 'No delivery received yet'}

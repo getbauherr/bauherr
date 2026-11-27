@@ -35,11 +35,14 @@ export function UserMenu({ email, logout }: { email: string; logout: () => Promi
         <ThemeRow />
         <DropdownMenuSeparator />
         <form action={logout}>
-          <DropdownMenuItem asChild onSelect={(e) => e.preventDefault()}>
-            <button>
-              <LogOut />
-              Sign out
-            </button>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault()
+              if (e.target instanceof Element) e.target.closest('form')?.requestSubmit()
+            }}
+          >
+            <LogOut />
+            Sign out
           </DropdownMenuItem>
         </form>
       </DropdownMenuContent>

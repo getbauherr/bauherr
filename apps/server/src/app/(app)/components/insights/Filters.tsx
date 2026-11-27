@@ -4,6 +4,7 @@ import { RANGES, type Range } from '../../../../core/views/insights-page'
 import { insightsHref, RANGE_LABELS } from '../../lib/insights'
 import { Button } from '../ui/button'
 import { NativeSelect } from '../ui/native-select'
+import { Input } from '../ui/input'
 
 type Props = { days: Range; product: number | null; products: { id: number; name: string }[] }
 
@@ -29,7 +30,7 @@ export function Filters({ days, product, products }: Props) {
       </nav>
       {products.length > 1 && (
         <form action="/insights" method="get" className="flex items-center gap-2">
-          <input type="hidden" name="days" value={days} />
+          <Input type="hidden" name="days" value={days} />
           <label htmlFor="insights-product" className="small text-muted-foreground">Product</label>
           <NativeSelect id="insights-product" name="product" defaultValue={product ?? ''} className="h-8">
             <option value="">All</option>

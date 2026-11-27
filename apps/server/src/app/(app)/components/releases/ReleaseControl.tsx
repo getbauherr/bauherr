@@ -47,8 +47,8 @@ function Question({ run, product, answer }: { run: RunView; product: number; ans
   if (run.question === null) return null
   return (
     <form action={answer} className="grid gap-2 rounded-md border border-border bg-secondary p-3">
-      <input type="hidden" name="product" value={product} />
-      <input type="hidden" name="run" value={run.id} />
+      <Input type="hidden" name="product" value={product} />
+      <Input type="hidden" name="run" value={run.id} />
       <p className="m-0 flex items-start gap-2 font-medium">
         <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warn" />
         {run.question.text}
@@ -93,7 +93,7 @@ function Start({ panel, product, refused, release }: StartProps) {
       <h2 id="release" className="heading">Release {version}</h2>
       {(refused ?? refusal) !== null && <p className="small m-0 text-destructive">{refused ?? refusal}</p>}
       <form action={release} className="grid max-w-sm gap-2">
-        <input type="hidden" name="product" value={product} />
+        <Input type="hidden" name="product" value={product} />
         <label className="small grid gap-1">
           Version
           <Input name="version" defaultValue={version} maxLength={40} className="mono" />

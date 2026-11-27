@@ -48,8 +48,8 @@ function TitleField({ draft }: { draft: Draft }) {
 export function NoteForm({ action, product, draft, submit, children }: Props) {
   return (
     <form action={action} className="grid gap-2 rounded-md border border-border bg-card p-3">
-      <input type="hidden" name="product" value={product} />
-      {draft.id !== null && <input type="hidden" name="item" value={draft.id} />}
+      <Input type="hidden" name="product" value={product} />
+      {draft.id !== null && <Input type="hidden" name="item" value={draft.id} />}
       <SectionField draft={draft} />
       <Field label="Area">
         <NativeSelect name="area" defaultValue={draft.area}>

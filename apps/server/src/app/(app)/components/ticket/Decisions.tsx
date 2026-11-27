@@ -1,6 +1,7 @@
 import type { Decision } from '../../../../core/record/schema'
 import { Section } from './Section'
 import { RefText } from '../RefText'
+import { Radio } from '../ui/radio'
 
 const OPTION = [
   'flex cursor-pointer items-baseline gap-2 rounded-md border border-border px-3 py-2',
@@ -15,12 +16,10 @@ export function OpenDecision({ decision, repo }: { decision: Decision; repo: str
       {decision.options.map((option) => (
         <div key={option.id} className="grid min-w-0 gap-1">
           <label className={OPTION}>
-            <input
-              type="radio"
+            <Radio
               name={`answer:${decision.id}`}
               value={option.id}
               defaultChecked={option.id === decision.recommended}
-              className="accent-primary"
             />
             <span className="font-medium"><RefText text={option.label} repo={repo} /></span>
             {option.id === decision.recommended && <span className="small text-muted-foreground">recommended</span>}

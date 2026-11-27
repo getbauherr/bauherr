@@ -3,6 +3,7 @@ import type { Tone } from '../lib/product-setup'
 import { Badge } from './ui/badge'
 import { Card } from './ui/card'
 import { Switch } from './ui/switch'
+import { Radio } from './ui/radio'
 
 const badge = { ok: 'ok', warn: 'warn', muted: 'muted' } as const
 
@@ -67,12 +68,11 @@ export function RadioCards({
             'has-focus-visible:outline-offset-2 has-focus-visible:outline-ring'
           }
         >
-          <input
-            type="radio"
+          <Radio
             name={name}
             value={o.value}
             defaultChecked={o.value === value}
-            className="mt-1 accent-primary"
+            className="mt-1"
           />
           <span className="flex min-w-0 flex-col gap-1">
             <span className="font-medium text-foreground">{o.title}</span>

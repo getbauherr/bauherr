@@ -7,6 +7,7 @@ import { RadioCards } from '../SettingsParts'
 import { Badge } from '../ui/badge'
 import { Editable } from './Editable'
 import { Row } from './ReadinessSection'
+import { Input } from '../ui/input'
 
 const MODES = [
   {
@@ -35,7 +36,7 @@ export function ReleasesSection({ product, view, admin }: Props) {
       </div>
       <Editable admin={admin}>
         <SettingsForm action={saveReleaseMode} submit="Save">
-          <input type="hidden" name="id" value={product.id} />
+          <Input type="hidden" name="id" value={product.id} />
           <RadioCards
             name="releaseMode"
             legend="How does this product release?"

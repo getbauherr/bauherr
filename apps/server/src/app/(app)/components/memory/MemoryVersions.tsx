@@ -1,8 +1,8 @@
 'use client'
 import { useState } from 'react'
-import { cn } from '@/lib/utils'
 import { diffOf } from '../../lib/memory-diff'
 import { CodeDiff } from '../assistant-ui/elements/code-diff'
+import { Button } from '../ui/button'
 
 export type VersionRow = { id: number; number: number; body: string; label: string; date: string }
 
@@ -21,18 +21,17 @@ export function MemoryVersions({ versions }: { versions: VersionRow[] }) {
               <span>
                 v{version.number} · {version.date} · {version.label}
               </span>
-              <button
+              <Button
                 type="button"
+                variant="link"
+                size="xs"
                 aria-expanded={shown}
                 aria-label={`${shown ? 'hide diff' : 'diff'} of v${version.number}`}
                 onClick={() => setOpen(shown ? null : version.id)}
-                className={cn(
-                  'small rounded-sm text-primary outline-none hover:underline',
-                  'focus-visible:ring-2 focus-visible:ring-ring',
-                )}
+                className="small h-auto rounded-sm p-0 font-normal"
               >
                 {shown ? 'hide diff' : 'diff'}
-              </button>
+              </Button>
             </div>
             {shown && (
               <CodeDiff

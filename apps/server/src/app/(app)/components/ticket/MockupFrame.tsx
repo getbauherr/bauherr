@@ -2,10 +2,11 @@
 import { useState } from 'react'
 import type { AttachmentView } from '../../../../core/views/attachments'
 import { sourceOf } from './image-ref'
+import { Button } from '../ui/button'
 
 const WIDTHS = [1280, 390] as const
 const BUTTON =
-  'w-fit rounded-md border border-border px-3 py-1 text-sm aria-pressed:border-primary aria-pressed:bg-accent'
+  'w-fit rounded-md px-3 py-1 font-normal aria-pressed:border-primary aria-pressed:bg-accent'
 
 export function MockupFrame({ mockup }: { mockup: AttachmentView }) {
   const [width, setWidth] = useState<(typeof WIDTHS)[number]>(1280)
@@ -14,15 +15,17 @@ export function MockupFrame({ mockup }: { mockup: AttachmentView }) {
     <div className="grid min-w-0 gap-2">
       <div className="flex flex-wrap items-center gap-2">
         {WIDTHS.map((option) => (
-          <button
+          <Button
             key={option}
             type="button"
+            variant="outline"
+            size="sm"
             className={BUTTON}
             aria-pressed={width === option}
             onClick={() => setWidth(option)}
           >
             {option}
-          </button>
+          </Button>
         ))}
         <a href={src} target="_blank" rel="noopener noreferrer" className="small ml-auto text-primary hover:underline">
           Open full size

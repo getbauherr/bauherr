@@ -8,6 +8,7 @@ import { Sparkles, Wrench } from '../icons'
 import { Button } from '../ui/button'
 import { NoteForm } from './NoteForm'
 import { NoteRow } from './NoteRow'
+import { Input } from '../ui/input'
 
 const SECTIONS = [
   { kind: 'new', heading: 'New and improved', Icon: Sparkles },
@@ -79,7 +80,7 @@ export function ReleaseNotes({ view }: { view: ReleasesView }) {
         <h2 id="notes" className="heading">Release notes</h2>
         {notes && <span className="small text-muted-foreground">{notes.internal} internal changes not listed</span>}
         <form action={writeNotesAction} className="ml-auto">
-          <input type="hidden" name="product" value={product.id} />
+          <Input type="hidden" name="product" value={product.id} />
           <Button type="submit" variant="outline" size="sm">{notes ? 'Write again' : 'Write the notes'}</Button>
         </form>
       </div>

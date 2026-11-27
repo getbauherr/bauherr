@@ -8,6 +8,7 @@ import { DecisionForm } from './DecisionForm'
 import { Positions } from './Positions'
 import { Card, Section } from './Section'
 import { RefText } from '../RefText'
+import { Radio } from '../ui/radio'
 
 const OPTION = [
   'flex cursor-pointer items-baseline gap-2 rounded-md border border-border px-3',
@@ -69,14 +70,12 @@ export function QuestionCard({ view, card, may }: Props) {
             <legend className="sr-only">Answer</legend>
             {choices.map(({ option, label }) => (
               <label key={option} className={`${OPTION} ${compact ? 'py-1.5' : 'py-2'}`}>
-                <input
-                  type="radio"
+                <Radio
                   name="choice"
                   value={option}
                   data-label={label}
                   data-prompt={NOTE_PROMPTS[`${ask}/${option}`]}
                   data-say={NOTE_SAYS[`${ask}/${option}`]}
-                  className="accent-primary"
                 />
                 <span className="font-medium">{label}</span>
                 {option === recommended && <span className="small text-muted-foreground">recommended</span>}

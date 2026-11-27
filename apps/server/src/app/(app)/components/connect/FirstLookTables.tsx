@@ -1,5 +1,6 @@
 import type { FirstLook } from '../../../../core/views/first-look'
 import { formatCount } from '../product/MirrorState'
+import { Table } from '../ui/table'
 
 type Row = { label: string; value: number; note: string }
 
@@ -39,7 +40,7 @@ function Group({ title, total, rows }: { title: string; total: number; rows: Row
       <h3 className="label text-muted-foreground">
         {title}, <span className="mono">{formatCount(total)}</span>
       </h3>
-      <table className="w-full border-collapse overflow-hidden rounded-md border border-border">
+      <Table className="w-full border-collapse overflow-hidden rounded-md border border-border">
         <caption className="sr-only">{title}</caption>
         <tbody>
           {rows.map((row) => (
@@ -50,7 +51,7 @@ function Group({ title, total, rows }: { title: string; total: number; rows: Row
             </tr>
           ))}
         </tbody>
-      </table>
+      </Table>
     </section>
   )
 }

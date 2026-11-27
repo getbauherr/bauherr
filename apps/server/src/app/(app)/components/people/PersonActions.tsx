@@ -4,6 +4,7 @@ import { EditDrawer } from '../EditDrawer'
 import { Checks, Field, SettingsForm } from '../SettingsForm'
 import { ROLES } from './labels'
 import type { Assignable, Person, WorkspaceItem } from './types'
+import { Input } from '../ui/input'
 
 const SSO_HINT = '<issuer>|<user ID>. In Keycloak the ID is under Users, the user, ID.'
 
@@ -11,7 +12,7 @@ function OwnerForms({ b, assignable }: { b: Person; assignable: Assignable }) {
   return (
     <>
       <SettingsForm action={saveAssignment}>
-        <input type="hidden" name="id" value={b.id} />
+        <Input type="hidden" name="id" value={b.id} />
         <AssignmentFields
           workspaces={assignable}
           workspace={b.assignments[0]?.workspace.id}
@@ -21,7 +22,7 @@ function OwnerForms({ b, assignable }: { b: Person; assignable: Assignable }) {
         />
       </SettingsForm>
       <SettingsForm action={saveBauherr}>
-        <input type="hidden" name="id" value={b.id} />
+        <Input type="hidden" name="id" value={b.id} />
         <Field
           name="githubLogin"
           label="GitHub login"
@@ -40,7 +41,7 @@ function OwnerForms({ b, assignable }: { b: Person; assignable: Assignable }) {
 function MemberForm({ b, items }: { b: Person; items: WorkspaceItem[] }) {
   return (
     <SettingsForm action={saveBauherr}>
-      <input type="hidden" name="id" value={b.id} />
+      <Input type="hidden" name="id" value={b.id} />
       <Field name="role" label="Role" options={ROLES} defaultValue={b.role} />
       <Checks name="workspaces" items={items} checked={b.workspaces.map((w) => w.id)} />
       <Field
@@ -67,9 +68,9 @@ function RoleChangeForm({ b, owner }: { b: Person; owner: boolean }) {
       submit={owner ? 'Make Bauherr' : 'Make Product owner'}
       confirm={owner ? 'Confirm: sees the whole Workspace' : 'Confirm: loses access to everything but their profile'}
     >
-      <input type="hidden" name="id" value={b.id} />
-      <input type="hidden" name="from" value={b.role} />
-      <input type="hidden" name="role" value={owner ? 'bauherr' : 'product-owner'} />
+      <Input type="hidden" name="id" value={b.id} />
+      <Input type="hidden" name="from" value={b.role} />
+      <Input type="hidden" name="role" value={owner ? 'bauherr' : 'product-owner'} />
       <p className="small text-muted-foreground">
         {owner
           ? 'A Bauherr sees everything in the Workspaces below. Set them under Workspaces after the change.'
@@ -99,13 +100,13 @@ export function PersonActions({
       </EditDrawer>
       {b.locked && (
         <SettingsForm action={unlockBauherr} submit="Unlock" inline>
-          <input type="hidden" name="id" value={b.id} />
+          <Input type="hidden" name="id" value={b.id} />
         </SettingsForm>
       )}
       {b.id !== userId && (
         <SettingsForm action={removeDoc} submit="Remove" confirm="Confirm remove" inline>
-          <input type="hidden" name="collection" value="bauherren" />
-          <input type="hidden" name="id" value={b.id} />
+          <Input type="hidden" name="collection" value="bauherren" />
+          <Input type="hidden" name="id" value={b.id} />
         </SettingsForm>
       )}
     </div>

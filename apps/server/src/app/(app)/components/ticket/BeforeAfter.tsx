@@ -4,9 +4,10 @@ import type { ScreenPair } from '../../../../core/views/ticket'
 import { ImageGallery } from './ImageGallery'
 import { sourceOf, type ImageRef } from './image-ref'
 import { Section } from './Section'
+import { Button } from '../ui/button'
 
 const FRAME = 'block h-auto w-full max-w-3xl rounded-md border border-border'
-const BUTTON = 'w-fit rounded-md border border-border px-3 py-1 text-sm'
+const BUTTON = 'w-fit rounded-md px-3 py-1 font-normal'
 
 const pictureOf = (label: string, pair: ScreenPair, id: number | undefined): ImageRef[] =>
   id === undefined ? [] : [{ id, caption: `${label}: ${pair.screen}, ${pair.width} px` }]
@@ -22,9 +23,16 @@ export function FlipFrame({ before, after }: { before: ImageRef; after: ImageRef
   const shown = flipped ? after : before
   return (
     <div className="grid gap-2">
-      <button type="button" className={BUTTON} aria-pressed={flipped} onClick={() => setFlipped(!flipped)}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className={BUTTON}
+        aria-pressed={flipped}
+        onClick={() => setFlipped(!flipped)}
+      >
         Flip before / after
-      </button>
+      </Button>
       <img src={sourceOf(shown)} alt={shown.caption} className={FRAME} />
     </div>
   )
@@ -37,13 +45,27 @@ function PhoneToggle({ after, plan }: { after: ImageRef; plan: ImageRef | null }
     <div className="grid gap-2 sm:hidden">
       <div className="flex gap-2">
         {plan && (
-          <button type="button" className={BUTTON} aria-pressed={!showAfter} onClick={() => setShowAfter(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={BUTTON}
+            aria-pressed={!showAfter}
+            onClick={() => setShowAfter(false)}
+          >
             Mockup
-          </button>
+          </Button>
         )}
-        <button type="button" className={BUTTON} aria-pressed={showAfter} onClick={() => setShowAfter(true)}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={BUTTON}
+          aria-pressed={showAfter}
+          onClick={() => setShowAfter(true)}
+        >
           After
-        </button>
+        </Button>
       </div>
       <img src={sourceOf(shown)} alt={shown.caption} className="block h-auto w-full rounded-md border border-border" />
     </div>

@@ -14,6 +14,6 @@ test('the lint suppression count never grows past the ceiling', () => {
   const { count } = Object(readJson('eslint-suppressions.ceiling.json')) as { count: number }
   expect(
     countOf(readJson('eslint-suppressions.json')),
-    'Fix the violation, do not suppress it. After removing some, lower count in eslint-suppressions.ceiling.json.',
+    'Fix the violation, do not suppress it. The ceiling is zero.',
   ).toBeLessThanOrEqual(count)
 })

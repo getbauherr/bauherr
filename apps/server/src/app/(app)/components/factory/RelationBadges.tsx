@@ -2,10 +2,10 @@ import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import type { CardRelations, RelatedTicket } from '../../../../core/views/relations'
 import { GitBranch, Lock, TriangleAlert } from '../icons'
+import { Button } from '../ui/button'
 
 const BADGE = cn(
-  'label inline-flex w-full items-center gap-1 rounded-sm border bg-card px-2 py-1 text-left outline-none',
-  'focus-visible:ring-2 focus-visible:ring-ring',
+  'label h-auto w-full justify-start gap-1 rounded-sm border bg-card px-2 py-1 text-left font-normal whitespace-normal',
 )
 const POPOVER = cn(
   'invisible absolute top-full left-0 z-30 mt-1 w-64 rounded-md border border-border bg-card p-3 opacity-0',
@@ -65,10 +65,10 @@ export function RelationBadges({ recordId, relations }: Props) {
         const id = `rel-${recordId}-${badge.key}`
         return (
           <div key={badge.key} className="group/rel relative">
-            <button type="button" aria-describedby={id} className={cn(BADGE, badge.tone)}>
+            <Button type="button" variant="outline" size="xs" aria-describedby={id} className={cn(BADGE, badge.tone)}>
               {badge.icon}
               {badge.text}
-            </button>
+            </Button>
             <Popover id={id} title={badge.title} tickets={badge.tickets} />
           </div>
         )

@@ -5,6 +5,7 @@ import { copyForgeChecks } from '../../(shell)/settings/products/[id]/actions'
 import { SettingsForm } from '../SettingsForm'
 import { Card } from '../ui/card'
 import { CHECK_MARK } from './marks'
+import { Input } from '../ui/input'
 
 type Fact = { good: boolean; lead?: string; text: ReactNode }
 
@@ -72,7 +73,7 @@ export function RepositoryOffers({ repository, product, admin }: Props) {
         ))}
         {admin && repository.suggestForgeChecks && (
           <SettingsForm action={copyForgeChecks} submit="Use these checks as required checks">
-            <input type="hidden" name="id" value={product} />
+            <Input type="hidden" name="id" value={product} />
           </SettingsForm>
         )}
       </section>

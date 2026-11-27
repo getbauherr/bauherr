@@ -2,6 +2,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import type { Roles } from '../../lib/board-relations'
+import { Button } from '../ui/button'
 
 type Scope = { selected: number | null; toggle: (recordId: number) => void; roles: Record<number, Roles> }
 
@@ -28,8 +29,8 @@ const wordOf = (selected: Roles | undefined, recordId: number): string | null =>
 }
 
 const TOGGLE = cn(
-  'label relative z-10 rounded-sm border border-border bg-card px-2 py-1 text-primary outline-none',
-  'focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-primary aria-pressed:bg-accent',
+  'label relative z-10 h-auto rounded-sm border-border bg-card px-2 py-1 font-normal text-primary',
+  'aria-pressed:border-primary aria-pressed:bg-accent',
 )
 
 export function RelationTag({ recordId, number, related }: { recordId: number; number: number; related: boolean }) {
@@ -43,15 +44,17 @@ export function RelationTag({ recordId, number, related }: { recordId: number; n
       {state !== null && <span hidden data-rel={state} />}
       {word !== null && <span className="label text-primary">{word}</span>}
       {related && (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="xs"
           className={TOGGLE}
           aria-pressed={selected === recordId}
           aria-label={`Related tickets of #${number}`}
           onClick={() => toggle(recordId)}
         >
           Related
-        </button>
+        </Button>
       )}
     </>
   )
