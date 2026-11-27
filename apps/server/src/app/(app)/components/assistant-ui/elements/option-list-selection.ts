@@ -11,26 +11,13 @@ export type SelectionConfig = {
   onConfirmed: (ids: readonly string[]) => void;
 };
 
-export function useOptionSelection({
-  options,
-  defaultValue,
-  minSelections,
-  maxSelections,
-  onConfirm,
-  onConfirmed,
-}: SelectionConfig) {
-  const [selected, setSelected] = useState<readonly string[]>(() =>
-    (defaultValue ?? []).filter((id) => options.some((o) => o.id === id)),
-  );
+function useCommit(
+  onConfirm: SelectionConfig["onConfirm"],
+  onConfirmed: SelectionConfig["onConfirmed"],
+) {
   const [pending, setPending] = useState<readonly string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const locked = pending !== null;
-  const max = Math.floor(
-    clamp(maxSelections ?? options.length, 0, options.length),
-  );
-  const min = Math.floor(clamp(minSelections, 0, max));
-  const optionIds = new Set(options.map((option) => option.id));
-  const selectedIds = selected.filter((id) => optionIds.has(id));
 
   const commit = (ids: string[]) => {
     if (locked) return;
@@ -50,6 +37,28 @@ export function useOptionSelection({
       }
     })();
   };
+
+  return { pending, error, locked, commit };
+}
+
+export function useOptionSelection({
+  options,
+  defaultValue,
+  minSelections,
+  maxSelections,
+  onConfirm,
+  onConfirmed,
+}: SelectionConfig) {
+  const [selected, setSelected] = useState<readonly string[]>(() =>
+    (defaultValue ?? []).filter((id) => options.some((o) => o.id === id)),
+  );
+  const { pending, error, locked, commit } = useCommit(onConfirm, onConfirmed);
+  const max = Math.floor(
+    clamp(maxSelections ?? options.length, 0, options.length),
+  );
+  const min = Math.floor(clamp(minSelections, 0, max));
+  const optionIds = new Set(options.map((option) => option.id));
+  const selectedIds = selected.filter((id) => optionIds.has(id));
 
   const toggle = (id: string) => {
     if (locked) return;

@@ -77,11 +77,17 @@ const convertProvider = (
 const generatedAtOf = (metadata: unknown): string =>
   isObj(metadata) && typeof metadata.generatedAt === 'string' ? metadata.generatedAt : ''
 
+const checkedGeneratedAt = (metadata: unknown): string => {
+  const generatedAt = generatedAtOf(metadata)
+  if (!generatedAt || Number.isNaN(Date.parse(generatedAt))) {
+    throw new Error('not a model catalog: "metadata.generatedAt" is missing')
+  }
+  return generatedAt
+}
+
 export const convertCatalog = (raw: unknown): { catalog: Catalog; list: ListedModel[] } => {
   if (!isObj(raw) || !isObj(raw.providers)) throw new Error('not a model catalog: "providers" is missing')
-  const generatedAt = generatedAtOf(raw.metadata)
-  if (!generatedAt || Number.isNaN(Date.parse(generatedAt)))
-    throw new Error('not a model catalog: "metadata.generatedAt" is missing')
+  const generatedAt = checkedGeneratedAt(raw.metadata)
   const providers: Catalog['providers'] = {}
   const list: ListedModel[] = []
   for (const [prov, pv] of Object.entries(raw.providers)) {
@@ -95,6 +101,8 @@ export const convertCatalog = (raw: unknown): { catalog: Catalog; list: ListedMo
 
 const count = (c: Catalog): number => Object.values(c.providers).reduce((n, p) => n + Object.keys(p.models).length, 0)
 
+const jumped = (a: number, b: number): boolean => a > 0 && b > 0 && (b / a > MAX_FACTOR || a / b > MAX_FACTOR)
+
 const movedPrices = (prev: Catalog, next: Catalog): string[] => {
   const moved: string[] = []
   for (const [prov, p] of Object.entries(prev.providers)) {
@@ -102,9 +110,7 @@ const movedPrices = (prev: Catalog, next: Catalog): string[] => {
       const now = next.providers[prov]?.models[id]
       if (!now) continue
       for (const k of ['input', 'output'] as const) {
-        const a = Number(m.rates[k])
-        const b = Number(now.rates[k])
-        if (a > 0 && b > 0 && (b / a > MAX_FACTOR || a / b > MAX_FACTOR)) moved.push(`${prov}/${id}`)
+        if (jumped(Number(m.rates[k]), Number(now.rates[k]))) moved.push(`${prov}/${id}`)
       }
     }
   }

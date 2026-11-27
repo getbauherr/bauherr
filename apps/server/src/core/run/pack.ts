@@ -44,6 +44,10 @@ const pendingNote = async (deps: SubmitDeps, run: Run): Promise<string | null> =
 const newCommentsOf = (deps: SubmitDeps, run: Run, deliver: boolean): Promise<NewComment[]> =>
   deliver ? handOver(deps.payload, run.recordId, run.id) : unseenComments(deps.payload, run.recordId)
 
+const modelOf = async (deps: SubmitDeps, run: Run) => ({ tier: (await deps.tiers?.(run.role)) ?? DEFAULT_TIER })
+
+const skillOf = async (deps: SubmitDeps, run: Run) => (await deps.skills?.(run.stage, run.role)) ?? null
+
 export const contextPack = async (
   deps: SubmitDeps,
   run: Run,
@@ -61,13 +65,13 @@ export const contextPack = async (
     runId: run.id,
     stage: run.stage,
     role: run.role,
-    model: { tier: (await deps.tiers?.(run.role)) ?? DEFAULT_TIER },
+    model: await modelOf(deps, run),
     record: recordFor(run.role, stored.record),
     resultSchema: z.toJSONSchema(module.resultSchema, { io: 'input' }),
     note: await pendingNote(deps, run),
     commentFiles: await commentFilesOf(deps.payload, run.recordId),
     newComments: await newCommentsOf(deps, run, options.deliver),
-    skill: (await deps.skills?.(run.stage, run.role)) ?? null,
+    skill: await skillOf(deps, run),
     facts: run.stage === 'intake' ? await loadIntakeFacts(deps.payload, stored) : null,
     source: await loadSource(deps.payload, stored),
     agentsFile: parts.agentsFile,

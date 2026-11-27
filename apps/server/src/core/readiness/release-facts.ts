@@ -3,7 +3,7 @@ import type { Payload } from 'payload'
 import { parseAllDocuments } from 'yaml'
 import { z } from 'zod'
 import type { ReadForge } from '../forge/reader'
-import type { SourceRow } from '../mirror/store'
+import type { SourceRow } from '../mirror/source-store'
 
 export const releaseFactsSchema = z.object({
   stagingWorkflow: z.string().nullable(),

@@ -66,17 +66,26 @@ const mergedFields = (type: RecordType, before: Fields, reply: ModelReply): Fiel
 const answerOf = (type: RecordType, reply: ModelReply): string | null =>
   type === 'question' ? (reply.answer ?? reply.reply) : null
 
+const messageOf = (
+  data: DraftData,
+  reply: ModelReply,
+  now: { type: RecordType; fields: DraftData['fields']; refused: boolean },
+): string => {
+  const confirm = data.type !== now.type && reply.confirm ? `${reply.confirm}\n\n` : ''
+  const closing = now.refused && !readiness(now.type, now.fields).complete ? OUT_OF_QUESTIONS : ''
+  return `${confirm}${reply.reply}${closing}`
+}
+
 const apply = (data: DraftData, reply: ModelReply, refused: boolean): { data: DraftData; message: string } => {
   const type = data.typeConfirmed && data.type ? data.type : reply.type
   const fields = mergedFields(type, data.fields, reply)
   const missing = stillMissing(type, fields, reply.questions)
   const asked = refused ? [] : problemFirst(type, fields, data.rounds, missing)
-  const confirm = data.type !== type && reply.confirm ? `${reply.confirm}\n\n` : ''
-  const closing = refused && !readiness(type, fields).complete ? OUT_OF_QUESTIONS : ''
+  const message = messageOf(data, reply, { type, fields, refused })
   const next = { type, fields, questions: asked, rounds: data.rounds + Math.min(asked.length, 1) }
   const title = { title: reply.title || data.title, summary: reply.summary || data.summary }
   return {
-    message: `${confirm}${reply.reply}${closing}`,
+    message,
     data: { ...data, ...next, ...title, answer: answerOf(type, reply) },
   }
 }

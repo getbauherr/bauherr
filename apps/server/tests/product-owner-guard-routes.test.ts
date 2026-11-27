@@ -1,11 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { BAUHERR_ROUTES, OPEN_ROUTES, PO_ROUTES } from './helpers/guard-lists'
 import {
   APP,
-  BAUHERR_ROUTES,
   type Guard,
-  OPEN_ROUTES,
   partition,
-  PO_ROUTES,
   routeModules,
   setupGuard,
   teardownGuard,

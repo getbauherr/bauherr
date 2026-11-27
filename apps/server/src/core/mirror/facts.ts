@@ -4,7 +4,7 @@ import type { ReadForge } from '../forge/reader'
 import { saveSuggestions, suggestRiskAreas, type RiskSuggestion } from '../readiness/suggest'
 import { readInstructionFiles, saveInstructionFiles, type InstructionFiles } from './instruction-files'
 import { errorText } from './map'
-import type { SourceRow } from './store'
+import type { SourceRow } from './source-store'
 
 export type BranchProtection = 'yes' | 'no' | 'unknown'
 

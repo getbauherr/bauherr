@@ -1,13 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { BAUHERR_PAGES, OPEN_PAGES, PO_PAGES } from './helpers/guard-lists'
 import {
   APP,
-  BAUHERR_PAGES,
   type Guard,
   notFound,
-  OPEN_PAGES,
   pageModules,
   partition,
-  PO_PAGES,
   session,
   setupGuard,
   teardownGuard,

@@ -131,16 +131,19 @@ const headingOf = (heading: string | null | undefined, first: Candidate): string
   return words(short).length >= TITLE_WORDS.min ? short : titleOf(first)
 }
 
+const claim = (tickets: number[], pool: Pool) => {
+  const known = [...new Set(tickets)].filter((n) => pool.owner.has(n) && !pool.used.has(n))
+  const kindOf = (n: number): NoteItem['kind'] => (pool.owner.get(n)?.bug ? 'fixed' : 'new')
+  const kind = kindOf(known[0] ?? -1)
+  pool.cut.push(...known.filter((n) => kindOf(n) !== kind))
+  return { first: pool.owner.get(known[0] ?? -1), kind, mine: known.filter((n) => kindOf(n) === kind) }
+}
+
 const fromEntry = (entry: unknown, pool: Pool): NoteItem | null => {
   const parsed = entrySchema.safeParse(entry)
   if (!parsed.success) return null
   const { area, title: heading, text, tickets } = parsed.data
-  const known = [...new Set(tickets)].filter((n) => pool.owner.has(n) && !pool.used.has(n))
-  const first = pool.owner.get(known[0] ?? -1)
-  const kindOf = (n: number): NoteItem['kind'] => (pool.owner.get(n)?.bug ? 'fixed' : 'new')
-  const kind = known[0] === undefined ? 'new' : kindOf(known[0])
-  const mine = known.filter((n) => kindOf(n) === kind)
-  pool.cut.push(...known.filter((n) => kindOf(n) !== kind))
+  const { first, kind, mine } = claim(tickets, pool)
   const body = sentence(text, MAX_SENTENCE_WORDS)
   if (!first || body === '') return null
   const withFollowUps = mine.flatMap((n) => [n, ...(pool.owner.get(n)?.followUps ?? [])])

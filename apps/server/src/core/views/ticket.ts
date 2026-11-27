@@ -234,6 +234,15 @@ const timingOf = async (payload: Payload, recordId: number): Promise<TicketView[
   return { time: data.time, cost: costOf(data.runs) }
 }
 
+const archiveOf = async (payload: Payload, stored: StoredRecord, folded: ReturnType<typeof fold>) => ({
+  canGoBack: canGoBack(folded),
+  canArchive: canArchive(folded),
+  archived: folded.closed === 'archived',
+  restorable:
+    folded.closed === 'archived' ||
+    (folded.closed === 'closed-on-forge' && !(await closedByAdoptedPull(payload, stored))),
+})
+
 export const ticket = async (payload: Payload, filter: TicketFilter): Promise<TicketView> => {
   const stored = await readRecord(payload, filter.recordId)
   if (stored.workspace !== filter.workspace) {
@@ -278,12 +287,7 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     deploy: deployOf(stored, events, pulls.pullRequest),
     ...(await stagingOf(payload, stored, events, pulls.pullRequest)),
     positions: positionsOf({ card: stored.card, record: stored.record, runs, events }),
-    canGoBack: canGoBack(folded),
-    canArchive: canArchive(folded),
-    archived: folded.closed === 'archived',
-    restorable:
-      folded.closed === 'archived' ||
-      (folded.closed === 'closed-on-forge' && !(await closedByAdoptedPull(payload, stored))),
+    ...(await archiveOf(payload, stored, folded)),
     timing: await timingOf(payload, stored.id),
     similarItems: issue ? await similarItems(payload, issue.id, SIMILAR_LIMIT, 'issue') : [],
   }

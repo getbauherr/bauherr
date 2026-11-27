@@ -2,7 +2,7 @@ import type { Payload } from 'payload'
 import type { ForgeReader } from '../forge/reader'
 import { storePull, syncDeployChecks } from './pulls'
 import { storeIssue, storeRelations } from './sync'
-import type { SourceRow } from './store'
+import type { SourceRow } from './source-store'
 
 export const refreshItem = async (
   payload: Payload,

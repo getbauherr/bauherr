@@ -3,6 +3,7 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { Conn } from '../conn'
 import type { ForgeWriter } from '../forge/writer'
+import type { RecordType } from '../record/schema'
 import { appendEvent, createRecord, readEvents } from '../record/store'
 import { AUTHOR_WORDS, type CommentRole } from './comments'
 import { RequestInvalid } from './errors'
@@ -50,6 +51,17 @@ export const sourceOf = async (db: Conn, workspace: number, product: number) => 
   return sourceRow.parse(found.rows[0])
 }
 
+const sendableType = (draft: Draft): Exclude<RecordType, 'question'> => {
+  const { type } = draft.data
+  if (draft.state !== 'open' || type === null) throw new RequestInvalid('This request cannot be sent.')
+  if (type === 'question') {
+    throw new RequestInvalid('A question is answered here: close it, or turn it into a bug or a change first.')
+  }
+  const { complete, missing } = readiness(type, draft.data.fields)
+  if (!complete) throw new RequestInvalid(`Still missing: ${missing.map((m) => m.label).join(', ')}.`)
+  return type
+}
+
 export const sendRequest = async (
   payload: Payload,
   deps: SendDeps,
@@ -63,13 +75,7 @@ export const sendRequest = async (
     if (draft.state === 'sent' && draft.issueNumber !== null && draft.recordId !== null) {
       return { issueNumber: draft.issueNumber, recordId: draft.recordId }
     }
-    const { type } = draft.data
-    if (draft.state !== 'open' || type === null) throw new RequestInvalid('This request cannot be sent.')
-    if (type === 'question') {
-      throw new RequestInvalid('A question is answered here: close it, or turn it into a bug or a change first.')
-    }
-    const { complete, missing } = readiness(type, draft.data.fields)
-    if (!complete) throw new RequestInvalid(`Still missing: ${missing.map((m) => m.label).join(', ')}.`)
+    const type = sendableType(draft)
     const where = { workspace: draft.workspace, product: draft.product }
     const issue = await deps.writer.openIssue(where, {
       title: titleOf(draft),

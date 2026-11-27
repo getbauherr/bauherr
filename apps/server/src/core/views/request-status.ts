@@ -42,9 +42,7 @@ const closedStatus = (row: Input): RequestStatus => {
   return { word: reason ? `Closed: ${reason}` : 'Closed', tone: 'neutral', mark: '×', bucket: 'closed' }
 }
 
-export const requestStatus = (row: Input, mine: boolean): RequestStatus => {
-  if (row.ended === 'accepted') return { word: 'Live', tone: 'ok', mark: '✓', bucket: 'live' }
-  if (row.ended === 'closed') return closedStatus(row)
+const openStatus = (row: Input, mine: boolean): RequestStatus => {
   const status = statusOf({
     ...row,
     hasRun: row.run !== null,
@@ -54,6 +52,12 @@ export const requestStatus = (row: Input, mine: boolean): RequestStatus => {
   if (status === 'queued' && row.stage === 'intake') return open('Received', 'neutral', '·')
   if (status === 'reporter-asked') return open(mine ? 'Waiting for you' : 'Waiting for the requester', 'warn', '!')
   return OPEN_STATUS[status] ?? open('In progress', 'accent', '◐')
+}
+
+export const requestStatus = (row: Input, mine: boolean): RequestStatus => {
+  if (row.ended === 'accepted') return { word: 'Live', tone: 'ok', mark: '✓', bucket: 'live' }
+  if (row.ended === 'closed') return closedStatus(row)
+  return openStatus(row, mine)
 }
 
 export const REQUEST_FILTERS = [...REQUEST_BUCKETS, 'mine'] as const

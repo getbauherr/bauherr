@@ -54,6 +54,14 @@ export const credentialName = (connection: Pick<ConnectionInput, 'kind' | 'confi
 const fieldErrors = (errors: { path: string; message: string }[]) =>
   Object.assign(new Error('Connection invalid.'), { data: { errors } })
 
+const appErrors = (field: (name: string) => string, keeps: boolean): { path: string; message: string }[] => {
+  const errors: { path: string; message: string }[] = (['appId', 'installationId'] as const)
+    .filter((k) => !/^\d+$/.test(field(k)))
+    .map((path) => ({ path, message: 'Enter the number shown in GitHub.' }))
+  if (!keeps && !field('secret')) errors.push({ path: 'secret', message: 'Paste the App private key.' })
+  return errors
+}
+
 const githubConfig = (before: ConnectionInput | null, field: (name: string) => string): Record<string, unknown> => {
   const apiUrl = before?.config.apiUrl
   const config: Record<string, unknown> = typeof apiUrl === 'string' ? { apiUrl } : {}
@@ -62,10 +70,7 @@ const githubConfig = (before: ConnectionInput | null, field: (name: string) => s
     if (keeps && !field('secret')) throw fieldErrors([{ path: 'secret', message: 'Enter a personal access token.' }])
     return config
   }
-  const errors: { path: string; message: string }[] = (['appId', 'installationId'] as const)
-    .filter((k) => !/^\d+$/.test(field(k)))
-    .map((path) => ({ path, message: 'Enter the number shown in GitHub.' }))
-  if (!keeps && !field('secret')) errors.push({ path: 'secret', message: 'Paste the App private key.' })
+  const errors = appErrors(field, keeps)
   if (errors.length) throw fieldErrors(errors)
   return { ...config, appId: field('appId'), installationId: field('installationId') }
 }

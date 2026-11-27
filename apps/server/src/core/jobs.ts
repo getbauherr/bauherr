@@ -2,7 +2,7 @@ import type { Payload, TaskConfig } from 'payload'
 import { z } from 'zod'
 import { MIRROR_ITEM, type MirrorItemInput } from './hooks/queue'
 import { refreshItem } from './mirror/item'
-import { liveSource } from './mirror/store'
+import { liveSource } from './mirror/source-store'
 import { defaultDeps, syncSources, type SyncDeps, type SyncResult } from './mirror/sync'
 
 export const mirrorSyncTask = (
