@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Board, BoardCard } from '../../../core/views/board'
+import type { BoardCard } from '../../../core/views/board'
 
 export const RELATION_FILTERS = ['blocking', 'blocked'] as const
 export type RelationFilter = (typeof RELATION_FILTERS)[number]
@@ -31,18 +31,13 @@ export const blockingFirst = <T extends Related>(cards: T[]): T[] =>
 export const forView = <T extends Related>(cards: T[], relation: RelationFilter | undefined): T[] =>
   blockingFirst(relation === undefined ? cards : cards.filter(MATCHES[relation]))
 
-export const countRelations = (lanes: Board): Record<RelationFilter, number> => {
-  const open = [...Object.values(lanes.stages).flat(), ...lanes.parked].filter((card) => card.stage !== 'done')
-  return { blocking: open.filter(isBlocking).length, blocked: open.filter(isBlocked).length }
-}
-
 export type Roles = { blockers: number[]; blocked: number[]; part: number[] }
 
 const ids = (list: { recordId: number | null }[]): number[] => list.flatMap((entry) => entry.recordId ?? [])
 
-export const rolesOf = (lanes: Board): Record<number, Roles> =>
+export const rolesOf = (cards: BoardCard[]): Record<number, Roles> =>
   Object.fromEntries(
-    [...Object.values(lanes.stages).flat(), ...lanes.parked].flatMap((card) => {
+    cards.flatMap((card) => {
       const relations = card.relations
       if (relations === null) return []
       const part = [...(relations.parent ? [relations.parent] : []), ...(relations.parts?.tickets ?? [])]

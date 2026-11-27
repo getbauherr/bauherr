@@ -6,43 +6,60 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { AuiIf, type AssistantState, ComposerPrimitive, useAuiState } from '@assistant-ui/react'
 import { ArrowUpIcon, MicIcon, SquareIcon, PlayIcon } from 'lucide-react'
-import { useContext, type FC } from 'react'
+import { useContext, type ComponentProps, type FC } from 'react'
 import { ThreadComponentsContext, shouldShowComposerResume } from './thread-context'
+
+export type ComposerField = Pick<
+  ComponentProps<typeof ComposerPrimitive.Input>,
+  'id' | 'ref' | 'maxLength' | 'placeholder' | 'aria-describedby' | 'aria-invalid'
+>
+
+const ROOT = 'aui-composer-root relative flex w-full flex-col'
 
 export const Composer: FC<{
   autoFocus: boolean
-}> = ({ autoFocus }) => {
+  field?: ComposerField
+  sendable?: boolean
+  nested?: boolean
+}> = ({ autoFocus, field, sendable = true, nested = false }) => {
   const { placeholder = 'Send a message...' } = useContext(ThreadComponentsContext)
-  return (
-    <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      <ComposerPrimitive.AttachmentDropzone asChild>
-        <div
-          data-slot="aui_composer-shell"
+  const shell = (
+    <ComposerPrimitive.AttachmentDropzone asChild>
+      <div
+        data-slot="aui_composer-shell"
+        className={cn(
+          'border-foreground/10 focus-within:border-foreground/25',
+          'data-[dragging=true]:border-ring flex w-full cursor-text flex-col gap-2',
+          'rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding)',
+          'transition-[border-color] data-[dragging=true]:border-dashed',
+          'data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]',
+        )}
+      >
+        <ComposerAttachments />
+        <ComposerPrimitive.Input
+          placeholder={placeholder}
+          {...field}
           className={cn(
-            'border-foreground/10 focus-within:border-foreground/25',
-            'data-[dragging=true]:border-ring flex w-full cursor-text flex-col gap-2',
-            'rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding)',
-            'transition-[border-color] data-[dragging=true]:border-dashed',
-            'data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]',
+            'aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48',
+            'min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6',
+            'outline-none',
           )}
-        >
-          <ComposerAttachments />
-          <ComposerPrimitive.Input
-            placeholder={placeholder}
-            className={cn(
-              'aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48',
-              'min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6',
-              'outline-none',
-            )}
-            rows={1}
-            autoFocus={autoFocus}
-            enterKeyHint="send"
-            aria-label="Message input"
-          />
-          <ComposerAction />
-        </div>
-      </ComposerPrimitive.AttachmentDropzone>
+          rows={1}
+          autoFocus={autoFocus}
+          enterKeyHint="send"
+          aria-label={field?.id ? undefined : 'Message input'}
+          submitMode={sendable ? 'enter' : 'none'}
+        />
+        <ComposerAction sendable={sendable} />
+      </div>
+    </ComposerPrimitive.AttachmentDropzone>
+  )
+  return nested ? (
+    <ComposerPrimitive.Root asChild>
+      <div className={ROOT}>{shell}</div>
     </ComposerPrimitive.Root>
+  ) : (
+    <ComposerPrimitive.Root className={ROOT}>{shell}</ComposerPrimitive.Root>
   )
 }
 const ICON_BUTTON = 'size-7 rounded-full'
@@ -150,7 +167,7 @@ const CancelControl: FC = () => {
   )
 }
 
-export const ComposerAction: FC = () => {
+export const ComposerAction: FC<{ sendable?: boolean }> = ({ sendable = true }) => {
   const { ComposerExtra } = useContext(ThreadComponentsContext)
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
@@ -162,11 +179,13 @@ export const ComposerAction: FC = () => {
       ) : (
         <ComposerAddAttachment />
       )}
-      <div className="flex items-center gap-1.5">
-        <DictateControls />
-        <SendControls />
-        <CancelControl />
-      </div>
+      {sendable && (
+        <div className="flex items-center gap-1.5">
+          <DictateControls />
+          <SendControls />
+          <CancelControl />
+        </div>
+      )}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { Stage } from '../../../core/events'
-import { board, type Board, type BoardCard } from '../../../core/views/board'
+import { board, relationCounts, type Board, type BoardCard, type BoardScope } from '../../../core/views/board'
 import { holds } from '../../../core/views/holds'
 import { somedayCounts, type SomedayCount } from '../../../core/views/someday'
 import type { BoardView } from './board-relations'
@@ -75,21 +75,28 @@ export const productsIn = async (payload: Payload, workspace: number): Promise<{
 
 export const LANE_PAGE = 30
 
-export const loadFactory = async (
-  payload: Payload,
-  input: { workspace: number; product?: number },
-  chunked: boolean,
-) => {
+export const scopeOf = (view: BoardView): BoardScope => ({
+  relation: view.relation,
+  parent: view.group ? 'without' : undefined,
+})
+
+type FactoryInput = { workspace: number; product?: number }
+
+export const loadFactory = async (payload: Payload, input: FactoryInput, view: BoardView) => {
   const now = new Date()
   const filter = input.product === undefined ? { workspace: input.workspace, now } : { ...input, now }
-  const [lanes, stats, held, someday, products] = await Promise.all([
-    board(payload, filter, chunked ? LANE_PAGE : undefined),
+  const scoped = view.relation !== undefined || view.group
+  const [lanes, parents, parkedAndHeld, stats, held, someday, products, relations] = await Promise.all([
+    board(payload, filter, LANE_PAGE, scopeOf(view)),
+    view.group ? board(payload, filter, undefined, { relation: view.relation, parent: 'with' }) : null,
+    scoped ? board(payload, filter, 0) : null,
     stageStats(payload, filter),
     holds(payload, { workspace: input.workspace, now }),
     somedayCounts(payload, input),
     productsIn(payload, input.workspace),
+    relationCounts(payload, filter),
   ])
-  return { lanes, stats, held, someday, products }
+  return { lanes, parents, parkedAndHeld: parkedAndHeld ?? lanes, stats, held, someday, products, relations }
 }
 
 export const somedayHref = (item: Pick<SomedayCount, 'forge' | 'repo' | 'config'>): string => {

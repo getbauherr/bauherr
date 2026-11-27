@@ -1,57 +1,86 @@
+import { cn } from '@/lib/utils'
 import type { StageStat, Stats } from '../../../../core/views/stats'
 import type { Board, BoardCard } from '../../../../core/views/board'
 import { laneCursor } from '../../../../core/views/board'
-import { forView, rolesOf, type BoardView } from '../../lib/board-relations'
+import { blockingFirst, rolesOf, type BoardView } from '../../lib/board-relations'
 import { LANE_PAGE, workersOf, type Show } from '../../lib/factory'
+import { DoneLane } from './DoneLane'
 import { LoopArrows } from './LoopArrows'
 import { ParentBands } from './ParentBands'
 import { RelationScope } from './RelationScope'
 import { StageColumn } from './StageColumn'
 
-const LANE = 'relative grid grid-cols-1 items-start gap-4 md:min-w-275 md:grid-cols-6'
-const BOARD = 'overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-ring'
+const LANE = cn(
+  'relative grid grid-cols-1 items-start gap-4 md:grid-cols-[repeat(5,minmax(0,1fr))_3rem]',
+  'md:[--col:calc((100%-112px)/5)] @[1360px]:grid-cols-6 @[1360px]:[--col:calc((100%-80px)/6)]',
+)
 
-const moreOf = (cards: BoardCard[], stat: StageStat, chunked: boolean, show: Show, product: number | undefined) => {
+const moreOf = (cards: BoardCard[], stat: StageStat, lanes: Board, view: BoardView, show: Show, product?: number) => {
   const last = cards.at(-1)
-  if (!chunked || stat.stage === 'done' || last === undefined) return undefined
+  if (stat.stage === 'done' || last === undefined) return undefined
+  const total = lanes.totals?.[stat.stage] ?? stat.total
   return {
     stage: stat.stage,
     pageSize: LANE_PAGE,
     show,
     product,
-    total: stat.total,
-    cursor: cards.length < stat.total ? laneCursor(last) : null,
+    relation: view.relation,
+    total,
+    cursor: cards.length < total ? laneCursor(last) : null,
   }
 }
 
-type Props = { lanes: Board; stats: Stats; show: Show; view: BoardView; product: number | undefined }
+type Props = {
+  lanes: Board
+  parents: Board | null
+  stats: Stats
+  show: Show
+  view: BoardView
+  product: number | undefined
+}
 
-export function FactoryBoard({ lanes, stats, show, view, product }: Props) {
-  const chunked = view.relation === undefined && !view.group
+const cardsOf = (board: Board): BoardCard[] => [...Object.values(board.stages).flat(), ...board.parked]
+
+export function FactoryBoard({ lanes, parents, stats, show, view, product }: Props) {
   const { totals } = stats
-  const everyCard = [...Object.values(lanes.stages).flat(), ...lanes.parked]
+  const everyCard = parents ? [...cardsOf(parents), ...cardsOf(lanes)] : cardsOf(lanes)
   return (
-    <RelationScope roles={rolesOf(lanes)}>
-      <div tabIndex={0} role="region" aria-label="Factory board" className={BOARD}>
-        {view.group ? (
-          <ParentBands cards={forView(everyCard, view.relation)} show={show} />
+    <RelationScope roles={rolesOf(everyCard)}>
+      <div role="region" aria-label="Factory board" className="@container">
+        {parents ? (
+          <ParentBands
+            parents={cardsOf(parents)}
+            lanes={lanes}
+            view={view}
+            show={show}
+            product={product}
+          />
         ) : (
           <div className={LANE}>
             <LoopArrows verify={totals.sentBackFromVerifyLast7Days} ship={totals.sentBackFromShipLast7Days} />
-            {stats.stages.map((stat) => (
-              <StageColumn
-                key={stat.stage}
-                stat={stat}
-                cards={forView(lanes.stages[stat.stage], view.relation)}
-                show={show}
-                workers={workersOf(stat)}
-                shipMedian={totals.medianSecondsToAccept}
-                doneTotal={stat.total}
-                more={moreOf(lanes.stages[stat.stage], stat, chunked, show, product)}
-                held={stat.stage === 'intake' && !view.relation ? lanes.held : []}
-                parked={stat.stage === 'brief' ? forView(lanes.parked, view.relation) : []}
-              />
-            ))}
+            {stats.stages.map((stat) => {
+              const column = (
+                <StageColumn
+                  key={stat.stage}
+                  stat={stat}
+                  cards={blockingFirst(lanes.stages[stat.stage])}
+                  show={show}
+                  workers={workersOf(stat)}
+                  shipMedian={totals.medianSecondsToAccept}
+                  doneTotal={lanes.totals?.done ?? stat.total}
+                  more={moreOf(lanes.stages[stat.stage], stat, lanes, view, show, product)}
+                  held={stat.stage === 'intake' ? lanes.held : []}
+                  parked={stat.stage === 'brief' ? lanes.parked : []}
+                />
+              )
+              return stat.stage === 'done' ? (
+                <DoneLane key={stat.stage} count={lanes.totals?.done ?? stat.total}>
+                  {column}
+                </DoneLane>
+              ) : (
+                column
+              )
+            })}
           </div>
         )}
       </div>

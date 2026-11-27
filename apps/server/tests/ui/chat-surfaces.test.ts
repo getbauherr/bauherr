@@ -6,7 +6,7 @@ const app = join(import.meta.dirname, '..', '..', 'src', 'app', '(app)')
 
 const SURFACES = [
   'components/assistant-ui/elements/thread.aui.tsx',
-  'components/conversation/Composer.tsx',
+  'components/assistant-ui/elements/thread-composer.tsx',
   'components/conversation/ConversationView.tsx',
   'components/request/NewRequest.tsx',
   'components/request/CommentList.tsx',

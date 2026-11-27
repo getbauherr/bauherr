@@ -59,6 +59,17 @@ test('Factory lane: 30 cards, Show more adds 30, a loaded card can be moved', as
   await expect(cards).not.toHaveCount(30)
 })
 
+test('Group by parent: the No parent band loads 30 cards per stage and Show more adds 30', async ({ page }) => {
+  await enter(page, '/?group=parent')
+  const lane = page.getByRole('region', { name: 'No parent' }).getByRole('group', { name: 'Intake' })
+  const cards = lane.locator('[data-card-link]')
+  await expect(cards).toHaveCount(30)
+  await lane.getByRole('button', { name: 'Show 30 more' }).click()
+  await expect(cards).toHaveCount(60)
+  const hrefs = await cards.evaluateAll((nodes) => nodes.map((n) => n.getAttribute('href')))
+  expect(new Set(hrefs).size, 'no card appears twice').toBe(hrefs.length)
+})
+
 test('Requests: 50 rows per page, Show more adds the next 50, the filter counts stay exact', async ({ page }) => {
   await page.goto('/login')
   await page.getByLabel('Email').fill('po-bulk@example.com')

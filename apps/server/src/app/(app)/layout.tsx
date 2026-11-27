@@ -12,8 +12,10 @@ const archivo = localFont({
   variable: '--font-archivo',
 })
 const plexMono = localFont({
-  src: './fonts/IBMPlexMono-Regular-latin.woff2',
-  weight: '400',
+  src: [
+    { path: './fonts/IBMPlexMono-Regular-latin.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/IBMPlexMono-Medium-latin.woff2', weight: '500', style: 'normal' },
+  ],
   display: 'swap',
   variable: '--font-plex-mono',
 })

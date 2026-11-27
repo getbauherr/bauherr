@@ -1,5 +1,5 @@
 import type { loadFactory } from '../../lib/factory'
-import { countRelations, type BoardView } from '../../lib/board-relations'
+import type { BoardView } from '../../lib/board-relations'
 import { countShows, type Show } from '../../lib/factory'
 import { EmptyState } from '../EmptyState'
 import { FactoryBoard } from './FactoryBoard'
@@ -22,20 +22,27 @@ export async function FactoryBody({ factory, show, product, boardView }: Props) 
   if (!view.products.length) {
     return <EmptyState text="No project is connected to the lean core yet." action={PRODUCTS} />
   }
-  const { lanes, stats } = view
+  const { stats } = view
   return (
     <>
       <FilterRow
         show={show}
         product={product}
-        counts={countShows(lanes, stats)}
+        counts={countShows(view.parkedAndHeld, stats)}
         products={view.products}
         view={boardView}
-        relationCounts={countRelations(lanes)}
+        relationCounts={view.relations}
       />
       <HoldStrip holds={view.held} />
       <SomedayLine items={view.someday} />
-      <FactoryBoard lanes={lanes} stats={stats} show={show} view={boardView} product={product} />
+      <FactoryBoard
+        lanes={view.lanes}
+        parents={view.parents}
+        stats={stats}
+        show={show}
+        view={boardView}
+        product={product}
+      />
     </>
   )
 }

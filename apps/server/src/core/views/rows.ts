@@ -5,7 +5,14 @@ import { stageSchema, type Stage } from '../events'
 import { cardSchema, WAITING_ON, type StoredCard, type WaitingOn } from '../record/store'
 import { ago, ENTRY_TABLE, LIVE_RUN_SQL, LIVE_SQL, scope, TERMINAL_LIST } from './sql'
 
-export type RowFilter = { workspace: number; product?: number; now: Date; history?: 'week' | 'all'; ids?: number[] }
+export type RowFilter = {
+  workspace: number
+  product?: number
+  now: Date
+  history?: 'week' | 'all'
+  ids?: number[]
+  without?: number[]
+}
 
 export type Fragment = ReturnType<typeof sql>
 
@@ -134,10 +141,17 @@ const toRow = (raw: unknown): TicketRow => {
   }
 }
 
+const idList = (ids: number[]) => sql.join(ids.map((id) => sql`${id}`), sql`, `)
+
+const onlyIds = (ids: number[] | undefined) => {
+  if (ids === undefined) return sql``
+  return ids.length === 0 ? sql`AND false` : sql`AND r."id" IN (${idList(ids)})`
+}
+
 export const rowsSql = (filter: RowFilter) => {
   const everything = filter.history === 'all' ? sql`true` : sql`false`
-  const only =
-    filter.ids === undefined ? sql`` : sql`AND r."id" IN (${sql.join(filter.ids.map((id) => sql`${id}`), sql`, `)})`
+  const only = onlyIds(filter.ids)
+  const except = filter.without?.length ? sql`AND r."id" NOT IN (${idList(filter.without)})` : sql``
   return sql`
     SELECT r."id", r."product_id", p."name" AS product_name, r."source_repo", r."source_number", r."stage",
       r."waiting_on", r."rank", r."card", r."parked", i."title",
@@ -172,7 +186,7 @@ export const rowsSql = (filter: RowFilter) => {
         max(e."created_at") AS changed_at
       FROM "events" e LEFT JOIN ${ENTRY_TABLE} ON m."type" = e."type" WHERE e."record_id" = r."id"
     ) ev ON true
-    WHERE ${scope(filter.workspace, filter.product)} ${only}
+    WHERE ${scope(filter.workspace, filter.product)} ${only} ${except}
       AND (${LIVE_SQL} OR ${everything} OR (r."updated_at" >= ${ago(filter.now, 7)}::timestamptz
         AND ev."terminal_reason" IS DISTINCT FROM 'archived'))`
 }

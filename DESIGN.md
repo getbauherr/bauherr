@@ -266,7 +266,7 @@ Status colors: `ok` for succeeded, approved and verified; `warn` for needs_human
 
 ## Typography
 
-One family, Archivo, from Google Fonts (`family=Archivo:wght@400;500;600`), with IBM Plex Mono (`family=IBM+Plex+Mono:wght@400`) for data. Set page titles in `title` (one per page), sections in `heading`, running text in `body` at ≤ 68 characters per line, metadata in `small` with `ink-muted`, uppercase labels in `label`. Identifiers, label names, commands, costs and anything a person might copy go in `mono` with tabular numerals. Headings get `text-wrap: balance`. No italics, no light weights.
+One family, Archivo, from Google Fonts (`family=Archivo:wght@400;500;600`), with IBM Plex Mono (`family=IBM+Plex+Mono:wght@400;500`) for data. Set page titles in `title` (one per page), sections in `heading`, running text in `body` at ≤ 68 characters per line, metadata in `small` with `ink-muted`, uppercase labels in `label`. Identifiers, label names, commands, costs and anything a person might copy go in `mono` with tabular numerals. Headings get `text-wrap: balance`. No italics, no light weights.
 
 | Style | Use |
 |---|---|

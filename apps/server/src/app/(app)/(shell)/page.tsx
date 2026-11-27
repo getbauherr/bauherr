@@ -24,9 +24,8 @@ export default async function Factory({ searchParams }: { searchParams: Promise<
   const raw = await searchParams
   const { show, product } = parseSearch(raw)
   const boardView = parseView(raw)
-  const chunked = boardView.relation === undefined && !boardView.group
   const payload = await payloadClient()
-  const factory = loadFactory(payload, { workspace: workspace.id, ...(product && { product }) }, chunked)
+  const factory = loadFactory(payload, { workspace: workspace.id, ...(product && { product }) }, boardView)
   const holds = await activeHolds(payload, workspace.id, new Date())
   return (
     <>
