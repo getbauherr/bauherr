@@ -16,7 +16,7 @@ const enter = async (page: Page, path: string, workspace = 'factory') => {
 }
 
 const STAGES = ['Intake', 'Brief', 'Build', 'Verify', 'Ship', 'Done']
-const GROUPS = ['Waiting on you', 'Agents working', 'Waiting on others', 'Done']
+const GROUPS = ['Waiting on you', 'Failed', 'Working', 'Waiting on others', 'Decided']
 const TICKET = /^\/tickets\/\d+$/
 const filters = (page: Page) => page.getByRole('navigation', { name: 'Filter tickets' })
 
@@ -51,15 +51,17 @@ test('a filter marks the URL and dims the cards that do not match', async ({ pag
   await expect(card(page, 'Import skips empty rows')).not.toHaveClass(/opacity-20/)
 })
 
-test('the Inbox lists the tickets waiting on the owner first', async ({ page }) => {
+test('the Inbox lists the tickets waiting on the owner first and opens the first one', async ({ page }) => {
   await enter(page, '/inbox')
   await expect(page.getByRole('heading', { level: 2 })).toHaveText(GROUPS)
-  const waiting = page.getByRole('region', { name: 'Waiting on you' })
-  for (const title of ['Export fails for large files', 'Add target-year check', 'Import skips empty rows']) {
-    await expect(waiting.getByRole('link', { name: new RegExp(title) })).toHaveAttribute('href', TICKET)
+  const rows = page.locator('[data-inbox-row]')
+  for (const title of ['Export fails for large files', 'Add target-year check']) {
+    const link = rows.filter({ hasText: title }).locator('a[href^="/tickets/"]').first()
+    await expect(link).toHaveAttribute('href', TICKET)
   }
-  const working = page.getByRole('region', { name: 'Agents working' })
-  await expect(working.getByRole('link', { name: /Rename report columns/ })).toBeVisible()
+  await expect(rows.filter({ hasText: 'Import skips empty rows' })).toBeVisible()
+  await expect(rows.filter({ hasText: 'Rename report columns' })).toBeVisible()
+  await expect(rows.first().getByRole('button')).toHaveAttribute('aria-current', 'true')
 })
 
 test('the Factory view counts Someday ideas per Product and links to the forge issue list', async ({ page }) => {

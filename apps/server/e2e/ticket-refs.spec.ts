@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { openFromInbox } from './inbox'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 const REFERENCED = 'Brief with a decision for the tabs'
@@ -16,9 +17,8 @@ const signIn = async (page: Page) => {
   await expect(page.getByRole('banner')).toBeVisible()
 }
 
-const openFromInbox = async (page: Page, title: string) => {
-  await page.goto('/inbox')
-  await page.locator('[data-inbox-row]').filter({ hasText: title }).first().click()
+const openTicket = async (page: Page, title: string) => {
+  await openFromInbox(page, title)
   await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
 }
 
@@ -37,7 +37,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 800 
 
     test('agent text links a known number with its title and keeps an unknown one plain', async ({ page }) => {
       await signIn(page)
-      await openFromInbox(page, 'Question to read')
+      await openTicket(page, 'Question to read')
       const link = page.getByRole('main').getByRole('link', { name: new RegExp(`^#\\d+ ${REFERENCED}$`) })
       await expect(link).toHaveAttribute('href', /^\/tickets\/\d+$/)
       await expect(page.getByText('#9999', { exact: false }).first()).toBeVisible()
@@ -46,7 +46,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 800 
 
     test('Tab and Enter or Space open the box, Escape closes it and focus returns', async ({ page }) => {
       await signIn(page)
-      await openFromInbox(page, 'Question to read')
+      await openTicket(page, 'Question to read')
       const link = page.getByRole('main').getByRole('link', { name: new RegExp(`^#\\d+ ${REFERENCED}$`) })
       for (const key of ['Enter', 'Space']) {
         await link.focus()
@@ -58,16 +58,12 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 800 
       }
     })
 
-    test('the box opens on tap or hover in the Inbox, on the Ticket page and on the Run page', async ({ page }) => {
+    test('the box opens on tap or hover on the Ticket page', async ({ page }) => {
       await signIn(page)
-      await page.goto('/inbox')
-      const row = page.locator('[data-inbox-row]').filter({ hasText: REFERENCED }).first().locator('xpath=..')
-      await row.getByRole('link', { name: /^#\d+$/ }).click()
-      await expectBox(page)
-      await openFromInbox(page, REFERENCED)
+      await openTicket(page, REFERENCED)
       await page.getByRole('heading', { level: 1 }).locator('xpath=preceding-sibling::a[1]').click()
       await expectBox(page)
-      await openFromInbox(page, 'Build with reported steps')
+      await openTicket(page, 'Build with reported steps')
       await page.getByRole('link', { name: /^Run \d+/ }).first().click()
       await expect(page.getByRole('heading', { level: 1, name: /^Run \d+$/ })).toBeVisible()
       await page.getByRole('main').getByRole('link', { name: /^#\d+$/ }).first().click()
@@ -76,7 +72,7 @@ for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 800 
 
     test('a finding and a note name a ticket as a link that opens the box', async ({ page }) => {
       await signIn(page)
-      await openFromInbox(page, 'Result to read')
+      await openTicket(page, 'Result to read')
       const named = new RegExp(`^#\\d+ ${LINKED}$`)
       const finding = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Review findings' }) })
       await finding.getByRole('link', { name: named }).first().click()

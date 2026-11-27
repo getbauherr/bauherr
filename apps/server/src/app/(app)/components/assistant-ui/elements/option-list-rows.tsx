@@ -47,14 +47,14 @@ function RowIndicator({
             "flex size-3.5 items-center justify-center rounded-[5px] border",
             "transition-colors",
             isSelected
-              ? "border-foreground bg-foreground"
+              ? "border-primary bg-primary"
               : "border-foreground/15",
           )}
         >
           {isSelected ? (
             <CheckIcon
               className={cn(
-                "fade-in zoom-in-90 animate-in text-background size-2.5",
+                "fade-in zoom-in-90 animate-in text-primary-foreground size-2.5",
                 "duration-200 motion-reduce:animate-none",
               )}
             />

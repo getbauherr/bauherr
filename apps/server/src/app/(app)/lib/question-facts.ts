@@ -24,7 +24,7 @@ const deployStalled = (view: TicketView): string[] => {
     : [`No result arrived in the time you set for: ${names}.`]
 }
 
-export const recommendedOption = (view: TicketView, reason: string): string | null =>
+export const recommendedOption = (view: Pick<TicketView, 'deploy'>, reason: string): string | null =>
   reason === 'deploy-stalled' && view.deploy?.reason === 'failed' ? 'check-again' : null
 
 const FACTS: Record<string, (view: TicketView) => string[]> = {

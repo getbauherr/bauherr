@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test'
+import { inboxHref } from './inbox'
 
 export const aConversation = async (page: Page): Promise<string> => {
   const base = process.env.BASE_URL ?? 'http://localhost:3000'
@@ -31,12 +32,8 @@ export const conversationTargets = {
 const requestOf = (title: string) => async (page: Page) => {
   const base = process.env.BASE_URL ?? 'http://localhost:3000'
   await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url: base }])
-  await page.goto('/inbox')
-  const href = await page
-    .getByRole('link', { name: new RegExp(title) })
-    .first()
-    .getAttribute('href')
-  return (href ?? '').replace('/tickets/', '/requests/')
+  const href = await inboxHref(page, new RegExp(title))
+  return href.replace('/tickets/', '/requests/')
 }
 
 export const requestTargets = {

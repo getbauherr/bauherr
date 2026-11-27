@@ -264,7 +264,8 @@
     },
     "assistant-ui/elements/option-list-rows.tsx": {
       "registry": "option-list",
-      "source": "assistant-ui"
+      "source": "assistant-ui",
+      "localChange": "selected indicator uses bg-primary instead of bg-foreground"
     },
     "assistant-ui/elements/option-list-selection.ts": {
       "registry": "option-list",
@@ -309,7 +310,8 @@
     },
     "assistant-ui/elements/surfaces.tsx": {
       "registry": "surfaces",
-      "source": "assistant-ui"
+      "source": "assistant-ui",
+      "localChange": "inkButton uses the accent tokens (bg-primary) instead of bg-foreground"
     },
     "assistant-ui/elements/task-card.tsx": {
       "registry": "task-card",

@@ -30,7 +30,7 @@ A Product owner gets a smaller shell today. Requests from Product owners are pla
 | Path | What you do |
 |---|---|
 | `/` | See the Factory view: tickets by stage, filters, holds and loops. |
-| `/inbox` | Decide what waits for you. Keys: `j`/`k` move, `o`/`Enter` open, `Esc` clear, `?` help. |
+| `/inbox` | Decide what waits for you, as a conversation with the factory. Keys: `j`/`k` move, `/` writes. |
 | `/requests` | Follow your requests in four sections, starting with Needs you. |
 | `/requests/<id>` | Read one request: whose turn it is, then its story. |
 | `/tickets/<id>` | Decide one ticket. Tabs Now, Brief, Result and Activity. |
@@ -56,7 +56,9 @@ The page refreshes from the database on its own.
 
 ## Inbox
 
-The same tickets as a list, grouped by who has to act: Waiting on you, Agents working, Waiting on others and Done. The badge on the sidebar counts what waits on you.
+A list on the left, one conversation on the right. The list groups tickets by who has to act: Waiting on you, Failed, Working (runs and connected sessions), Waiting on others and Decided (last 7 days). The first waiting ticket is open; the selection is `?t=<id>` in the address. The badge on the sidebar counts what waits on you.
+
+The conversation shows the ticket's thread, what you decided before and the pending decision as a card: the question, one reason, one Recommended action and the other options. Edit-style options open a note field in the card. Pressing an action shows the receipt and a toast with Undo for six seconds; the decision is written when the toast runs out or when you leave the ticket. The next waiting ticket opens after it. The composer is always there: until the factory answers in chat, your text is posted as a comment on the ticket. Every `#ref` links to its ticket. On a narrow screen the list opens in a sheet.
 
 ## Ticket page
 

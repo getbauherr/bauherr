@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { conversationTargets, requestTargets } from './conversation-page'
 import { retroTargets } from './retro-targets'
 import { email } from './user'
+import { inboxHref } from './inbox'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -101,12 +102,7 @@ const inTickets =
   (title: string, query = '') =>
   async (page: Page) => {
     await inWorkspace('tickets', '/inbox')(page)
-    await page.goto('/inbox')
-    const href = await page
-      .getByRole('link', { name: new RegExp(title) })
-      .first()
-      .getAttribute('href')
-    expect(href, `a ticket titled ${title}`).toBeTruthy()
+    const href = await inboxHref(page, new RegExp(title))
     return `${href}${query}`
   }
 

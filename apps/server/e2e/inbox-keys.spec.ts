@@ -4,8 +4,6 @@ import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
-const LIVE = 'Result for the live refresh'
-
 const signIn = async (page: Page) => {
   const url = process.env.BASE_URL ?? 'http://localhost:3000'
   await page.context().addCookies([{ name: 'bauherr-ws', value: 'tickets', url }])
@@ -21,109 +19,57 @@ const signIn = async (page: Page) => {
 }
 
 const rows = (page: Page) => page.locator('[data-inbox-row]')
-const focused = (page: Page) => page.locator('[data-inbox-row]:focus')
+const current = (page: Page) => page.locator('[data-inbox-row] [aria-current="true"]')
 
-test('j, k and o move the focus across groups and open the row', async ({ page }) => {
+const idOf = (url: string) => new URL(url).searchParams.get('t')
+
+test('the first waiting ticket is open and j and k move the selection through the URL', async ({ page }) => {
   await signIn(page)
-  const all = rows(page)
-  const count = await all.count()
-  expect(count).toBeGreaterThan(2)
-  expect(await page.locator('section[aria-labelledby] li').count(), 'rows in at least two groups').toBe(count)
+  await expect(rows(page).first().getByRole('button')).toHaveAttribute('aria-current', 'true')
   await page.keyboard.press('j')
-  await expect(focused(page)).toHaveAttribute('data-inbox-row', (await all.nth(0).getAttribute('data-inbox-row'))!)
-  await page.keyboard.press('j')
-  await expect(all.nth(1)).toBeFocused()
+  await expect.poll(() => idOf(page.url())).not.toBeNull()
+  const second = idOf(page.url())
+  await expect(current(page)).toHaveCount(1)
   await page.keyboard.press('k')
-  await expect(all.nth(0)).toBeFocused()
-  const href = await all.nth(0).getAttribute('href')
-  await page.keyboard.press('o')
-  await expect(page).toHaveURL(new RegExp(`${href}$`))
-  expect(href).toMatch(/^\/tickets\/\d+$/)
+  await expect.poll(() => idOf(page.url())).not.toBe(second)
+  await page.keyboard.press('k')
+  await expect(rows(page).first().getByRole('button')).toHaveAttribute('aria-current', 'true')
 })
 
-test('ArrowDown walks over every row and into the next group; Esc clears the focus', async ({ page }) => {
+test('the selected ticket stays in the URL after a reload', async ({ page }) => {
   await signIn(page)
-  const count = await rows(page).count()
-  const groupOf = (index: number) => rows(page).nth(index).locator('xpath=ancestor::section')
-  for (let i = 0; i < count; i++) await page.keyboard.press('ArrowDown')
-  await expect(rows(page).nth(count - 1)).toBeFocused()
-  expect(await groupOf(count - 1).getAttribute('id')).not.toBe(await groupOf(0).getAttribute('id'))
-  await page.keyboard.press('ArrowDown')
-  await expect(rows(page).nth(count - 1)).toBeFocused()
-  await page.keyboard.press('ArrowUp')
-  await expect(rows(page).nth(count - 2)).toBeFocused()
-  await page.keyboard.press('Escape')
-  await expect(focused(page)).toHaveCount(0)
+  await rows(page).nth(1).getByRole('button').click()
+  await expect.poll(() => idOf(page.url())).not.toBeNull()
+  const id = idOf(page.url())
+  await page.reload()
+  await expect(page).toHaveURL(new RegExp(`t=${id}$`))
+  await expect(rows(page).nth(1).getByRole('button')).toHaveAttribute('aria-current', 'true')
 })
 
-test('Enter opens the focused row', async ({ page }) => {
+test('the open ticket link of a row goes to the ticket page', async ({ page }) => {
   await signIn(page)
-  await page.keyboard.press('j')
-  const href = await focused(page).getAttribute('href')
-  await page.keyboard.press('Enter')
+  const link = rows(page).first().locator('a[href^="/tickets/"]')
+  const href = await link.getAttribute('href')
+  await link.click({ force: true })
   await expect(page).toHaveURL(new RegExp(`${href}$`))
 })
 
-test('the keys do nothing while focus is in an input or an open dialog', async ({ page }) => {
+test('/ focuses the composer and the keys do nothing while typing', async ({ page }) => {
   await signIn(page)
-  await page.keyboard.press('j')
-  await expect(rows(page).nth(0)).toBeFocused()
+  await page.keyboard.press('/')
+  const composer = page.locator('.aui-composer-input')
+  await expect(composer).toBeFocused()
+  await page.keyboard.type('jk')
+  await expect(composer).toHaveValue('jk')
+  expect(idOf(page.url())).toBeNull()
+})
+
+test('the keys do nothing while a dialog is open', async ({ page }) => {
+  await signIn(page)
   await page.keyboard.press('Control+k')
   const palette = page.getByRole('dialog', { name: 'Command palette' })
   await expect(palette).toBeVisible()
-  const input = palette.locator('input')
-  await expect(input).toBeFocused()
   await page.keyboard.press('j')
-  await expect(input).toHaveValue('j')
-  await expect(rows(page).nth(1)).not.toBeFocused()
-  await page.keyboard.press('Escape')
-  await expect(palette).toHaveCount(0)
-  await page.keyboard.press('?')
-  const help = page.getByRole('dialog', { name: 'Keyboard keys' })
-  await expect(help).toBeVisible()
-  await page.keyboard.press('j')
-  await page.keyboard.press('ArrowDown')
-  await expect(rows(page).nth(1)).not.toBeFocused()
-  await expect(rows(page).nth(2)).not.toBeFocused()
-  await page.keyboard.press('Escape')
-  await expect(help).toHaveCount(0)
-  await page.keyboard.press('j')
-  await expect(rows(page).nth(1)).toBeFocused()
-})
-
-test('? lists every key in a dialog and Esc closes it', async ({ page }) => {
-  await signIn(page)
-  await page.keyboard.press('?')
-  const dialog = page.getByRole('dialog', { name: 'Keyboard keys' })
-  await expect(dialog).toBeVisible()
-  await expect(dialog.getByRole('term')).toHaveText(['j or ArrowDown', 'k or ArrowUp', 'o or Enter', 'Esc', '?'])
-  await page.keyboard.press('Escape')
-  await expect(dialog).toHaveCount(0)
-})
-
-test('the live refresh keeps the focused Ticket focused when rows change', async ({ page, context }) => {
-  await signIn(page)
-  const count = await rows(page).count()
-  for (let i = 0; i < count; i++) await page.keyboard.press('j')
-  const key = await focused(page).getAttribute('data-inbox-row')
-  expect(key).toBeTruthy()
-  await expect(focused(page)).not.toContainText(LIVE)
-  const other = await context.newPage()
-  await other.goto('/inbox')
-  await other.getByRole('link', { name: new RegExp(LIVE) }).click()
-  await other.getByRole('button', { name: 'Accept', exact: true }).click()
-  await expect(other.getByRole('button', { name: 'Accept', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('region', { name: 'Done' }).getByRole('link', { name: new RegExp(LIVE) })).toBeVisible({
-    timeout: 30_000,
-  })
-  await expect(page.locator(`[data-inbox-row="${key}"]`)).toBeFocused()
-})
-
-test('reduced motion leaves the rows without transitions', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' })
-  await signIn(page)
-  const durations = await rows(page).evaluateAll((all) =>
-    all.map((row) => getComputedStyle(row).transitionDuration),
-  )
-  expect(new Set(durations)).toEqual(new Set(['0s']))
+  await expect(palette.locator('input')).toHaveValue('j')
+  expect(idOf(page.url())).toBeNull()
 })

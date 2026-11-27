@@ -17,17 +17,19 @@ const input = z.object({
   note: z.string().optional(),
   answers: z.record(z.string(), z.string()).optional(),
   dropRelations: z.array(z.number().int().min(0)).optional(),
+  criteria: z.array(z.string().min(1)).optional(),
 })
 
 export type DecisionResult = { error?: string }
 
-const decisionOf = (given: z.infer<typeof input>): Decision => ({
+const decisionOf = (given: z.infer<typeof input>): Decision & { criteria?: string[] } => ({
   ask: given.ask,
   choice: given.choice,
   seq: given.seq,
   ...(given.note === undefined ? {} : { note: given.note }),
   ...(given.answers === undefined ? {} : { answers: given.answers }),
   ...(given.dropRelations === undefined ? {} : { dropRelations: given.dropRelations }),
+  ...(given.criteria === undefined ? {} : { criteria: given.criteria }),
 })
 
 export async function decideTicket(raw: unknown): Promise<DecisionResult> {

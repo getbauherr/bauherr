@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { email } from './user'
+import { inboxRow, openFromInbox } from './inbox'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
 
@@ -22,8 +23,7 @@ const signIn = async (page: Page) => {
 }
 
 const open = async (page: Page, title: string) => {
-  await page.goto('/inbox')
-  await page.getByRole('link', { name: new RegExp(title) }).click()
+  await openFromInbox(page, new RegExp(title))
   await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
   return new URL(page.url()).pathname
 }
@@ -35,12 +35,7 @@ const enter = async (page: Page, title: string) => {
 
 const enterOpen = async (page: Page, base: string) => {
   await signIn(page)
-  await page.goto('/inbox')
-  const waiting = page.getByRole('region', { name: 'Waiting on you' })
-  await waiting
-    .getByRole('link', { name: new RegExp(`${base} \\d`) })
-    .first()
-    .click()
+  await openFromInbox(page, new RegExp(`${base} \\d`))
   await expect(page.getByRole('heading', { level: 1, name: new RegExp(`^${base} \\d$`) })).toBeVisible()
   return new URL(page.url()).pathname
 }
@@ -117,14 +112,11 @@ test('answering a question from the agent records the chosen option', async ({ p
 test('a parked ticket names its need in the Inbox and offers Resume and Discard', async ({ page }) => {
   await signIn(page)
   await page.goto('/inbox')
-  const waiting = page.getByRole('region', { name: 'Waiting on you' })
-  const row = waiting.getByRole('link', { name: /Build parked on a missing Connection/ })
-  await expect(row).toContainText('Parked: AWS Connection (build)')
-  await row.click()
-  await expect(page.getByText('Parked: AWS Connection', { exact: true })).toBeVisible()
-  await expect(page.getByRole('radio', { name: 'Resume' })).toBeVisible()
-  await expect(page.getByRole('radio', { name: 'Discard' })).toBeVisible()
-  await expect(page.getByRole('radio')).toHaveCount(2)
+  await inboxRow(page, /Build parked on a missing Connection/).getByRole('button').click()
+  const main = page.getByRole('main')
+  await expect(main.getByText('Parked: AWS Connection')).toBeVisible()
+  await expect(main.getByRole('button', { name: 'Resume' })).toBeVisible()
+  await expect(main.getByRole('button', { name: 'Discard…' })).toBeVisible()
 })
 
 test('a decision on a card that moved on shows the stale sentence', async ({ page, browser }) => {
@@ -264,13 +256,13 @@ test('archiving a ticket asks in a dialog and removes it from the Inbox, and Res
   await expect(page.getByText('Archived. The ticket is out of the lists')).toBeVisible()
   expect(dialogs).toEqual([])
   await page.goto('/inbox')
-  await expect(page.getByRole('link', { name: title })).toHaveCount(0)
+  await expect(page.locator('[data-inbox-row]').filter({ hasText: title })).toHaveCount(0)
   await page.goto(path)
   await page.getByRole('button', { name: 'Restore' }).click()
   await expect(page.getByRole('button', { name: 'Restore' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Archive', exact: true })).toBeVisible()
   await page.goto('/inbox')
-  await expect(page.getByRole('link', { name: title })).toBeVisible()
+  await expect(inboxRow(page, title)).toBeVisible()
 })
 
 test('a free answer and an empty change request use the comment field', async ({ page }) => {
@@ -286,9 +278,7 @@ test('a free answer and an empty change request use the comment field', async ({
   await page.goto(`${path}?tab=activity`)
   const own = 'The owner answered in their own words: Stream it to object storage in chunks.'
   await expect(page.getByText(own)).toBeVisible()
-  await page.goto('/inbox')
-  const waiting = page.getByRole('region', { name: 'Waiting on you' })
-  await waiting.getByRole('link', { name: /Brief to comment on \d/ }).first().click()
+  await openFromInbox(page, /Brief to comment on \d/)
   await page.getByRole('button', { name: 'Request changes' }).click()
   const missing = 'Say what should change, then press Request changes again.'
   await expect(page.getByRole('main').getByRole('alert')).toHaveText(missing)
