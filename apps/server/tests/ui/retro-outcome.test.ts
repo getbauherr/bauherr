@@ -54,6 +54,15 @@ describe('RetroOutcome', () => {
     expect(screen.getByRole('status').textContent).toContain('1 left to review')
   })
 
+  it('has one primary action, Apply, and shows a decided change as pressed rather than primary', () => {
+    show(outcome(['keep', 'undecided']))
+    const buttons = screen.getAllByRole('button')
+    const primary = buttons.filter((button) => button.className.includes('bg-primary'))
+    expect(primary.map((button) => button.textContent)).toEqual(['Apply'])
+    const keep = screen.getAllByRole('button', { name: 'Keep' })
+    expect(keep.map((button) => button.getAttribute('aria-pressed'))).toEqual(['true', 'false'])
+  })
+
   it('enables Apply once every change is decided', () => {
     show(outcome(['keep', 'discard']))
     expect(apply().disabled).toBe(false)

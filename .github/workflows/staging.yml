@@ -95,6 +95,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Deploy the image to staging
-        run: .github/scripts/trigger-deploy.sh staging "ghcr.io/getbauherr/bauherr:sha-$GITHUB_SHA"
+        run: |
+          echo "TRIGGERED_AT=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" >> "$GITHUB_ENV"
+          .github/scripts/trigger-deploy.sh staging "ghcr.io/getbauherr/bauherr:sha-$GITHUB_SHA"
       - name: Wait until staging reports this commit
-        run: .github/scripts/wait-health.sh "$SITE_URL" commit "${GITHUB_SHA::7}"
+        run: .github/scripts/wait-health.sh "$SITE_URL" commit "${GITHUB_SHA::7}" 15 "$TRIGGERED_AT"

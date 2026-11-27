@@ -16,6 +16,7 @@ const setup = (run: (s: Staged) => Promise<string | null> = () => Promise.resolv
     notify: vi.fn(),
     onError: vi.fn(),
     onSettled: vi.fn(),
+    onCommit: vi.fn(),
     delay: 6000,
   }
   return { deps, ...renderHook(() => usePendingDecisions(deps)) }
@@ -63,6 +64,18 @@ describe('undo instead of confirmation', () => {
     await act(() => vi.advanceTimersByTimeAsync(10_000))
     expect(deps.run).toHaveBeenCalledTimes(1)
     expect(deps.onSettled).toHaveBeenCalledWith(staged, false)
+  })
+
+  it('ends the undo offer the moment the decision is written, and not when undone', async () => {
+    const { deps, result } = setup()
+    act(() => result.current.stage(staged))
+    expect(deps.onCommit).not.toHaveBeenCalled()
+    await act(async () => result.current.flush())
+    expect(deps.onCommit).toHaveBeenCalledWith(staged)
+    expect(deps.run).toHaveBeenCalledTimes(1)
+    act(() => result.current.stage({ ...staged, key: 'other' }))
+    act(() => result.current.undo('other'))
+    expect(deps.onCommit).toHaveBeenCalledTimes(1)
   })
 
   it('commits when the owner leaves the page', async () => {

@@ -17,6 +17,7 @@ type Deps = {
   onError: (staged: Staged, message: string) => void
   onSettled: (staged: Staged, advance: boolean) => void
   onUndo?: (staged: Staged) => void
+  onCommit?: (staged: Staged) => void
   delay: number
 }
 
@@ -43,6 +44,7 @@ export function usePendingDecisions(deps: Deps): Pending {
       if (!entry) return
       clearTimeout(entry.timer)
       waiting.current.delete(key)
+      latest.current.onCommit?.(entry.staged)
       const failure = await latest.current.run(entry.staged)
       if (failure === null) return latest.current.onSettled(entry.staged, advance)
       drop(key)

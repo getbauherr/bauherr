@@ -3,6 +3,7 @@ import type { Forge } from '@bauherr/adapters'
 import type { Payload } from 'payload'
 import { z } from 'zod'
 import { ProductObserving } from '../forge/errors'
+import { holdOfProduct } from '../forge/limits'
 import { createWriter, defaultDeps, type ForgeWriter, type WriterDeps } from '../forge/writer'
 import { loadFacts } from '../readiness/load'
 import { forgeText } from './forge-text'
@@ -218,9 +219,14 @@ export const advanceRelease = async (ctx: Context, id: number): Promise<ReleaseR
 }
 
 export const advanceRunning = async (ctx: Context): Promise<number> => {
-  const ids = await runningIds(ctx.payload)
-  for (const id of ids) await advanceRelease(ctx, id)
-  return ids.length
+  let advanced = 0
+  for (const id of await runningIds(ctx.payload)) {
+    const run = await readRun(ctx.payload, id)
+    if (run && (await holdOfProduct(ctx.payload, target(run), ctx.deps.now()))) continue
+    await advanceRelease(ctx, id)
+    advanced++
+  }
+  return advanced
 }
 
 export const answerRelease = async (ctx: Context, at: ProductAt, id: number, option: RunOption): Promise<void> => {

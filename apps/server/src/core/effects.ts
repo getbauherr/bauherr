@@ -10,7 +10,7 @@ import { renderStatus } from './forge/status'
 import type { ForgeWriter, Target } from './forge/writer'
 import { foldOptions } from './lifecycle'
 import type { Effect } from './module'
-import { appendEvent, readEvents, readRecord, type StoredRecord } from './record/store'
+import { appendEvent, readEvents, readRecord, type StoredEvent, type StoredRecord } from './record/store'
 
 export type ForgePort = Pick<
   ForgeWriter,
@@ -103,9 +103,13 @@ const deferral = (effect: Effect, target: Deferred['target']): Deferred | null =
   }
 }
 
-const recordRefusal = async (deps: AdvanceDeps, stored: StoredRecord, effect: Effect, error: Error) => {
+const targetOf = (stored: StoredRecord, effect: Effect) => {
   const { repo, number } = stored.record.source
-  const target = { repo, number: effect.kind === 'review' ? effect.pr : number }
+  return { repo, number: effect.kind === 'review' ? effect.pr : number }
+}
+
+const recordRefusal = async (deps: AdvanceDeps, stored: StoredRecord, effect: Effect, error: Error) => {
+  const target = targetOf(stored, effect)
   const deferred = error instanceof ProductObserving ? deferral(effect, target) : null
   if (deferred !== null) {
     await appendEvent(deps.payload, stored.id, { type: 'forge.write.deferred', data: deferred, actor: 'factory' })
@@ -113,6 +117,22 @@ const recordRefusal = async (deps: AdvanceDeps, stored: StoredRecord, effect: Ef
   }
   const data = { kind: KINDS[effect.kind], target, reason: error.message.trim() || error.name }
   await appendEvent(deps.payload, stored.id, { type: 'forge.write.failed', data, actor: 'factory' })
+}
+
+const alreadyDeferred = (events: StoredEvent[], kind: Deferred['kind']): boolean => {
+  const last = events.findLast((event) => event.type === 'forge.write.deferred' && event.data.kind === kind)
+  const sent = events.some((e) => e.type === 'forge.write.done' && e.data.kind === kind && e.id > (last?.id ?? 0))
+  return last !== undefined && !sent
+}
+
+const deferUntilHeldEnds = async (deps: AdvanceDeps, stored: StoredRecord, effect: Effect) => {
+  const deferred = deferral(effect, targetOf(stored, effect))
+  if (deferred === null || alreadyDeferred(await readEvents(deps.payload, stored.id), deferred.kind)) return
+  await appendEvent(deps.payload, stored.id, {
+    type: 'forge.write.deferred',
+    data: { ...deferred, held: true },
+    actor: 'factory',
+  })
 }
 
 export const runEffects = async (deps: AdvanceDeps, recordId: number, effects: Effect[]): Promise<void> => {
@@ -126,7 +146,9 @@ export const runEffects = async (deps: AdvanceDeps, recordId: number, effects: E
     try {
       await perform(deps, stored, target, effect, writer)
     } catch (error) {
-      await holdForRecordError(deps.payload, recordId, error, deps.now)
+      if (await holdForRecordError(deps.payload, recordId, error, deps.now)) {
+        await deferUntilHeldEnds(deps, stored, effect)
+      }
       if (REFUSALS.some((refusal) => error instanceof refusal) && error instanceof Error) {
         await recordRefusal(deps, stored, effect, error)
       }

@@ -54,6 +54,8 @@ jobs:
           done
           echo "::error::$image was not published within 30 minutes"; exit 1
       - name: Deploy through the operator's deploy pipeline
-        run: .github/scripts/trigger-deploy.sh production "$VERSION"
+        run: |
+          echo "TRIGGERED_AT=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" >> "$GITHUB_ENV"
+          .github/scripts/trigger-deploy.sh production "$VERSION"
       - name: Wait until production reports the version
-        run: .github/scripts/wait-health.sh "$SITE_URL" version "$VERSION" 20
+        run: .github/scripts/wait-health.sh "$SITE_URL" version "$VERSION" 20 "$TRIGGERED_AT"

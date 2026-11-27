@@ -19,6 +19,7 @@ export type ApprovalCardProps = Omit<
   | 'description'
   | 'details'
   | 'variant'
+  | 'quiet'
   | 'icon'
   | 'onAllowOnce'
   | 'onAlwaysAllow'
@@ -35,6 +36,7 @@ export type ApprovalCardProps = Omit<
   description?: string | undefined
   details?: readonly ApprovalDetail[] | undefined
   variant?: 'default' | 'destructive' | undefined
+  quiet?: boolean | undefined
   icon?: ReactNode | undefined
   onAllowOnce?: (() => void) | undefined
   onAlwaysAllow?: (() => void) | undefined
@@ -58,6 +60,8 @@ const receiptIcon: Record<ReceiptState, ReactNode> = {
 }
 
 const actionButton = 'h-8 px-3.5 text-xs font-medium whitespace-nowrap'
+
+const quietAllow = 'border border-border text-foreground hover:bg-accent motion-reduce:transition-none'
 
 const destructiveAllow = cn(
   'text-background bg-danger transition-[background-color,scale] duration-150',
@@ -140,6 +144,7 @@ export function ApprovalBody({
 
 export function ApprovalRequestActions({
   variant,
+  quiet,
   onAllowOnce,
   onAlwaysAllow,
   onDeny,
@@ -148,7 +153,7 @@ export function ApprovalRequestActions({
   denyLabel = 'Deny',
 }: Pick<
   ApprovalCardProps,
-  'variant' | 'onAllowOnce' | 'onAlwaysAllow' | 'onDeny' | 'allowOnceLabel' | 'alwaysAllowLabel' | 'denyLabel'
+  'variant' | 'quiet' | 'onAllowOnce' | 'onAlwaysAllow' | 'onDeny' | 'allowOnceLabel' | 'alwaysAllowLabel' | 'denyLabel'
 >) {
   return (
     <>
@@ -173,7 +178,7 @@ export function ApprovalRequestActions({
           data-slot="approval-card-allow-once"
           onClick={onAllowOnce}
           className={cn(
-            variant === 'destructive' ? destructiveAllow : inkButton,
+            variant === 'destructive' ? destructiveAllow : quiet ? quietAllow : inkButton,
             'flex h-8 items-center rounded-full px-3.5 text-xs font-medium whitespace-nowrap',
           )}
         >

@@ -11,10 +11,11 @@ import { readEvents } from './record/store'
 const pendingRow = z.object({ record_id: z.coerce.number(), data: deferredSchema })
 const recordRow = z.object({ id: z.coerce.number(), live: z.boolean() })
 
-const pendingOf = async (payload: Payload, product: number) => {
+const pendingOf = async (payload: Payload, where: ReturnType<typeof sql>) => {
   const result = await payload.db.drizzle.execute(sql`
     SELECT e."record_id", e."data" FROM "events" e JOIN "records" r ON r."id" = e."record_id"
-    WHERE r."product_id" = ${product} AND e."type" = 'forge.write.deferred'
+    JOIN "products" p ON p."id" = r."product_id"
+    WHERE e."type" = 'forge.write.deferred' AND ${where}
       AND NOT EXISTS (SELECT 1 FROM "events" d WHERE d."record_id" = e."record_id" AND d."type" = 'forge.write.done'
         AND d."data"->>'kind' = e."data"->>'kind' AND d."id" > e."id")
     ORDER BY e."id"`)
@@ -50,12 +51,22 @@ const workStarted = async (deps: AdvanceDeps, recordId: number): Promise<boolean
 }
 
 export const sendDeferred = async (deps: AdvanceDeps, product: number): Promise<void> => {
-  for (const { record_id, data } of await pendingOf(deps.payload, product)) {
+  for (const { record_id, data } of await pendingOf(deps.payload, sql`r."product_id" = ${product}`)) {
     await send(deps, record_id, data)
   }
   const records = await recordsOf(deps.payload, product)
   for (const { id } of records.filter((record) => record.live)) await advance(id, deps)
   for (const { id } of records) {
     if (await workStarted(deps, id)) await runEffects(deps, id, [{ kind: 'status' }])
+  }
+}
+
+export const sendHeld = async (deps: AdvanceDeps): Promise<void> => {
+  const free = sql`p."state" = 'active' AND e."data"->>'held' = 'true' AND NOT EXISTS (
+    SELECT 1 FROM "ticket_sources" s JOIN "connections" c ON c."id" = s."connection_id"
+    WHERE s."product_id" = r."product_id"
+      AND (c."forge_limits"->>'pausedUntil')::timestamptz > ${deps.now.toISOString()}::timestamptz)`
+  for (const { record_id, data } of await pendingOf(deps.payload, free)) {
+    await send(deps, record_id, data)
   }
 }

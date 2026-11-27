@@ -30,7 +30,7 @@ export default async function Factory({ searchParams }: { searchParams: Promise<
   const holds = await activeHolds(payload, workspace.id, new Date())
   return (
     <>
-      <ForgeHoldBanner holds={holds} />
+      <ForgeHoldBanner holds={holds.map(({ message, until }) => ({ message, until: until.toISOString() }))} />
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
         <h1 className="title">Factory</h1>
         <Suspense fallback={<Skeleton className="h-4 w-72" />}>

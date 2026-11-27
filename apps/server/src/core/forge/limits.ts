@@ -136,3 +136,14 @@ export const pollWaits = async (
   const polled = z.object({ polled: z.coerce.date().nullable() }).parse(found.rows[0] ?? { polled: null }).polled
   return polled !== null && now.getTime() - polled.getTime() < LOW_BUDGET_POLL_MS
 }
+
+export const holdOfProduct = async (
+  payload: Payload,
+  at: { workspace: number; product: number },
+  now: Date,
+): Promise<Hold | null> => {
+  const found = await payload.db.drizzle.execute(sql`
+    SELECT "connection_id" AS id FROM "ticket_sources"
+    WHERE "workspace_id" = ${at.workspace} AND "product_id" = ${at.product} ORDER BY "id" LIMIT 1`)
+  return found.rows[0] ? holdOf(payload, idSchema.parse(found.rows[0]).id, now) : null
+}
