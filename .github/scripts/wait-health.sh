@@ -6,7 +6,7 @@ set -euo pipefail
 url=${1:?url}; field=${2:?field}; expected=${3:?expected}; minutes=${4:-15}; after=${5:-}
 deadline=$((SECONDS + minutes * 60))
 while :; do
-  if body=$(curl -fsS --max-time 10 "$url/api/health" 2>/dev/null) && jq -e --arg f "$field" --arg v "$expected" --arg after "$after" '.ok == true and .[$f] == $v and (.startedAt // "") > $after' <<<"$body" > /dev/null; then
+  if body=$(curl -fsS --max-time 10 "$url/api/health" 2>/dev/null) && jq -e --arg f "$field" --arg v "$expected" --arg after "$after" '.ok == true and .[$f] == $v and ($after == "" or (.startedAt // "") > $after)' <<<"$body" > /dev/null; then
     echo "$url reports $field=$expected"
     exit 0
   fi

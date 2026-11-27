@@ -1,6 +1,7 @@
 name: staging
 # Every merge to main: build the image (a test build: the staging site runs the fake forge), start it once against a throw-away Postgres (migrates on start like compose.yaml) and report the check `staging` on that sha.
 # A passing image is pushed as ghcr.io/getbauherr/bauherr:sha-<sha> and deployed to the staging site (repository variable BAUHERR_STAGING_URL) by the operator's deploy pipeline; the deployment reports the commit at /api/health.
+# The deploy job has one group for all shas (the latest merge wins) and skips a sha that is no longer the tip, so an older run can never finish last.
 # Version images are built by release.yml and deployed to production by deploy.yml.
 on:
   push:
@@ -81,22 +82,31 @@ jobs:
     needs: staging
     runs-on: ubuntu-latest
     concurrency:
-      group: staging-deploy-${{ github.sha }}
-      cancel-in-progress: false
+      group: staging-deploy
+      cancel-in-progress: true
     environment:
       name: staging
       url: ${{ vars.BAUHERR_STAGING_URL }}
     permissions:
       contents: read
     env:
+      GH_TOKEN: ${{ github.token }}
       DEPLOY_TRIGGER_TOKEN: ${{ secrets.DEPLOY_TRIGGER_TOKEN }}
       DEPLOY_TRIGGER_URL: ${{ vars.DEPLOY_TRIGGER_URL }}
       SITE_URL: ${{ vars.BAUHERR_STAGING_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Deploy the image to staging
+      - name: Skip a commit that is no longer the tip of the default branch
+        id: tip
         run: |
-          echo "TRIGGERED_AT=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" >> "$GITHUB_ENV"
+          current=$(.github/scripts/is-tip.sh "$GITHUB_SHA")
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          [ "$current" = true ] || echo "::notice::$GITHUB_SHA is not the tip any more: a newer merge deploys instead"
+      - name: Deploy the image to staging
+        if: steps.tip.outputs.current == 'true'
+        run: |
+          echo "TRIGGERED_AT=$(.github/scripts/trigger-time.sh "$SITE_URL" commit "${GITHUB_SHA::7}")" >> "$GITHUB_ENV"
           .github/scripts/trigger-deploy.sh staging "ghcr.io/getbauherr/bauherr:sha-$GITHUB_SHA"
       - name: Wait until staging reports this commit
+        if: steps.tip.outputs.current == 'true'
         run: .github/scripts/wait-health.sh "$SITE_URL" commit "${GITHUB_SHA::7}" 15 "$TRIGGERED_AT"

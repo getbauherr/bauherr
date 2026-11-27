@@ -37,6 +37,8 @@ export const deferredSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('question'), target, body: id, held }),
   z.object({ kind: z.literal('close'), target, reason: z.enum(['completed', 'not_planned', 'duplicate']), held }),
   z.object({ kind: z.literal('review'), target, body: id, held }),
+  z.object({ kind: z.literal('status-comment'), target, held }),
+  z.object({ kind: z.literal('reopen'), target, held }),
 ])
 export type Deferred = z.infer<typeof deferredSchema>
 
