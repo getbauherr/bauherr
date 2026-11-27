@@ -7,8 +7,8 @@ import type { TurnDeps } from '../../../core/requests/turn'
 import { requestSkill } from '../../../lean'
 import { secret } from '../../../lib/secrets'
 import { publicUrl } from '../../../lib/oidc'
-import { ModelUnavailable } from '../../../lib/retro-model'
-import { requestModel } from '../../../lib/request-model'
+import { ModelUnavailable } from './retro-model'
+import { requestModel } from './request-model'
 
 export const turnDeps = async (payload: Payload): Promise<TurnDeps> => ({
   model: await requestModel(payload),

@@ -4,6 +4,7 @@ import { createConversation } from '../../../core/conversations/store'
 import { createDraft } from '../../../core/requests/store'
 import { grantNewRequest } from '../../(app)/lib/conversation-access'
 import { getPerson } from '../../(app)/lib/session'
+import { unauthorized } from '../../(app)/lib/unauthorized'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -16,7 +17,7 @@ export const POST = async (req: Request): Promise<Response> => {
     const signedIn = await getPerson()
     return signedIn
       ? Response.json({ error: 'Send the product.' }, { status: 400 })
-      : Response.json({ error: 'Sign in first.' }, { status: 401 })
+      : unauthorized()
   }
   const { product } = parsed.data
   const granted = await grantNewRequest(parsed.data.workspace, product)

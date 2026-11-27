@@ -1,6 +1,6 @@
 import type { Payload } from 'payload'
-import type { RequestModel } from '../core/requests/turn'
-import { assertFakeAllowed } from './fake-guard'
+import type { RequestModel } from '../../../core/requests/turn'
+import { assertFakeAllowed } from '../../../lib/fake-guard'
 import { gatewayModel } from './retro-model'
 
 assertFakeAllowed('BAUHERR_E2E_FAKE_FORGE')

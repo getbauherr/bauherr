@@ -6,6 +6,7 @@ import { loadDraft } from '../../../core/requests/store'
 import { mayOpenRequest, requestScope } from '../../../core/views/request-access'
 import { isBauherr, isProductOwner } from '../../../lib/people'
 import { getPerson, payloadClient, WS_COOKIE, workspacesOf } from './session'
+import { unauthorized } from './unauthorized'
 
 export type Granted = { payload: Payload; workspace: number }
 
@@ -14,7 +15,7 @@ type Person = NonNullable<Awaited<ReturnType<typeof getPerson>>>
 const notFound = () => new Response(null, { status: 404 })
 
 const signedIn = async (): Promise<Person | Response> =>
-  (await getPerson()) ?? Response.json({ error: 'Sign in first.' }, { status: 401 })
+  (await getPerson()) ?? unauthorized()
 
 const positiveId = (raw: string): number | null => {
   const id = Number(raw)

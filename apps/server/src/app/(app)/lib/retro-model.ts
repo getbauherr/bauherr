@@ -1,9 +1,9 @@
 import type { Payload } from 'payload'
 import { z } from 'zod'
-import type { RetroModel } from '../core/retro/model'
-import { assertFakeAllowed } from './fake-guard'
-import { tierModels } from './gateway'
-import { decrypt } from './secrets'
+import type { RetroModel } from '../../../core/retro/model'
+import { assertFakeAllowed } from '../../../lib/fake-guard'
+import { tierModels } from '../../../lib/gateway'
+import { decrypt } from '../../../lib/secrets'
 
 const workspaceRow = z.looseObject({ id: z.number(), gatewayKey: z.string().nullish() })
 
