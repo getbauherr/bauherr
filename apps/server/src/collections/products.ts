@@ -1,6 +1,7 @@
 import type { CollectionAfterDeleteHook } from 'payload'
 import { assignmentRows } from '../lib/people'
 import { col, date, text } from './fields'
+import { seal } from './seal'
 
 const GLOB_SET_NAME = /^[a-z][a-z0-9-]*$/
 const validGlob = (x: unknown): boolean => typeof x === 'string' && x.trim() !== '' && !/\s/.test(x)
@@ -118,6 +119,19 @@ export const products = col(
           '{name: [globs]}, e.g. {"security": ["src/auth/**"], "ui": ["src/app/**"]}. ' +
           'A set that is empty or not declared never matches.',
       },
+    },
+    {
+      name: 'incidentIntake',
+      type: 'checkbox',
+      defaultValue: false,
+      admin: { description: 'Create tickets from production alerts sent to the alert webhook.' },
+    },
+    {
+      name: 'incidentSecret',
+      type: 'text',
+      admin: { description: 'Write-only. Encrypted at rest; shown once.' },
+      access: { read: () => false },
+      hooks: { beforeChange: [({ value }) => seal(value)] },
     },
   ],
   { hooks: { afterDelete: [dropProductFromAssignments] } },

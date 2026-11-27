@@ -1,10 +1,12 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { alertState } from '../../../../../../core/alerts/store'
 import { readiness } from '../../../../../../core/readiness/view'
 import { forgeCheckNames, productSettings } from '../../../../../../core/views/product-settings'
 import { ticketsMessage, blockedBy, recordCountOf } from '../../../../../../lib/settings-guards'
 import { EmptyState } from '../../../../components/EmptyState'
 import { PageTitle } from '../../../../components/PageTitle'
+import { AlertsSection } from '../../../../components/product/AlertsSection'
 import { GatesSection } from '../../../../components/product/GatesSection'
 import { IntakeSection } from '../../../../components/product/IntakeSection'
 import { ProofSection } from '../../../../components/product/ProofSection'
@@ -69,6 +71,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       <RepositorySection product={product} connections={await gitConnections(payload, workspace.id)} admin={admin} />
       <IntakeSection product={product} admin={admin} />
       <GatesSection product={product} admin={admin} />
+      <AlertsSection product={product.id} state={await alertState(payload, filter)} admin={admin} />
       <ProofSection product={product} forgeChecks={await forgeCheckNames(payload, filter)} admin={admin} />
       <p className="small text-muted-foreground">
         What the factory remembers for this Product is on the{' '}
