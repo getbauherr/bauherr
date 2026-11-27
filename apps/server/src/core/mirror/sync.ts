@@ -7,17 +7,8 @@ import { readerFor, type ForgeReader, type ReadTickets } from '../forge/reader'
 import { refreshFacts } from './facts'
 import { commentRow, errorText, isDue, itemFromTicket, laterOf, lookbackFrom, takeBatch } from './map'
 import { BATCH, isCurrent, reconcile, syncDeployChecks, syncMergeability, syncPulls, type PullContext } from './pulls'
-import {
-  finishSource,
-  knownItems,
-  latestCommentAt,
-  liveSources,
-  saveCursor,
-  upsertComments,
-  upsertItem,
-  type SourcePatch,
-  type SourceRow,
-} from './store'
+import { finishSource, liveSources, saveCursor, type SourcePatch, type SourceRow } from './source-store'
+import { knownItems, latestCommentAt, upsertComments, upsertItem } from './store'
 
 export const LOOKBACK_HOURS = 6
 const LOOKBACK_EVERY_MS = 3_600_000

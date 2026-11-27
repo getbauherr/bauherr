@@ -1,36 +1,31 @@
-import type {
-  Backend,
-  CloseReason,
-  Comment,
-  Forge,
-  NewPullRequest,
-  PullRequest,
-  Ticket,
-  TicketSource,
-} from '@bauherr/adapters'
+import type { CloseReason, Comment, NewPullRequest, PullRequest, Ticket } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { backendFor } from '../../lib/adapters'
-import { connectionInput } from '../../lib/connection'
-import { appendEvent } from '../record/store'
-import { WRITE_KINDS, type Stage } from '../events'
+import { type Stage } from '../events'
 import { bringUpToDate, type BranchUpdate } from './branch-update'
 import { settleMerge } from './merge-pending'
-import { checkNewRelation } from '../relations/relate'
 import { edgeOf } from '../relations/proposal'
-import { syncForgeLink } from '../relations/forge-link'
-import { normalised, type Edge } from '../relations/rules'
-import { deleteEdge, insertEdge, itemFacts, itemsByNumber } from '../relations/store'
-import { RelationRefused, typeOf } from '../relations/types'
+import { itemsByNumber } from '../relations/store'
+import type { Edge } from '../relations/rules'
 import type { RelationKind } from '../record/schema'
-import { commentRow, errorText, itemFromPull, itemFromTicket } from '../mirror/map'
+import { commentRow, itemFromPull, itemFromTicket } from '../mirror/map'
 import { upsertComments, upsertItem } from '../mirror/store'
 import { disclosed, hashBody, planStageLabels } from './disclosure'
 import { releaseWrites } from './release-writes'
-import { HeadMoved, ProductObserving, TargetNotFound, WrongItemKind } from './errors'
+import { assertActive, HeadMoved, TargetNotFound } from './errors'
+import { changeRelation, linkSeries } from './relation-writes'
+import {
+  defaultDeps,
+  open,
+  perform,
+  ticketId,
+  type Ctx,
+  type Session,
+  type WriteKind,
+  type WriterDeps,
+} from './write-session'
 import {
   findIssueByReference,
   loadProductRow,
-  loadWriteRow,
   saveClosed,
   saveHead,
   saveLabels,
@@ -38,53 +33,11 @@ import {
   saveStatusComment,
   type ProductTarget,
   type Target,
-  type WriteRow,
 } from './write-store'
 
-export type WriteKind = (typeof WRITE_KINDS)[number]
-export type WriterDeps = { backend: (connection: number) => Promise<Backend>; now: () => Date }
-export type { ProductTarget, Target }
+export { defaultDeps }
+export type { ProductTarget, Target, WriteKind, WriterDeps }
 export type NewIssue = { title: string; body: string; reference: string }
-
-type Ctx = { payload: Payload; deps: WriterDeps }
-type Session = { row: WriteRow; tickets: TicketSource; forge: Forge }
-type Step<T> = { call: (session: Session) => Promise<T>; mirror: (session: Session, result: T) => Promise<void> }
-
-const ticketId = (row: WriteRow): string => String(row.number)
-const place = (row: WriteRow) => ({ repo: row.repo, number: row.number })
-
-export const defaultDeps = (payload: Payload): WriterDeps => ({
-  backend: async (connection) => backendFor(await connectionInput(payload, connection)),
-  now: () => new Date(),
-})
-
-const open = async (ctx: Ctx, target: Target, kind: 'issue' | 'pr'): Promise<Session> => {
-  const row = await loadWriteRow(ctx.payload, target)
-  if (row.productState !== 'active') {
-    throw new ProductObserving(`Product ${row.productName} is observing: nothing is written to the forge.`)
-  }
-  if (row.kind !== kind) {
-    throw new WrongItemKind(`${row.repo}#${row.number} is a ${row.kind}: this write needs a ${kind}.`)
-  }
-  const backend = await ctx.deps.backend(row.connection)
-  return { row, tickets: backend.tickets(row.repo), forge: backend.forge }
-}
-
-const perform = async <T>(ctx: Ctx, target: Target, kind: WriteKind, session: Session, step: Step<T>): Promise<T> => {
-  const data = { kind, target: place(session.row) }
-  const append = (event: Parameters<typeof appendEvent>[2]) => appendEvent(ctx.payload, target.recordId, event)
-  await append({ type: 'forge.write.started', data, actor: 'factory' })
-  let result: T
-  try {
-    result = await step.call(session)
-  } catch (error) {
-    await append({ type: 'forge.write.failed', data: { ...data, reason: errorText(error) }, actor: 'factory' })
-    throw error
-  }
-  await append({ type: 'forge.write.done', data, actor: 'factory' })
-  await step.mirror(session, result)
-  return result
-}
 
 const mirrorComment = (ctx: Ctx, session: Session, target: Target, comment: Comment) =>
   upsertComments(ctx.payload, session.row.workspace, target.itemId, [commentRow(comment)])
@@ -187,9 +140,7 @@ const reviewPullRequest = async (ctx: Ctx, target: Target, body: string): Promis
 
 const openIssue = async (ctx: Ctx, target: ProductTarget, input: NewIssue): Promise<Ticket> => {
   const row = await loadProductRow(ctx.payload, target)
-  if (row.productState !== 'active') {
-    throw new ProductObserving(`Product ${row.productName} is observing: nothing is written to the forge.`)
-  }
+  assertActive(row)
   const tickets = (await ctx.deps.backend(row.connection)).tickets(row.repo)
   const reference = `Reference: ${input.reference}`
   const earlier = await findIssueByReference(ctx.payload, { source: row.source, reference })
@@ -203,9 +154,7 @@ const openIssue = async (ctx: Ctx, target: ProductTarget, input: NewIssue): Prom
 
 const commentOnIssue = async (ctx: Ctx, target: ProductTarget, number: number, body: string): Promise<void> => {
   const row = await loadProductRow(ctx.payload, target)
-  if (row.productState !== 'active') {
-    throw new ProductObserving(`Product ${row.productName} is observing: nothing is written to the forge.`)
-  }
+  assertActive(row)
   await (await ctx.deps.backend(row.connection)).tickets(row.repo).comment(String(number), disclosed(body))
 }
 
@@ -225,49 +174,8 @@ const reopenIssue = async (ctx: Ctx, target: Target): Promise<void> => {
   })
 }
 
-const relationEnds = async (ctx: Ctx, input: Edge) => {
-  const type = typeOf(input.type)
-  const edge = normalised(input, type)
-  const facts = await itemFacts(ctx.payload, [edge.from, edge.to])
-  const from = facts.get(edge.from)
-  const to = facts.get(edge.to)
-  if (!from || !to) throw new TargetNotFound(`Tickets ${edge.from} and ${edge.to} must both be mirrored.`)
-  return { type, edge, from, to }
-}
-
-const changeRelation = async (ctx: Ctx, recordId: number, input: Edge, change: 'add' | 'remove'): Promise<void> => {
-  const { type, edge, from, to } = await relationEnds(ctx, input)
-  if (change === 'add') await checkNewRelation(ctx.payload, from.workspace, edge)
-  const save = () =>
-    change === 'add' ? insertEdge(ctx.payload, from.workspace, edge) : deleteEdge(ctx.payload, edge)
-  const { forge } = type
-  if (!forge) return save()
-  if (from.repo !== to.repo) {
-    throw new RelationRefused(`"${type.key}" is kept on the forge, which links tickets of one repository only.`)
-  }
-  const [mine, other] = forge.ticketIs === 'to' ? [to, from] : [from, to]
-  const target = { recordId, itemId: mine.id }
-  const session = await open(ctx, target, 'issue')
-  await perform(ctx, target, change === 'add' ? 'relation-add' : 'relation-remove', session, {
-    call: ({ tickets }) => {
-      const link = { field: forge.field, mine: mine.number, other: other.number }
-      return syncForgeLink(tickets, type, link, change)
-    },
-    mirror: save,
-  })
-}
 
 export type SeriesIssue = NewIssue & { relations?: { type: RelationKind; with: number }[] }
-
-const linkSeries = async (ctx: Ctx, tickets: TicketSource, input: Edge): Promise<void> => {
-  const { type, edge, from, to } = await relationEnds(ctx, input)
-  await checkNewRelation(ctx.payload, from.workspace, edge)
-  if (type.forge) {
-    const [mine, other] = type.forge.ticketIs === 'to' ? [to, from] : [from, to]
-    await syncForgeLink(tickets, type, { field: type.forge.field, mine: mine.number, other: other.number }, 'add')
-  }
-  await insertEdge(ctx.payload, from.workspace, edge)
-}
 
 const openIssues = async (ctx: Ctx, target: ProductTarget, inputs: SeriesIssue[]): Promise<Ticket[]> => {
   const issues: Ticket[] = []

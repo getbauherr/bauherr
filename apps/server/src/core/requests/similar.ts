@@ -16,6 +16,13 @@ export type SimilarRequest = { number: number; title: string; url: string }
 
 const rowSchema = z.object({ number: z.coerce.number(), title: z.string(), url: z.string().nullable() })
 
+const similarity = (mine: Set<string>, title: string): number | null => {
+  const theirs = words(title)
+  const shared = [...theirs].filter((word) => mine.has(word)).length
+  const score = theirs.size === 0 ? 0 : shared / theirs.size
+  return shared >= 3 && score >= 0.6 ? score : null
+}
+
 export const similarOpen = async (
   payload: Payload,
   where: { workspace: number; product: number },
@@ -29,10 +36,8 @@ export const similarOpen = async (
   let best: { item: SimilarRequest; score: number } | null = null
   for (const raw of found.rows) {
     const item = rowSchema.parse(raw)
-    const theirs = words(item.title)
-    const shared = [...theirs].filter((word) => mine.has(word)).length
-    const score = theirs.size === 0 ? 0 : shared / theirs.size
-    if (shared >= 3 && score >= 0.6 && (best === null || score > best.score)) {
+    const score = similarity(mine, item.title)
+    if (score !== null && (best === null || score > best.score)) {
       best = { item: { number: item.number, title: item.title, url: item.url ?? '' }, score }
     }
   }

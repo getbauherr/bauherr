@@ -17,18 +17,22 @@ const fakeForge = fake ? (await import('./fake-forge')).fakeForge : null
 
 const appAuths = new Map<string, GithubAuth>()
 
-const githubAuth = (connection: ConnectionInput, secret: string, limits: Limits): GithubAuth => {
+const appIds = (connection: ConnectionInput): { appId: string; installationId: string } | null => {
   const { appId, installationId } = connection.config
-  if (typeof appId !== 'string' || typeof installationId !== 'string' || !appId || !installationId) {
-    return patAuth(secret)
-  }
-  const key = `${connection.id}:${appId}:${installationId}:${createHash('sha256').update(secret).digest('hex')}`
+  return typeof appId === 'string' && typeof installationId === 'string' && appId && installationId
+    ? { appId, installationId }
+    : null
+}
+
+const githubAuth = (connection: ConnectionInput, secret: string, limits: Limits): GithubAuth => {
+  const ids = appIds(connection)
+  if (!ids) return patAuth(secret)
+  const key = `${connection.id}:${ids.appId}:${ids.installationId}:${createHash('sha256').update(secret).digest('hex')}`
   const apiUrl = typeof connection.config.apiUrl === 'string' ? connection.config.apiUrl : undefined
   let auth = appAuths.get(key)
   if (!auth) {
     auth = appAuth({
-      appId,
-      installationId,
+      ...ids,
       privateKeyPem: secret,
       ...(apiUrl && { baseUrl: apiUrl }),
       ...(limits.fetch && { fetch: limits.fetch }),

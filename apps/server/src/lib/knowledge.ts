@@ -23,6 +23,9 @@ export type Citation = {
   text: string
 }
 
+const headingMatch = (line: string, active: boolean): RegExpExecArray | null =>
+  active ? /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(line) : null
+
 export const chunk = (text: string, markdown = true): { heading: string; text: string }[] => {
   const out: { heading: string; text: string }[] = []
   let heading = ''
@@ -34,7 +37,7 @@ export const chunk = (text: string, markdown = true): { heading: string; text: s
   }
   for (const line of text.split(/(?<=\n)/)) {
     if (markdown && /^\s*(```|~~~)/.test(line)) fence = !fence
-    const h = markdown && !fence ? /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(line) : null
+    const h = headingMatch(line, markdown && !fence)
     if (h || cur.length + line.length > CHUNK_CHARS) flush()
     if (h) heading = h[1]!
     cur += line

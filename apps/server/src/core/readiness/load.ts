@@ -76,23 +76,31 @@ const sourceOf = async (payload: Payload, f: FactsFilter) => {
   return found.rows[0] ? sourceRow.parse(found.rows[0]) : null
 }
 
+const sourceFacts = (source: Awaited<ReturnType<typeof sourceOf>>) => ({
+  checkedAt: source?.facts_at?.toISOString() ?? null,
+  repo: source?.repo ?? null,
+  repository: source ? repositoryOf(source) : null,
+  release: source?.release_facts ?? null,
+})
+
 export const loadFacts = async (payload: Payload, f: FactsFilter): Promise<Loaded | null> => {
   const product = await productOf(payload, f)
   if (!product) return null
   const source = await sourceOf(payload, f)
   const waiting = await loadNotStarted(payload, f)
+  const { checkedAt, repo, repository, release } = sourceFacts(source)
   return {
-    checkedAt: source?.facts_at?.toISOString() ?? null,
-    repo: source?.repo ?? null,
+    checkedAt,
+    repo,
     facts: {
       requiredChecks: product.required_checks,
       riskAreas: product.risk_areas,
       pulls: await recentPulls(payload, f.product),
-      repository: source ? repositoryOf(source) : null,
+      repository,
       executor: product.executor,
       rolesSeen: await rolesSeen(payload, f),
       releaseMode: product.release_mode,
-      release: source?.release_facts ?? null,
+      release,
       waiting: waiting.map(({ recordId, number, waitedMinutes }) => ({ recordId, number, waitedMinutes })),
     },
   }

@@ -8,6 +8,15 @@ import { RelationRefused } from './types'
 
 const REFUSALS = [RelationRefused, ProductObserving, TargetNotFound, WrongItemKind]
 
+type Place = { repo: string; number: number }
+
+const recordRefusal = async (deps: AdvanceDeps, recordId: number, target: Place, error: unknown): Promise<void> => {
+  if (!REFUSALS.some((refusal) => error instanceof refusal) || !(error instanceof Error)) return
+  const reason = error.message.trim() || error.name
+  const data = { kind: 'relation-add' as const, target, reason }
+  await appendEvent(deps.payload, recordId, { type: 'forge.write.failed', data, actor: 'factory' })
+}
+
 export const createKept = async (deps: AdvanceDeps, recordId: number, relations: ProposedRelation[]): Promise<void> => {
   const writer = deps.forge
   if (!writer || relations.length === 0) return
@@ -23,10 +32,7 @@ export const createKept = async (deps: AdvanceDeps, recordId: number, relations:
       }
       await writer.addRelation(recordId, edgeOf(relation.type, self, other))
     } catch (error) {
-      if (!REFUSALS.some((refusal) => error instanceof refusal) || !(error instanceof Error)) continue
-      const reason = error.message.trim() || error.name
-      const data = { kind: 'relation-add' as const, target: { repo, number }, reason }
-      await appendEvent(deps.payload, recordId, { type: 'forge.write.failed', data, actor: 'factory' })
+      await recordRefusal(deps, recordId, { repo, number }, error)
     }
   }
 }

@@ -77,18 +77,29 @@ type Settled = { entry: DecisionEntry; answers: Answers | null }
 
 type Chosen = { entry: DecisionEntry; note: string }
 
-const entryOf = (asked: string | null, seq: number, decision: Decision, state: State): Chosen => {
-  if (asked !== decision.ask || seq !== decision.seq) {
-    const now = asked ?? 'nothing'
-    throw new StaleDecision(`The ticket is not asking ${decision.ask} (${now}): reload and decide again.`)
-  }
-  const entry = choiceOf(asked, decision.choice, state)
-  if (!entry) throw new InvalidDecision(`${decision.choice} is not an option of ${asked}: pick one of its options.`)
+const assertAsking: (asked: string | null, seq: number, decision: Decision) => asserts asked is string = (
+  asked,
+  seq,
+  decision,
+) => {
+  if (asked === decision.ask && seq === decision.seq) return
+  const now = asked ?? 'nothing'
+  throw new StaleDecision(`The ticket is not asking ${decision.ask} (${now}): reload and decide again.`)
+}
+
+const noteOf = (entry: DecisionEntry, decision: Decision): string => {
   const note = noteSchema.safeParse(decision.note)
   if ((entry.needsNote || decision.note !== undefined) && !note.success) {
     throw new InvalidDecision(`The note of ${decision.choice} must have 1 to ${NOTE_MAX} characters: fix it.`)
   }
-  return { entry, note: note.success ? note.data : '' }
+  return note.success ? note.data : ''
+}
+
+const entryOf = (asked: string | null, seq: number, decision: Decision, state: State): Chosen => {
+  assertAsking(asked, seq, decision)
+  const entry = choiceOf(asked, decision.choice, state)
+  if (!entry) throw new InvalidDecision(`${decision.choice} is not an option of ${asked}: pick one of its options.`)
+  return { entry, note: noteOf(entry, decision) }
 }
 
 const answersOf = (asked: string | null, decision: Decision, record: TicketRecord): Answers | null => {

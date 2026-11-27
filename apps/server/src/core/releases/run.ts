@@ -36,16 +36,22 @@ type Context = { payload: Payload; deps: ReleaseDeps; writer: ForgeWriter }
 
 export type StartInput = ProductAt & { version: string; notesLink: string }
 
+type Ready = Awaited<ReturnType<typeof readyToRelease>>
+
+const checked = (ready: Ready, version: string): NonNullable<Ready> => {
+  if (!ready) throw new ReleaseRefused('The repository has not been read yet.')
+  if (ready.refusal) throw new ReleaseRefused(ready.refusal)
+  if (!validVersion(version, ready.tags)) {
+    throw new ReleaseRefused(`${version} is already used or is not a version number such as v1.2.3.`)
+  }
+  return ready
+}
+
 export const startRelease = async (ctx: Context, input: StartInput, ask: AskModel): Promise<ReleaseRun> => {
   const { payload, deps } = ctx
   const existing = await runByVersion(payload, input.product, input.version)
   if (existing && existing.state !== 'abandoned') return existing
-  const ready = await readyToRelease(payload, input, deps.now())
-  if (!ready) throw new ReleaseRefused('The repository has not been read yet.')
-  if (ready.refusal) throw new ReleaseRefused(ready.refusal)
-  if (!validVersion(input.version, ready.tags)) {
-    throw new ReleaseRefused(`${input.version} is already used or is not a version number such as v1.2.3.`)
-  }
+  const ready = checked(await readyToRelease(payload, input, deps.now()), input.version)
   await writeNotesFor(payload, { ...input, version: UNRELEASED }, ready.merged, ask)
   const notes = await readNotes(payload, input.product, UNRELEASED)
   const body = forgeText(notes?.items ?? [], notes?.internal ?? 0, input.notesLink)

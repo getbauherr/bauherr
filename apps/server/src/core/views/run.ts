@@ -60,15 +60,7 @@ const recordDetail = (record: Pick<TicketRecord, 'criteria' | 'decisions'>): str
   return `goal, ${criteria}, ${counted(record.decisions.length, 'decision', 'decisions')}`
 }
 
-const partsOf = (
-  stage: Stage,
-  record: Pick<TicketRecord, 'criteria' | 'decisions'>,
-  context: StoredContext | null,
-): RunPart[] => [
-  { label: 'Stage skill', detail: stage },
-  { label: 'Record', detail: recordDetail(record) },
-  { label: 'Result schema', detail: stage },
-  ...(stage === 'intake' ? [{ label: 'Intake facts', detail: 'the issue, its comments, similar issues' }] : []),
+const contextParts = (context: StoredContext | null): RunPart[] => [
   ...(context?.agentsFile.given
     ? [{ label: 'Repository map', detail: context.agentsFile.cut ? 'AGENTS.md, cut' : 'AGENTS.md' }]
     : []),
@@ -78,6 +70,18 @@ const partsOf = (
   ...(context && context.similar.length > 0
     ? [{ label: 'Similar tickets', detail: String(context.similar.length) }]
     : []),
+]
+
+const partsOf = (
+  stage: Stage,
+  record: Pick<TicketRecord, 'criteria' | 'decisions'>,
+  context: StoredContext | null,
+): RunPart[] => [
+  { label: 'Stage skill', detail: stage },
+  { label: 'Record', detail: recordDetail(record) },
+  { label: 'Result schema', detail: stage },
+  ...(stage === 'intake' ? [{ label: 'Intake facts', detail: 'the issue, its comments, similar issues' }] : []),
+  ...contextParts(context),
 ]
 
 const handoffOf = (run: { stage: Stage; status: string }, record: Pick<TicketRecord, 'handoff'>): string | null => {

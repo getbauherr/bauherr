@@ -1,6 +1,6 @@
 import type { Backend, Forge, Release } from '@bauherr/adapters'
 import type { Payload } from 'payload'
-import { ProductObserving } from './errors'
+import { assertActive } from './errors'
 import { loadProductRow, type ProductTarget } from './write-store'
 
 export type NewRelease = { tag: string; sha: string; name: string; body: string }
@@ -10,9 +10,7 @@ type Deps = { backend: (connection: number) => Promise<Backend> }
 export const releaseWrites = (payload: Payload, deps: Deps) => {
   const forgeOf = async (target: ProductTarget): Promise<{ repo: string; forge: Forge }> => {
     const row = await loadProductRow(payload, target)
-    if (row.productState !== 'active') {
-      throw new ProductObserving(`Product ${row.productName} is observing: nothing is written to the forge.`)
-    }
+    assertActive(row)
     return { repo: row.repo, forge: (await deps.backend(row.connection)).forge }
   }
   return {

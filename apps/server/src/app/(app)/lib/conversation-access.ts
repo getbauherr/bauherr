@@ -9,12 +9,22 @@ import { getPerson, payloadClient, WS_COOKIE, workspacesOf } from './session'
 
 export type Granted = { payload: Payload; workspace: number }
 
-const NOT_SIGNED_IN = { error: 'Sign in first.' }
+type Person = NonNullable<Awaited<ReturnType<typeof getPerson>>>
 
-const mayUse = async (person: NonNullable<Awaited<ReturnType<typeof getPerson>>>, workspace: number) =>
+const notFound = () => new Response(null, { status: 404 })
+
+const signedIn = async (): Promise<Person | Response> =>
+  (await getPerson()) ?? Response.json({ error: 'Sign in first.' }, { status: 401 })
+
+const positiveId = (raw: string): number | null => {
+  const id = Number(raw)
+  return Number.isInteger(id) && id > 0 ? id : null
+}
+
+const mayUse = async (person: Person, workspace: number) =>
   !isProductOwner(person) && isBauherr(person) && (await workspacesOf(person)).some((w) => w.id === workspace)
 
-const chosenWorkspace = async (person: Parameters<typeof workspacesOf>[0], asked: number | undefined) => {
+const chosenWorkspace = async (person: Person, asked: number | undefined) => {
   if (asked !== undefined) return asked
   const slug = (await cookies()).get(WS_COOKIE)?.value
   const mine = await workspacesOf(person)
@@ -22,14 +32,14 @@ const chosenWorkspace = async (person: Parameters<typeof workspacesOf>[0], asked
 }
 
 export const grantWorkspace = async (asked: number | undefined): Promise<Granted | Response> => {
-  const person = await getPerson()
-  if (!person) return Response.json(NOT_SIGNED_IN, { status: 401 })
+  const person = await signedIn()
+  if (person instanceof Response) return person
   const workspace = await chosenWorkspace(person, asked)
-  if (workspace === undefined || !(await mayUse(person, workspace))) return new Response(null, { status: 404 })
+  if (workspace === undefined || !(await mayUse(person, workspace))) return notFound()
   return { payload: await payloadClient(), workspace }
 }
 
-const mayUseFiles = async (person: Parameters<typeof mayOpenRequest>[0], payload: Payload, id: number) => {
+const mayUseFiles = async (person: Person, payload: Payload, id: number) => {
   const recordId = await conversationRecord(payload, id)
   const scope = recordId === null ? null : await requestScope(payload, recordId)
   if (recordId === null || scope === null || !mayOpenRequest(person, scope)) return false
@@ -40,21 +50,19 @@ export const grantConversation = async (
   rawId: string,
   access: 'files' | 'all' = 'all',
 ): Promise<(Granted & { id: number }) | Response> => {
-  const person = await getPerson()
-  if (!person) return Response.json(NOT_SIGNED_IN, { status: 401 })
-  const id = Number(rawId)
-  if (!Number.isInteger(id) || id <= 0) return new Response(null, { status: 404 })
+  const person = await signedIn()
+  if (person instanceof Response) return person
+  const id = positiveId(rawId)
+  if (id === null) return notFound()
   const payload = await payloadClient()
   const workspace = await conversationWorkspace(payload, id)
-  if (workspace === null) return new Response(null, { status: 404 })
+  if (workspace === null) return notFound()
   const allowed =
     isProductOwner(person) && access === 'files'
       ? await mayUseFiles(person, payload, id)
       : await mayUse(person, workspace)
-  return allowed ? { payload, workspace, id } : new Response(null, { status: 404 })
+  return allowed ? { payload, workspace, id } : notFound()
 }
-
-type Person = NonNullable<Awaited<ReturnType<typeof getPerson>>>
 
 const mayRequest = async (person: Person, workspace: number, product: number) =>
   (await workspacesOf(person)).some((w) => w.id === workspace) && mayOpenRequest(person, { workspace, product })
@@ -63,22 +71,22 @@ export const grantNewRequest = async (
   asked: number | undefined,
   product: number,
 ): Promise<Granted | Response> => {
-  const person = await getPerson()
-  if (!person) return Response.json(NOT_SIGNED_IN, { status: 401 })
+  const person = await signedIn()
+  if (person instanceof Response) return person
   const workspace = await chosenWorkspace(person, asked)
   if (workspace === undefined || !(await mayRequest(person, workspace, product))) {
-    return new Response(null, { status: 404 })
+    return notFound()
   }
   return { payload: await payloadClient(), workspace }
 }
 
 export const grantRequest = async (rawId: string): Promise<(Granted & { id: number }) | Response> => {
-  const person = await getPerson()
-  if (!person) return Response.json(NOT_SIGNED_IN, { status: 401 })
-  const id = Number(rawId)
-  if (!Number.isInteger(id) || id <= 0) return new Response(null, { status: 404 })
+  const person = await signedIn()
+  if (person instanceof Response) return person
+  const id = positiveId(rawId)
+  if (id === null) return notFound()
   const payload = await payloadClient()
   const draft = await loadDraft(payload, id)
-  if (!draft || !(await mayRequest(person, draft.workspace, draft.product))) return new Response(null, { status: 404 })
+  if (!draft || !(await mayRequest(person, draft.workspace, draft.product))) return notFound()
   return { payload, workspace: draft.workspace, id }
 }

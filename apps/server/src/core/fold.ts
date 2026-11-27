@@ -138,22 +138,25 @@ const updated: Reducer = (state, event, options) => {
   return { ...state, patch: { ...state.patch, headSha: data.headSha }, verdict, checks }
 }
 
+const rebuilt = (state: State, data: EventOf<'build.submitted'>['data'], options: FoldOptions): State => {
+  const fresh = {
+    ...submitted(state, data.runId),
+    merged: false,
+    mergeSha: null,
+    deployed: false,
+    deployStalled: null,
+    accepted: false,
+    overridden: false,
+  }
+  const latest = { id: data.patchId, pr: data.pr, headSha: data.headSha }
+  const checks = options.requiredChecks === false ? 'none' : 'pending'
+  return { ...enter(fresh, 'verify'), patch: latest, reviewed: null, conflict: null, checks, verdict: null }
+}
+
 const patch: Reducer = (state, event, options) => {
   switch (event.type) {
-    case 'build.submitted': {
-      const fresh = {
-        ...submitted(state, event.data.runId),
-        merged: false,
-        mergeSha: null,
-        deployed: false,
-        deployStalled: null,
-        accepted: false,
-        overridden: false,
-      }
-      const latest = { id: event.data.patchId, pr: event.data.pr, headSha: event.data.headSha }
-      const checks = options.requiredChecks === false ? 'none' : 'pending'
-      return { ...enter(fresh, 'verify'), patch: latest, reviewed: null, conflict: null, checks, verdict: null }
-    }
+    case 'build.submitted':
+      return rebuilt(state, event.data, options)
     case 'build.already-done': {
       const { by, evidence } = event.data
       return { ...submitted(state, event.data.runId), alreadyDone: { by, evidence } }

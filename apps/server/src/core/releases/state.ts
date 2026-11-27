@@ -4,7 +4,7 @@ import type { Payload } from 'payload'
 import { z } from 'zod'
 import type { ReadForge } from '../forge/reader'
 import { releasesOnly, sortVersions } from '../readiness/release-facts'
-import type { SourceRow } from '../mirror/store'
+import type { SourceRow } from '../mirror/source-store'
 
 const MAX_VERSIONS = 20
 const NOTES_MAX = 20_000
