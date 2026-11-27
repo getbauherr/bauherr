@@ -1,12 +1,13 @@
 import type { Payload, User } from 'payload'
 import { expect } from 'vitest'
 import { z } from 'zod'
+import { cookiesMock } from './cookie-jar'
 import { createTestDb, type TestDb } from './test-db'
 
 export const PO_PAGES: Record<string, string> = {
   login: 'public sign-in; a signed-in account is sent to its home',
   '': 'the Factory view for a Bauherr; a Product owner gets a static empty state that reads no data',
-  requests: 'the Requests of the Products assigned to them, nothing else',
+  requests: 'the Requests of the Products assigned to them, nothing else (requests-bauherr-access.test.ts)',
   'requests/new': 'the new request screen; only the Products assigned to them are offered (request-new-guard.test.ts)',
   'requests/[id]': 'one request of an assigned Product; any other answers 404 (request-page-guard.test.ts)',
 }
@@ -66,6 +67,7 @@ export const PO_ACTIONS: Record<string, string> = {
   'lib/actions.ts#logout': 'sign-out',
   '(shell)/requests/actions.ts#startRequestConversation': 'comment on a request of their own product',
   '(shell)/requests/actions.ts#commentOnRequestAction': 'comment on a request of their own product',
+  '(shell)/requests/actions.ts#chooseRequestProduct': 'remember an assigned Product as the last used one',
   '(shell)/requests/more-actions.tsx#moreRequests': 'the next rows of the Requests of an assigned Product',
 }
 export const BAUHERR_ACTIONS = [
@@ -203,16 +205,13 @@ export const partition = (what: string, all: string[], po: string[], bauherr: st
 }
 
 export const stringsOf = (docs: unknown, key: string): string[] =>
-  z
-    .array(z.record(z.string(), z.unknown()))
-    .parse(docs)
-    .map((d) => z.string().parse(d[key]))
+  z.array(z.record(z.string(), z.unknown())).parse(docs).map((d) => z.string().parse(d[key]))
 
 export const session = { cookie: '' }
 
 export const nextHeadersMock = () => ({
   headers: async () => new Headers({ cookie: session.cookie }),
-  cookies: async () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
+  cookies: cookiesMock,
 })
 
 export const o = { overrideAccess: true } as const

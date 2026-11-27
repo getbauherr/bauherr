@@ -2,10 +2,15 @@ import { Chart, Factory, Inbox, Memory, Release, Settings, Ticket } from './icon
 
 export type NavItem = { href: string; label: string; Icon: typeof Factory; match: (path: string) => boolean }
 
+const requestsItem = (): NavItem => ({
+  href: '/requests',
+  label: 'Requests',
+  Icon: Ticket,
+  match: (p) => p.startsWith('/requests'),
+})
+
 export const mainItems = (productOwner = false): NavItem[] =>
-  productOwner
-    ? [{ href: '/requests', label: 'Requests', Icon: Ticket, match: (p) => p.startsWith('/requests') }]
-    : bauherrItems()
+  productOwner ? [requestsItem()] : [...bauherrItems(), requestsItem()]
 
 const bauherrItems = (): NavItem[] => [
   { href: '/', label: 'Factory', Icon: Factory, match: (p) => p === '/' },

@@ -19,6 +19,7 @@ import { seedInsights } from './seed-insights'
 import { seedMemoryEditor } from './seed-memory-editor'
 import { seedRetro } from './seed-retro'
 import { seedRequests } from './seed-requests'
+import { seedRequestsSwitch } from './seed-requests-switch'
 import { seedHandover } from './seed-handover'
 import { seedTicketRelations } from './seed-ticket-relations'
 
@@ -206,6 +207,7 @@ await seedMemoryEditor(payload, (address, tenant) => user(address, 'bauherr', { 
 await seedReadiness(payload)
 await seedReleasesCheck(payload)
 await seedRequests(payload)
+await seedRequestsSwitch(payload)
 await seedHandover(payload, user)
 await seedInsights(payload)
 await seedTicketRelations(payload)

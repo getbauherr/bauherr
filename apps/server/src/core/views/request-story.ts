@@ -56,6 +56,11 @@ const CLOSE_WORDS: Record<string, string> = {
   'intake.closed': 'Closed: not taken on',
 }
 
+const ROLE_TITLES = { bauherr: 'Bauherr', 'product-owner': 'Product owner' } as const
+
+const authorOf = ({ reporter, reporterRole }: TicketRecord['source']): string =>
+  reporterRole ? `${reporter} (${ROLE_TITLES[reporterRole]})` : reporter
+
 const commentRow = z.object({ author: z.string().nullable(), body: z.string().nullable(), at: z.coerce.date() })
 const productRow = z.object({ name: z.string(), staging_url: z.string().nullable() })
 
@@ -190,7 +195,7 @@ export const requestStory = async (
   const product = await loadProduct(payload, view.recordId)
   const first = stored[0]?.createdAt ?? new Date().toISOString()
   const sent = {
-    ...base({ id: 'sent', kind: 'sent', at: first, who: view.record.source.reporter, title: 'Request sent' }),
+    ...base({ id: 'sent', kind: 'sent', at: first, who: authorOf(view.record.source), title: 'Request sent' }),
     text: view.title,
   }
   const comments = await loadComments(payload, filter.workspace, view)
@@ -210,7 +215,7 @@ export const requestStory = async (
     events,
     about: {
       type: TYPE_WORDS[view.record.type],
-      by: view.record.source.reporter,
+      by: authorOf(view.record.source),
       created: first,
       product: product.name,
     },

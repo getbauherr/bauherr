@@ -2,10 +2,12 @@ import { z } from 'zod'
 import { UploadRefused } from '../../../../core/attachments/image'
 import { listMessages } from '../../../../core/conversations/store'
 import { TYPES } from '../../../../core/record/schema'
+import type { CommentRole } from '../../../../core/requests/comments'
 import { chooseType, closeRequest, joinExisting } from '../../../../core/requests/actions'
 import { sendRequest } from '../../../../core/requests/send'
 import { takeTurn } from '../../../../core/requests/turn'
 import { draftView } from '../../../../core/requests/view'
+import { isProductOwner } from '../../../../lib/people'
 import { grantRequest } from '../../../(app)/lib/conversation-access'
 import { refusal, sendDeps, turnDeps } from '../../../(app)/lib/request-wiring'
 import { getPerson } from '../../../(app)/lib/session'
@@ -42,6 +44,11 @@ export const GET = async (_req: Request, context: Context): Promise<Response> =>
 type Body = z.infer<typeof action>
 type Granted = Exclude<Awaited<ReturnType<typeof grantRequest>>, Response>
 
+const roleOf = async (): Promise<CommentRole> => {
+  const person = await getPerson()
+  return person && isProductOwner(person) ? 'product-owner' : 'bauherr'
+}
+
 const perform = async ({ payload, id }: Granted, body: Body): Promise<void> => {
   switch (body.action) {
     case 'message':
@@ -49,12 +56,12 @@ const perform = async ({ payload, id }: Granted, body: Body): Promise<void> => {
     case 'type':
       return chooseType(payload, id, body.type)
     case 'join':
-      return joinExisting(payload, sendDeps(payload), id)
+      return joinExisting(payload, sendDeps(payload), id, await roleOf())
     case 'close':
       return closeRequest(payload, id)
     case 'send': {
       const reporter = (await getPerson())?.email ?? ''
-      await sendRequest(payload, sendDeps(payload), { conversationId: id, reporter })
+      await sendRequest(payload, sendDeps(payload), { conversationId: id, reporter, role: await roleOf() })
     }
   }
 }

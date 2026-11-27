@@ -7,6 +7,7 @@ import type { Conn } from '../conn'
 import { appendEvent, type StoredEvent } from '../record/store'
 
 export type CommentRole = 'product-owner' | 'bauherr'
+export const AUTHOR_WORDS: Record<CommentRole, string> = { 'product-owner': 'a product owner', bauherr: 'the Bauherr' }
 export type CommentFileView = { id: number; conversationId: number; name: string; contentType: string }
 export type RequestComment = {
   id: number

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { EmptyState } from '../../components/EmptyState'
 import { FirstVisit } from '../../components/request/FirstVisit'
-import { ProductPicker } from '../../components/request/ProductPicker'
+import { ProductSwitcher } from '../../components/request/ProductSwitcher'
 import { RequestFilters } from '../../components/request/RequestFilters'
 import { RequestRows } from '../../components/request/RequestRows'
 import { Button } from '../../components/ui/button'
@@ -10,7 +10,14 @@ import { REQUEST_FILTERS, type RequestFilter } from '../../../../core/views/requ
 import { isBauherr } from '../../../../lib/people'
 import { moreRequests } from './more-actions'
 import { payloadClient } from '../../lib/session'
-import { readableProducts, requestChunk, requestTotals, requireRequestsReader, viewerOf } from '../../lib/requests'
+import {
+  chosenProduct,
+  readableProducts,
+  requestChunk,
+  requestTotals,
+  requireRequestsReader,
+  viewerOf,
+} from '../../lib/requests'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,7 +40,7 @@ export default async function Requests({
   const payload = await payloadClient()
   const products = await readableProducts(payload, person)
   const query = (await searchParams) ?? {}
-  const product = products.find((p) => String(p.id) === query.product) ?? products[0]
+  const product = await chosenProduct(products, query.product)
   if (!product) {
     return (
       <>
@@ -53,15 +60,15 @@ export default async function Requests({
     <>
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="title">Requests</h1>
-        <ProductPicker products={products} current={product.id} />
+        <ProductSwitcher products={products} current={product.id} />
         {total > 0 && (
           <Button asChild className="ml-auto">
-            <Link href="/requests/new">New request</Link>
+            <Link href={`/requests/new?product=${product.id}`}>New request</Link>
           </Button>
         )}
       </div>
       {total === 0 ? (
-        <FirstVisit product={product.name} />
+        <FirstVisit product={product.name} productId={product.id} />
       ) : (
         <>
           <RequestFilters product={product.id} current={filter} counts={counts} />

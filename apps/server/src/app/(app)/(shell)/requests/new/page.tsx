@@ -8,6 +8,7 @@ import { memoryProducts } from '../../../../../core/views/memory-products'
 import { EmptyState } from '../../../components/EmptyState'
 import { PageTitle } from '../../../components/PageTitle'
 import { NewRequest } from '../../../components/request/NewRequest'
+import { chosenProduct } from '../../../lib/requests'
 import { currentPersonWorkspace, payloadClient } from '../../../lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -20,7 +21,7 @@ const resume = async (payload: Payload, person: Person, workspace: number, draft
   const found = await loadDraft(payload, id)
   if (!found || found.workspace !== workspace) return null
   if (!mayOpenRequest(person, { workspace, product: found.product })) return null
-  return { id, messages: await listMessages(payload, id), draft: await draftView(payload, id) }
+  return { id, product: found.product, messages: await listMessages(payload, id), draft: await draftView(payload, id) }
 }
 
 export default async function NewRequestPage({ searchParams }: Props) {
@@ -30,17 +31,16 @@ export default async function NewRequestPage({ searchParams }: Props) {
   const products = (await memoryProducts(payload, workspace.id))
     .filter(({ id }) => mayOpenRequest(user, { workspace: workspace.id, product: id }))
     .map(({ id, name }) => ({ id, name }))
-  const first = products[0]
-  if (!first) return <EmptyState text="Add a Product first: a request belongs to a Product." />
   const { product, draft } = await searchParams
   const resumed = await resume(payload, user, workspace.id, draft)
-  const asked = products.find((entry) => entry.id === Number(product)) ?? first
+  const asked = resumed?.product ?? (await chosenProduct(products, product))?.id
+  if (asked === undefined) return <EmptyState text="Add a Product first: a request belongs to a Product." />
   return (
     <>
       <PageTitle>New request</PageTitle>
       <div className="mx-auto grid w-full max-w-6xl gap-4 p-6">
         <h1 className="heading m-0">New request</h1>
-        <NewRequest workspace={workspace.id} products={products} product={asked.id} initial={resumed} />
+        <NewRequest workspace={workspace.id} products={products} product={asked} initial={resumed} />
       </div>
     </>
   )

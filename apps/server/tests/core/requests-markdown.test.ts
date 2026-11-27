@@ -26,7 +26,8 @@ const draftWith = (text: string): Draft => ({
 })
 
 const file = (name: string) => ({ id: 3, name, contentType: 'application/pdf', bytes: 1 })
-const render = (text: string, name = 'a.pdf') => bodyOf(draftWith(text), [file(name)], 'https://b.test', 'k')
+const render = (text: string, name = 'a.pdf') =>
+  bodyOf(draftWith(text), [file(name)], 'https://b.test', 'k', 'product-owner')
 
 describe('owner words in the issue', () => {
   it.each(['Closes #3', 'fixes: #12', 'RESOLVED #9', 'closes https://github.com/o/r/issues/3'])(

@@ -25,7 +25,7 @@ A Bauherr who runs the Bauherr instance. Creates Workspaces, is a member of all 
 _Avoid_: Superadmin, root
 
 **Product owner**:
-An account with a login that ranks below the Bauherr. It sees a reduced shell today. Requests from Product owners are planned, not built. See `docs/spec/people.md`.
+An account with a login that ranks below the Bauherr. It sees a reduced shell: Requests of its own Products. See `docs/spec/people.md`.
 _Avoid_: Project owner
 
 ### External systems

@@ -10,7 +10,7 @@ const FLOW = `flowchart LR
   E --> F[Live]
   Y((You and the factory's owner<br/>comment at any time)) -.-> C & D & E`
 
-export function FirstVisit({ product }: { product: string }) {
+export function FirstVisit({ product, productId }: { product: string; productId: number }) {
   return (
     <section
       aria-labelledby="first-visit"
@@ -28,7 +28,7 @@ export function FirstVisit({ product }: { product: string }) {
         <MermaidBlock source={FLOW} />
       </div>
       <Button asChild>
-        <Link href="/requests/new">Start your first request</Link>
+        <Link href={`/requests/new?product=${productId}`}>Start your first request</Link>
       </Button>
     </section>
   )
