@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { openFromInbox } from './inbox'
+import { inboxHref } from './inbox'
 import { email } from './user'
 
 const password = () => readFileSync(process.env.E2E_PASSWORD_FILE!, 'utf8').trim()
@@ -23,7 +23,8 @@ const say = async (page: Page, text: string) => {
 
 test('the composer answers a question and turns a request into an intent that Undo cancels', async ({ page }) => {
   await signIn(page)
-  await openFromInbox(page, /Question to steer from the composer 1/)
+  const href = await inboxHref(page, /Question to steer from the composer 1/)
+  await page.goto(href.replace('/tickets/', '/inbox?t='))
   const composer = page.locator('.aui-composer-input')
   await expect(composer).toHaveAttribute('placeholder', /Tell the factory what to do with #\d+/)
   const stamp = Date.now()
