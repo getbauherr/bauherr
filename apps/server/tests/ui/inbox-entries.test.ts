@@ -5,7 +5,10 @@ import {
   listOf,
   mergeEntries,
   neighbour,
+  INBOX_FIRST,
+  INBOX_PAGE,
   nextWaiting,
+  pagingOf,
   type InboxEntry,
 } from '../../src/app/(app)/lib/inbox-entries'
 import type { BoardCard } from '../../src/core/views/board'
@@ -105,5 +108,23 @@ describe('inbox list', () => {
     expect(groupOf(card(1, 'failed-runs'), 'you')).toBe('failed')
     expect(groupOf(card(1, 'verify-rounds'), 'you')).toBe('waiting')
     expect(groupOf(card(1), 'others')).toBe('others')
+  })
+})
+
+describe('inbox paging', () => {
+  const cursor = { updatedAt: '2026-11-27T10:00:00.000Z', id: 1 }
+  const full = (count: number): InboxChunk => ({
+    cards: Array.from({ length: count }, (_, i) => card(i + 1)),
+    total: count + 10,
+    cursor,
+  })
+  const of = (working: number, done: number) => ({ ...chunks({}), working: full(working), done: full(done) })
+
+  it('offers Decided after its first 5 and the others after a full page', () => {
+    expect(INBOX_FIRST.done).toBe(5)
+    expect(pagingOf(of(5, 5)).done.cursor).toEqual(cursor)
+    expect(pagingOf(of(5, 5)).working.cursor).toBeNull()
+    expect(pagingOf(of(INBOX_PAGE, 4)).working.cursor).toEqual(cursor)
+    expect(pagingOf(of(INBOX_PAGE, 4)).done.cursor).toBeNull()
   })
 })

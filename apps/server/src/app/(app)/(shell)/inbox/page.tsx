@@ -9,7 +9,7 @@ import { AutoRefresh } from '../../components/AutoRefresh'
 import { EmptyState } from '../../components/EmptyState'
 import { InboxView } from '../../components/inbox/InboxView'
 import { BOARD_TABLES } from '../../lib/change-tables'
-import { defaultSelection, INBOX_PAGE, listOf, pagingOf, type InboxEntry } from '../../lib/inbox-entries'
+import { defaultSelection, INBOX_FIRST, listOf, pagingOf, type InboxEntry } from '../../lib/inbox-entries'
 import { emptyThread, sessionThread, unreadableThread, threadOf, type ThreadModel } from '../../lib/inbox-thread'
 import { ticketRefs } from '../../lib/refs'
 import { currentWorkspace, payloadClient } from '../../lib/session'
@@ -43,7 +43,7 @@ export default async function Inbox({ searchParams }: { searchParams: Search }) 
   const payload = await payloadClient()
   const filter = { workspace: workspace.id, now: new Date() }
   const [chunks, held, sessions] = await Promise.all([
-    loadInbox(payload, filter, INBOX_PAGE),
+    loadInbox(payload, filter, INBOX_FIRST),
     heldOf(payload, filter),
     agentSessions(payload, { workspace: workspace.id, owner: Number(user.id), now: filter.now }),
   ])

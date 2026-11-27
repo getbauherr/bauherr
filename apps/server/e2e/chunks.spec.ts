@@ -18,7 +18,7 @@ const enter = async (page: Page, path: string) => {
 
 const keysIn = (rows: Locator) => rows.evaluateAll((nodes) => nodes.map((n) => n.getAttribute('data-inbox-row')))
 
-test('Inbox: Waiting on you is complete, Decided loads 50 rows and Show more adds the next 50', async ({ page }) => {
+test('Inbox: Waiting on you is complete, Decided loads 5 rows and Show more adds the next 50', async ({ page }) => {
   await enter(page, '/inbox')
   const waiting = page.locator('[data-inbox-row]').filter({ has: page.locator('.bg-warn') })
   await expect(waiting.first()).toBeVisible()
@@ -29,9 +29,11 @@ test('Inbox: Waiting on you is complete, Decided loads 50 rows and Show more add
 
   const rows = page.locator('[data-inbox-row]').filter({ has: page.locator('svg.lucide-check') })
   const more = page.getByRole('button', { name: 'Show more' }).last()
-  await expect(rows).toHaveCount(50)
+  await expect(rows).toHaveCount(5)
   await more.scrollIntoViewIfNeeded()
-  await expect.poll(() => rows.count()).toBeGreaterThanOrEqual(100)
+  await expect(rows).toHaveCount(5)
+  await more.click()
+  await expect(rows).toHaveCount(55)
   const keys = await keysIn(rows)
   expect(new Set(keys).size, 'no row appears twice').toBe(keys.length)
 })

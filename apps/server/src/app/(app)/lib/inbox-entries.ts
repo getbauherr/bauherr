@@ -20,6 +20,8 @@ export const LIST_TITLES: Record<ListGroup, string> = {
 export const PAGED_GROUPS = ['working', 'others', 'done'] as const satisfies readonly InboxGroupId[]
 export type PagedGroup = (typeof PAGED_GROUPS)[number]
 
+export const INBOX_FIRST: Record<PagedGroup, number> = { working: INBOX_PAGE, others: INBOX_PAGE, done: 5 }
+
 export type InboxEntry = {
   id: string
   kind: 'ticket' | 'session' | 'held'
@@ -130,7 +132,7 @@ export type Paging = { cursor: InboxCursor | null; total: number; shown: number 
 export const pagingOf = (chunks: Record<InboxGroupId, InboxChunk>): Record<PagedGroup, Paging> => {
   const of = (group: PagedGroup): Paging => {
     const { cards, cursor, total } = chunks[group]
-    return { cursor: cards.length >= INBOX_PAGE ? cursor : null, total, shown: cards.length }
+    return { cursor: cards.length >= INBOX_FIRST[group] ? cursor : null, total, shown: cards.length }
   }
   return { working: of('working'), others: of('others'), done: of('done') }
 }

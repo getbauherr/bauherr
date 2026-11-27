@@ -38,8 +38,8 @@ afterAll(async () => {
 
 describe('Inbox chunks', () => {
   it('keep the exact totals, the same order and no row twice across Show more', async () => {
-    const full = await loadInbox(e.db.payload, filter(), 10_000)
-    const first = await loadInbox(e.db.payload, filter(), 20)
+    const full = await loadInbox(e.db.payload, filter(), { working: 10_000, others: 10_000, done: 10_000 })
+    const first = await loadInbox(e.db.payload, filter(), { working: 20, others: 20, done: 20 })
     expect(first.you.cards.map((c) => c.recordId)).toEqual(full.you.cards.map((c) => c.recordId))
     for (const group of INBOX_GROUPS) {
       expect(first[group].total, group).toBe(full[group].total)
@@ -55,6 +55,13 @@ describe('Inbox chunks', () => {
       cursor = more.cards.length === 20 ? more.cursor : null
     }
     expect(seen).toEqual(full.done.cards.map((c) => c.recordId))
+  })
+
+  it('loads a window per group in one query', async () => {
+    const first = await loadInbox(e.db.payload, filter(), { working: 7, others: 3, done: 5 })
+    expect(first.others.cards).toHaveLength(3)
+    expect(first.done.cards).toHaveLength(5)
+    expect(first.done.total).toBeGreaterThan(5)
   })
 })
 
