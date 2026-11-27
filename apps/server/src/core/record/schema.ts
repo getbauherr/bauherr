@@ -18,6 +18,7 @@ const source = z.object({
   backlog: z.boolean(),
   adopted: z.object({ pr: z.number().int().positive() }).optional(),
   readiness: z.string().min(1).optional(),
+  alert: z.string().min(1).optional(),
 })
 
 export const criterionSchema = z.object({

@@ -12,7 +12,7 @@ screenshots/banner*.svg
 nav = [
   { "Home" = "index.md" },
   { "Using the factory" = ["ui.md"] },
-  { "Operating it" = ["auth.md", "gateway.md"] },
+  { "Operating it" = ["auth.md", "gateway.md", "alerts.md"] },
   { "Reference" = [
     { "People" = ["spec/people.md"] },
     { "Credits" = "references.md" },

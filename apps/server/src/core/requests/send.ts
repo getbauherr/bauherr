@@ -42,7 +42,7 @@ export const bodyOf = (draft: Draft, files: DraftFile[], origin: string, key: st
 
 const sourceRow = z.object({ kind: z.enum(['github', 'gitlab']), repo: z.string() })
 
-const sourceOf = async (db: Conn, workspace: number, product: number) => {
+export const sourceOf = async (db: Conn, workspace: number, product: number) => {
   const found = await db.db.drizzle.execute(sql`
     SELECT c."kind"::text AS kind, s."repo" FROM "ticket_sources" s JOIN "connections" c ON c."id" = s."connection_id"
     WHERE s."product_id" = ${product} AND s."workspace_id" = ${workspace} ORDER BY s."id" LIMIT 1`)

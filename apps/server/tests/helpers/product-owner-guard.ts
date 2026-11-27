@@ -38,6 +38,7 @@ export const BAUHERR_PAGES = [
 ]
 export const PO_ROUTES: Record<string, string> = {
   'api/hooks/[connection] POST': 'forge webhook: no session, signature-verified',
+  'api/alerts/[product] POST': 'alert webhook: no session, bearer secret, 404 while the setting is off',
   'api/health GET': 'unauthenticated health probe',
   'api/attachments/upload/[token] PUT': 'run image upload: no session, a one-time token',
   'api/request-files/[id]/[fileId]/[token] GET': 'sent request file for forge readers: no session, an HMAC token',
@@ -128,8 +129,7 @@ export const BAUHERR_ACTIONS = [
     'revokeOwnKey',
   ].map((n) => `(shell)/settings/actions.ts#${n}`),
 )
-const CONNECT_PAGES = ['settings/products/[id]/connect']
-BAUHERR_PAGES.push(...CONNECT_PAGES)
+BAUHERR_PAGES.push('settings/products/[id]/connect')
 const PRODUCT_SECTION_ACTIONS = [
   'saveExecutor',
   'saveIntake',
@@ -142,6 +142,7 @@ const PRODUCT_SECTION_ACTIONS = [
   'makeReadinessTicket',
 ]
 BAUHERR_ACTIONS.push(...PRODUCT_SECTION_ACTIONS.map((n) => `(shell)/settings/products/[id]/actions.ts#${n}`))
+BAUHERR_ACTIONS.push(...['saveAlerts', 'createAlertSecret'].map((n) => `(shell)/settings/products/[id]/alerts.ts#${n}`))
 export const PO_COLLECTIONS: Record<string, Record<string, string>> = {
   bauherren: {
     read: 'own account only',
