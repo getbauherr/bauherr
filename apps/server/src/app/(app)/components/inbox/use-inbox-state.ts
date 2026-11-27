@@ -21,8 +21,8 @@ import { usePendingDecisions, type Staged } from './use-pending-decisions'
 const run = async ({ input, comment, recordId }: Staged): Promise<string | null> =>
   comment === undefined ? ((await decideTicket(input)).error ?? null) : sendComment(recordId, comment)
 
-const notify = ({ receipt, number }: Staged, undo: () => void) =>
-  toast(`${receipt} on #${number}`, { duration: UNDO_MS, action: { label: 'Undo', onClick: undo } })
+const notify = ({ key, receipt, number }: Staged, undo: () => void) =>
+  toast(`${receipt} on #${number}`, { id: key, duration: UNDO_MS, action: { label: 'Undo', onClick: undo } })
 
 export function useInboxState(first: InboxEntry[], paging: Record<PagedGroup, Paging>, selected: string) {
   const router = useRouter()
@@ -38,6 +38,7 @@ export function useInboxState(first: InboxEntry[], paging: Record<PagedGroup, Pa
     run,
     notify,
     delay: UNDO_MS,
+    onCommit: ({ key }) => void toast.dismiss(key),
     onError: (_staged, message) => toast.error(message),
     onUndo: (staged) => {
       if (staged.steered) void noteUndone(staged.recordId).then(() => router.refresh())

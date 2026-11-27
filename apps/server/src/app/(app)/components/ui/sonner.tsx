@@ -13,6 +13,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
       className="toaster group"
+      toastOptions={{
+        classNames: {
+          actionButton: "!bg-primary !text-primary-foreground hover:!bg-accent-strong",
+        },
+      }}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,

@@ -6,10 +6,15 @@ vi.mock('@payload-config', () => ({ default: {} }))
 vi.mock('payload', () => ({ getPayload: async () => ({}) }))
 vi.mock('../src/lib/health', () => ({ staleTasks }))
 
-const call = async (): Promise<{ status: number; body: unknown }> => {
+const raw = async (): Promise<{ status: number; body: Record<string, unknown> }> => {
   const { GET } = await import('../src/app/api/health/route')
   const res = await GET()
-  return { status: res.status, body: await res.json() }
+  return { status: res.status, body: (await res.json()) as Record<string, unknown> }
+}
+
+const call = async (): Promise<{ status: number; body: unknown }> => {
+  const { status, body } = await raw()
+  return { status, body: Object.fromEntries(Object.entries(body).filter(([key]) => key !== 'startedAt')) }
 }
 
 beforeEach(() => {
@@ -40,4 +45,11 @@ it('carries version and commit on a 503 too', async () => {
     status: 503,
     body: { ok: false, stale: ['refresh-prices'], version: '0.7.0', commit: '7e7b712' },
   })
+})
+
+it('names when the process started, in the past, as an ISO time', async () => {
+  const { startedAt } = (await raw()).body
+  expect(typeof startedAt).toBe('string')
+  expect(new Date(String(startedAt)).toISOString()).toBe(startedAt)
+  expect(Date.parse(String(startedAt))).toBeLessThanOrEqual(Date.now())
 })

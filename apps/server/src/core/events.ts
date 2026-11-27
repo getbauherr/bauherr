@@ -31,10 +31,12 @@ export const WRITE_KINDS = [
 const target = z.object({ repo: id, number: z.number().int().positive() })
 const write = { kind: z.enum(WRITE_KINDS), target }
 
+const held = z.boolean().optional()
+
 export const deferredSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('question'), target, body: id }),
-  z.object({ kind: z.literal('close'), target, reason: z.enum(['completed', 'not_planned', 'duplicate']) }),
-  z.object({ kind: z.literal('review'), target, body: id }),
+  z.object({ kind: z.literal('question'), target, body: id, held }),
+  z.object({ kind: z.literal('close'), target, reason: z.enum(['completed', 'not_planned', 'duplicate']), held }),
+  z.object({ kind: z.literal('review'), target, body: id, held }),
 ])
 export type Deferred = z.infer<typeof deferredSchema>
 

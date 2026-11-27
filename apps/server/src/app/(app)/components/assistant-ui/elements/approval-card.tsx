@@ -22,6 +22,7 @@ export function ApprovalCard({
   description,
   details,
   variant = 'default',
+  quiet,
   icon,
   onAllowOnce,
   onAlwaysAllow,
@@ -53,6 +54,7 @@ export function ApprovalCard({
         {state === 'request' ? (
           <ApprovalRequestActions
             variant={variant}
+            quiet={quiet}
             onAllowOnce={onAllowOnce}
             onAlwaysAllow={onAlwaysAllow}
             onDeny={onDeny}

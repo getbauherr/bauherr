@@ -1,4 +1,5 @@
 import type { Payload } from 'payload'
+import { holdOf } from '../forge/limits'
 import { refreshFacts } from '../mirror/facts'
 import { errorText } from '../mirror/map'
 import { liveSources, type SourceRow } from '../mirror/store'
@@ -33,6 +34,7 @@ export const refreshReadiness = async (
     (source) => only === null || (source.workspace === only.workspace && source.product === only.product),
   )
   for (const source of sources) {
+    if (only === null && (await holdOf(payload, source.connection, deps.now()))) continue
     const at = deps.now()
     const error = await checkSource(payload, deps, source)
     await saveLastCheck(payload, source.id, { at: at.toISOString(), error })

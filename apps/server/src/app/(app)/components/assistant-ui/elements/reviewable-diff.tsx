@@ -53,14 +53,15 @@ export function ReviewableDiff({
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Decide: ${hunk.title}`}>
-          <Button type="button" variant="outline" disabled={disabled} onClick={onEdit}>
+          <Button type="button" variant="ghost" disabled={disabled} onClick={onEdit}>
             Edit
           </Button>
           {(['discard', 'keep'] as const).map((decision) => (
             <Button
               key={decision}
               type="button"
-              variant={hunk.decision === decision ? 'default' : 'outline'}
+              variant="outline"
+              className="aria-pressed:border-primary aria-pressed:bg-accent aria-pressed:text-accent-foreground"
               aria-pressed={hunk.decision === decision}
               disabled={disabled}
               onClick={() => onDecide(decision)}

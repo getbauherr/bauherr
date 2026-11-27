@@ -1,4 +1,5 @@
 import type { Payload, TaskConfig } from 'payload'
+import { sendHeld } from '../core/deferred'
 import { enterIssues } from '../core/intake/enter'
 import { resumeParked } from '../core/intake/pacing'
 import { remindReporters } from '../core/intake/timing'
@@ -28,6 +29,7 @@ export const intakeSweepTask = (
     await reactToOpenRecords(deps)
     await remindReporters(deps, createWriter(req.payload))
     await resumeParked(deps, null)
+    await sendHeld(deps)
     return { output: { entered: entered.length } }
   },
 })

@@ -38,6 +38,7 @@ export function OutcomeTickets({ outcome, done, repos, day, actions, take }: Pro
             ...(done ? [] : [{ label: 'Status', value: pendingText(ticket.decision) }]),
           ]}
           {...stateOf(ticket.number, done)}
+          quiet
           allowOnceLabel="Open ticket"
           denyLabel="Drop"
           onAllowOnce={() => void actions.decideTicket(ticket.id, 'keep').then(take)}
