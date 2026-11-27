@@ -5,7 +5,7 @@ import { decide, InvalidDecision, type Decision } from '../../src/core/decide'
 import { advance } from '../../src/core/engine'
 import { fold } from '../../src/core/lifecycle'
 import { claim } from '../../src/core/run/leases'
-import { readEvents, readRecord } from '../../src/core/record/store'
+import { patchRecord, readEvents, readRecord } from '../../src/core/record/store'
 import { failRun } from '../../src/core/submit'
 import { decisionOf, unmetAccepted } from '../../src/core/views/decision'
 import { openEngine, type Engine } from './harness'
@@ -101,7 +101,7 @@ describe('drop criteria', () => {
     expect((await readRecord(e.db.payload, id)).record.dropped).toEqual([])
   })
 
-  it('drops criteria on the verify-rounds question and goes on with one more round', async () => {
+  const atRoundsQuestion = async () => {
     const id = await toVerify()
     for (const n of [1, 2]) {
       if (n > 1) {
@@ -112,9 +112,30 @@ describe('drop criteria', () => {
       await e.work(id, 'verifier', { passed: false, patchId: `p${n}`, headSha: `h${n}` })
     }
     expect(await cardOf(id)).toMatchObject({ reason: 'verify-rounds' })
+    return id
+  }
+
+  it('re-verifies the same head after a drop on the verify-rounds question, without a build', async () => {
+    const id = await atRoundsQuestion()
+    const builds = (await types(id)).filter((t) => t === 'build.submitted').length
     await answer(id, { ask: 'question:verify-rounds', choice: 'drop-criteria', criteria: ['c1'] })
     expect((await readRecord(e.db.payload, id)).record.criteria).toHaveLength(2)
-    expect(await queued(id)).toEqual(['build'])
+    expect(await queued(id)).toEqual(['verify'])
+    const all = await types(id)
+    expect(all.filter((t) => t === 'build.submitted')).toHaveLength(builds)
+    const state = fold(await readEvents(e.db.payload, id))
+    expect(state).toMatchObject({ stage: 'verify', verifyRounds: 1, extraRounds: 0 })
+  })
+
+  it('goes straight to the Result card when every remaining criterion is already met', async () => {
+    const id = await atRoundsQuestion()
+    const { record, version } = await readRecord(e.db.payload, id)
+    const criteria = record.criteria.map((c) => (c.id === 'c3' ? c : { ...c, status: 'met' as const, proof: ['x'] }))
+    const by = { stage: 'verify' as const, runId: 'r' }
+    await patchRecord(e.db.payload, id, { expectedVersion: version, writes: ['criteria'], patch: { criteria }, by })
+    await answer(id, { ask: 'question:verify-rounds', choice: 'drop-criteria', criteria: ['c3'] })
+    expect(await queued(id)).toEqual([])
+    expect(await cardOf(id)).toMatchObject({ card: 'result' })
   })
 })
 

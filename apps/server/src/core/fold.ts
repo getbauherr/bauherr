@@ -1,4 +1,4 @@
-import { questionKey, withVerifyExits } from './decisions'
+import { DROP_CRITERIA, questionKey, withVerifyExits } from './decisions'
 import { conflictNote } from './conflict-note'
 import type { AppEvent, EventOf, Stage } from './events'
 import { initialState, type FoldOptions, type State, type Verdict } from './state'
@@ -253,13 +253,18 @@ const asked = (state: State, data: EventOf<'question.asked'>['data']): State => 
   }
 }
 
+const reverified = (state: State, option: string): State =>
+  option === DROP_CRITERIA && state.card?.reason === 'verify-rounds'
+    ? { ...enter(state, 'verify'), verifyRounds: Math.max(0, state.verifyRounds - 1), waitingAuthor: false }
+    : state
+
 const questions: Reducer = (state, event) => {
   switch (event.type) {
     case 'question.asked':
       return asked(state, event.data)
     case 'question.answered':
       return {
-        ...state,
+        ...reverified(state, event.data.option),
         card: null,
         failure: null,
         alreadyDone: null,

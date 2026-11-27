@@ -126,7 +126,7 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
   'question:verify-rounds': {
     'one-more-round': answer('one-more-round'),
     [ACCEPT_ANYWAY]: acceptAnyway,
-    [DROP_CRITERIA]: dropping((input) => [answered('one-more-round'), droppedEvent(input)]),
+    [DROP_CRITERIA]: dropping((input) => [answered(DROP_CRITERIA), droppedEvent(input)]),
     discard: answer('discard', discarded),
   },
   'question:already-done': {

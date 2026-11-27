@@ -131,6 +131,18 @@ const droppedOf = (decision: Decision, record: TicketRecord): string[] => {
   return dropped
 }
 
+const passIfSettled = async (tx: Conn, recordId: number, asked: string | null, person: Person): Promise<void> => {
+  if (asked === 'result') return
+  const { record } = await readRecord(tx, recordId)
+  const state = fold(await readEvents(tx, recordId))
+  const live = record.findings.some((f) => (f.status === 'open' || f.status === 'fixing') && f.followUp !== true)
+  const settled = record.criteria.every((c) => c.status === 'met') && !live && !record.visible
+  if (!settled || state.patch === null || state.stage !== 'verify') return
+  const { id: patchId, headSha } = state.patch
+  const data = { runId: 'dropped-criteria', patchId, headSha }
+  await appendEvent(tx, recordId, { type: 'verify.passed', data, actor: 'owner', actorId: person.id })
+}
+
 const eventsOf = (entry: DecisionEntry, state: State, note: string, criteria: string[]): AppEvent[] => {
   const input = {
     note,
@@ -201,7 +213,10 @@ export const decide = async (
     const criteria = droppedOf(decision, stored.record)
     const events = eventsOf(entry, state, note, criteria)
     for (const event of events) await appendEvent(tx, recordId, { ...event, actor: 'owner', actorId: person.id })
-    if (criteria.length > 0) await dropCriteria(tx, recordId, criteria, note)
+    if (criteria.length > 0) {
+      await dropCriteria(tx, recordId, criteria, note)
+      await passIfSettled(tx, recordId, asked, person)
+    }
     await settle(tx, stored, { entry, answers }, deps.now)
     if (kept.length !== stored.record.relations.length) await keepOnly(tx, recordId, kept)
     return {
