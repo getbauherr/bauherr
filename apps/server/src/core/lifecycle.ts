@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { AppEvent, EventOf, Stage } from './events'
+import { verifyRoundsOptions } from './decisions'
 import { fold, type FoldOptions, type State } from './fold'
 import type { TicketRecord } from './record/schema'
 
@@ -36,7 +37,7 @@ export type BriefReason =
   | 'readiness'
 export type Step =
   | { kind: 'run'; stage: Stage; role: Role }
-  | { kind: 'card'; card: 'brief' | 'result' | 'question'; reason: string; options: string[] }
+  | { kind: 'card'; card: 'brief' | 'result' | 'question'; reason: string; options: string[]; text?: string }
   | { kind: 'emit'; event: AppEvent }
   | { kind: 'effect'; effect: 'merge' }
   | { kind: 'wait'; on: WaitOn }
@@ -83,7 +84,13 @@ export const canArchive = (state: State): boolean =>
 
 const run = (stage: Stage, role: Role): Step => ({ kind: 'run', stage, role })
 const wait = (on: WaitOn): Step => ({ kind: 'wait', on })
-const question = (reason: string, options: string[]): Step => ({ kind: 'card', card: 'question', reason, options })
+const question = (reason: string, options: string[], text?: string): Step => ({
+  kind: 'card',
+  card: 'question',
+  reason,
+  options,
+  ...(text === undefined ? {} : { text }),
+})
 
 const closed: Rule = (_r, state) => (state.closed !== null || state.stage === 'done' ? { kind: 'done' } : null)
 const cardOpen: Rule = (_r, state) => (state.card ? wait('owner') : null)
@@ -104,6 +111,11 @@ const blocked: Rule = (_r, state, _c, blockers) => {
   return { kind: 'emit', event: { type: 'ticket.blocked', data: { reason } } }
 }
 
+const briefFailed: Rule = (_r, state) =>
+  state.stage === 'brief' && state.rewriting && state.failure !== null
+    ? question('brief-failed', ['retry-brief', 'discard'], `Brief rewrite failed: ${state.failure}`.slice(0, 200))
+    : null
+
 const failedRuns: Rule = (_r, state, config) =>
   state.failedRuns >= config.caps.failedRuns
     ? question('failed-runs', ['retry', 'retry-with-guidance', 'discard'])
@@ -123,7 +135,7 @@ const approvedByRule: EventOf<'brief.approved'> = { type: 'brief.approved', data
 
 const brief: Rule = (record, state, config) => {
   if (state.stage !== 'brief') return null
-  if (state.brief === 'none' || state.note !== null) return run('brief', 'builder')
+  if (state.brief === 'none' || state.note !== null || state.rewriting) return run('brief', 'builder')
   const reason = briefGate(record, config) ?? (state.returned ? 'sent-back' : null)
   if (reason === null) return { kind: 'emit', event: approvedByRule }
   return { kind: 'card', card: 'brief', reason, options: [] }
@@ -132,7 +144,7 @@ const brief: Rule = (record, state, config) => {
 const build: Rule = (_r, state, config) => {
   if (state.stage !== 'build') return null
   if (state.verifyRounds >= config.caps.verifyRounds + state.extraRounds) {
-    return question('verify-rounds', ['one-more-round', 'accept-as-is', 'discard'])
+    return question('verify-rounds', verifyRoundsOptions(state.extraRounds > 0))
   }
   return run('build', 'builder')
 }
@@ -140,7 +152,7 @@ const build: Rule = (_r, state, config) => {
 const author: Rule = (_r, state, config) => {
   if (state.stage !== 'verify' || !state.waitingAuthor) return null
   if (state.verifyRounds >= config.caps.verifyRounds + state.extraRounds) {
-    return question('verify-rounds', ['one-more-round', 'accept-as-is', 'discard'])
+    return question('verify-rounds', verifyRoundsOptions(state.extraRounds > 0))
   }
   return wait('author')
 }
@@ -168,7 +180,20 @@ const ship: Rule = (_r, state, config) => {
   return state.merged ? afterMerge(state, config) : { kind: 'effect', effect: 'merge' }
 }
 
-const RULES: Rule[] = [closed, cardOpen, runLive, blocked, failedRuns, intake, brief, build, author, verify, ship]
+const RULES: Rule[] = [
+  closed,
+  cardOpen,
+  runLive,
+  blocked,
+  briefFailed,
+  failedRuns,
+  intake,
+  brief,
+  build,
+  author,
+  verify,
+  ship,
+]
 
 export const next = (record: TicketRecord, state: State, config: Config, blockers: Blocker[] = []): Step => {
   for (const rule of RULES) {

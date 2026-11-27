@@ -19,6 +19,7 @@ import type { IntakeFacts } from '../intake/facts'
 import { loadIntakeFacts } from '../intake/facts-store'
 import { questionPostedAt } from '../intake/posted'
 import { similarItems, type ItemHit } from '../mirror/search'
+import { decisionOf, unmetAccepted, type DecisionView } from './decision'
 import { positionsOf, type Positions } from './positions'
 import { commentFilesOf, type CommentFile } from '../conversations/store'
 import { commentsOf, type RequestComment } from '../requests/comments'
@@ -76,6 +77,8 @@ export type TicketView = {
   waitingOn: WaitingOn
   parked: string | null
   card: StoredCard | null
+  decision: DecisionView | null
+  acceptedUnmet: string[]
   record: TicketRecord
   source: { repo: string; number: number; title: string; body: string; url: string } | null
   fromReadiness: number | null
@@ -257,6 +260,8 @@ export const ticket = async (payload: Payload, filter: TicketFilter): Promise<Ti
     waitingOn: stored.waitingOn,
     parked: stored.parked,
     card: stored.card,
+    decision: decisionOf(stored.card, stored.record, folded),
+    acceptedUnmet: unmetAccepted(stored.record, folded),
     record: stored.record,
     ...(await originOf(payload, stored)),
     source: issue && { repo, number, title: issue.title, body: issue.body, url: issue.url },

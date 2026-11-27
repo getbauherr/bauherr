@@ -1,6 +1,12 @@
 import type { AppEvent } from './events'
 
-export type DecisionInput = { note: string; patchId: string; headSha: string; question: string }
+export type DecisionInput = {
+  note: string
+  patchId: string
+  headSha: string
+  question: string
+  criteria: string[]
+}
 export type AgentCard = { options: string[]; text?: string }
 export type DecisionEntry = {
   needsNote: boolean
@@ -21,6 +27,21 @@ const withNote = (make: (note: string) => AppEvent[]): DecisionEntry => ({
   events: ({ note }) => make(note),
 })
 
+export const DROP_CRITERIA = 'drop-criteria'
+export const ACCEPT_ANYWAY = 'accept-anyway'
+export const RETRY_BRIEF = 'retry-brief'
+export const VERIFY_EXITS = [DROP_CRITERIA, ACCEPT_ANYWAY]
+
+export const questionKey = (text: string): string => text.toLowerCase().replace(/\s+/g, ' ').trim()
+
+export const withVerifyExits = (options: string[], repeated: boolean): string[] =>
+  repeated ? [...VERIFY_EXITS, ...options] : [...options, ...VERIFY_EXITS]
+
+export const verifyRoundsOptions = (repeated: boolean): string[] =>
+  repeated
+    ? [...VERIFY_EXITS, 'one-more-round', 'discard']
+    : ['one-more-round', ACCEPT_ANYWAY, DROP_CRITERIA, 'discard']
+
 export const BACK_TO_BRIEF = 'back-to-brief'
 export const WORKING_ASK = 'working'
 export const AGENT_ASK = 'question:agent'
@@ -34,6 +55,31 @@ const backToBrief = (open: boolean): DecisionEntry => ({
     { type: 'brief.changes-requested', data: { note } },
   ],
 })
+
+const droppedEvent = ({ criteria, note }: DecisionInput): AppEvent => ({
+  type: 'criteria.dropped',
+  data: { criteria, note },
+})
+
+const dropping = (events: (input: DecisionInput) => AppEvent[]): DecisionEntry => ({
+  needsNote: false,
+  keepsNote: true,
+  events,
+})
+
+const acceptAnyway: DecisionEntry = {
+  needsNote: false,
+  events: ({ patchId, headSha }) => [
+    answered(ACCEPT_ANYWAY),
+    { type: 'verify.overridden', data: { patchId, headSha } },
+  ],
+}
+
+const droppedByAgentAsk: DecisionEntry = dropping((input) => [
+  answered(DROP_CRITERIA),
+  droppedEvent(input),
+  agentNote(input.question, `Dropped ${input.criteria.join(', ')}`, input.note),
+])
 
 const ownAnswer: DecisionEntry = {
   needsNote: true,
@@ -49,6 +95,11 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
   result: {
     accept: one({ type: 'result.accepted', data: {} }),
     'send-back': withNote((note) => [{ type: 'result.sent-back', data: { note } }]),
+    [DROP_CRITERIA]: dropping((input) => [droppedEvent(input)]),
+  },
+  'question:brief-failed': {
+    [RETRY_BRIEF]: answer(RETRY_BRIEF),
+    discard: answer('discard', discarded),
   },
   'question:failed-runs': {
     retry: answer('retry'),
@@ -74,13 +125,8 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
   },
   'question:verify-rounds': {
     'one-more-round': answer('one-more-round'),
-    'accept-as-is': {
-      needsNote: false,
-      events: ({ patchId, headSha }) => [
-        answered('accept-as-is'),
-        { type: 'verify.overridden', data: { patchId, headSha } },
-      ],
-    },
+    [ACCEPT_ANYWAY]: acceptAnyway,
+    [DROP_CRITERIA]: dropping((input) => [answered(DROP_CRITERIA), droppedEvent(input)]),
     discard: answer('discard', discarded),
   },
   'question:already-done': {
@@ -91,12 +137,18 @@ export const DECISIONS: Record<string, Record<string, DecisionEntry>> = {
     'check-again': answer('check-again'),
     continue: answer('continue', { type: 'ship.deployed', data: {} }),
   },
-  [AGENT_ASK]: { [BACK_TO_BRIEF]: backToBrief(true), [OWN_ANSWER]: ownAnswer },
+  [AGENT_ASK]: {
+    [BACK_TO_BRIEF]: backToBrief(true),
+    [OWN_ANSWER]: ownAnswer,
+    [DROP_CRITERIA]: droppedByAgentAsk,
+    [ACCEPT_ANYWAY]: acceptAnyway,
+  },
   [WORKING_ASK]: { [BACK_TO_BRIEF]: backToBrief(false) },
 }
 
 export const QUESTION_REASONS = [
   'failed-runs',
+  'brief-failed',
   'reporter-silent',
   'disputed',
   'verify-rounds',

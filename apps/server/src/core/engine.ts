@@ -109,11 +109,12 @@ const runStep = async (step: Extract<Step, { kind: 'run' }>, ctx: Ctx): Promise<
 
 const cardStep = async (step: Extract<Step, { kind: 'card' }>, ctx: Ctx): Promise<Outcome> => {
   const { card, reason, options } = step
+  const text = step.text === undefined ? {} : { text: step.text }
   if (card === 'question') {
-    await append(ctx, { type: 'question.asked', data: { reason, options } })
+    await append(ctx, { type: 'question.asked', data: { reason, options, ...text } })
     ctx.seq++
   }
-  await project(ctx, 'owner', { card, reason, options })
+  await project(ctx, 'owner', { card, reason, options, ...text })
   return 'stop'
 }
 

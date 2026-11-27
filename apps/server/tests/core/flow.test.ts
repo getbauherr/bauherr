@@ -98,13 +98,14 @@ describe('a ticket from intake to done', () => {
       await patch(id, n + 1)
     }
     await e.work(id, 'verifier', { passed: false, patchId: 'p3', headSha: 'h3' })
-    const ask = { card: 'question', reason: 'verify-rounds', options: ['one-more-round', 'accept-as-is', 'discard'] }
-    await expectView(id, 'build', 'owner', ask)
+    const options = ['one-more-round', 'accept-anyway', 'drop-criteria', 'discard']
+    await expectView(id, 'build', 'owner', { card: 'question', reason: 'verify-rounds', options })
     await answer(id, { ask: 'question:verify-rounds', choice: 'one-more-round' })
     await expectView(id, 'build', 'agents')
     await patch(id, 4)
     await e.work(id, 'verifier', { passed: false, patchId: 'p4', headSha: 'h4' })
-    await expectView(id, 'build', 'owner', ask)
+    const again = ['drop-criteria', 'accept-anyway', 'one-more-round', 'discard']
+    await expectView(id, 'build', 'owner', { card: 'question', reason: 'verify-rounds', options: again })
     const types = (await e.view(id)).types
     expect(types.filter((t) => t === 'build.submitted')).toHaveLength(4)
   })

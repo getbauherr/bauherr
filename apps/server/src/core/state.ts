@@ -15,6 +15,9 @@ export type State = {
   failedRuns: number
   brief: 'none' | 'submitted' | 'approved'
   returned: boolean
+  rewriting: boolean
+  failure: string | null
+  asked: string[]
   adopted: boolean
   waitingAuthor: boolean
   patch: { id: string; pr: number; headSha: string } | null
@@ -48,6 +51,9 @@ export const initialState = (): State => ({
   failedRuns: 0,
   brief: 'none',
   returned: false,
+  rewriting: false,
+  failure: null,
+  asked: [],
   adopted: false,
   waitingAuthor: false,
   patch: null,
