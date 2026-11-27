@@ -14,7 +14,7 @@ import {
   type Where,
 } from '../../../../core/releases/notes-store'
 import { publicUrl } from '../../../../lib/oidc'
-import { gatewayModel } from '../../../../lib/retro-model'
+import { gatewayModel } from '../../lib/retro-model'
 import { textOf } from '../../lib/form-data'
 import { held } from '../../lib/retro-wiring'
 

@@ -7,7 +7,7 @@ import type { ConverseDeps } from '../../../core/retro/converse'
 import { RetroError, RetroNotFound } from '../../../core/retro/schema'
 import { MemoryError, type Who } from '../../../core/memory'
 import { retroSkill } from '../../../lean'
-import { ModelUnavailable, retroModel } from '../../../lib/retro-model'
+import { ModelUnavailable, retroModel } from './retro-model'
 import { factoryRepo } from '../../../lib/retro-settings'
 import { currentWorkspace, payloadClient } from './session'
 

@@ -1,5 +1,5 @@
-import type { RetroContext } from '../core/retro/prompt'
-import type { RetroModel } from '../core/retro/model'
+import type { RetroContext } from '../../../core/retro/prompt'
+import type { RetroModel } from '../../../core/retro/model'
 
 const contextOf = (first: string): RetroContext => JSON.parse(first.slice(first.indexOf('\n') + 1)) as RetroContext
 

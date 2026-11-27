@@ -1,4 +1,4 @@
-import type { RequestModel } from '../core/requests/turn'
+import type { RequestModel } from '../../../core/requests/turn'
 
 const ROUNDS = /"rounds":(\d+)/
 

@@ -10,7 +10,7 @@ import { steerConversation } from '../../../../core/steer/store'
 import { steerTurn, UNDONE_NOTE, type SteerOutcome } from '../../../../core/steer/turn'
 import { requestScope } from '../../../../core/views/request-access'
 import { personOf } from '../../../../lib/person'
-import { steerModel } from '../../../../lib/steer-model'
+import { steerModel } from '../../lib/steer-model'
 import { currentWorkspace, payloadClient } from '../../lib/session'
 import { commentOnRequestAction } from '../requests/actions'
 

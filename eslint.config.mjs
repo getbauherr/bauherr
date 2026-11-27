@@ -113,6 +113,12 @@ const coreNoModules = {
   message: 'src/core never imports src/modules. Move the shared code into src/core, or let the module hand it to core through its module definition.',
 }
 
+const libNoCore = {
+  group: ['**/core', '**/core/**', '**/modules', '**/modules/**'],
+  message:
+    'src/lib is below src/core and src/modules and never imports them. Move the shared type into src/lib, or move this file up into src/app/(app)/lib where it may depend on core.',
+}
+
 const sizeRules = {
   'max-lines': ['error', { max: 300, skipBlankLines: true, skipComments: false }],
   'max-lines-per-function': ['error', { max: 60, skipBlankLines: true, skipComments: false }],
@@ -185,6 +191,10 @@ export default tseslint.config(
   {
     files: [`${serverSrc}/core/**/*.{ts,tsx}`, `${serverSrc}/modules/**/*.{ts,tsx}`],
     rules: { 'no-restricted-syntax': syntaxRule([...everywhereSyntax, ...coreSyntax]) },
+  },
+  {
+    files: [`${serverSrc}/lib/**/*.{ts,tsx}`],
+    rules: { 'no-restricted-imports': importRule([libNoCore]) },
   },
   {
     files: [`${serverSrc}/modules/**/*.{ts,tsx}`],

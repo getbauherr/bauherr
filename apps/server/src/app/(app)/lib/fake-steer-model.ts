@@ -1,4 +1,4 @@
-import type { RetroModel } from '../core/retro/model'
+import type { RetroModel } from '../../../core/retro/model'
 
 const OPTIONS = /"options":\[([^\]]*)\]/
 

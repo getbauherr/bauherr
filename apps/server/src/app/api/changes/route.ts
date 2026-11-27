@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { isBauherr, isProductOwner } from '../../../lib/people'
 import { CHANGE_TABLES, type ChangeTable } from '../../(app)/lib/change-tables'
 import { currentWorkspace, getPerson, payloadClient } from '../../(app)/lib/session'
+import { unauthorized } from '../../(app)/lib/unauthorized'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,7 +19,7 @@ const latest = (table: ChangeTable, id: number) =>
 export const GET = async (request?: Request): Promise<Response> => {
   const person = await getPerson()
   if (!person || isProductOwner(person) || !isBauherr(person)) {
-    return Response.json({ error: 'unauthorized' }, { status: 401 })
+    return unauthorized('unauthorized')
   }
   const { workspace } = await currentWorkspace()
   if (!workspace) return Response.json({ v: 0, stamps: {} })
